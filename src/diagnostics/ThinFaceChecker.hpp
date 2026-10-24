@@ -106,6 +106,14 @@ public:
         Eigen::Index faceIndex,
         const ThinFaceThresholds& thresholds = {});
 
+    /// Computes geometric metrics and threshold flags for the triangle (v0, v1, v2).
+    [[nodiscard]] static ThinFaceDefect evaluateTriangle(
+        const Eigen::Vector3d& v0,
+        const Eigen::Vector3d& v1,
+        const Eigen::Vector3d& v2,
+        const ThinFaceThresholds& thresholds = {},
+        bool hasDuplicateVertexIndices = false);
+
     /// Scans all faces of `mesh` and returns a `ThinFaceReport` containing all offending faces.
     [[nodiscard]] static ThinFaceReport check(
         const Mesh& mesh,

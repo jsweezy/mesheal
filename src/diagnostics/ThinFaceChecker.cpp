@@ -52,11 +52,25 @@ ThinFaceDefect ThinFaceChecker::evaluateFace(
         return defect;
     }
 
-    defect.hasDuplicateVertexIndices = (i0 == i1) || (i1 == i2) || (i2 == i0);
+    const bool duplicate = (i0 == i1) || (i1 == i2) || (i2 == i0);
+    ThinFaceDefect result = evaluateTriangle(
+        mesh.V.row(i0).transpose(),
+        mesh.V.row(i1).transpose(),
+        mesh.V.row(i2).transpose(),
+        thresholds,
+        duplicate);
+    result.faceIndex = faceIndex;
+    return result;
+}
 
-    const Eigen::Vector3d v0 = mesh.V.row(i0).transpose();
-    const Eigen::Vector3d v1 = mesh.V.row(i1).transpose();
-    const Eigen::Vector3d v2 = mesh.V.row(i2).transpose();
+ThinFaceDefect ThinFaceChecker::evaluateTriangle(
+    const Eigen::Vector3d& v0,
+    const Eigen::Vector3d& v1,
+    const Eigen::Vector3d& v2,
+    const ThinFaceThresholds& thresholds,
+    bool hasDuplicateVertexIndices) {
+    ThinFaceDefect defect;
+    defect.hasDuplicateVertexIndices = hasDuplicateVertexIndices;
 
     const double e0 = (v1 - v0).norm();
     const double e1 = (v2 - v1).norm();

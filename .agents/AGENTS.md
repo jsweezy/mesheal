@@ -32,17 +32,13 @@ Whenever you add, modify, or remove features, workflows, UI controls, diagnostic
   - **`Hold off on committing`**
 - Once the user clicks **`(Recommended) Accept & Commit to git`**, stage the modified/created files and commit them to `git` with a clear, descriptive commit message.
 
-
 ## 4. C++ Coding Conventions
 
 - **Prefer `std::array` over `std::vector` when the element count is fixed at compile time** (e.g., the 3 vertices of a triangle). This avoids heap allocations in hot paths.
 - Use `reserve()` on a `std::vector` whenever the final size is known or can be estimated up front.
 - Keep code comments short, and only comment complex code such as what an algorithm is doing.
 
+## 5. Building
 
-## 4. C++ Coding Conventions
-
-- **Prefer `std::array` over `std::vector` when the element count is fixed at compile time** (e.g., the 3 vertices of a triangle). This avoids heap allocations in hot paths.
-- Use `reserve()` on a `std::vector` whenever the final size is known or can be estimated up front.
-- Keep code comments short, and only comment complex code such as what an algorithm is doing.
+- Limit CPU usage when building on this Mac Neo with "-j 2".   Testing can use "-j 4".  
 
