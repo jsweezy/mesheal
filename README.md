@@ -14,7 +14,7 @@ Unlike 3D printing repair tools—which often voxelize or alter geometry in ways
 - **Language & Namespace**: C++20 (`namespace ogun`)
 - **Build & Test System**: CMake (3.20+, `FetchContent`), CTest, and **[Catch2](https://github.com/catchorg/Catch2)** (Test-Driven Development with co-located `Test/` directories inside every module)
 - **3D Visualization & UI**: [Polyscope](https://polyscope.run/) + [Dear ImGui](https://github.com/ocornut/imgui) + [portable-file-dialogs](https://github.com/samhocevar/portable-file-dialogs)
-- **Geometry Processing**: [libigl](https://libigl.github.io/) + [Eigen](https://eigen.tuxfamily.org/) + [Manifold](https://github.com/elalish/manifold) (with planned evaluation of [CGAL](https://www.cgal.org/) for advanced repairs)
+- **Geometry Processing & Mesh Repair**: [libigl](https://libigl.github.io/) + [Eigen](https://eigen.tuxfamily.org/) + [CGAL](https://www.cgal.org/) (`Surface_mesh`, `Euler`, `Polygon_mesh_processing`) + [Manifold](https://github.com/elalish/manifold)
 
 ## Repository Layout
 
@@ -26,14 +26,18 @@ STL_Repair_Tool/
 ├── README.md
 ├── VISION.md
 ├── PLAN.md
+├── TODO.md
 ├── assets/
 │   └── icons/          # Ogun application/toolbar icon assets (ogun.jpeg, ogun.png, ogun.icns)
+├── docs/
+│   └── NAVIGATION.md   # 3D viewport navigation & keyboard shortcuts guide
 ├── cmake/
 │   └── Dependencies.cmake
 └── src/
-    ├── mesh/           # Indexed Face-Vertex Mesh, Units & ToleranceConfig (+ src/mesh/Test/)
-    ├── io/             # STL reading, local edge-aware welding & sample meshes (+ src/io/Test/)
+    ├── mesh/           # Indexed Face-Vertex Mesh, CGAL Interop, Units & ToleranceConfig (+ src/mesh/Test/)
+    ├── io/             # STL reading, edge-aware welding, STL export & sample meshes (+ src/io/Test/)
     ├── diagnostics/    # Manifold & thin/sliver face detection (+ src/diagnostics/Test/)
+    ├── repair/         # CGAL single-face live preview/repair & batch sliver healing (+ src/repair/Test/)
     └── app/            # Headless AppController (+ src/app/Test/) & Polyscope/ImGui viewer
 ```
 

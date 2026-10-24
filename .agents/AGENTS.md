@@ -17,7 +17,13 @@ Whenever you add, modify, or remove features, workflows, UI controls, diagnostic
 4. **Project & Architecture Documentation (`README.md`, `VISION.md`, and `docs/*`)**
    - Update `README.md`, `VISION.md`, and any files under `docs/` whenever project status, build instructions, architectural decisions, diagnostics/repair capabilities, or user-facing workflows change.
 
-## 2. Ask for User Review & Present a 1-Click "Accept & Commit" Button in Chat
+## 2. All Mesh Modification Operations Must Support Undo (`Ctrl+Z` / `Cmd+Z`)
+
+- **Every operation that modifies the mesh in memory** (including single-face repair commits, batch `"Fix All Thin / Sliver Faces"` repairs, explicit coordinate scaling `"Scale Mesh Coordinates"`, and any future mesh repair, welding, hole-patching, or normal-flipping operations) **must** record an undo snapshot on `AppController`'s undo history stack before mutating the mesh.
+- Both a UI **"Undo"** button (displaying the name of the last action when available) and the standard **`Ctrl+Z` / `Cmd+Z`** keyboard shortcut in the 3D viewport must be supported to revert mesh modifications step-by-step and refresh active diagnostics/overlays.
+- Unit tests in `src/app/Test/AppControllerTests.cpp` must verify `undoLastModification()` for every newly added mesh-modifying action.
+
+## 3. Ask for User Review & Present a 1-Click "Accept & Commit" Button in Chat
 
 - At the conclusion of every completed task (after all unit tests pass and documentation/`TODO.md`/`PLAN.md` updates are in place), **do not** stage or commit changes to `git` automatically.
 - Leave all modified and newly created files uncommitted in the working tree so the user can easily inspect the diffs in VS Code's **Source Control** view.
