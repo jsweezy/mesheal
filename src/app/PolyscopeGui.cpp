@@ -1,22 +1,137 @@
 #include "app/PolyscopeGui.hpp"
 
+#ifdef __APPLE__
+#include "app/MacAppIcon.hpp"
+#endif
+
 #include <imgui.h>
 #include <polyscope/curve_network.h>
 #include <polyscope/pick.h>
 #include <polyscope/point_cloud.h>
 #include <polyscope/polyscope.h>
+#include <polyscope/render/engine.h>
 #include <polyscope/surface_mesh.h>
 #include <polyscope/view.h>
 #include <portable-file-dialogs.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <queue>
 #include <string>
 #include <vector>
 
+extern "C" {
+unsigned char* stbi_load(const char* filename, int* x, int* y, int* channels_in_file, int desired_channels);
+void stbi_image_free(void* retval_from_stbi_load);
+}
+
 namespace ogun {
+
+namespace {
+
+/// When loading a 3-channel JPEG icon that has a white/shadow background outside the rounded
+/// metallic frame, flood-fills the outer margin to transparent alpha with 2px edge feathering.
+void makeOuterBackgroundTransparent(std::vector<unsigned char>& rgba, int w, int h) {
+    if (w <= 0 || h <= 0 || rgba.size() < static_cast<std::size_t>(w * h * 4)) {
+        return;
+    }
+
+    auto isBgCandidate = [&](int idx) noexcept {
+        const int r = rgba[static_cast<std::size_t>(idx) * 4 + 0];
+        const int g = rgba[static_cast<std::size_t>(idx) * 4 + 1];
+        const int b = rgba[static_cast<std::size_t>(idx) * 4 + 2];
+        const int maxCh = std::max({r, g, b});
+        const int minCh = std::min({r, g, b});
+        const int diff = maxCh - minCh;
+        return (minCh >= 230 && diff <= 12) || (minCh >= 175 && diff <= 6);
+    };
+
+    std::vector<std::uint8_t> visited(static_cast<std::size_t>(w * h), 0);
+    std::queue<int> q;
+
+    for (int x = 0; x < w; ++x) {
+        const int topIdx = x;
+        const int botIdx = (h - 1) * w + x;
+        if (isBgCandidate(topIdx)) {
+            visited[static_cast<std::size_t>(topIdx)] = 1;
+            q.push(topIdx);
+        }
+        if (isBgCandidate(botIdx)) {
+            visited[static_cast<std::size_t>(botIdx)] = 1;
+            q.push(botIdx);
+        }
+    }
+    for (int y = 0; y < h; ++y) {
+        const int leftIdx = y * w;
+        const int rightIdx = y * w + (w - 1);
+        if (!visited[static_cast<std::size_t>(leftIdx)] && isBgCandidate(leftIdx)) {
+            visited[static_cast<std::size_t>(leftIdx)] = 1;
+            q.push(leftIdx);
+        }
+        if (!visited[static_cast<std::size_t>(rightIdx)] && isBgCandidate(rightIdx)) {
+            visited[static_cast<std::size_t>(rightIdx)] = 1;
+            q.push(rightIdx);
+        }
+    }
+
+    constexpr int kDx[4] = {1, -1, 0, 0};
+    constexpr int kDy[4] = {0, 0, 1, -1};
+    while (!q.empty()) {
+        const int cur = q.front();
+        q.pop();
+        const int cx = cur % w;
+        const int cy = cur / w;
+        for (int d = 0; d < 4; ++d) {
+            const int nx = cx + kDx[d];
+            const int ny = cy + kDy[d];
+            if (nx < 0 || nx >= w || ny < 0 || ny >= h) {
+                continue;
+            }
+            const int nidx = ny * w + nx;
+            if (!visited[static_cast<std::size_t>(nidx)] && isBgCandidate(nidx)) {
+                visited[static_cast<std::size_t>(nidx)] = 1;
+                q.push(nidx);
+            }
+        }
+    }
+
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const int idx = y * w + x;
+            if (visited[static_cast<std::size_t>(idx)]) {
+                rgba[static_cast<std::size_t>(idx) * 4 + 3] = 0;
+                continue;
+            }
+            bool nearBg1 = false;
+            bool nearBg2 = false;
+            for (int oy = -2; oy <= 2; ++oy) {
+                for (int ox = -2; ox <= 2; ++ox) {
+                    const int nx = std::clamp(x + ox, 0, w - 1);
+                    const int ny = std::clamp(y + oy, 0, h - 1);
+                    if (visited[static_cast<std::size_t>(ny * w + nx)]) {
+                        if (std::abs(ox) <= 1 && std::abs(oy) <= 1) {
+                            nearBg1 = true;
+                        } else {
+                            nearBg2 = true;
+                        }
+                    }
+                }
+            }
+            if (nearBg1) {
+                rgba[static_cast<std::size_t>(idx) * 4 + 3] = 128;
+            } else if (nearBg2) {
+                rgba[static_cast<std::size_t>(idx) * 4 + 3] = 220;
+            } else {
+                rgba[static_cast<std::size_t>(idx) * 4 + 3] = 255;
+            }
+        }
+    }
+}
+
+} // namespace
 
 PolyscopeGui::PolyscopeGui(AppController& controller)
     : controller_(controller) {}
@@ -30,6 +145,7 @@ void PolyscopeGui::run() {
 
     polyscope::init();
     polyscope::state::doDefaultMouseInteraction = false;
+    loadAndApplyApplicationIcon();
 
     if (controller_.hasMesh()) {
         syncMeshStructureToPolyscope(true);
@@ -40,6 +156,49 @@ void PolyscopeGui::run() {
     };
 
     polyscope::show();
+    appIconTexture_.reset();
+}
+
+void PolyscopeGui::loadAndApplyApplicationIcon() {
+    const std::filesystem::path iconPath = AppController::resolveApplicationIconPath();
+    if (iconPath.empty()) {
+        return;
+    }
+
+    int width = 0;
+    int height = 0;
+    int channelsInFile = 0;
+    unsigned char* rawPixels = stbi_load(iconPath.string().c_str(), &width, &height, &channelsInFile, 4);
+    if (rawPixels == nullptr || width <= 0 || height <= 0) {
+        if (rawPixels != nullptr) {
+            stbi_image_free(rawPixels);
+        }
+        return;
+    }
+
+    const std::size_t byteCount =
+        static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4u;
+    std::vector<unsigned char> rgba(rawPixels, rawPixels + byteCount);
+    stbi_image_free(rawPixels);
+
+    if (channelsInFile == 3) {
+        makeOuterBackgroundTransparent(rgba, width, height);
+    }
+
+#ifdef __APPLE__
+    setMacApplicationIconFromRgba(rgba.data(), width, height);
+#endif
+
+    if (polyscope::render::engine != nullptr) {
+        appIconTexture_ = polyscope::render::engine->generateTextureBuffer(
+            polyscope::TextureFormat::RGBA8,
+            static_cast<unsigned int>(width),
+            static_cast<unsigned int>(height),
+            rgba.data());
+        if (appIconTexture_ != nullptr) {
+            appIconTexture_->setFilterMode(polyscope::FilterMode::Linear);
+        }
+    }
 }
 
 void PolyscopeGui::drawUiFrame() {
@@ -78,6 +237,14 @@ void PolyscopeGui::drawUiFrame() {
 }
 
 void PolyscopeGui::drawFileBarSection() {
+    if (appIconTexture_ != nullptr) {
+        ImGui::Image(
+            reinterpret_cast<ImTextureID>(appIconTexture_->getNativeHandle()),
+            ImVec2(40.0f, 40.0f));
+        ImGui::SameLine();
+        ImGui::BeginGroup();
+    }
+
     ImGui::TextUnformatted("Mesh Source");
 
     if (ImGui::Button("Open STL...")) {
@@ -97,6 +264,10 @@ void PolyscopeGui::drawFileBarSection() {
     if (ImGui::Button("Load Sample Test Mesh")) {
         controller_.loadSampleDefectiveMesh();
         syncMeshStructureToPolyscope(true);
+    }
+
+    if (appIconTexture_ != nullptr) {
+        ImGui::EndGroup();
     }
 
     ImGui::Text("Loaded: %s", controller_.loadedSourceLabel().c_str());

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <system_error>
 #include <unordered_map>
 #include <utility>
 
@@ -12,6 +13,31 @@ namespace ogun {
 AppController::AppController()
     : thresholds_(ThinFaceThresholds::defaultsForUnit(Unit::Millimeter)) {
     mesh_.fileUnit = Unit::Millimeter;
+}
+
+std::filesystem::path AppController::resolveApplicationIconPath() noexcept {
+    const std::array<std::filesystem::path, 4> candidates = {
+        std::filesystem::path("assets/icons/ogun.png"),
+        std::filesystem::path("assets/icons/ogun.jpeg"),
+#ifdef OGUN_SOURCE_ICON_PNG_PATH
+        std::filesystem::path(OGUN_SOURCE_ICON_PNG_PATH),
+#else
+        std::filesystem::path{},
+#endif
+#ifdef OGUN_SOURCE_ICON_JPEG_PATH
+        std::filesystem::path(OGUN_SOURCE_ICON_JPEG_PATH),
+#else
+        std::filesystem::path{},
+#endif
+    };
+
+    std::error_code ec;
+    for (const auto& candidate : candidates) {
+        if (!candidate.empty() && std::filesystem::exists(candidate, ec) && !ec) {
+            return candidate;
+        }
+    }
+    return {};
 }
 
 bool AppController::loadStlFile(const std::filesystem::path& filepath) {

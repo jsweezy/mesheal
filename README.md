@@ -26,6 +26,8 @@ STL_Repair_Tool/
 ├── README.md
 ├── VISION.md
 ├── PLAN.md
+├── assets/
+│   └── icons/          # Ogun application/toolbar icon assets (ogun.jpeg, ogun.png, ogun.icns)
 ├── cmake/
 │   └── Dependencies.cmake
 └── src/
@@ -48,7 +50,7 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 
 # Launch the Ogun viewer (with optional STL path)
-./build/src/app/ogun_app path/to/model.stl
+./build/src/app/ogun path/to/model.stl
 ```
 
 ## License

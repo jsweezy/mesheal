@@ -2,7 +2,12 @@
 
 #include "app/AppController.hpp"
 
+#include <memory>
 #include <string>
+
+namespace polyscope::render {
+class TextureBuffer;
+} // namespace polyscope::render
 
 namespace ogun {
 
@@ -36,6 +41,7 @@ private:
     void processPivotZoom(double amount, double effectiveDist);
 
     /// Registers or updates the Polyscope surface mesh, face color quantity, and curve/point overlays.
+    void loadAndApplyApplicationIcon();
     void syncMeshStructureToPolyscope(bool resetCameraToHome);
     void syncHighlightOverlaysToPolyscope();
     void syncMeshTransparencyToPolyscope();
@@ -53,6 +59,7 @@ private:
     void resetCameraAndPivotToHome();
 
     AppController& controller_;
+    std::shared_ptr<polyscope::render::TextureBuffer> appIconTexture_;
     Unit pendingScaleTargetUnit_ = Unit::Centimeter;
     double surfaceEdgeWidth_ = 1.0;
     double lastAppliedPointRelRadius_ = -1.0;

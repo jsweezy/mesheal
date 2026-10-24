@@ -73,6 +73,10 @@ public:
 
     AppController();
 
+    /// Resolves the path to the Ogun application/toolbar icon asset (`assets/icons/ogun.png`
+    /// or `assets/icons/ogun.jpeg`), returning an empty path if not found.
+    [[nodiscard]] static std::filesystem::path resolveApplicationIconPath() noexcept;
+
     // -------------------------------------------------------------------------
     // Mesh Loading & Access
     // -------------------------------------------------------------------------

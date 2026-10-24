@@ -349,3 +349,11 @@ TEST_CASE("AppController updates orbit pivot to face centroid and aligns camera 
     REQUIRE(controller.orbitPivot().isApprox(Eigen::Vector3d(5.0, 5.0, 5.0), 1e-12));
     REQUIRE(controller.lastFocusedNormalSign() == 0);
 }
+
+TEST_CASE("AppController resolves the Ogun application toolbar icon asset",
+          "[app][controller][icon]") {
+    const std::filesystem::path iconPath = ogun::AppController::resolveApplicationIconPath();
+    REQUIRE_FALSE(iconPath.empty());
+    REQUIRE(std::filesystem::exists(iconPath));
+    REQUIRE((iconPath.filename() == "ogun.png" || iconPath.filename() == "ogun.jpeg"));
+}

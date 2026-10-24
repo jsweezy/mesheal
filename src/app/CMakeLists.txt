@@ -9,6 +9,12 @@ target_include_directories(ogun_app_controller
         "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
+target_compile_definitions(ogun_app_controller
+    PUBLIC
+        OGUN_SOURCE_ICON_PNG_PATH="${CMAKE_SOURCE_DIR}/assets/icons/ogun.png"
+        OGUN_SOURCE_ICON_JPEG_PATH="${CMAKE_SOURCE_DIR}/assets/icons/ogun.jpeg"
+)
+
 target_link_libraries(ogun_app_controller
     PUBLIC
         ogun::mesh
@@ -19,18 +25,25 @@ target_link_libraries(ogun_app_controller
 )
 
 if(OGUN_BUILD_GUI)
-    add_executable(ogun_app
+    add_executable(ogun
         main.cpp
         PolyscopeGui.cpp
+        MacAppIcon.cpp
     )
 
-    target_include_directories(ogun_app
+    if(APPLE)
+        set_source_files_properties(MacAppIcon.cpp PROPERTIES
+            COMPILE_OPTIONS "-x;objective-c++"
+        )
+    endif()
+
+    target_include_directories(ogun
         PRIVATE
             "${CMAKE_SOURCE_DIR}/src"
             "${CMAKE_CURRENT_SOURCE_DIR}"
     )
 
-    target_link_libraries(ogun_app
+    target_link_libraries(ogun
         PRIVATE
             ogun::app_controller
             polyscope
