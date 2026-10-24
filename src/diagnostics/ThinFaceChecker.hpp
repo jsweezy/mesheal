@@ -1,0 +1,115 @@
+#pragma once
+
+#include "mesh/Mesh.hpp"
+#include "mesh/Units.hpp"
+
+#include <Eigen/Core>
+
+#include <cstddef>
+#include <limits>
+#include <vector>
+
+namespace ogun {
+
+/// User-configurable thresholds for flagging thin, near-zero-area, and sliver triangles.
+/// Length and area thresholds are expressed in the active `mesh.fileUnit`.
+struct ThinFaceThresholds {
+    /// Minimum allowable triangle altitude h_min = 2A / l_max (in `fileUnit`).
+    double minAltitude = 1.0e-4;
+
+    /// Minimum allowable triangle surface area A (in `fileUnit^2`).
+    double minArea = 1.0e-8;
+
+    /// Maximum allowable triangle aspect ratio l_max / h_min (dimensionless).
+    double maxAspectRatio = 1000.0;
+
+    /// Converts length and area thresholds from `fromUnit` into `toUnit`.
+    /// Aspect ratio is dimensionless and remains unchanged.
+    [[nodiscard]] constexpr ThinFaceThresholds convertedToUnit(
+        Unit fromUnit,
+        Unit toUnit) const noexcept {
+        const double s = unitConversionFactor(fromUnit, toUnit);
+        return ThinFaceThresholds{
+            minAltitude * s,
+            minArea * (s * s),
+            maxAspectRatio
+        };
+    }
+
+    /// Returns default thresholds expressed in the specified unit (referenced to 1e-4 mm, 1e-8 mm^2).
+    [[nodiscard]] static constexpr ThinFaceThresholds defaultsForUnit(
+        Unit unit = Unit::Millimeter) noexcept {
+        return ThinFaceThresholds{}.convertedToUnit(Unit::Millimeter, unit);
+    }
+};
+
+/// Geometric metrics and threshold-violation flags for a single triangle facet.
+struct ThinFaceDefect {
+    Eigen::Index faceIndex = 0;
+
+    double area = 0.0;
+    double minAltitude = 0.0;
+    double shortestEdge = 0.0;
+    double longestEdge = 0.0;
+    double aspectRatio = std::numeric_limits<double>::infinity();
+
+    bool belowMinArea = false;
+    bool belowMinAltitude = false;
+    bool aboveMaxAspectRatio = false;
+    bool hasDuplicateVertexIndices = false;
+
+    /// Returns true if the triangle has zero area, zero altitude, or repeated vertex indices.
+    [[nodiscard]] bool isZeroArea() const noexcept {
+        return hasDuplicateVertexIndices || !(area > 0.0) || !(minAltitude > 0.0);
+    }
+
+    /// Returns true if any thin/degenerate/sliver threshold was violated.
+    [[nodiscard]] bool isDefective() const noexcept {
+        return hasDuplicateVertexIndices || belowMinArea || belowMinAltitude || aboveMaxAspectRatio;
+    }
+};
+
+/// Result of running `ThinFaceChecker::check()` across an entire `ogun::Mesh`.
+struct ThinFaceReport {
+    Unit unit = Unit::Millimeter;
+    ThinFaceThresholds thresholds{};
+    Eigen::Index totalFacesChecked = 0;
+
+    /// Detailed metrics for each offending face, ordered by ascending `faceIndex`.
+    std::vector<ThinFaceDefect> defects;
+
+    /// Offending 0-based face indices (mirrors `defects[i].faceIndex` for quick selection/highlighting).
+    std::vector<Eigen::Index> faceIndices;
+
+    [[nodiscard]] bool empty() const noexcept {
+        return defects.empty();
+    }
+
+    [[nodiscard]] bool hasDefects() const noexcept {
+        return !defects.empty();
+    }
+
+    [[nodiscard]] std::size_t numDefects() const noexcept {
+        return defects.size();
+    }
+
+    /// Looks up the defect record for `faceIdx`, or returns `nullptr` if `faceIdx` is not defective.
+    [[nodiscard]] const ThinFaceDefect* findDefectForFace(Eigen::Index faceIdx) const noexcept;
+};
+
+/// Diagnostic checker that detects degenerate, near-zero-area, and high-aspect-ratio sliver faces.
+class ThinFaceChecker {
+public:
+    /// Computes geometric metrics and threshold flags for a single face `faceIndex` of `mesh`.
+    [[nodiscard]] static ThinFaceDefect evaluateFace(
+        const Mesh& mesh,
+        Eigen::Index faceIndex,
+        const ThinFaceThresholds& thresholds = {});
+
+    /// Scans all faces of `mesh` and returns a `ThinFaceReport` containing all offending faces.
+    [[nodiscard]] static ThinFaceReport check(
+        const Mesh& mesh,
+        const ThinFaceThresholds& thresholds = {});
+};
+
+} // namespace ogun

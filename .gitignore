@@ -1,0 +1,30 @@
+# Build directories
+build/
+build-*/
+out/
+cmake-build-*/
+
+# CMake artifacts
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+compile_commands.json
+_deps/
+
+# macOS
+.DS_Store
+
+# IDE / Editor directories
+.vscode/
+.idea/
+.cache/
+.clangd/
+*.swp
+*~
+
+# Runtime state
+imgui.ini
+.polyscope.ini
+
