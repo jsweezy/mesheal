@@ -1,4 +1,5 @@
 add_library(ogun_mesh STATIC
+    CgalMesh.cpp
     Mesh.cpp
     Units.cpp
 )
@@ -15,6 +16,7 @@ target_link_libraries(ogun_mesh
         Eigen3::Eigen
         igl::core
         manifold::manifold
+        CGAL::CGAL
     PRIVATE
         ogun::warnings
 )

@@ -43,6 +43,8 @@ STL_Repair_Tool/
 
 ## Building and Running Tests (Milestone 1)
 
+> CGAL and Boost are required: `brew install cgal` (CGAL is otherwise fetched automatically, but Boost must still be installed).
+
 ```bash
 # Configure the project (fetches Catch2, libigl, Manifold, Polyscope via FetchContent)
 cmake -B build -DCMAKE_BUILD_TYPE=Release

@@ -139,3 +139,103 @@ TEST_CASE("Local coordinate-relative tolerance uses 1e-9 cm floor near origin an
         REQUIRE_FALSE(config.verticesMatchWithinTolerance(p, qOutsideRel, ogun::Unit::Centimeter));
     }
 }
+
+// ---------------------------------------------------------------------------
+// CGAL interop
+// ---------------------------------------------------------------------------
+
+#include "mesh/CgalMesh.hpp"
+
+#include <CGAL/boost/graph/Euler_operations.h>
+
+namespace {
+
+ogun::Mesh makeTestOctahedron() {
+    ogun::Mesh mesh;
+    mesh.V.resize(6, 3);
+    mesh.V << 1.0, 0.0, 0.0,
+              -1.0, 0.0, 0.0,
+              0.0, 1.0, 0.0,
+              0.0, -1.0, 0.0,
+              0.0, 0.0, 1.0,
+              0.0, 0.0, -1.0;
+    mesh.F.resize(8, 3);
+    mesh.F << 0, 2, 4,
+              2, 1, 4,
+              1, 3, 4,
+              3, 0, 4,
+              2, 0, 5,
+              1, 2, 5,
+              3, 1, 5,
+              0, 3, 5;
+    mesh.recomputeNormals();
+    return mesh;
+}
+
+} // namespace
+
+TEST_CASE("CGAL round trip preserves coordinates, faces and normals", "[mesh][cgal]") {
+    const ogun::Mesh original = makeTestTetrahedron(ogun::Unit::Centimeter);
+
+    ogun::CgalSurfaceMesh surface;
+    REQUIRE(ogun::toCgalSurfaceMesh(original, surface));
+    REQUIRE(surface.number_of_vertices() == 4);
+    REQUIRE(surface.number_of_faces() == 4);
+
+    const ogun::Mesh back = ogun::fromCgalSurfaceMesh(surface, original.fileUnit);
+    REQUIRE(back.fileUnit == ogun::Unit::Centimeter);
+    REQUIRE(back.V == original.V);
+    REQUIRE(back.F.rows() == original.F.rows());
+    for (Eigen::Index f = 0; f < original.F.rows(); ++f) {
+        REQUIRE(back.F(f, 0) == original.F(f, 0));
+        REQUIRE(back.F(f, 1) == original.F(f, 1));
+        REQUIRE(back.F(f, 2) == original.F(f, 2));
+    }
+    REQUIRE(back.N.isApprox(original.N, 1e-12));
+}
+
+TEST_CASE("fromCgalSurfaceMesh compacts lazily deleted elements", "[mesh][cgal]") {
+    const ogun::Mesh original = makeTestOctahedron();
+    ogun::CgalSurfaceMesh surface;
+    REQUIRE(ogun::toCgalSurfaceMesh(original, surface));
+
+    const ogun::CgalEdgeIndex edge = *surface.edges().begin();
+    REQUIRE(CGAL::Euler::does_satisfy_link_condition(edge, surface));
+    CGAL::Euler::collapse_edge(edge, surface);
+    REQUIRE(surface.has_garbage());
+
+    const ogun::Mesh healed = ogun::fromCgalSurfaceMesh(surface);
+    REQUIRE(healed.numVertices() == 5);
+    REQUIRE(healed.numFaces() == 6);
+    REQUIRE(healed.N.rows() == 6);
+    REQUIRE(healed.F.minCoeff() >= 0);
+    REQUIRE(healed.F.maxCoeff() < healed.numVertices());
+}
+
+TEST_CASE("fromCgalSurfaceMesh offsets vertices along their normals", "[mesh][cgal]") {
+    ogun::CgalSurfaceMesh surface;
+    REQUIRE(ogun::toCgalSurfaceMesh(makeTestOctahedron(), surface));
+
+    const ogun::Mesh offset = ogun::fromCgalSurfaceMesh(surface, ogun::Unit::Millimeter, 0.1);
+    REQUIRE(offset.V.row(0).norm() == Catch::Approx(1.1).epsilon(1e-9));
+}
+
+TEST_CASE("extractLocalPatch returns the k-ring neighborhood", "[mesh][cgal]") {
+    ogun::CgalSurfaceMesh surface;
+    REQUIRE(ogun::toCgalSurfaceMesh(makeTestOctahedron(), surface));
+
+    ogun::CgalSurfaceMesh patch;
+    const ogun::CgalFaceIndex center = ogun::extractLocalPatch(surface, ogun::CgalFaceIndex(0), 1, patch);
+    REQUIRE(center != ogun::CgalSurfaceMesh::null_face());
+    REQUIRE(patch.is_valid(center));
+    // Face 0 plus every face touching one of its three vertices (all but face 6).
+    REQUIRE(patch.number_of_faces() == 7);
+
+    const ogun::CgalFaceIndex zero = ogun::extractLocalPatch(surface, ogun::CgalFaceIndex(0), 0, patch);
+    REQUIRE(zero != ogun::CgalSurfaceMesh::null_face());
+    REQUIRE(patch.number_of_faces() == 1);
+
+    const ogun::CgalFaceIndex two = ogun::extractLocalPatch(surface, ogun::CgalFaceIndex(0), 2, patch);
+    REQUIRE(two != ogun::CgalSurfaceMesh::null_face());
+    REQUIRE(patch.number_of_faces() == 8);
+}

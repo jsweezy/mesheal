@@ -86,6 +86,21 @@ FetchContent_MakeAvailable(manifold)
 ogun_mark_target_includes_system(manifold::manifold)
 
 # ------------------------------------------------------------------------------
+# 3b. CGAL — Halfedge Mesh Repair (system install preferred, FetchContent fallback)
+# ------------------------------------------------------------------------------
+set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE TRUE)
+find_package(CGAL CONFIG QUIET)
+if(NOT CGAL_FOUND)
+    FetchContent_Declare(
+        cgal
+        URL https://github.com/CGAL/cgal/releases/download/v6.0.1/CGAL-6.0.1.tar.xz
+    )
+    FetchContent_MakeAvailable(cgal)
+    find_package(CGAL CONFIG REQUIRED PATHS "${cgal_SOURCE_DIR}" NO_DEFAULT_PATH)
+endif()
+ogun_mark_target_includes_system(CGAL::CGAL)
+
+# ------------------------------------------------------------------------------
 # 4. Polyscope + Dear ImGui & portable-file-dialogs (GUI Dependencies)
 # ------------------------------------------------------------------------------
 if(OGUN_BUILD_GUI)
