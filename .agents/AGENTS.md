@@ -17,8 +17,11 @@ Whenever you add, modify, or remove features, workflows, UI controls, diagnostic
 4. **Project & Architecture Documentation (`README.md`, `VISION.md`, and `docs/*`)**
    - Update `README.md`, `VISION.md`, and any files under `docs/` whenever project status, build instructions, architectural decisions, diagnostics/repair capabilities, or user-facing workflows change.
 
-## 2. Ask for User Review / "Accept" Before Committing to Git
+## 2. Ask for User Review & Present a 1-Click "Accept & Commit" Button in Chat
 
 - At the conclusion of every completed task (after all unit tests pass and documentation/`TODO.md`/`PLAN.md` updates are in place), **do not** stage or commit changes to `git` automatically.
-- Leave the modified and newly created files uncommitted in the working tree so the user can easily inspect the diffs in VS Code's **Source Control** view.
-- Summarize the completed work and ask the user to review and confirm (e.g., reply `"Accept"` or `"Commit"`) before staging the files and committing to `git` with a clear, descriptive commit message.
+- Leave all modified and newly created files uncommitted in the working tree so the user can easily inspect the diffs in VS Code's **Source Control** view.
+- Summarize the completed work and call the `ask_question` tool to display a clickable 1-click button in chat:
+  - **`(Recommended) Accept & Commit to git`**
+  - **`Hold off on committing`**
+- Once the user clicks **`(Recommended) Accept & Commit to git`**, stage the modified/created files and commit them to `git` with a clear, descriptive commit message.
