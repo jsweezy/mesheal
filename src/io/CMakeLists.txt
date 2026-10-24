@@ -1,5 +1,6 @@
 add_library(ogun_io STATIC
     StlReader.cpp
+    StlWriter.cpp
     SampleMeshes.cpp
 )
 add_library(ogun::io ALIAS ogun_io)

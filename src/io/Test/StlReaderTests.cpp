@@ -1,5 +1,6 @@
 #include "io/SampleMeshes.hpp"
 #include "io/StlReader.hpp"
+#include "io/StlWriter.hpp"
 #include "mesh/Mesh.hpp"
 #include "mesh/ToleranceConfig.hpp"
 #include "mesh/Units.hpp"
@@ -303,4 +304,55 @@ TEST_CASE("SampleMeshes::createSampleDefectiveMesh generates a clean cube with k
     const double sliverAlt = computeTriangleMinAltitude(mesh, ogun::SampleMeshes::kNeedleSliverFaceIndex);
     REQUIRE(sliverArea == Catch::Approx(1e-3).epsilon(1e-9));
     REQUIRE(sliverAlt == Catch::Approx(2e-4).epsilon(1e-9));
+}
+
+TEST_CASE("Binary STL export round-trips through loadStl within float32 precision", "[io][stlwriter]") {
+    const ogun::Mesh original = ogun::SampleMeshes::createSampleDefectiveMesh();
+    const auto path = std::filesystem::temp_directory_path() / "ogun_writer_binary.stl";
+
+    std::string error;
+    REQUIRE(ogun::saveStl(path, original, ogun::StlFormat::Binary, &error));
+    REQUIRE(error.empty());
+    CHECK(std::filesystem::file_size(path) == 84 + 50 * static_cast<std::uintmax_t>(original.numFaces()));
+
+    const ogun::Mesh loaded = ogun::loadStl(path);
+    std::filesystem::remove(path);
+
+    CHECK(loaded.numFaces() == original.numFaces());
+    CHECK(loaded.numVertices() == original.numVertices());
+    const auto a = original.boundingBox();
+    const auto b = loaded.boundingBox();
+    CHECK((a.min - b.min).norm() < 1e-4);
+    CHECK((a.max - b.max).norm() < 1e-4);
+}
+
+TEST_CASE("ASCII STL export round-trips with double precision", "[io][stlwriter]") {
+    ogun::Mesh original = ogun::SampleMeshes::createSampleDefectiveMesh();
+    original.V(0, 0) += 0.123456789012345;
+    original.recomputeNormals();
+    const auto path = std::filesystem::temp_directory_path() / "ogun_writer_ascii.stl";
+
+    REQUIRE(ogun::saveStl(path, original, ogun::StlFormat::Ascii));
+    const ogun::Mesh loaded = ogun::loadStl(path);
+    std::filesystem::remove(path);
+
+    REQUIRE(loaded.numFaces() == original.numFaces());
+    REQUIRE(loaded.numVertices() == original.numVertices());
+    const auto a = original.boundingBox();
+    const auto b = loaded.boundingBox();
+    CHECK((a.min - b.min).norm() < 1e-12);
+    CHECK((a.max - b.max).norm() < 1e-12);
+}
+
+TEST_CASE("saveStl reports errors for empty meshes and invalid paths", "[io][stlwriter]") {
+    std::string error;
+    const ogun::Mesh empty;
+    CHECK_FALSE(ogun::saveStl(std::filesystem::temp_directory_path() / "ogun_empty.stl", empty,
+                              ogun::StlFormat::Binary, &error));
+    CHECK_FALSE(error.empty());
+
+    error.clear();
+    const ogun::Mesh mesh = ogun::SampleMeshes::createSampleDefectiveMesh();
+    CHECK_FALSE(ogun::saveStl("/nonexistent_ogun_dir/x/out.stl", mesh, ogun::StlFormat::Ascii, &error));
+    CHECK_FALSE(error.empty());
 }
