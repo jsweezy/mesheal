@@ -1,4 +1,5 @@
 #include "repair/SliverHealer.hpp"
+#include "core/Constants.hpp"
 
 #include <CGAL/boost/graph/Euler_operations.h>
 #include <CGAL/boost/graph/iterator.h>
@@ -19,11 +20,6 @@ namespace ogun {
 namespace PMP = CGAL::Polygon_mesh_processing;
 
 namespace {
-
-constexpr double kPi = 3.14159265358979323846;
-
-// A triangle normal is only trusted when |2A| exceeds this fraction of its squared longest edge.
-constexpr double kReliableNormalRatio = 1.0e-10;
 
 using Triangle = std::array<Eigen::Vector3d, 3>;
 
@@ -430,7 +426,7 @@ SliverAnalysis SliverHealer::analyzeFace(
     const double c = len[iLong];
     if (a * b > 0.0) {
         const double cosAngle = std::clamp((a * a + b * b - c * c) / (2.0 * a * b), -1.0, 1.0);
-        analysis.maxAngleDeg = std::acos(cosAngle) * 180.0 / kPi;
+        analysis.maxAngleDeg = std::acos(cosAngle) * kRadToDeg;
     } else {
         analysis.maxAngleDeg = 180.0;
     }
@@ -675,7 +671,7 @@ RepairResults SliverHealer::healAllThinFaces(
             PMP::remove_almost_degenerate_faces(
                 remaining,
                 surface,
-                CGAL::parameters::cap_threshold(std::cos(settings.capAngleDeg * kPi / 180.0))
+                CGAL::parameters::cap_threshold(std::cos(settings.capAngleDeg * kDegToRad))
                     .needle_threshold(1.0 / settings.needleEdgeRatio)
                     .edge_is_constrained_map(creaseMap));
         } catch (const std::exception&) {

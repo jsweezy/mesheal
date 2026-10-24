@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/Settings.hpp"
 #include "mesh/Units.hpp"
 
 #include <Eigen/Core>
@@ -15,8 +16,8 @@ namespace ogun {
 ///   |p_i - q_i| <= max(eps_abs(unit), relTol * max(|p_i|, |q_i|))
 /// where eps_abs(unit) converts `absFloorCm` (default 1e-9 cm, ~1 hydrogen atom) into `unit`.
 struct ToleranceConfig {
-    double absFloorCm = 1e-9;
-    double relTol = 1e-9;
+    double absFloorCm = settings::kDefaultWeldAbsFloorCm;
+    double relTol = settings::kDefaultWeldRelTol;
 
     /// Returns the absolute floor tolerance expressed in the given length unit.
     [[nodiscard]] constexpr double absFloorInUnit(Unit unit) const noexcept {

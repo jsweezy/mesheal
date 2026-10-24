@@ -1,5 +1,6 @@
 #include "repair/SliverHealer.hpp"
 
+#include "core/Constants.hpp"
 #include "diagnostics/ThinFaceChecker.hpp"
 #include "io/SampleMeshes.hpp"
 #include "mesh/CgalMesh.hpp"
@@ -17,8 +18,6 @@
 #include <vector>
 
 namespace {
-
-constexpr double kPi = 3.14159265358979323846;
 
 // Planar cap (s, t, a) with neighbor (t, s, o) across its longest edge s-t and two faces above the side-arms.
 // Vertices: s = 0, t = 1, a = 2, o = 3, u = 4. Face 0 is the cap.
@@ -41,7 +40,7 @@ ogun::Mesh makeCapMesh(double apexY, const Eigen::RowVector3d& opposite = {0.0, 
 }
 
 double capApexForAngle(double maxAngleDeg) {
-    return std::tan((180.0 - maxAngleDeg) * 0.5 * kPi / 180.0);
+    return std::tan((180.0 - maxAngleDeg) * 0.5 * ogun::kDegToRad);
 }
 
 // Planar disk with needle (p, q, r) (face 0) whose 1e-4 short edge p-q is shared with needle (q, p, w).

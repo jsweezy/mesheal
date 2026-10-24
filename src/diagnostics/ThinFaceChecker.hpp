@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/Settings.hpp"
 #include "mesh/Mesh.hpp"
 #include "mesh/Units.hpp"
 
@@ -15,13 +16,13 @@ namespace ogun {
 /// Length and area thresholds are expressed in the active `mesh.fileUnit`.
 struct ThinFaceThresholds {
     /// Minimum allowable triangle altitude h_min = 2A / l_max (in `fileUnit`).
-    double minAltitude = 1.0e-4;
+    double minAltitude = settings::kDefaultThinFaceMinAltitude;
 
     /// Minimum allowable triangle surface area A (in `fileUnit^2`).
-    double minArea = 1.0e-8;
+    double minArea = settings::kDefaultThinFaceMinArea;
 
     /// Maximum allowable triangle aspect ratio l_max / h_min (dimensionless).
-    double maxAspectRatio = 1000.0;
+    double maxAspectRatio = settings::kDefaultThinFaceMaxAspectRatio;
 
     /// Converts length and area thresholds from `fromUnit` into `toUnit`.
     /// Aspect ratio is dimensionless and remains unchanged.

@@ -42,3 +42,15 @@ Whenever you add, modify, or remove features, workflows, UI controls, diagnostic
 
 - Limit CPU usage when building on this Mac Neo with "-j 2".   Testing can use "-j 4".  
 
+## 6. Constants and Default Settings Management
+
+- **Do not hardcode magic decimal values or re-declare mathematical constants in individual files**:
+  - Always use standard C++20 `<numbers>` (`std::numbers::pi`, `std::numbers::phi`, `std::numbers::sqrt2`, etc.) and `constexpr` arithmetic rather than manual floating-point approximations (e.g., use `kAlphaY = 1.0 / std::numbers::phi;`, `kAlphaZ = std::numbers::sqrt2 - 1.0;`).
+- **File Organization**:
+  - **Mathematical / Geometric Constants**: Place system-wide mathematical, trigonometric, and numerical constants in `src/core/Constants.hpp` under `namespace ogun`.
+  - **Application Defaults & Tunable Settings**: Place viewport defaults, camera FOV bounds, diagnostic thresholds, healing tolerances, and vertex welding defaults in `src/core/Settings.hpp` under `namespace ogun::settings`.
+- **Common Format & Style**:
+  - Use `inline constexpr` at namespace scope.
+  - Prefix constant names with `k` in camelCase (e.g., `kPi`, `kDegToRad`, `kDefaultHighlightPointRadius`, `kDefaultNeedleEdgeRatio`).
+  - Place a clear, descriptive one-line comment beside every setting in `src/core/Settings.hpp` indicating its purpose, units, and geometric significance so settings are easy to find and modify.
+

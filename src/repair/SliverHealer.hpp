@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/Settings.hpp"
 #include "diagnostics/ThinFaceChecker.hpp"
 #include "mesh/CgalMesh.hpp"
 #include "mesh/Mesh.hpp"
@@ -37,21 +38,21 @@ enum class HealAction {
 /// Classification and repair-safety tolerances.
 struct SliverHealerSettings {
     /// l_min / l_max below this ratio classifies a face as a Needle.
-    double needleEdgeRatio = 0.05;
+    double needleEdgeRatio = settings::kDefaultNeedleEdgeRatio;
     /// Maximum interior angle above this classifies a face as a Cap.
-    double capAngleDeg = 170.0;
+    double capAngleDeg = settings::kDefaultCapAngleDeg;
     /// Minimum n_new . n_opp for both post-flip triangles (and n_0 . n_opp for non-degenerate caps).
-    double coplanarDot = 0.95;
+    double coplanarDot = settings::kDefaultCoplanarDot;
     /// Minimum n_old . n_new for every surviving face around a collapsed edge.
-    double minNormalDot = 0.1;
+    double minNormalDot = settings::kDefaultMinNormalDot;
     /// Dihedral angle above which edges are protected as feature creases in the batch PMP cleanup pass.
-    double creaseAngleDeg = 60.0;
+    double creaseAngleDeg = settings::kDefaultCreaseAngleDeg;
     /// Preview patch normal offset as a fraction of the patch bounding-box diagonal.
-    double previewOffsetFactor = 1.0e-4;
+    double previewOffsetFactor = settings::kDefaultPreviewOffsetFactor;
     /// Number of vertex-adjacent rings extracted for the single-face preview patch.
-    int previewRings = 2;
+    int previewRings = settings::kDefaultPreviewRings;
     /// Maximum number of flip / collapse sweeps in `healAllThinFaces` before the PMP cleanup pass.
-    int maxBatchIterations = 10;
+    int maxBatchIterations = settings::kDefaultMaxBatchIterations;
 };
 
 /// Geometric and topological analysis of a single face.

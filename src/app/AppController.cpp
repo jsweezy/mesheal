@@ -1,4 +1,6 @@
 #include "app/AppController.hpp"
+#include "core/Constants.hpp"
+#include "core/Settings.hpp"
 
 #include <Eigen/Geometry>
 
@@ -267,10 +269,12 @@ double AppController::computeHighlightZoomScale(
         return 1.0;
     }
 
-    constexpr double kPi = 3.14159265358979323846;
-    constexpr double kDefaultFovRadHalf = (45.0 * 0.5) * (kPi / 180.0);
-    const double clampedFovDeg = std::clamp(fovDegrees, 5.0, 160.0);
-    const double fovRadHalf = (clampedFovDeg * 0.5) * (kPi / 180.0);
+    constexpr double kDefaultFovRadHalf = (settings::kDefaultCameraFovDegrees * 0.5) * kDegToRad;
+    const double clampedFovDeg = std::clamp(
+        fovDegrees,
+        settings::kMinCameraFovDegrees,
+        settings::kMaxCameraFovDegrees);
+    const double fovRadHalf = (clampedFovDeg * 0.5) * kDegToRad;
     const double fovFactor = std::tan(fovRadHalf) / std::tan(kDefaultFovRadHalf);
 
     const double rawScale = (camDist / refDist) * fovFactor;

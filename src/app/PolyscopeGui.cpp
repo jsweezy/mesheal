@@ -1,4 +1,6 @@
 #include "app/PolyscopeGui.hpp"
+#include "core/Constants.hpp"
+#include "core/Settings.hpp"
 
 #ifdef __APPLE__
 #include "app/MacAppIcon.hpp"
@@ -771,9 +773,8 @@ void PolyscopeGui::handleViewportMouseNavigation() {
     }
 
     // 3. Click picks on release when not dragging
-    constexpr float kDragIgnoreThreshold = 0.01f;
     if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-        if (dragDistSinceLastRelease_ < kDragIgnoreThreshold) {
+        if (dragDistSinceLastRelease_ < settings::kDragIgnoreThreshold) {
             const ImVec2 p = ImGui::GetMousePos();
             const polyscope::PickResult pickResult = polyscope::pickAtScreenCoords(glm::vec2{p.x, p.y});
             polyscope::setSelection(pickResult);
@@ -781,7 +782,7 @@ void PolyscopeGui::handleViewportMouseNavigation() {
         dragDistSinceLastRelease_ = 0.0f;
     }
     if (ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
-        if (dragDistSinceLastRelease_ < kDragIgnoreThreshold) {
+        if (dragDistSinceLastRelease_ < settings::kDragIgnoreThreshold) {
             polyscope::resetSelection();
         }
         dragDistSinceLastRelease_ = 0.0f;
@@ -858,9 +859,11 @@ void PolyscopeGui::processPivotTranslate(float dragDeltaX, float dragDeltaY, dou
         return;
     }
 
-    constexpr double kPi = 3.14159265358979323846;
-    const double clampedFovDeg = std::clamp(polyscope::view::fov, 5.0, 160.0);
-    const double fovRadHalf = (clampedFovDeg * 0.5) * (kPi / 180.0);
+    const double clampedFovDeg = std::clamp(
+        static_cast<double>(polyscope::view::fov),
+        settings::kMinCameraFovDegrees,
+        settings::kMaxCameraFovDegrees);
+    const double fovRadHalf = (clampedFovDeg * 0.5) * kDegToRad;
     const double viewHeightAtPivot = 2.0 * effectiveDist * std::tan(fovRadHalf);
     const auto movementScale = static_cast<float>(viewHeightAtPivot * polyscope::view::moveScale);
 

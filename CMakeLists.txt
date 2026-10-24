@@ -56,6 +56,7 @@ include(Dependencies)
 # ------------------------------------------------------------------------------
 # Ogun Source Modules (each with co-located Test/ directory)
 # ------------------------------------------------------------------------------
+add_subdirectory(src/core)
 add_subdirectory(src/mesh)
 add_subdirectory(src/io)
 add_subdirectory(src/diagnostics)

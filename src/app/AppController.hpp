@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/Settings.hpp"
 #include "diagnostics/ThinFaceChecker.hpp"
 #include "io/SampleMeshes.hpp"
 #include "io/StlReader.hpp"
@@ -64,12 +65,12 @@ struct CameraFocusTarget {
 /// and 3D camera focus calculations without any OpenGL or Polyscope window dependencies.
 class AppController {
 public:
-    static constexpr double kDefaultHighlightPointRadius = 0.0015;
-    static constexpr double kDefaultHighlightEdgeRadius = 0.0008;
-    static constexpr double kMinHighlightRelativeRadius = 1.0e-6;
-    static constexpr double kMaxHighlightRelativeRadius = 0.1;
-    static constexpr double kMinHighlightZoomScale = 1.0e-5;
-    static constexpr double kReferenceFullMeshDistanceFactor = 1.5;
+    static constexpr double kDefaultHighlightPointRadius = settings::kDefaultHighlightPointRadius;
+    static constexpr double kDefaultHighlightEdgeRadius = settings::kDefaultHighlightEdgeRadius;
+    static constexpr double kMinHighlightRelativeRadius = settings::kMinHighlightRelativeRadius;
+    static constexpr double kMaxHighlightRelativeRadius = settings::kMaxHighlightRelativeRadius;
+    static constexpr double kMinHighlightZoomScale = settings::kMinHighlightZoomScale;
+    static constexpr double kReferenceFullMeshDistanceFactor = settings::kReferenceFullMeshDistanceFactor;
 
     AppController();
 

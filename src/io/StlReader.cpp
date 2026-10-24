@@ -1,4 +1,5 @@
 #include "io/StlReader.hpp"
+#include "core/Constants.hpp"
 
 #include <igl/readSTL.h>
 
@@ -15,12 +16,6 @@
 namespace ogun {
 
 namespace {
-
-// Incommensurable positive projection weights to map 3D coordinates onto a 1D sort key
-// without collapsing axis-aligned planes or regular grids.
-constexpr double kAlphaX = 1.0;
-constexpr double kAlphaY = 0.6180339887498949; // 1 / phi
-constexpr double kAlphaZ = 0.4142135623730951; // sqrt(2) - 1
 
 double computeProjectionKey(const Eigen::Vector3d& p) noexcept {
     return kAlphaX * p.x() + kAlphaY * p.y() + kAlphaZ * p.z();
