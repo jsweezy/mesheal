@@ -1,39 +1,72 @@
 # Ogun — STL Repair Tool for Simulation Meshes
 
-**Ogun** (named after the Orisha of iron, metalwork, and forging) is an open-source C++ desktop application and library for inspecting, diagnosing, and repairing STL surface meshes for Monte Carlo particle transport (built as a companion to **Legba**, as well as MCNP, OpenMC, DAGMC, Geant4, and Serpent) and computational physics workflows.
+**Ogun** (named after the Orisha of iron, metalwork, and forging) is an open-source C++ desktop application and geometry library for inspecting, diagnosing, and repairing STL surface meshes for Monte Carlo particle transport (built as a companion to **Legba**, as well as MCNP, OpenMC, DAGMC, Geant4, and Serpent) and computational physics workflows.
 
-Unlike 3D printing repair tools—which often voxelize or alter geometry in ways that hurt ray-tracing accuracy—or complex 3D modeling suites like Blender, **Ogun** provides a focused workflow: **load an STL with multi-scale edge-aware welding, verify physical units without accidental scaling, check manifold/geometric integrity, click issues to highlight offending facets in 3D (with `.` to zoom to selection), and apply targeted repairs.**
+Unlike 3D printing repair tools—which often voxelize or aggressively alter geometry in ways that compromise ray-tracing accuracy—or complex 3D modeling suites like Blender, **Ogun** provides a focused, deterministic workflow: **load an STL with multi-scale edge-aware welding, verify physical units without accidental scaling, diagnose manifold and sliver integrity, inspect defects in 3D with Blender-style navigation, and apply targeted repairs with live previews and universal undo.**
 
-## Key Documentation
+---
 
-- **[VISION.md](VISION.md)**: Motivation, user workflow, multi-scale tolerance design, architectural philosophy, and open-source licensing strategy.
-- **[PLAN.md](PLAN.md)**: Incremental development roadmap starting with the Minimal Viable Tool (Milestone 1), module layout, and TDD strategy with Catch2.
+## Key Features & Capabilities
+
+- **Edge-Aware Multi-Scale Vertex Welding on Load**: Converts raw unindexed STL triangle soup into a shared-vertex mesh using local coordinate-relative tolerances ($10^{-9}$ relative, $10^{-9}\text{ cm}$ atomic floor). An **edge-aware guard** guarantees that zero-area and sliver triangles are never collapsed on load, preserving defects for inspection.
+- **Physical Units Management (Without Accidental Scaling)**: Switch active File Units (`mm`, `cm`, `m`, `in`, `ft`) to interpret coordinates and tolerances without altering vertex positions. Rescaling geometry coordinates is handled through an explicit, separate action.
+- **Deterministic Manifold & Sliver Diagnostics**: Identifies degenerate, near-zero-area, and high-aspect-ratio sliver triangles via configurable Minimum Altitude ($h_{\min} = \frac{2A}{\ell_{\max}}$), Minimum Area ($A$), and Aspect Ratio thresholds.
+- **Selection-Centric 3D Viewport Navigation**: Blender-inspired camera controls:
+  - Focus on selection with **`.`** (toggle between `+Normal` and `-Normal` views with `..` or `Shift+.`).
+  - Automatic orbit pivot centered on selected facet centroids.
+  - Dynamic 3D curve and point overlays ensuring sub-pixel slivers remain visible at any zoom level.
+  - Ghost / semi-transparent mesh toggling and interactive clipping plane.
+- **Synchronized Dual Mesh Architecture**: Combines `ogun::Mesh` (contiguous `Eigen` buffers for high-performance Polyscope rendering) with **CGAL** (`CGAL::Surface_mesh<EPICK::Point_3>`) for $O(1)$ halfedge queries and exact geometric predicates.
+- **Interactive Single-Face Live Repair Preview**: Classifies defective facets into **Caps**, **Needles**, **Microscopic Triangles**, and **Dangling Flaps**. Generates a live 3D preview of the 2-ring neighborhood across targeted Euler operators (*Flip Longest Edge*, *Collapse Shortest Edge*, *Snap Collinear Vertex*, *Remove Degenerate Flap*) before committing.
+- **Batch Sliver Healing**: One-click **"Fix All Thin / Sliver Faces"** combining iterative Cap edge-flips, link-safe Needle edge-collapses, and CGAL `remove_almost_degenerate_faces` while protecting sharp feature creases.
+- **Universal Multi-Step Undo (`Ctrl+Z` / `Cmd+Z`)**: Every operation modifying the mesh in memory (single-face repair commits, batch repairs, coordinate scaling) pushes a snapshot to Ogun's undo history stack.
+- **STL Export ("Save STL...")**: Save repaired meshes in **Binary STL** (default) or **ASCII STL** formats.
+
+---
+
+## Documentation
+
+- **[docs/NAVIGATION.md](docs/NAVIGATION.md)**: 3D viewport mouse controls, Blender-style keyboard shortcuts (`.`, `..`, `Shift+.`, `Home`/`H`, `?`/`F1`), selection mechanics, and clipping plane usage.
+- **[VISION.md](VISION.md)**: Physical simulation motivation, multi-scale tolerance philosophy, decoupled architecture, and licensing rationale.
+- **[PLAN.md](PLAN.md)**: Incremental development roadmap, module structure, and Test-Driven Development (TDD) harness with Catch2.
+- **[TODO.md](TODO.md)**: Punch list tracking completed and upcoming features.
+- **[LICENSE.md](LICENSE.md)**: Full text of the GNU General Public License v3.0.
+
+---
 
 ## Tech Stack
 
 - **Language & Namespace**: C++20 (`namespace ogun`)
-- **Build & Test System**: CMake (3.20+, `FetchContent`), CTest, and **[Catch2](https://github.com/catchorg/Catch2)** (Test-Driven Development with co-located `Test/` directories inside every module)
+- **Build & Test System**: CMake (3.20+), CTest, and **[Catch2](https://github.com/catchorg/Catch2)** (v3 TDD with co-located `Test/` suites in every module)
 - **3D Visualization & UI**: [Polyscope](https://polyscope.run/) + [Dear ImGui](https://github.com/ocornut/imgui) + [portable-file-dialogs](https://github.com/samhocevar/portable-file-dialogs)
-- **Geometry Processing & Mesh Repair**: [libigl](https://libigl.github.io/) + [Eigen](https://eigen.tuxfamily.org/) + [CGAL](https://www.cgal.org/) (`Surface_mesh`, `Euler`, `Polygon_mesh_processing`) + [Manifold](https://github.com/elalish/manifold)
+- **Geometry Processing & Mesh Repair**:
+  - **[CGAL](https://www.cgal.org/)** (v5.6+ / v6.x): `EPICK` exact predicates kernel, `Surface_mesh`, `Euler` local flips/collapses, and `Polygon_mesh_processing`
+  - **[Eigen3](https://eigen.tuxfamily.org/)** & **[libigl](https://libigl.github.io/)**: Dense matrix storage (`V`, `F`, `N`) and STL I/O
+  - **[Manifold](https://github.com/elalish/manifold)**: Watertight manifold mesh kernel & `MeshGL` interoperability
+  - **[Boost](https://www.boost.org/)**: Graph concepts and data structures required by CGAL
+
+---
 
 ## Repository Layout
 
-Each functional subdirectory under `src/` contains its own `Test/` directory so modules and their Catch2 unit tests remain self-contained and portable:
+Each functional directory under `src/` contains its own `Test/` suite to keep modules self-contained:
 
 ```text
-STL_Repair_Tool/
+ogun_stl_repair_tool/
 ├── CMakeLists.txt
 ├── README.md
+├── LICENSE.md
 ├── VISION.md
 ├── PLAN.md
 ├── TODO.md
 ├── assets/
-│   └── icons/          # Ogun application/toolbar icon assets (ogun.jpeg, ogun.png, ogun.icns)
+│   └── icons/          # Application & toolbar icons (ogun.jpeg, ogun.png, ogun.icns)
 ├── docs/
 │   └── NAVIGATION.md   # 3D viewport navigation & keyboard shortcuts guide
 ├── cmake/
 │   └── Dependencies.cmake
 └── src/
+    ├── core/           # Mathematical constants & centralized default settings (+ src/core/Test/)
     ├── mesh/           # Indexed Face-Vertex Mesh, CGAL Interop, Units & ToleranceConfig (+ src/mesh/Test/)
     ├── io/             # STL reading, edge-aware welding, STL export & sample meshes (+ src/io/Test/)
     ├── diagnostics/    # Manifold & thin/sliver face detection (+ src/diagnostics/Test/)
@@ -41,24 +74,62 @@ STL_Repair_Tool/
     └── app/            # Headless AppController (+ src/app/Test/) & Polyscope/ImGui viewer
 ```
 
-## Building and Running Tests (Milestone 1)
+---
 
-> CGAL and Boost are required: `brew install cgal` (CGAL is otherwise fetched automatically, but Boost must still be installed).
+## Prerequisites & Building
+
+### 1. Install Prerequisites
+
+CGAL and Boost are required external dependencies. Other libraries (`Catch2`, `libigl`, `Eigen3`, `Manifold`, `Polyscope`) are fetched and built automatically via CMake `FetchContent`.
+
+- **macOS** (Homebrew):
+  ```bash
+  brew install cmake cgal boost
+  ```
+
+- **Ubuntu / Debian**:
+  ```bash
+  sudo apt-get update
+  sudo apt-get install -y cmake build-essential libcgal-dev libboost-all-dev
+  ```
+
+### 2. Configure, Build, and Test
 
 ```bash
-# Configure the project (fetches Catch2, libigl, Manifold, Polyscope via FetchContent)
+# Configure the project
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 
-# Build libraries, Catch2 unit tests, and GUI application
-cmake --build build -j
+# Build libraries, Catch2 unit tests, and the Ogun GUI application
+cmake --build build -j 2
 
-# Run all Catch2 unit tests via CTest
-ctest --test-dir build --output-on-failure
+# Run all unit tests via CTest
+ctest --test-dir build --output-on-failure -j 4
 
-# Launch the Ogun viewer (with optional STL path)
-./build/src/app/ogun path/to/model.stl
+# Launch the Ogun viewer (optionally passing an STL file path)
+./build/src/app/ogun [path/to/model.stl]
 ```
+
+---
 
 ## License
 
-Developed under a permissive **BSD-3-Clause** license using MIT/Apache-2.0/MPL-2.0/BSL-1.0 dependencies (`Catch2`, `Polyscope`, `Dear ImGui`, `libigl`, `Eigen`, `Manifold`, `portable-file-dialogs`). If GPLv3+ components from `CGAL` are integrated in future milestones, the project license will be updated accordingly (see [VISION.md](VISION.md)).
+Ogun is licensed under the **[GNU General Public License v3.0 or later (GPL-3.0-or-later)](LICENSE.md)**.
+
+This license is adopted in accordance with the integration of **[CGAL](https://www.cgal.org/)**'s `Polygon_mesh_processing` package, which is licensed under **GPLv3+**.
+
+### Third-Party Dependencies
+
+All third-party libraries used in Ogun are licensed under compatible open-source licenses:
+
+| Dependency | License | Role |
+| :--- | :--- | :--- |
+| **[CGAL](https://www.cgal.org/)** (`Polygon_mesh_processing`) | **GPL-3.0-or-later** | Mesh repair, degeneracy removal, normal computation |
+| **[CGAL](https://www.cgal.org/)** (Kernel & Basic Library) | **LGPL-3.0-or-later** | Halfedge `Surface_mesh` data structure, Euler operators |
+| **[libigl](https://libigl.github.io/)** | **MPL-2.0** | Matrix-based mesh geometry & STL parsing |
+| **[Eigen3](https://eigen.tuxfamily.org/)** | **MPL-2.0** | Linear algebra, contiguous `V` and `F` matrix storage |
+| **[Manifold](https://github.com/elalish/manifold)** | **Apache-2.0** | Watertight geometric manifold representations & `MeshGL` interop |
+| **[Polyscope](https://polyscope.run/)** | **MIT** | 3D scientific visualization & viewport rendering |
+| **[Dear ImGui](https://github.com/ocornut/imgui)** | **MIT** | Immediate-mode user interface panels |
+| **[portable-file-dialogs](https://github.com/samhocevar/portable-file-dialogs)** | **WTFPL** | Native cross-platform file open/save dialogs |
+| **[Catch2](https://github.com/catchorg/Catch2)** | **BSL-1.0** | Unit testing framework |
+| **[Boost](https://www.boost.org/)** | **BSL-1.0** | Graph algorithms & C++ utility libraries required by CGAL |
