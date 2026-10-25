@@ -12,6 +12,18 @@
 
 namespace ogun {
 
+const char* previewDisplayModeLabel(PreviewDisplayMode mode) noexcept {
+    switch (mode) {
+    case PreviewDisplayMode::TranslucentBase:
+        return "Translucent Base";
+    case PreviewDisplayMode::TranslucentPatch:
+        return "Translucent Patch";
+    case PreviewDisplayMode::CutoutOriginalEdges:
+        return "Cutout + Original Edges";
+    }
+    return "Unknown";
+}
+
 AppController::AppController()
     : thresholds_(ThinFaceThresholds::defaultsForUnit(Unit::Millimeter)) {
     mesh_.fileUnit = Unit::Millimeter;
@@ -64,11 +76,32 @@ void AppController::loadSampleDefectiveMesh() {
 }
 
 void AppController::setMesh(Mesh mesh, std::string sourceLabel) {
-    mesh_ = std::move(mesh);
     loadedSourceLabel_ = std::move(sourceLabel);
+    undoStack_.clear();
+    lastRepairStatusMessage_.clear();
+    replaceMeshPreservingHistory(std::move(mesh));
+}
+
+void AppController::replaceMeshPreservingHistory(Mesh mesh) {
+    mesh_ = std::move(mesh);
+    rebuildCgalMesh();
     hasDiagnosticsReport_ = false;
     thinFaceReport_ = ThinFaceReport{};
     clearSelection();
+}
+
+void AppController::rebuildCgalMesh() {
+    cgalMeshValid_ = toCgalSurfaceMesh(mesh_, cgalMesh_);
+}
+
+bool AppController::saveStlFile(const std::filesystem::path& filepath, StlFormat format) {
+    std::string err;
+    if (!ogun::saveStl(filepath, mesh_, format, &err)) {
+        lastErrorMessage_ = err.empty() ? "Failed to save STL file." : std::move(err);
+        return false;
+    }
+    lastErrorMessage_.clear();
+    return true;
 }
 
 void AppController::setFileUnit(Unit newUnit) noexcept {
@@ -92,8 +125,12 @@ void AppController::scaleMeshCoordinatesToUnit(Unit targetUnit) {
         return;
     }
 
+    pushUndoEntry(
+        "Scale Mesh Coordinates (" + std::string(unitSymbol(oldUnit)) + " -> " +
+        std::string(unitSymbol(targetUnit)) + ")");
     ogun::scaleMeshToUnit(mesh_, targetUnit);
     thresholds_ = thresholds_.convertedToUnit(oldUnit, targetUnit);
+    rebuildCgalMesh();
 
     if (hasDiagnosticsReport_) {
         const SelectionMode prevMode = selectionMode_;
@@ -136,6 +173,7 @@ void AppController::selectAllThinFaces() {
     highlightedFaceIndices_ = thinFaceReport_.faceIndices;
     lastFocusedFaceIndex_ = -1;
     lastFocusedNormalSign_ = 0;
+    resetSingleFaceRepairState();
     orbitPivot_ = computeSelectionCentroid();
 }
 
@@ -144,7 +182,8 @@ void AppController::selectSingleFace(Eigen::Index faceIndex) {
         clearSelection();
         return;
     }
-    if (selectedFaceIndex_ != faceIndex || selectionMode_ != SelectionMode::SingleFace) {
+    const bool newSelection = selectedFaceIndex_ != faceIndex || selectionMode_ != SelectionMode::SingleFace;
+    if (newSelection) {
         lastFocusedFaceIndex_ = -1;
         lastFocusedNormalSign_ = 0;
     }
@@ -152,6 +191,17 @@ void AppController::selectSingleFace(Eigen::Index faceIndex) {
     selectedFaceIndex_ = faceIndex;
     highlightedFaceIndices_ = {faceIndex};
     orbitPivot_ = computeSelectionCentroid();
+
+    selectedFaceAnalysis_ = cgalMeshValid_
+        ? SliverHealer::analyzeFace(
+              cgalMesh_,
+              CgalFaceIndex(static_cast<CgalSurfaceMesh::size_type>(faceIndex)),
+              thresholds_)
+        : SliverAnalysis{};
+    if (newSelection) {
+        selectedHealAction_ = selectedFaceAnalysis_.recommendedAction;
+    }
+    refreshRepairPreview();
 }
 
 void AppController::clearSelection() noexcept {
@@ -160,7 +210,189 @@ void AppController::clearSelection() noexcept {
     highlightedFaceIndices_.clear();
     lastFocusedFaceIndex_ = -1;
     lastFocusedNormalSign_ = 0;
+    resetSingleFaceRepairState();
     orbitPivot_ = computeSelectionCentroid();
+}
+
+void AppController::resetSingleFaceRepairState() noexcept {
+    selectedFaceAnalysis_ = SliverAnalysis{};
+    selectedHealAction_ = HealAction::None;
+    repairPreview_ = SingleFaceRepairPreview{};
+}
+
+void AppController::refreshRepairPreview() {
+    if (selectionMode_ != SelectionMode::SingleFace || !cgalMeshValid_) {
+        repairPreview_ = SingleFaceRepairPreview{};
+        return;
+    }
+    repairPreview_ = SliverHealer::previewSingleFaceRepair(
+        cgalMesh_,
+        CgalFaceIndex(static_cast<CgalSurfaceMesh::size_type>(selectedFaceIndex_)),
+        selectedHealAction_,
+        mesh_.fileUnit,
+        thresholds_);
+}
+
+void AppController::setPreviewBaseOpacity(double opacity) noexcept {
+    if (std::isfinite(opacity)) {
+        previewBaseOpacity_ = std::clamp(opacity, settings::kMinPreviewOpacity, 1.0);
+    }
+}
+
+void AppController::setPreviewPatchOpacity(double opacity) noexcept {
+    if (std::isfinite(opacity)) {
+        previewPatchOpacity_ = std::clamp(opacity, settings::kMinPreviewOpacity, 1.0);
+    }
+}
+
+bool AppController::previewUsesCutout() const noexcept {
+    return repairPreviewShown() &&
+           !repairPreview_.sourceFaceIndices.empty() &&
+           previewDisplayMode_ == PreviewDisplayMode::CutoutOriginalEdges;
+}
+
+HighlightOverlayGeometry AppController::buildRepairPreviewOriginalEdges() const {
+    HighlightOverlayGeometry overlay;
+    if (previewUsesCutout()) {
+        appendFaceGeometry(repairPreview_.sourceFaceIndices, overlay);
+    }
+    return overlay;
+}
+
+BaseMeshDisplay AppController::buildBaseMeshDisplay() const {
+    BaseMeshDisplay display;
+    const bool cutPreview = previewUsesCutout();
+    if (mesh_.empty() || (highlightedFaceIndices_.empty() && !cutPreview)) {
+        return display;
+    }
+
+    std::vector<bool> hidden(static_cast<std::size_t>(mesh_.numFaces()), false);
+    const auto hide = [&](const std::vector<Eigen::Index>& faces) {
+        for (const Eigen::Index f : faces) {
+            if (f >= 0 && f < mesh_.numFaces()) {
+                hidden[static_cast<std::size_t>(f)] = true;
+            }
+        }
+    };
+    hide(highlightedFaceIndices_);
+    if (cutPreview) {
+        hide(repairPreview_.sourceFaceIndices);
+    }
+
+    display.faceIndices.reserve(hidden.size());
+    for (Eigen::Index f = 0; f < mesh_.numFaces(); ++f) {
+        if (!hidden[static_cast<std::size_t>(f)]) {
+            display.faceIndices.push_back(f);
+        }
+    }
+    display.F.resize(static_cast<Eigen::Index>(display.faceIndices.size()), 3);
+    for (Eigen::Index row = 0; row < display.F.rows(); ++row) {
+        display.F.row(row) = mesh_.F.row(display.faceIndices[static_cast<std::size_t>(row)]);
+    }
+    display.isCut = true;
+    return display;
+}
+
+void AppController::setSelectedHealAction(HealAction action) {
+    if (selectionMode_ != SelectionMode::SingleFace) {
+        return;
+    }
+    selectedHealAction_ = action;
+    refreshRepairPreview();
+}
+
+bool AppController::commitSelectedFaceRepair() {
+    if (selectionMode_ != SelectionMode::SingleFace || selectedHealAction_ == HealAction::None) {
+        lastRepairStatusMessage_ = "Select a face and a repair strategy first.";
+        return false;
+    }
+
+    const Eigen::Index faceIndex = selectedFaceIndex_;
+    const HealAction action = selectedHealAction_;
+    const std::string faceLabel = "Face #" + std::to_string(faceIndex);
+    RepairResults results = SliverHealer::healSingleFace(mesh_, faceIndex, action, thresholds_);
+    if (!results.success) {
+        lastRepairStatusMessage_ = faceLabel + ": " + results.statusMessage;
+        return false;
+    }
+
+    pushUndoEntry("Single-Face Repair (" + faceLabel + ")");
+    replaceMeshPreservingHistory(std::move(results.mesh));
+    runCheckManifold();
+    lastRepairStatusMessage_ = std::string(healActionLabel(action)) + " committed on " + faceLabel + " (" +
+                               std::to_string(thinFaceReport_.numDefects()) + " thin faces remaining).";
+    return true;
+}
+
+bool AppController::fixAllThinFaces() {
+    if (mesh_.empty()) {
+        lastRepairStatusMessage_ = "No mesh loaded.";
+        return false;
+    }
+
+    RepairResults results = SliverHealer::healAllThinFaces(mesh_, thresholds_);
+    if (results.initialThinFaces == 0) {
+        lastRepairStatusMessage_ = "No thin / sliver faces to heal.";
+        return false;
+    }
+    if (!results.success) {
+        lastRepairStatusMessage_ = results.statusMessage;
+        return false;
+    }
+
+    pushUndoEntry("Fix All Thin / Sliver Faces");
+    replaceMeshPreservingHistory(std::move(results.mesh));
+    runCheckManifold();
+    lastRepairStatusMessage_ = std::move(results.statusMessage);
+    return true;
+}
+
+void AppController::pushUndoEntry(std::string actionLabel) {
+    undoStack_.push_back(UndoEntry{
+        mesh_,
+        thresholds_,
+        hasDiagnosticsReport_,
+        selectionMode_,
+        selectedFaceIndex_,
+        selectedHealAction_,
+        std::move(actionLabel)});
+    if (undoStack_.size() > settings::kMaxUndoHistoryDepth) {
+        undoStack_.erase(undoStack_.begin());
+    }
+}
+
+std::string AppController::lastUndoActionLabel() const {
+    return undoStack_.empty() ? std::string{} : undoStack_.back().actionLabel;
+}
+
+bool AppController::undoLastModification() {
+    if (undoStack_.empty()) {
+        return false;
+    }
+    UndoEntry entry = std::move(undoStack_.back());
+    undoStack_.pop_back();
+
+    replaceMeshPreservingHistory(std::move(entry.mesh));
+    thresholds_ = entry.thresholds;
+    if (entry.hadDiagnosticsReport) {
+        thinFaceReport_ = ThinFaceChecker::check(mesh_, thresholds_);
+        hasDiagnosticsReport_ = true;
+    }
+
+    if (entry.selectionMode == SelectionMode::SingleFace &&
+        entry.selectedFaceIndex >= 0 && entry.selectedFaceIndex < mesh_.numFaces()) {
+        selectSingleFace(entry.selectedFaceIndex);
+        if (entry.selectedHealAction != HealAction::None && entry.selectedHealAction != selectedHealAction_) {
+            setSelectedHealAction(entry.selectedHealAction);
+        }
+    } else if (entry.selectionMode == SelectionMode::AllThinFaces) {
+        selectAllThinFaces();
+    } else {
+        clearSelection();
+    }
+
+    lastRepairStatusMessage_ = "Undid: " + entry.actionLabel;
+    return true;
 }
 
 HighlightOverlayGeometry AppController::buildHighlightOverlay() const {
@@ -171,7 +403,7 @@ HighlightOverlayGeometry AppController::buildHighlightOverlay() const {
 
     const Eigen::Vector3d kCleanFaceColor(0.70, 0.75, 0.80);
     const Eigen::Vector3d kSecondaryDefectColor(0.95, 0.58, 0.16);
-    const Eigen::Vector3d kActiveHighlightColor(0.96, 0.18, 0.18);
+    const Eigen::Vector3d& activeHighlightColor = overlayAppearance_.selectedFaces.color;
 
     const auto numFaces = static_cast<std::size_t>(mesh_.numFaces());
     overlay.faceColors.assign(numFaces, kCleanFaceColor);
@@ -184,14 +416,25 @@ HighlightOverlayGeometry AppController::buildHighlightOverlay() const {
         }
     }
 
+    for (const Eigen::Index faceIdx : highlightedFaceIndices_) {
+        if (faceIdx >= 0 && faceIdx < mesh_.numFaces()) {
+            overlay.faceColors[static_cast<std::size_t>(faceIdx)] = activeHighlightColor;
+        }
+    }
+    appendFaceGeometry(highlightedFaceIndices_, overlay);
+    return overlay;
+}
+
+void AppController::appendFaceGeometry(
+    const std::vector<Eigen::Index>& faces,
+    HighlightOverlayGeometry& overlay) const {
     std::unordered_map<int, std::size_t> globalVertToOverlayNode;
     std::vector< std::pair<std::size_t, std::size_t> > seenUndirectedEdges;
 
-    for (const Eigen::Index faceIdx : highlightedFaceIndices_) {
+    for (const Eigen::Index faceIdx : faces) {
         if (faceIdx < 0 || faceIdx >= mesh_.numFaces()) {
             continue;
         }
-        overlay.faceColors[static_cast<std::size_t>(faceIdx)] = kActiveHighlightColor;
 
         std::array<std::size_t, 3> localNodes{};
         for (int c = 0; c < 3; ++c) {
@@ -202,6 +445,8 @@ HighlightOverlayGeometry AppController::buildHighlightOverlay() const {
             }
             localNodes[static_cast<std::size_t>(c)] = it->second;
         }
+        overlay.overlayFaces.push_back(localNodes);
+        overlay.overlayFaceIndices.push_back(faceIdx);
 
         for (std::size_t c = 0; c < 3; ++c) {
             const std::size_t u = localNodes[c];
@@ -214,37 +459,89 @@ HighlightOverlayGeometry AppController::buildHighlightOverlay() const {
             }
         }
     }
-
-    return overlay;
 }
 
 void AppController::setGhostMeshOpacity(double opacity) noexcept {
     ghostMeshOpacity_ = std::clamp(opacity, 0.05, 1.0);
 }
 
-void AppController::setHighlightPointRadius(double relativeRadius) noexcept {
-    if (!std::isfinite(relativeRadius)) {
-        return;
+bool SurfaceStyle::adoptPolyscopeEdgeWidth(double polyscopeWidth) noexcept {
+    if (!(polyscopeWidth > 0.0)) {
+        const bool changed = showEdges;
+        showEdges = false;
+        return changed;
     }
-    highlightPointRadius_ = std::clamp(
-        relativeRadius,
-        kMinHighlightRelativeRadius,
-        kMaxHighlightRelativeRadius);
+    if (!showEdges) {
+        // Polyscope's "Edges" checkbox re-enables edges at exactly 1.0; keep the remembered width instead
+        showEdges = true;
+        if (polyscopeWidth != 1.0) {
+            edgeWidthPx = polyscopeWidth;
+        }
+        return true;
+    }
+    if (std::abs(polyscopeWidth - edgeWidthPx) > 1.0e-4) {
+        edgeWidthPx = polyscopeWidth;
+        return true;
+    }
+    return false;
 }
 
-void AppController::setHighlightEdgeRadius(double relativeRadius) noexcept {
-    if (!std::isfinite(relativeRadius)) {
-        return;
+void AppController::setOverlayAppearance(const OverlayAppearance& appearance) noexcept {
+    const auto clampColor = [](const Eigen::Vector3d& c, const Eigen::Vector3d& fallback) {
+        return c.allFinite() ? c.cwiseMax(0.0).cwiseMin(1.0).eval() : fallback;
+    };
+    const auto clampWidth = [](double width, double fallback) {
+        return std::isfinite(width)
+            ? std::clamp(width, settings::kMinOverlayEdgeWidthPx, settings::kMaxOverlayEdgeWidthPx)
+            : fallback;
+    };
+    const auto clampStyle = [&](const SurfaceStyle& in, SurfaceStyle& out) {
+        out.color = clampColor(in.color, out.color);
+        out.edgeColor = clampColor(in.edgeColor, out.edgeColor);
+        out.edgeWidthPx = clampWidth(in.edgeWidthPx, out.edgeWidthPx);
+        out.showEdges = in.showEdges;
+    };
+    clampStyle(appearance.selectedFaces, overlayAppearance_.selectedFaces);
+    clampStyle(appearance.previewPatch, overlayAppearance_.previewPatch);
+    overlayAppearance_.originalEdgeColor = clampColor(appearance.originalEdgeColor, overlayAppearance_.originalEdgeColor);
+    overlayAppearance_.originalEdgeWidthPx = clampWidth(appearance.originalEdgeWidthPx, overlayAppearance_.originalEdgeWidthPx);
+    if (std::isfinite(appearance.originalEdgeOpacity)) {
+        overlayAppearance_.originalEdgeOpacity = std::clamp(appearance.originalEdgeOpacity, settings::kMinPreviewOpacity, 1.0);
     }
-    highlightEdgeRadius_ = std::clamp(
-        relativeRadius,
-        kMinHighlightRelativeRadius,
-        kMaxHighlightRelativeRadius);
+    overlayAppearance_.pointColor = clampColor(appearance.pointColor, overlayAppearance_.pointColor);
+    if (std::isfinite(appearance.pointRadiusPx)) {
+        overlayAppearance_.pointRadiusPx = std::clamp(
+            appearance.pointRadiusPx,
+            settings::kMinHighlightPointRadiusPx,
+            settings::kMaxHighlightPointRadiusPx);
+    }
 }
 
-void AppController::resetHighlightSizingToDefaults() noexcept {
-    highlightPointRadius_ = kDefaultHighlightPointRadius;
-    highlightEdgeRadius_ = kDefaultHighlightEdgeRadius;
+double AppController::worldLengthPerPixel(
+    double viewDistance,
+    double fovDegrees,
+    double viewportHeightPx) noexcept {
+    if (!std::isfinite(viewDistance) || viewDistance <= 0.0 || !(viewportHeightPx > 0.0)) {
+        return 0.0;
+    }
+    const double clampedFovDeg = std::clamp(
+        fovDegrees,
+        settings::kMinCameraFovDegrees,
+        settings::kMaxCameraFovDegrees);
+    const double viewHeight = 2.0 * viewDistance * std::tan((clampedFovDeg * 0.5) * kDegToRad);
+    return viewHeight / viewportHeightPx;
+}
+
+double AppController::worldLengthAtSelection(
+    double pixels,
+    const Eigen::Vector3d& cameraPosition,
+    double fovDegrees,
+    double viewportHeightPx) const noexcept {
+    if (mesh_.empty()) {
+        return 0.0;
+    }
+    const double dist = (cameraPosition - computeSelectionCentroid()).norm();
+    return pixels * worldLengthPerPixel(dist, fovDegrees, viewportHeightPx);
 }
 
 double AppController::referenceFullMeshViewDistance() const noexcept {
@@ -258,7 +555,7 @@ double AppController::referenceFullMeshViewDistance() const noexcept {
 double AppController::computeHighlightZoomScale(
     const Eigen::Vector3d& cameraPosition,
     double fovDegrees) const noexcept {
-    if (mesh_.empty() || !dynamicHighlightSizingEnabled_) {
+    if (mesh_.empty()) {
         return 1.0;
     }
 
@@ -281,17 +578,6 @@ double AppController::computeHighlightZoomScale(
     return std::clamp(rawScale, kMinHighlightZoomScale, 1.0);
 }
 
-double AppController::effectiveHighlightPointRadius(
-    const Eigen::Vector3d& cameraPosition,
-    double fovDegrees) const noexcept {
-    return highlightPointRadius_ * computeHighlightZoomScale(cameraPosition, fovDegrees);
-}
-
-double AppController::effectiveHighlightEdgeRadius(
-    const Eigen::Vector3d& cameraPosition,
-    double fovDegrees) const noexcept {
-    return highlightEdgeRadius_ * computeHighlightZoomScale(cameraPosition, fovDegrees);
-}
 
 Eigen::Vector3d AppController::computeFaceCentroid(Eigen::Index faceIndex) const noexcept {
     if (mesh_.empty() || faceIndex < 0 || faceIndex >= mesh_.numFaces()) {

@@ -11,6 +11,7 @@
 
 #include <CGAL/boost/graph/helpers.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
@@ -359,6 +360,11 @@ TEST_CASE("previewSingleFaceRepair heals a 2-ring patch without touching the bas
     CHECK(patch.numFaces() == mesh.numFaces() - 2);
     CHECK(patch.numVertices() == mesh.numVertices() - 1);
 
+    // Every base face lies within 2 rings, so the patch replaces all of them.
+    std::vector<Eigen::Index> replaced = preview.sourceFaceIndices;
+    std::sort(replaced.begin(), replaced.end());
+    CHECK(replaced == std::vector<Eigen::Index>{0, 1, 2, 3, 4, 5});
+
     // Planar patch is lifted along +Z by previewOffsetFactor * bounding diagonal.
     const double expectedOffset = ogun::SliverHealerSettings{}.previewOffsetFactor * std::sqrt(8.0);
     for (Eigen::Index i = 0; i < patch.numVertices(); ++i) {
@@ -372,6 +378,7 @@ TEST_CASE("previewSingleFaceRepair heals a 2-ring patch without touching the bas
         CHECK(bad.appliedAction == ogun::HealAction::RemoveDegenerateFace);
         CHECK_FALSE(bad.statusMessage.empty());
         CHECK(bad.previewPatchMesh.empty());
+        CHECK(bad.sourceFaceIndices.empty());
     }
 
     SECTION("a healthy face needs no preview") {

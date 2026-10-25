@@ -35,9 +35,11 @@ TEST_CASE("Core mathematical constants compute expected values", "[core][constan
 
 TEST_CASE("Core default settings provide expected baseline values", "[core][settings]") {
     SECTION("Highlight defaults") {
-        REQUIRE(ogun::settings::kDefaultHighlightPointRadius == Catch::Approx(0.0015));
-        REQUIRE(ogun::settings::kDefaultHighlightEdgeRadius == Catch::Approx(0.0008));
-        REQUIRE(ogun::settings::kMinHighlightRelativeRadius < ogun::settings::kMaxHighlightRelativeRadius);
+        REQUIRE(ogun::settings::kDefaultHighlightPointRadiusPx == Catch::Approx(3.0));
+        REQUIRE(ogun::settings::kMinHighlightPointRadiusPx < ogun::settings::kMaxHighlightPointRadiusPx);
+        REQUIRE(ogun::settings::kDefaultOverlayEdgeWidthPx == Catch::Approx(1.0));
+        REQUIRE(ogun::settings::kMinOverlayEdgeWidthPx < ogun::settings::kDefaultOverlayEdgeWidthPx);
+        REQUIRE(ogun::settings::kDefaultOverlayEdgeWidthPx < ogun::settings::kMaxOverlayEdgeWidthPx);
     }
 
     SECTION("Camera defaults") {

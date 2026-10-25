@@ -542,7 +542,8 @@ SingleFaceRepairPreview SliverHealer::previewSingleFaceRepair(
     }
 
     CgalSurfaceMesh patch;
-    const CgalFaceIndex center = extractLocalPatch(mesh, face, settings.previewRings, patch);
+    std::vector<CgalFaceIndex> sourceFaces;
+    const CgalFaceIndex center = extractLocalPatch(mesh, face, settings.previewRings, patch, &sourceFaces);
     if (center == CgalSurfaceMesh::null_face()) {
         preview.statusMessage = "Could not extract the local neighborhood patch around this face.";
         return preview;
@@ -553,6 +554,12 @@ SingleFaceRepairPreview SliverHealer::previewSingleFaceRepair(
     const double offset = settings.previewOffsetFactor * boundingDiagonal(patch);
     preview.previewPatchMesh = fromCgalSurfaceMesh(patch, unit, offset);
     preview.valid = !preview.previewPatchMesh.empty() || preview.appliedAction == HealAction::RemoveDegenerateFace;
+    if (preview.valid) {
+        preview.sourceFaceIndices.reserve(sourceFaces.size());
+        for (const CgalFaceIndex f : sourceFaces) {
+            preview.sourceFaceIndices.push_back(static_cast<Eigen::Index>(f.idx()));
+        }
+    }
     return preview;
 }
 

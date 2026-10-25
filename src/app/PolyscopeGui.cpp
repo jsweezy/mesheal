@@ -17,6 +17,7 @@
 #include <portable-file-dialogs.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -133,6 +134,69 @@ void makeOuterBackgroundTransparent(std::vector<unsigned char>& rgba, int w, int
     }
 }
 
+constexpr std::array<PreviewDisplayMode, 3> kPreviewDisplayModes = {
+    PreviewDisplayMode::CutoutOriginalEdges,
+    PreviewDisplayMode::TranslucentBase,
+    PreviewDisplayMode::TranslucentPatch,
+};
+constexpr double kColorReadbackTolerance = 1.0e-4;
+const ImVec4 kWarningTextColor(1.0f, 0.35f, 0.35f, 1.0f);
+const ImVec4 kSuccessTextColor(0.28f, 0.90f, 0.42f, 1.0f);
+
+struct HealActionOption {
+    HealAction action;
+    const char* label;
+};
+
+constexpr std::array<HealActionOption, 4> kHealActionOptions = {{
+    {HealAction::FlipLongestEdge, "Flip Longest Edge (Best for Coplanar Caps)"},
+    {HealAction::CollapseShortestEdge, "Collapse Shortest Edge (Best for Needles)"},
+    {HealAction::SnapCollinearCollapse, "Snap Collinear Vertex (Cap on Feature Crease)"},
+    {HealAction::RemoveDegenerateFace, "Remove Degenerate Flap (Isolated / Redundant Face)"},
+}};
+
+glm::vec3 toGlm(const Eigen::Vector3d& v) {
+    return glm::vec3(static_cast<float>(v.x()), static_cast<float>(v.y()), static_cast<float>(v.z()));
+}
+
+Eigen::Vector3d fromGlm(const glm::vec3& v) {
+    return Eigen::Vector3d(static_cast<double>(v.x), static_cast<double>(v.y), static_cast<double>(v.z));
+}
+
+/// Adopts `polyscopeValue` into `target` when the user changed it in Polyscope's UI.
+bool adoptColor(const glm::vec3& polyscopeValue, Eigen::Vector3d& target) {
+    const Eigen::Vector3d value = fromGlm(polyscopeValue);
+    if ((value - target).cwiseAbs().maxCoeff() <= kColorReadbackTolerance) {
+        return false;
+    }
+    target = value;
+    return true;
+}
+
+/// Re-sizing is skipped unless the target radius drifted noticeably from the last applied one.
+bool radiusIsStale(double radius, double lastApplied, bool forceUpdate) {
+    return radius > 0.0 &&
+           (forceUpdate || lastApplied <= 0.0 || std::abs(radius - lastApplied) > 2.0e-3 * lastApplied);
+}
+
+void removeSurfaceMeshIfPresent(const char* name) {
+    if (polyscope::hasSurfaceMesh(name)) {
+        polyscope::removeSurfaceMesh(name, false);
+    }
+}
+
+void removeCurveNetworkIfPresent(const char* name) {
+    if (polyscope::hasCurveNetwork(name)) {
+        polyscope::removeCurveNetwork(name, false);
+    }
+}
+
+void removePointCloudIfPresent(const char* name) {
+    if (polyscope::hasPointCloud(name)) {
+        polyscope::removePointCloud(name, false);
+    }
+}
+
 } // namespace
 
 PolyscopeGui::PolyscopeGui(AppController& controller)
@@ -142,11 +206,12 @@ void PolyscopeGui::run() {
     polyscope::options::programName = "Ogun - STL Mesh Inspection & Repair Tool";
     polyscope::options::autocenterStructures = false;
     polyscope::options::autoscaleStructures = false;
-    polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::ShadowOnly;
+    polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
     polyscope::options::openImGuiWindowForUserCallback = false;
 
     polyscope::init();
     polyscope::state::doDefaultMouseInteraction = false;
+    applyTransparencyModeForPreview();
     loadAndApplyApplicationIcon();
 
     if (controller_.hasMesh()) {
@@ -204,7 +269,7 @@ void PolyscopeGui::loadAndApplyApplicationIcon() {
 }
 
 void PolyscopeGui::drawUiFrame() {
-    syncHighlightSizingFromPolyscopeUi();
+    syncStylesFromPolyscopeUi();
     handleViewportMouseNavigation();
     handleKeyboardShortcuts();
 
@@ -226,6 +291,8 @@ void PolyscopeGui::drawUiFrame() {
         drawUnitsAndScaleSection();
         ImGui::Separator();
         drawDiagnosticsSection();
+        ImGui::Separator();
+        drawMeshRepairSection();
         ImGui::Separator();
         drawHighlightAndNavigationSection();
     }
@@ -257,6 +324,7 @@ void PolyscopeGui::drawFileBarSection() {
             pfd::opt::none).result();
         if (!selection.empty()) {
             if (controller_.loadStlFile(std::filesystem::path(selection.front()))) {
+                saveStatusMessage_.clear();
                 syncMeshStructureToPolyscope(true);
             }
         }
@@ -265,8 +333,44 @@ void PolyscopeGui::drawFileBarSection() {
     ImGui::SameLine();
     if (ImGui::Button("Load Sample Test Mesh")) {
         controller_.loadSampleDefectiveMesh();
+        saveStatusMessage_.clear();
         syncMeshStructureToPolyscope(true);
     }
+
+    ImGui::BeginDisabled(!controller_.hasMesh());
+    if (ImGui::Button("Save STL...")) {
+        auto destination = pfd::save_file(
+            "Save STL File",
+            "repaired.stl",
+            {"STL Mesh (*.stl)", "*.stl *.STL", "All Files", "*"},
+            pfd::opt::none).result();
+        if (!destination.empty()) {
+            std::filesystem::path outPath(destination);
+            if (!outPath.has_extension()) {
+                outPath.replace_extension(".stl");
+            }
+            saveStatusMessage_ = controller_.saveStlFile(outPath, exportFormat_)
+                ? "Saved " + outPath.filename().string()
+                : std::string{};
+        }
+    }
+    ImGui::EndDisabled();
+
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(110.0f);
+    const char* formatLabel = (exportFormat_ == StlFormat::Binary) ? "Binary STL" : "ASCII STL";
+    if (ImGui::BeginCombo("##ExportFormat", formatLabel)) {
+        if (ImGui::Selectable("Binary STL", exportFormat_ == StlFormat::Binary)) {
+            exportFormat_ = StlFormat::Binary;
+        }
+        if (ImGui::Selectable("ASCII STL", exportFormat_ == StlFormat::Ascii)) {
+            exportFormat_ = StlFormat::Ascii;
+        }
+        ImGui::EndCombo();
+    }
+
+    ImGui::SameLine();
+    drawUndoButton("FileBar");
 
     if (appIconTexture_ != nullptr) {
         ImGui::EndGroup();
@@ -283,9 +387,30 @@ void PolyscopeGui::drawFileBarSection() {
     }
 
     if (!controller_.lastErrorMessage().empty()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.35f, 0.35f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, kWarningTextColor);
         ImGui::TextWrapped("Error: %s", controller_.lastErrorMessage().c_str());
         ImGui::PopStyleColor();
+    } else if (!saveStatusMessage_.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, kSuccessTextColor);
+        ImGui::TextWrapped("%s", saveStatusMessage_.c_str());
+        ImGui::PopStyleColor();
+    }
+}
+
+void PolyscopeGui::drawUndoButton(const char* idSuffix) {
+    const std::string undoLabel = controller_.canUndo()
+        ? "Undo: " + controller_.lastUndoActionLabel() + " (Ctrl+Z / Cmd+Z)##" + idSuffix
+        : std::string("Undo (Ctrl+Z / Cmd+Z)##") + idSuffix;
+    ImGui::BeginDisabled(!controller_.canUndo());
+    if (ImGui::Button(undoLabel.c_str())) {
+        undoLastModification();
+    }
+    ImGui::EndDisabled();
+}
+
+void PolyscopeGui::undoLastModification() {
+    if (controller_.undoLastModification()) {
+        syncModifiedMeshToPolyscope();
     }
 }
 
@@ -357,6 +482,7 @@ void PolyscopeGui::drawUnitsAndScaleSection() {
         ImGui::BeginDisabled(!controller_.hasMesh() || pendingScaleTargetUnit_ == controller_.fileUnit());
         if (ImGui::Button("Scale Mesh Coordinates Now")) {
             controller_.scaleMeshCoordinatesToUnit(pendingScaleTargetUnit_);
+            polyscope::resetSelection();
             syncMeshStructureToPolyscope(true);
         }
         ImGui::EndDisabled();
@@ -436,7 +562,7 @@ void PolyscopeGui::drawDiagnosticsSection() {
 
     const ThinFaceReport& report = controller_.thinFaceReport();
     if (report.empty()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.28f, 0.90f, 0.42f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, kSuccessTextColor);
         ImGui::Text(
             "0 thin/sliver faces detected across %lld triangles.",
             static_cast<long long>(report.totalFacesChecked));
@@ -495,58 +621,183 @@ void PolyscopeGui::drawDiagnosticsSection() {
     ImGui::EndChild();
 }
 
+void PolyscopeGui::drawMeshRepairSection() {
+    ImGui::TextUnformatted("Mesh Repair -- Thin / Sliver Faces");
+
+    const bool hasDefects = controller_.hasDiagnosticsReport() && controller_.thinFaceReport().hasDefects();
+    ImGui::BeginDisabled(!hasDefects);
+    if (ImGui::Button("Fix All Thin / Sliver Faces")) {
+        if (controller_.fixAllThinFaces()) {
+            syncModifiedMeshToPolyscope();
+        }
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    drawUndoButton("RepairSection");
+
+    if (!controller_.lastRepairStatusMessage().empty()) {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("%s", controller_.lastRepairStatusMessage().c_str());
+        ImGui::PopTextWrapPos();
+    }
+
+    if (controller_.selectionMode() == SelectionMode::SingleFace) {
+        drawSingleFaceRepairInspector();
+    } else {
+        ImGui::TextDisabled("Select a face in the defect list or click it in the 3D viewport to inspect it.");
+    }
+}
+
+void PolyscopeGui::drawSingleFaceRepairInspector() {
+    const SliverAnalysis& analysis = controller_.selectedFaceAnalysis();
+    const SingleFaceRepairPreview& preview = controller_.repairPreview();
+
+    ImGui::Spacing();
+    ImGui::Text("Selected Face #%lld", static_cast<long long>(controller_.selectedFaceIndex()));
+    ImGui::Text("Detected Type: %s", sliverTypeLabel(analysis.type));
+    ImGui::Text(
+        "Max Angle: %.3f deg   |   Min/Max Edge Ratio: %.3e",
+        analysis.maxAngleDeg,
+        analysis.edgeRatio);
+    if (analysis.recommendedAction != HealAction::None) {
+        ImGui::TextDisabled("Recommended: %s", healActionLabel(analysis.recommendedAction));
+    }
+
+    for (const HealActionOption& option : kHealActionOptions) {
+        if (ImGui::RadioButton(option.label, controller_.selectedHealAction() == option.action)) {
+            controller_.setSelectedHealAction(option.action);
+            syncHighlightOverlaysToPolyscope();
+        }
+    }
+
+    bool showPreview = controller_.repairPreviewVisible();
+    if (ImGui::Checkbox("Show 3D Repair Preview Patch", &showPreview)) {
+        controller_.setRepairPreviewVisible(showPreview);
+        syncHighlightOverlaysToPolyscope();
+    }
+
+    ImGui::SetNextItemWidth(200.0f);
+    if (ImGui::BeginCombo("Preview Display", previewDisplayModeLabel(controller_.previewDisplayMode()))) {
+        for (const PreviewDisplayMode mode : kPreviewDisplayModes) {
+            const bool isSelected = (mode == controller_.previewDisplayMode());
+            if (ImGui::Selectable(previewDisplayModeLabel(mode), isSelected)) {
+                controller_.setPreviewDisplayMode(mode);
+                applyTransparencyModeForPreview();
+                syncHighlightOverlaysToPolyscope();
+            }
+            if (isSelected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndCombo();
+    }
+
+    ImGui::SetNextItemWidth(200.0f);
+    if (controller_.previewDisplayMode() == PreviewDisplayMode::TranslucentBase) {
+        auto opacity = static_cast<float>(controller_.previewBaseOpacity());
+        if (ImGui::SliderFloat("Base Mesh Opacity", &opacity, 0.05f, 1.0f, "%.2f")) {
+            controller_.setPreviewBaseOpacity(static_cast<double>(opacity));
+            syncMeshTransparencyToPolyscope();
+        }
+    } else if (controller_.previewDisplayMode() == PreviewDisplayMode::TranslucentPatch) {
+        auto opacity = static_cast<float>(controller_.previewPatchOpacity());
+        if (ImGui::SliderFloat("Patch Opacity", &opacity, 0.05f, 1.0f, "%.2f")) {
+            controller_.setPreviewPatchOpacity(static_cast<double>(opacity));
+            syncMeshTransparencyToPolyscope();
+        }
+    } else if (controller_.previewDisplayMode() == PreviewDisplayMode::CutoutOriginalEdges) {
+        OverlayAppearance appearance = controller_.overlayAppearance();
+        bool appearanceChanged = false;
+        auto widthPx = static_cast<float>(appearance.originalEdgeWidthPx);
+        if (ImGui::SliderFloat(
+                "Original Edge Width (px)",
+                &widthPx,
+                static_cast<float>(settings::kMinOverlayEdgeWidthPx),
+                static_cast<float>(settings::kMaxOverlayEdgeWidthPx),
+                "%.2f")) {
+            appearance.originalEdgeWidthPx = static_cast<double>(widthPx);
+            appearanceChanged = true;
+        }
+        ImGui::SetNextItemWidth(200.0f);
+        auto opacity = static_cast<float>(appearance.originalEdgeOpacity);
+        if (ImGui::SliderFloat("Original Edge Opacity", &opacity, 0.05f, 1.0f, "%.2f")) {
+            appearance.originalEdgeOpacity = static_cast<double>(opacity);
+            appearanceChanged = true;
+        }
+        if (appearanceChanged) {
+            controller_.setOverlayAppearance(appearance);
+            applyOverlayAppearanceToPolyscope();
+        }
+    }
+
+    if (!preview.statusMessage.empty()) {
+        const bool unsafe = !preview.valid && controller_.selectedHealAction() != HealAction::None;
+        ImGui::PushStyleColor(ImGuiCol_Text, unsafe ? kWarningTextColor : kSuccessTextColor);
+        ImGui::TextWrapped("%s%s", unsafe ? "Warning: " : "", preview.statusMessage.c_str());
+        ImGui::PopStyleColor();
+    }
+
+    ImGui::BeginDisabled(controller_.selectedHealAction() == HealAction::None);
+    if (ImGui::Button("Commit Repair")) {
+        if (controller_.commitSelectedFaceRepair()) {
+            syncModifiedMeshToPolyscope();
+        }
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) {
+        if (controller_.hasDiagnosticsReport() && controller_.thinFaceReport().hasDefects()) {
+            controller_.selectAllThinFaces();
+        } else {
+            controller_.clearSelection();
+        }
+        syncHighlightOverlaysToPolyscope();
+    }
+    ImGui::SameLine();
+    drawUndoButton("Inspector");
+}
+
 void PolyscopeGui::drawHighlightAndNavigationSection() {
     ImGui::TextUnformatted("3D Highlight & Camera Navigation");
 
-    bool dynamicSizing = controller_.dynamicHighlightSizingEnabled();
-    if (ImGui::Checkbox("Dynamic Point & Edge Size on Zoom", &dynamicSizing)) {
-        controller_.setDynamicHighlightSizingEnabled(dynamicSizing);
-        applyEffectiveHighlightSizingToPolyscope(true);
-    }
-
+    OverlayAppearance appearance = controller_.overlayAppearance();
+    bool appearanceChanged = false;
     ImGui::PushItemWidth(160.0f);
-    auto basePtRadius = static_cast<float>(controller_.highlightPointRadius());
+    auto pointRadiusPx = static_cast<float>(appearance.pointRadiusPx);
     if (ImGui::SliderFloat(
-            "Defect Point Radius",
-            &basePtRadius,
-            1.0e-5f,
-            0.02f,
-            "%.5f",
-            ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat)) {
-        controller_.setHighlightPointRadius(static_cast<double>(basePtRadius));
-        applyEffectiveHighlightSizingToPolyscope(true);
+            "Defect Point Radius (px)",
+            &pointRadiusPx,
+            static_cast<float>(settings::kMinHighlightPointRadiusPx),
+            static_cast<float>(settings::kMaxHighlightPointRadiusPx),
+            "%.1f")) {
+        appearance.pointRadiusPx = static_cast<double>(pointRadiusPx);
+        appearanceChanged = true;
     }
-
-    auto baseEdgeRadius = static_cast<float>(controller_.highlightEdgeRadius());
+    auto edgeWidthPx = static_cast<float>(appearance.selectedFaces.edgeWidthPx);
     if (ImGui::SliderFloat(
-            "Defect Edge Width",
-            &baseEdgeRadius,
-            1.0e-5f,
-            0.02f,
-            "%.5f",
-            ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoRoundToFormat)) {
-        controller_.setHighlightEdgeRadius(static_cast<double>(baseEdgeRadius));
-        applyEffectiveHighlightSizingToPolyscope(true);
+            "Defect Edge Width (px)",
+            &edgeWidthPx,
+            static_cast<float>(settings::kMinOverlayEdgeWidthPx),
+            static_cast<float>(settings::kMaxOverlayEdgeWidthPx),
+            "%.2f")) {
+        appearance.selectedFaces.edgeWidthPx = static_cast<double>(edgeWidthPx);
+        appearance.selectedFaces.showEdges = true;
+        appearanceChanged = true;
     }
     ImGui::PopItemWidth();
-
-    if (ImGui::Button("Reset Default Highlight Sizes")) {
-        controller_.resetHighlightSizingToDefaults();
-        applyEffectiveHighlightSizingToPolyscope(true);
+    if (appearanceChanged) {
+        controller_.setOverlayAppearance(appearance);
+        applyOverlayAppearanceToPolyscope();
     }
 
-    if (controller_.hasMesh() && controller_.dynamicHighlightSizingEnabled()) {
-        const Eigen::Vector3d camPos = currentCameraWorldPosition();
-        const double fovDeg = polyscope::view::fov;
-        const double zScale = controller_.computeHighlightZoomScale(camPos, fovDeg);
-        const double effPt = controller_.effectiveHighlightPointRadius(camPos, fovDeg);
-        const double effEdge = controller_.effectiveHighlightEdgeRadius(camPos, fovDeg);
-        ImGui::TextDisabled(
-            "Zoom scale: %.2gx (pt r=%.1e, edge r=%.1e)",
-            zScale,
-            effPt,
-            effEdge);
+    if (ImGui::Button("Reset Default Highlight Styles")) {
+        controller_.resetOverlayAppearanceToDefaults();
+        syncHighlightOverlaysToPolyscope();
     }
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled(
+        "Color, Edges, Edge Color and Width of 'Selected Defect Faces' and 'Repair Preview Patch' are in Polyscope's Structures panel.");
+    ImGui::PopTextWrapPos();
 
     bool ghost = controller_.ghostMeshEnabled();
     if (ImGui::Checkbox("Ghost / Transparent Mesh", &ghost)) {
@@ -653,9 +904,9 @@ void PolyscopeGui::drawNavigationHelpWindow() {
 
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted("Select / Clear Pick");
+            ImGui::TextUnformatted("Select Face / Clear Pick");
             ImGui::TableSetColumnIndex(1);
-            ImGui::TextWrapped("Left-Click on mesh to inspect element; Right-Click to clear pick");
+            ImGui::TextWrapped("Left-Click a mesh face to select it, set the Orbit Pivot to its centroid, and open the Single-Face Repair Inspector with a live preview; Right-Click to clear the Polyscope pick");
 
             ImGui::EndTable();
         }
@@ -690,6 +941,12 @@ void PolyscopeGui::drawNavigationHelpWindow() {
             ImGui::TextUnformatted("Home  or  H");
             ImGui::TableSetColumnIndex(1);
             ImGui::TextWrapped("Frames entire mesh and resets Orbit Pivot to the full mesh center");
+
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted("Ctrl+Z  or  Cmd+Z");
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextWrapped("Undoes the last mesh modification (single-face repair, Fix All Thin / Sliver Faces, or Scale Mesh Coordinates), one step at a time");
 
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
@@ -778,6 +1035,7 @@ void PolyscopeGui::handleViewportMouseNavigation() {
             const ImVec2 p = ImGui::GetMousePos();
             const polyscope::PickResult pickResult = polyscope::pickAtScreenCoords(glm::vec2{p.x, p.y});
             polyscope::setSelection(pickResult);
+            handleViewportFacePick(pickResult);
         }
         dragDistSinceLastRelease_ = 0.0f;
     }
@@ -787,6 +1045,40 @@ void PolyscopeGui::handleViewportMouseNavigation() {
         }
         dragDistSinceLastRelease_ = 0.0f;
     }
+}
+
+void PolyscopeGui::handleViewportFacePick(const polyscope::PickResult& pickResult) {
+    if (!pickResult.isHit || !controller_.hasMesh()) {
+        return;
+    }
+
+    // Both pickable surfaces may be drawn with a subset of faces; map the local face back to the mesh
+    const std::vector<Eigen::Index>* faceMap = nullptr;
+    std::uint64_t nVerts = 0;
+    std::uint64_t nFaces = 0;
+    if (pickResult.structureName == kSurfaceMeshName) {
+        nVerts = static_cast<std::uint64_t>(controller_.mesh().numVertices());
+        nFaces = baseIsCut_
+            ? static_cast<std::uint64_t>(baseFaceIndices_.size())
+            : static_cast<std::uint64_t>(controller_.mesh().numFaces());
+        faceMap = baseIsCut_ ? &baseFaceIndices_ : nullptr;
+    } else if (pickResult.structureName == kDefectFacesName && polyscope::hasSurfaceMesh(kDefectFacesName)) {
+        nVerts = static_cast<std::uint64_t>(polyscope::getSurfaceMesh(kDefectFacesName)->nVertices());
+        nFaces = static_cast<std::uint64_t>(defectFaceIndices_.size());
+        faceMap = &defectFaceIndices_;
+    } else {
+        return;
+    }
+
+    // Polyscope's combined pick index lists vertices [0, nVerts) before faces [nVerts, nVerts + nFaces)
+    const std::uint64_t elementId = pickResult.localIndex;
+    if (elementId < nVerts || elementId >= nVerts + nFaces) {
+        return;
+    }
+
+    const auto localFace = static_cast<std::size_t>(elementId - nVerts);
+    controller_.selectSingleFace(faceMap ? (*faceMap)[localFace] : static_cast<Eigen::Index>(localFace));
+    syncHighlightOverlaysToPolyscope();
 }
 
 void PolyscopeGui::processPivotRotate(float dragDeltaX, float dragDeltaY) {
@@ -914,6 +1206,10 @@ void PolyscopeGui::handleKeyboardShortcuts() {
         showNavigationHelpWindow_ = !showNavigationHelpWindow_;
     }
 
+    if (ImGui::IsKeyPressed(ImGuiKey_Z, false) && (io.KeyCtrl || io.KeySuper)) {
+        undoLastModification();
+    }
+
     if (!controller_.hasMesh()) {
         return;
     }
@@ -935,89 +1231,262 @@ void PolyscopeGui::handleKeyboardShortcuts() {
 
 void PolyscopeGui::syncMeshStructureToPolyscope(bool resetCameraToHome) {
     if (!controller_.hasMesh()) {
-        if (polyscope::hasSurfaceMesh(kSurfaceMeshName)) {
-            polyscope::removeSurfaceMesh(kSurfaceMeshName, false);
-        }
-        if (polyscope::hasCurveNetwork(kOverlayCurveName)) {
-            polyscope::removeCurveNetwork(kOverlayCurveName, false);
-        }
-        if (polyscope::hasPointCloud(kOverlayPointName)) {
-            polyscope::removePointCloud(kOverlayPointName, false);
-        }
-        lastAppliedPointRelRadius_ = -1.0;
-        lastAppliedEdgeRelRadius_ = -1.0;
+        removeSurfaceMeshIfPresent(kSurfaceMeshName);
+        removeSurfaceMeshIfPresent(kDefectFacesName);
+        removeSurfaceMeshIfPresent(kRepairPreviewName);
+        removeCurveNetworkIfPresent(kOverlayCurveName);
+        removeCurveNetworkIfPresent(kOriginalEdgesName);
+        removePointCloudIfPresent(kOverlayPointName);
+        baseIsCut_ = false;
+        baseFaceIndices_.clear();
+        defectFaceIndices_.clear();
+        lastAppliedDefectEdgeRadius_ = -1.0;
+        lastAppliedOriginalEdgeRadius_ = -1.0;
+        lastAppliedPointRadius_ = -1.0;
         return;
     }
 
-    if (polyscope::hasSurfaceMesh(kSurfaceMeshName)) {
-        surfaceEdgeWidth_ = polyscope::getSurfaceMesh(kSurfaceMeshName)->getEdgeWidth();
-    }
-
-    const Mesh& mesh = controller_.mesh();
-    auto* psMesh = polyscope::registerSurfaceMesh(kSurfaceMeshName, mesh.V, mesh.F);
-    psMesh->setSmoothShade(false);
-    psMesh->setEdgeWidth(surfaceEdgeWidth_);
-    psMesh->setEdgeColor(glm::vec3(0.18f, 0.20f, 0.24f));
-    psMesh->setBackFacePolicy(polyscope::BackFacePolicy::Different);
+    syncHighlightOverlaysToPolyscope();
 
     if (resetCameraToHome) {
         controller_.resetOrbitPivotToSelection();
         polyscope::view::resetCameraToHomeView();
     }
-
-    syncMeshTransparencyToPolyscope();
-    syncHighlightOverlaysToPolyscope();
 }
 
 void PolyscopeGui::syncHighlightOverlaysToPolyscope() {
-    if (!controller_.hasMesh() || !polyscope::hasSurfaceMesh(kSurfaceMeshName)) {
+    if (!controller_.hasMesh()) {
         return;
     }
-
-    // Capture any recent slider edits from Polyscope's Structures panel before re-registering overlays
-    syncHighlightSizingFromPolyscopeUi();
 
     const HighlightOverlayGeometry overlay = controller_.buildHighlightOverlay();
+    registerBaseMeshToPolyscope(overlay);
+    syncDefectOverlaysToPolyscope(overlay);
+    syncRepairPreviewToPolyscope();
+    applyOverlayAppearanceToPolyscope();
+    syncMeshTransparencyToPolyscope();
+}
 
-    auto* psMesh = polyscope::getSurfaceMesh(kSurfaceMeshName);
-    auto* colorQty = psMesh->addFaceColorQuantity(kFaceColorQuantityName, overlay.faceColors);
-    colorQty->setEnabled(true);
+void PolyscopeGui::registerBaseMeshToPolyscope(const HighlightOverlayGeometry& overlay) {
+    // Re-registering replaces the structure, so carry over the user's Structures-panel settings
+    if (polyscope::hasSurfaceMesh(kSurfaceMeshName)) {
+        auto* previous = polyscope::getSurfaceMesh(kSurfaceMeshName);
+        baseStyle_.color = fromGlm(previous->getSurfaceColor());
+        baseStyle_.edgeColor = fromGlm(previous->getEdgeColor());
+        baseStyle_.adoptPolyscopeEdgeWidth(previous->getEdgeWidth());
+        baseMaterial_ = previous->getMaterial();
+        baseEnabled_ = previous->isEnabled();
+        baseStyleCaptured_ = true;
+    }
 
-    if (!overlay.hasSelectionOverlay()) {
-        if (polyscope::hasCurveNetwork(kOverlayCurveName)) {
-            polyscope::removeCurveNetwork(kOverlayCurveName, false);
-        }
-        if (polyscope::hasPointCloud(kOverlayPointName)) {
-            polyscope::removePointCloud(kOverlayPointName, false);
-        }
-        lastAppliedPointRelRadius_ = -1.0;
-        lastAppliedEdgeRelRadius_ = -1.0;
+    const Mesh& mesh = controller_.mesh();
+    BaseMeshDisplay display = controller_.buildBaseMeshDisplay();
+    baseIsCut_ = display.isCut;
+    baseFaceIndices_ = std::move(display.faceIndices);
+    if (baseIsCut_ && display.F.rows() == 0) {
+        removeSurfaceMeshIfPresent(kSurfaceMeshName);
         return;
     }
 
-    auto* curveNet = polyscope::registerCurveNetwork(
-        kOverlayCurveName,
-        overlay.overlayPoints,
-        overlay.overlayEdges);
-    curveNet->setColor(glm::vec3(1.0f, 0.15f, 0.10f));
+    auto* psMesh = polyscope::registerSurfaceMesh(kSurfaceMeshName, mesh.V, baseIsCut_ ? display.F : mesh.F);
+    if (baseStyleCaptured_) {
+        psMesh->setSurfaceColor(toGlm(baseStyle_.color));
+        psMesh->setMaterial(baseMaterial_);
+        psMesh->setEnabled(baseEnabled_);
+    }
+    psMesh->setEdgeColor(toGlm(baseStyle_.edgeColor));
+    psMesh->setEdgeWidth(baseStyle_.effectiveEdgeWidth());
+    psMesh->setSmoothShade(false);
+    psMesh->setBackFacePolicy(polyscope::BackFacePolicy::Different);
 
-    auto* ptCloud = polyscope::registerPointCloud(
-        kOverlayPointName,
-        overlay.overlayPoints);
-    ptCloud->setPointColor(glm::vec3(1.0f, 0.85f, 0.10f));
+    std::vector<Eigen::Vector3d> faceColors;
+    if (baseIsCut_) {
+        faceColors.reserve(baseFaceIndices_.size());
+        for (const Eigen::Index f : baseFaceIndices_) {
+            faceColors.push_back(overlay.faceColors[static_cast<std::size_t>(f)]);
+        }
+    } else {
+        faceColors = overlay.faceColors;
+    }
+    psMesh->addFaceColorQuantity(kFaceColorQuantityName, faceColors)->setEnabled(true);
+}
 
-    applyEffectiveHighlightSizingToPolyscope(true);
+void PolyscopeGui::syncDefectOverlaysToPolyscope(const HighlightOverlayGeometry& overlay) {
+    defectFaceIndices_ = overlay.overlayFaceIndices;
+    lastAppliedDefectEdgeRadius_ = -1.0;
+    lastAppliedPointRadius_ = -1.0;
+    if (!overlay.hasSelectionOverlay()) {
+        removeSurfaceMeshIfPresent(kDefectFacesName);
+        removeCurveNetworkIfPresent(kOverlayCurveName);
+        removePointCloudIfPresent(kOverlayPointName);
+        return;
+    }
+
+    auto* psFaces = polyscope::registerSurfaceMesh(kDefectFacesName, overlay.overlayPoints, overlay.overlayFaces);
+    psFaces->setSmoothShade(false);
+    psFaces->setBackFacePolicy(polyscope::BackFacePolicy::Identical);
+
+    // Edge tubes and vertex spheres keep zero-area and sub-pixel slivers visible at any zoom
+    polyscope::registerCurveNetwork(kOverlayCurveName, overlay.overlayPoints, overlay.overlayEdges);
+    polyscope::registerPointCloud(kOverlayPointName, overlay.overlayPoints);
 }
 
 void PolyscopeGui::syncMeshTransparencyToPolyscope() {
-    if (!polyscope::hasSurfaceMesh(kSurfaceMeshName)) {
-        return;
-    }
-    auto* psMesh = polyscope::getSurfaceMesh(kSurfaceMeshName);
-    const float alpha = controller_.ghostMeshEnabled()
+    float alpha = controller_.ghostMeshEnabled()
         ? static_cast<float>(controller_.ghostMeshOpacity())
         : 1.0f;
-    psMesh->setTransparency(alpha);
+    const bool previewShown = controller_.repairPreviewShown();
+    if (previewShown && controller_.previewDisplayMode() == PreviewDisplayMode::TranslucentBase) {
+        alpha = std::min(alpha, static_cast<float>(controller_.previewBaseOpacity()));
+    }
+    const bool translucentPatch = previewShown &&
+                                  controller_.previewDisplayMode() == PreviewDisplayMode::TranslucentPatch;
+
+    // Polyscope switches to Pretty on its own when it first sees transparency; pick the mode's preference first
+    if ((alpha < 1.0f || translucentPatch) &&
+        polyscope::options::transparencyMode == polyscope::TransparencyMode::None) {
+        applyTransparencyModeForPreview();
+    }
+
+    if (polyscope::hasSurfaceMesh(kSurfaceMeshName)) {
+        polyscope::getSurfaceMesh(kSurfaceMeshName)->setTransparency(alpha);
+    }
+    if (polyscope::hasSurfaceMesh(kRepairPreviewName)) {
+        polyscope::getSurfaceMesh(kRepairPreviewName)->setTransparency(
+            translucentPatch ? static_cast<float>(controller_.previewPatchOpacity()) : 1.0f);
+    }
+}
+
+void PolyscopeGui::applyTransparencyModeForPreview() {
+    // Translucent Base looks best with Simple blending; the other modes with Pretty depth peeling
+    polyscope::options::transparencyMode =
+        controller_.previewDisplayMode() == PreviewDisplayMode::TranslucentBase
+            ? polyscope::TransparencyMode::Simple
+            : polyscope::TransparencyMode::Pretty;
+}
+
+void PolyscopeGui::syncRepairPreviewToPolyscope() {
+    const Mesh& patch = controller_.repairPreview().previewPatchMesh;
+    if (controller_.repairPreviewShown() && !patch.empty()) {
+        auto* psPatch = polyscope::registerSurfaceMesh(kRepairPreviewName, patch.V, patch.F);
+        psPatch->setSmoothShade(false);
+        psPatch->setBackFacePolicy(polyscope::BackFacePolicy::Identical);
+    } else {
+        removeSurfaceMeshIfPresent(kRepairPreviewName);
+    }
+
+    lastAppliedOriginalEdgeRadius_ = -1.0;
+    const HighlightOverlayGeometry originalEdges = controller_.buildRepairPreviewOriginalEdges();
+    if (originalEdges.hasSelectionOverlay()) {
+        polyscope::registerCurveNetwork(kOriginalEdgesName, originalEdges.overlayPoints, originalEdges.overlayEdges);
+    } else {
+        removeCurveNetworkIfPresent(kOriginalEdgesName);
+    }
+}
+
+void PolyscopeGui::applyOverlayAppearanceToPolyscope() {
+    const OverlayAppearance& appearance = controller_.overlayAppearance();
+    const auto applySurfaceStyle = [](const char* name, const SurfaceStyle& style) {
+        if (polyscope::hasSurfaceMesh(name)) {
+            auto* psMesh = polyscope::getSurfaceMesh(name);
+            psMesh->setSurfaceColor(toGlm(style.color));
+            psMesh->setEdgeColor(toGlm(style.edgeColor));
+            psMesh->setEdgeWidth(style.effectiveEdgeWidth());
+        }
+    };
+    applySurfaceStyle(kDefectFacesName, appearance.selectedFaces);
+    applySurfaceStyle(kRepairPreviewName, appearance.previewPatch);
+
+    if (polyscope::hasCurveNetwork(kOverlayCurveName)) {
+        auto* curveNet = polyscope::getCurveNetwork(kOverlayCurveName);
+        curveNet->setColor(toGlm(appearance.selectedFaces.edgeColor));
+        curveNet->setEnabled(appearance.selectedFaces.showEdges);
+    }
+    if (polyscope::hasPointCloud(kOverlayPointName)) {
+        polyscope::getPointCloud(kOverlayPointName)->setPointColor(toGlm(appearance.pointColor));
+    }
+    if (polyscope::hasCurveNetwork(kOriginalEdgesName)) {
+        auto* curveNet = polyscope::getCurveNetwork(kOriginalEdgesName);
+        curveNet->setColor(toGlm(appearance.originalEdgeColor));
+        curveNet->setTransparency(static_cast<float>(appearance.originalEdgeOpacity));
+    }
+    applyEffectiveHighlightSizingToPolyscope(true);
+}
+
+void PolyscopeGui::syncStylesFromPolyscopeUi() {
+    if (!controller_.hasMesh()) {
+        return;
+    }
+
+    if (polyscope::hasSurfaceMesh(kSurfaceMeshName)) {
+        auto* psMesh = polyscope::getSurfaceMesh(kSurfaceMeshName);
+        if (baseStyle_.adoptPolyscopeEdgeWidth(psMesh->getEdgeWidth())) {
+            psMesh->setEdgeWidth(baseStyle_.effectiveEdgeWidth());
+        }
+    }
+
+    OverlayAppearance appearance = controller_.overlayAppearance();
+    bool changed = false;
+    const auto adoptSurfaceStyle = [&changed](const char* name, SurfaceStyle& style) {
+        if (polyscope::hasSurfaceMesh(name)) {
+            auto* psMesh = polyscope::getSurfaceMesh(name);
+            changed |= adoptColor(psMesh->getSurfaceColor(), style.color);
+            changed |= adoptColor(psMesh->getEdgeColor(), style.edgeColor);
+            changed |= style.adoptPolyscopeEdgeWidth(psMesh->getEdgeWidth());
+        }
+    };
+    adoptSurfaceStyle(kDefectFacesName, appearance.selectedFaces);
+    adoptSurfaceStyle(kRepairPreviewName, appearance.previewPatch);
+
+    if (polyscope::hasCurveNetwork(kOverlayCurveName)) {
+        auto* curveNet = polyscope::getCurveNetwork(kOverlayCurveName);
+        changed |= adoptColor(curveNet->getColor(), appearance.selectedFaces.edgeColor);
+        changed |= adoptOverlayRadius(
+            static_cast<double>(curveNet->getRadius()), lastAppliedDefectEdgeRadius_, appearance.selectedFaces.edgeWidthPx);
+    }
+    if (polyscope::hasCurveNetwork(kOriginalEdgesName)) {
+        auto* curveNet = polyscope::getCurveNetwork(kOriginalEdgesName);
+        changed |= adoptColor(curveNet->getColor(), appearance.originalEdgeColor);
+        changed |= adoptOverlayRadius(
+            static_cast<double>(curveNet->getRadius()), lastAppliedOriginalEdgeRadius_, appearance.originalEdgeWidthPx);
+        const auto alpha = static_cast<double>(curveNet->getTransparency());
+        if (std::abs(alpha - appearance.originalEdgeOpacity) > 1.0e-4) {
+            appearance.originalEdgeOpacity = alpha;
+            changed = true;
+        }
+    }
+    if (polyscope::hasPointCloud(kOverlayPointName)) {
+        auto* ptCloud = polyscope::getPointCloud(kOverlayPointName);
+        changed |= adoptColor(ptCloud->getPointColor(), appearance.pointColor);
+        changed |= adoptOverlayRadius(ptCloud->getPointRadius(), lastAppliedPointRadius_, appearance.pointRadiusPx);
+    }
+
+    if (changed) {
+        controller_.setOverlayAppearance(appearance);
+        applyOverlayAppearanceToPolyscope();
+    }
+}
+
+bool PolyscopeGui::adoptOverlayRadius(double polyscopeRadius, double& lastApplied, double& valuePx) {
+    if (lastApplied <= 0.0 || std::abs(polyscopeRadius - lastApplied) <= 1.0e-4 * lastApplied) {
+        return false;
+    }
+    const double worldPerPx = controller_.worldLengthAtSelection(
+        1.0,
+        currentCameraWorldPosition(),
+        polyscope::view::fov,
+        static_cast<double>(polyscope::view::windowHeight));
+    if (worldPerPx <= 0.0) {
+        return false;
+    }
+    valuePx = polyscopeRadius / worldPerPx;
+    lastApplied = polyscopeRadius;
+    return true;
+}
+
+void PolyscopeGui::syncModifiedMeshToPolyscope() {
+    polyscope::resetSelection();
+    syncMeshStructureToPolyscope(false);
 }
 
 Eigen::Vector3d PolyscopeGui::currentCameraWorldPosition() const noexcept {
@@ -1026,48 +1495,6 @@ Eigen::Vector3d PolyscopeGui::currentCameraWorldPosition() const noexcept {
         static_cast<double>(camPos.x),
         static_cast<double>(camPos.y),
         static_cast<double>(camPos.z));
-}
-
-double PolyscopeGui::currentZoomScale() const noexcept {
-    if (!controller_.hasMesh()) {
-        return 1.0;
-    }
-    return controller_.computeHighlightZoomScale(
-        currentCameraWorldPosition(),
-        polyscope::view::fov);
-}
-
-void PolyscopeGui::syncHighlightSizingFromPolyscopeUi() {
-    if (polyscope::hasSurfaceMesh(kSurfaceMeshName)) {
-        surfaceEdgeWidth_ = polyscope::getSurfaceMesh(kSurfaceMeshName)->getEdgeWidth();
-    }
-
-    const double lenScale = static_cast<double>(polyscope::state::lengthScale);
-    if (lenScale <= 1.0e-12) {
-        return;
-    }
-
-    const double zScale = std::max(currentZoomScale(), AppController::kMinHighlightZoomScale);
-
-    if (polyscope::hasPointCloud(kOverlayPointName) && lastAppliedPointRelRadius_ > 0.0) {
-        auto* ptCloud = polyscope::getPointCloud(kOverlayPointName);
-        const double currentRelRadius = ptCloud->getPointRadius() / lenScale;
-        if (std::abs(currentRelRadius - lastAppliedPointRelRadius_) >
-            std::max(1.0e-7, 1.0e-4 * lastAppliedPointRelRadius_)) {
-            controller_.setHighlightPointRadius(currentRelRadius / zScale);
-            lastAppliedPointRelRadius_ = currentRelRadius;
-        }
-    }
-
-    if (polyscope::hasCurveNetwork(kOverlayCurveName) && lastAppliedEdgeRelRadius_ > 0.0) {
-        auto* curveNet = polyscope::getCurveNetwork(kOverlayCurveName);
-        const double currentRelRadius = static_cast<double>(curveNet->getRadius()) / lenScale;
-        if (std::abs(currentRelRadius - lastAppliedEdgeRelRadius_) >
-            std::max(1.0e-7, 1.0e-4 * lastAppliedEdgeRelRadius_)) {
-            controller_.setHighlightEdgeRadius(currentRelRadius / zScale);
-            lastAppliedEdgeRelRadius_ = currentRelRadius;
-        }
-    }
 }
 
 void PolyscopeGui::applyEffectiveHighlightSizingToPolyscope(bool forceUpdate) {
@@ -1088,29 +1515,32 @@ void PolyscopeGui::applyEffectiveHighlightSizingToPolyscope(bool forceUpdate) {
         polyscope::view::nearClipRatio = targetNearClip;
     }
 
-    const double effPtRel = controller_.effectiveHighlightPointRadius(camPos, fovDeg);
-    const double effEdgeRel = controller_.effectiveHighlightEdgeRadius(camPos, fovDeg);
+    // Tubes and spheres are re-sized as the camera moves so they keep a constant on-screen size
+    const OverlayAppearance& appearance = controller_.overlayAppearance();
+    const auto toWorld = [&](double pixels) {
+        return controller_.worldLengthAtSelection(
+            pixels, camPos, fovDeg, static_cast<double>(polyscope::view::windowHeight));
+    };
 
-    if (polyscope::hasPointCloud(kOverlayPointName)) {
-        if (forceUpdate ||
-            lastAppliedPointRelRadius_ <= 0.0 ||
-            std::abs(effPtRel - lastAppliedPointRelRadius_) >
-                std::max(1.0e-8, 2.0e-3 * lastAppliedPointRelRadius_)) {
-            auto* ptCloud = polyscope::getPointCloud(kOverlayPointName);
-            ptCloud->setPointRadius(effPtRel, true);
-            lastAppliedPointRelRadius_ = effPtRel;
-        }
+    const double defectEdgeRadius = toWorld(appearance.selectedFaces.edgeWidthPx);
+    if (polyscope::hasCurveNetwork(kOverlayCurveName) &&
+        radiusIsStale(defectEdgeRadius, lastAppliedDefectEdgeRadius_, forceUpdate)) {
+        polyscope::getCurveNetwork(kOverlayCurveName)->setRadius(static_cast<float>(defectEdgeRadius), false);
+        lastAppliedDefectEdgeRadius_ = defectEdgeRadius;
     }
 
-    if (polyscope::hasCurveNetwork(kOverlayCurveName)) {
-        if (forceUpdate ||
-            lastAppliedEdgeRelRadius_ <= 0.0 ||
-            std::abs(effEdgeRel - lastAppliedEdgeRelRadius_) >
-                std::max(1.0e-8, 2.0e-3 * lastAppliedEdgeRelRadius_)) {
-            auto* curveNet = polyscope::getCurveNetwork(kOverlayCurveName);
-            curveNet->setRadius(static_cast<float>(effEdgeRel), true);
-            lastAppliedEdgeRelRadius_ = effEdgeRel;
-        }
+    const double originalEdgeRadius = toWorld(appearance.originalEdgeWidthPx);
+    if (polyscope::hasCurveNetwork(kOriginalEdgesName) &&
+        radiusIsStale(originalEdgeRadius, lastAppliedOriginalEdgeRadius_, forceUpdate)) {
+        polyscope::getCurveNetwork(kOriginalEdgesName)->setRadius(static_cast<float>(originalEdgeRadius), false);
+        lastAppliedOriginalEdgeRadius_ = originalEdgeRadius;
+    }
+
+    const double pointRadius = toWorld(appearance.pointRadiusPx);
+    if (polyscope::hasPointCloud(kOverlayPointName) &&
+        radiusIsStale(pointRadius, lastAppliedPointRadius_, forceUpdate)) {
+        polyscope::getPointCloud(kOverlayPointName)->setPointRadius(pointRadius, false);
+        lastAppliedPointRadius_ = pointRadius;
     }
 }
 

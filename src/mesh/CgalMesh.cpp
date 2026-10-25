@@ -136,8 +136,12 @@ CgalFaceIndex extractLocalPatch(
     const CgalSurfaceMesh& baseMesh,
     CgalFaceIndex centerFace,
     int numRings,
-    CgalSurfaceMesh& outPatch) {
+    CgalSurfaceMesh& outPatch,
+    std::vector<CgalFaceIndex>* sourceFacesOut) {
     outPatch.clear();
+    if (sourceFacesOut) {
+        sourceFacesOut->clear();
+    }
     if (centerFace == CgalSurfaceMesh::null_face() || !baseMesh.is_valid(centerFace) ||
         baseMesh.is_removed(centerFace)) {
         return CgalSurfaceMesh::null_face();
@@ -176,6 +180,9 @@ CgalFaceIndex extractLocalPatch(
             tri[k] = it->second;
         }
         const CgalFaceIndex added = outPatch.add_face(tri);
+        if (sourceFacesOut && added != CgalSurfaceMesh::null_face()) {
+            sourceFacesOut->push_back(f);
+        }
         if (f == centerFace) {
             mappedCenter = added;
         }

@@ -20,6 +20,7 @@ target_link_libraries(ogun_app_controller
         ogun::mesh
         ogun::io
         ogun::diagnostics
+        ogun::repair
     PRIVATE
         ogun::warnings
 )

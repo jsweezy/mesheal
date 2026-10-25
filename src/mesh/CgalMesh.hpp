@@ -6,6 +6,8 @@
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Surface_mesh.h>
 
+#include <vector>
+
 namespace ogun {
 
 using CgalKernel = CGAL::Exact_predicates_inexact_constructions_kernel;
@@ -32,11 +34,13 @@ bool toCgalSurfaceMesh(const Mesh& mesh, CgalSurfaceMesh& outSurfaceMesh);
 
 /// Copies the `numRings`-ring face neighborhood around `centerFace` into `outPatch`.
 /// Returns the center face's index inside `outPatch`, or `null_face()` on failure.
+/// `sourceFacesOut` (optional) receives the base-mesh faces that were copied into `outPatch`.
 CgalFaceIndex extractLocalPatch(
     const CgalSurfaceMesh& baseMesh,
     CgalFaceIndex centerFace,
     int numRings,
-    CgalSurfaceMesh& outPatch);
+    CgalSurfaceMesh& outPatch,
+    std::vector<CgalFaceIndex>* sourceFacesOut = nullptr);
 
 } // namespace ogun
 

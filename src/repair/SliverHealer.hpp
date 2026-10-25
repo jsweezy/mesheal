@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace ogun {
 
@@ -80,6 +81,7 @@ struct SingleFaceRepairPreview {
     HealAction appliedAction = HealAction::None;
     std::string statusMessage;
     Mesh previewPatchMesh;  ///< Healed patch, offset along vertex normals to avoid Z-fighting.
+    std::vector<Eigen::Index> sourceFaceIndices;  ///< Base-mesh faces replaced by `previewPatchMesh` (when valid).
 };
 
 /// Outcome of a single-face or batch repair on a full mesh.
