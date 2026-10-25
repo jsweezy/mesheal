@@ -355,6 +355,9 @@ void AppController::cancelChecks() {
 }
 
 void AppController::setBackgroundChecks(bool enabled) {
+    if (enabled == backgroundChecks_) {
+        return; // re-enabling would restart a running job
+    }
     if (!enabled) {
         checkRunner_.cancel();
     }

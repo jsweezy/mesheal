@@ -7,6 +7,8 @@
 
 int main(int argc, char** argv) {
     ogun::AppController controller;
+    // Check Mesh after load runs on a worker, so the window opens (with Cancel) while it runs
+    controller.setBackgroundChecks(true);
 
     if (argc > 1) {
         const std::string_view arg1(argv[1]);

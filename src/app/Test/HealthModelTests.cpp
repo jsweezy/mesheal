@@ -217,6 +217,24 @@ TEST_CASE("Background checks arrive through polling, can be cancelled, and drop 
     REQUIRE(runner.progress() == 1.0f);
 }
 
+TEST_CASE("With background checks on before loading, Check Mesh after load does not block",
+          "[app][health][background]") {
+    ogun::AppController controller;
+    controller.setBackgroundChecks(true); // main() does this before the window opens
+    controller.setMesh(makeGrid(150), "Grid");
+    REQUIRE(controller.checksRunning());
+    REQUIRE(status(controller, DefectCategory::Intersections) == HealthStatus::Running);
+
+    controller.setBackgroundChecks(true); // PolyscopeGui::run() repeats it: must not restart the job
+    REQUIRE(controller.checksRunning());
+    controller.waitForChecks();
+    for (const DefectCategory category : ogun::kAllDefectCategories) {
+        INFO(ogun::categoryInfo(category).name);
+        REQUIRE(status(controller, category) != HealthStatus::Running);
+    }
+    REQUIRE(status(controller, DefectCategory::Intersections) == HealthStatus::Ok);
+}
+
 TEST_CASE("Undo never leaves the Tool slot open without a selected row", "[app][health][undo]") {
     ogun::AppController controller;
     controller.loadSampleDefectiveMesh();
