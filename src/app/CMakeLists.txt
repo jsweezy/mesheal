@@ -1,5 +1,9 @@
+find_package(Threads REQUIRED)
+
 add_library(ogun_app_controller STATIC
     AppController.cpp
+    DefectBrowser.cpp
+    HealthCheckRunner.cpp
 )
 add_library(ogun::app_controller ALIAS ogun_app_controller)
 
@@ -13,6 +17,7 @@ target_compile_definitions(ogun_app_controller
     PUBLIC
         OGUN_SOURCE_ICON_PNG_PATH="${CMAKE_SOURCE_DIR}/assets/icons/ogun.png"
         OGUN_SOURCE_ICON_JPEG_PATH="${CMAKE_SOURCE_DIR}/assets/icons/ogun.jpeg"
+        OGUN_SOURCE_EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/examples"
 )
 
 target_link_libraries(ogun_app_controller
@@ -21,6 +26,7 @@ target_link_libraries(ogun_app_controller
         ogun::io
         ogun::diagnostics
         ogun::repair
+        Threads::Threads
     PRIVATE
         ogun::warnings
 )
@@ -29,6 +35,10 @@ if(OGUN_BUILD_GUI)
     add_executable(ogun
         main.cpp
         PolyscopeGui.cpp
+        PolyscopeGuiShell.cpp
+        PolyscopeGuiPanels.cpp
+        PolyscopeGuiHealth.cpp
+        GuiWidgets.cpp
         MacAppIcon.cpp
     )
 

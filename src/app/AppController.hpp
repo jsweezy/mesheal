@@ -1,6 +1,9 @@
 #pragma once
 
+#include "app/DefectBrowser.hpp"
+#include "app/HealthCheckRunner.hpp"
 #include "core/Settings.hpp"
+#include "diagnostics/MeshHealth.hpp"
 #include "diagnostics/ThinFaceChecker.hpp"
 #include "io/SampleMeshes.hpp"
 #include "io/StlReader.hpp"
@@ -13,19 +16,69 @@
 
 #include <Eigen/Core>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace ogun {
 
-/// Active defect highlight mode in the UI and 3D viewport.
-enum class SelectionMode {
-    None,
-    AllThinFaces,
-    SingleFace
+/// Lifecycle of one Mesh Health row (UI_DESIGN.md §5.2).
+enum class HealthStatus {
+    NotRun,  ///< Never checked on this mesh
+    Running, ///< Queued or being checked
+    Ok,      ///< Checked, nothing found (or an information row)
+    Defects, ///< Checked, defects found
+    Stale    ///< The mesh changed since this row last ran (Auto off)
+};
+
+[[nodiscard]] const char* healthStatusLabel(HealthStatus status) noexcept;
+
+/// State of one Mesh Health row.
+struct CategoryHealth {
+    HealthStatus status = HealthStatus::NotRun;
+    bool autoCheck = true;
+    std::optional<CategoryResult> result; ///< Last result (kept while Stale / Running)
+
+    /// Count shown in the row: elements, or `infoCount` for information rows.
+    [[nodiscard]] std::size_t displayCount(DefectCategory category) const noexcept;
+};
+
+/// Every Mesh Health row, indexed by `DefectCategory`.
+struct MeshHealthReport {
+    std::array<CategoryHealth, kDefectCategoryCount> rows{};
+
+    [[nodiscard]] CategoryHealth& operator[](DefectCategory category) noexcept {
+        return rows[categoryIndex(category)];
+    }
+    [[nodiscard]] const CategoryHealth& operator[](DefectCategory category) const noexcept {
+        return rows[categoryIndex(category)];
+    }
+};
+
+/// Status-bar watertight badge: green only when open and non-manifold edges both checked to 0.
+enum class WatertightState { Unknown, Watertight, NotWatertight };
+
+/// What the right-column Tool slot shows (one tool at a time).
+enum class ToolSlot { None, DefectCategory, UnitsAndScale };
+
+/// Base-mesh back-face rendering (maps to Polyscope's `BackFacePolicy`).
+enum class BackFaceMode { Identical, Darker, Custom, Cull };
+
+[[nodiscard]] const char* backFaceModeLabel(BackFaceMode mode) noexcept;
+
+/// What a viewport click on a face did.
+enum class PickOutcome {
+    None,            ///< No mesh or invalid face
+    FocusedDefect,   ///< The face belongs to the selected row: it is now the focus
+    SelectedRow,     ///< No row was selected; the row containing the face was selected and focused
+    NotInSelectedRow,///< The face is not a defect of the selected row (status message only)
+    PickedFace       ///< No row contains the face: it is highlighted and becomes the orbit pivot
 };
 
 /// Which side of a selected facet's normal to align the camera with when framing ('.' / 'Shift+.').
@@ -47,7 +100,7 @@ struct HighlightOverlayGeometry {
     /// Undirected 3D edge index pairs into `overlayPoints` for the Curve Network overlay.
     std::vector<std::array<std::size_t, 2>> overlayEdges;
 
-    /// Highlighted triangles as index triples into `overlayPoints` (the "Selected Defect Faces" surface).
+    /// Selected / focused triangles as index triples into `overlayPoints` (the "Selected Defect Faces" surface).
     std::vector<std::array<std::size_t, 3>> overlayFaces;
 
     /// Base-mesh face index of each entry in `overlayFaces`.
@@ -89,8 +142,15 @@ struct SurfaceStyle {
     bool adoptPolyscopeEdgeWidth(double polyscopeWidth) noexcept;
 };
 
-/// User-adjustable styles of the defect highlight and repair preview overlays.
+/// User-adjustable styles of the base mesh, the defect highlight and the repair preview overlays.
 struct OverlayAppearance {
+    SurfaceStyle baseMesh{
+        rgbFromArray(settings::kDefaultCleanFaceColor),
+        rgbFromArray(settings::kDefaultBaseEdgeColor)};
+    BackFaceMode backFaceMode = BackFaceMode::Darker;
+    Eigen::Vector3d backFaceColor = rgbFromArray(settings::kDefaultBackFaceColor);
+    bool smoothShade = false;
+    Eigen::Vector3d categoryTintColor = rgbFromArray(settings::kDefaultCategoryTintColor);
     SurfaceStyle selectedFaces{
         rgbFromArray(settings::kDefaultSelectedFaceColor),
         rgbFromArray(settings::kDefaultSelectedEdgeColor)};
@@ -130,10 +190,11 @@ struct CameraFocusTarget {
 struct UndoEntry {
     Mesh mesh;
     ThinFaceThresholds thresholds{};
-    bool hadDiagnosticsReport = false;
-    SelectionMode selectionMode = SelectionMode::None;
-    Eigen::Index selectedFaceIndex = -1;
+    MeshHealthReport health{};
+    std::optional<DefectCategory> selectedCategory;
+    Eigen::Index focusedFaceIndex = -1;
     HealAction selectedHealAction = HealAction::None;
+    bool modified = false;
     std::string actionLabel;
 };
 
@@ -161,11 +222,29 @@ public:
     /// Loads the built-in sample cube mesh containing 3 known thin/degenerate triangles.
     void loadSampleDefectiveMesh();
 
-    /// Replaces the current mesh directly. Clears the undo history.
+    /// Path of `examples/stanford_bunny.stl` (empty if it cannot be found).
+    [[nodiscard]] static std::filesystem::path resolveSampleBunnyPath() noexcept;
+
+    /// Loads the Stanford bunny sample (File > Load Sample). Returns false if it is missing.
+    bool loadSampleBunny();
+
+    /// Replaces the current mesh directly. Clears the undo history and the Mesh Health report, then
+    /// runs Check Mesh when `checkMeshAfterLoad()` is on.
     void setMesh(Mesh mesh, std::string sourceLabel = "Custom Mesh");
 
     /// Exports the current mesh as Binary (default) or ASCII STL. Populates `lastErrorMessage()` on failure.
+    /// A successful save clears `isModified()` and becomes the `currentFilePath()`.
     bool saveStlFile(const std::filesystem::path& filepath, StlFormat format = StlFormat::Binary);
+
+    /// File the mesh was loaded from or last saved to (empty for samples / custom meshes).
+    [[nodiscard]] const std::filesystem::path& currentFilePath() const noexcept {
+        return currentFilePath_;
+    }
+
+    /// True when the mesh changed since it was loaded or saved.
+    [[nodiscard]] bool isModified() const noexcept {
+        return modified_;
+    }
 
     [[nodiscard]] bool hasMesh() const noexcept {
         return !mesh_.empty();
@@ -207,57 +286,191 @@ public:
     }
 
     // -------------------------------------------------------------------------
-    // Diagnostics ("Check Manifold")
+    // Mesh Health (Check Mesh, Auto re-checks, background jobs)
     // -------------------------------------------------------------------------
 
     [[nodiscard]] const ThinFaceThresholds& thresholds() const noexcept {
         return thresholds_;
     }
 
-    void setThresholds(const ThinFaceThresholds& thresholds) noexcept {
-        thresholds_ = thresholds;
+    /// Updates the thin-face thresholds; the Thin row re-runs (Auto) or turns Stale.
+    void setThresholds(const ThinFaceThresholds& thresholds);
+
+    [[nodiscard]] double degenerateAreaEpsilon() const noexcept {
+        return degenerateAreaEpsilon_;
     }
 
-    /// Runs `ThinFaceChecker::check(mesh_, thresholds_)` and updates the active report.
-    /// Automatically selects `SelectionMode::AllThinFaces` if any defects are detected.
-    const ThinFaceReport& runCheckManifold();
+    void setDegenerateAreaEpsilon(double epsilon);
 
-    [[nodiscard]] bool hasDiagnosticsReport() const noexcept {
-        return hasDiagnosticsReport_;
+    [[nodiscard]] const MeshHealthReport& healthReport() const noexcept {
+        return health_;
     }
 
-    [[nodiscard]] const ThinFaceReport& thinFaceReport() const noexcept {
-        return thinFaceReport_;
+    [[nodiscard]] const CategoryHealth& categoryHealth(DefectCategory category) const noexcept {
+        return health_[category];
+    }
+
+    /// Queues every row (Auto on or off) for checking.
+    void checkMesh();
+
+    /// Queues one row ("Re-check" in its Tool panel).
+    void recheckCategory(DefectCategory category);
+
+    /// Turns a row's Auto checkbox on or off. Turning it on re-runs a Stale row.
+    void setAutoCheck(DefectCategory category, bool enabled);
+
+    /// Default Auto state of each row for newly loaded meshes (Preferences > Diagnostics).
+    [[nodiscard]] bool autoCheckDefault(DefectCategory category) const noexcept {
+        return autoCheckDefaults_[categoryIndex(category)];
+    }
+    void setAutoCheckDefault(DefectCategory category, bool enabled) noexcept {
+        autoCheckDefaults_[categoryIndex(category)] = enabled;
+    }
+
+    [[nodiscard]] bool checkMeshAfterLoad() const noexcept {
+        return checkMeshAfterLoad_;
+    }
+    void setCheckMeshAfterLoad(bool enabled) noexcept {
+        checkMeshAfterLoad_ = enabled;
+    }
+
+    /// Cancels queued and running checks (rows go back to Stale or Not run).
+    void cancelChecks();
+
+    /// Background mode runs checks on a worker thread (the GUI); otherwise they run inline (tests).
+    void setBackgroundChecks(bool enabled);
+
+    [[nodiscard]] bool backgroundChecks() const noexcept {
+        return backgroundChecks_;
+    }
+
+    /// Applies finished background results. Call once per frame; returns true if any row changed.
+    bool pollBackgroundChecks();
+
+    /// Blocks until queued background checks finish and applies them (tests).
+    void waitForChecks();
+
+    [[nodiscard]] bool checksRunning() const noexcept;
+
+    /// Overall progress of the running check job in [0, 1].
+    [[nodiscard]] float checkProgress() const noexcept {
+        return checkRunner_.progress();
+    }
+
+    [[nodiscard]] std::optional<DefectCategory> currentCheckCategory() const noexcept {
+        return checkRunner_.currentCategory();
+    }
+
+    /// Defects across all non-information rows that are checked and not stale.
+    [[nodiscard]] std::size_t totalProblemCount() const noexcept;
+
+    [[nodiscard]] WatertightState watertightState() const noexcept;
+
+    /// Incremented on every mesh change; background results from older generations are dropped.
+    [[nodiscard]] std::uint64_t meshGeneration() const noexcept {
+        return meshGeneration_;
     }
 
     // -------------------------------------------------------------------------
-    // Defect Selection & 3D Highlight / Navigation State
+    // Selected Row, Filters, Multi-Selection & Focus (Tool panel)
     // -------------------------------------------------------------------------
 
-    /// Selects the entire "Thin / Near-Zero-Area Faces" defect category (highlights all offending faces).
-    void selectAllThinFaces();
+    [[nodiscard]] std::optional<DefectCategory> selectedCategory() const noexcept {
+        return selectedCategory_;
+    }
 
-    /// Selects and highlights a single facet by its 0-based face index, analyzes it, and builds
-    /// the live 2-ring repair preview (choosing the recommended `HealAction` for a newly selected face).
-    void selectSingleFace(Eigen::Index faceIndex);
+    /// Selects a Mesh Health row (opens its Tool, tints its defects) or deselects with `std::nullopt`.
+    void selectCategory(std::optional<DefectCategory> category);
 
-    /// Clears any active facet highlight selection.
+    /// Filters, visible rows, selection and focus of the selected row (read-only; use the methods below).
+    [[nodiscard]] const DefectBrowser& browser() const noexcept {
+        return browser_;
+    }
+
+    /// True when the selected row's defects can be browsed (checked, not running or stale).
+    [[nodiscard]] bool browsableResult() const noexcept {
+        return browser_.result() != nullptr;
+    }
+
+    void setSubtypeFilter(int subtype);
+    void selectHistogramBin(std::size_t bin, bool extend);
+    void stepHistogramBin(int direction);
+    void clearHistogramBinFilter();
+    void setDefectSort(int column, bool descending);
+    void clickDefectRow(std::size_t visiblePosition, bool toggle, bool range);
+    void selectAllVisibleDefects();
+    void selectNoDefects();
+    void invertDefectSelection();
+    void focusDefect(std::size_t element);
+    /// Next (+1) / previous (-1) defect within the filter, worst first. Returns false if none.
+    bool focusNextDefect(int direction);
+
+    /// Handles a viewport click on mesh face `faceIndex` (see `PickOutcome`).
+    PickOutcome pickFace(Eigen::Index faceIndex);
+
+    /// Staged Esc: clear the defect selection, then close the Tool (deselect the row). False if idle.
+    bool escape();
+
+    /// Deselects the row, clears the picked face and closes the Tool.
     void clearSelection() noexcept;
 
-    [[nodiscard]] SelectionMode selectionMode() const noexcept {
-        return selectionMode_;
+    /// Face shown in the single-face Inspector / framed by '.' (-1 if none).
+    [[nodiscard]] Eigen::Index focusedFaceIndex() const noexcept;
+
+    /// True when the focused defect is a thin face the repair Inspector can work on.
+    [[nodiscard]] bool inspectorActive() const noexcept {
+        return selectedFaceIndex_ >= 0;
     }
 
-    [[nodiscard]] Eigen::Index selectedFaceIndex() const noexcept {
-        return selectedFaceIndex_;
+    /// Faces drawn by the "Selected Defect Faces" overlay (selected + focused defects, or the picked face).
+    [[nodiscard]] std::vector<Eigen::Index> highlightedFaceIndices() const;
+
+    [[nodiscard]] ToolSlot activeTool() const noexcept {
+        return activeTool_;
     }
 
-    [[nodiscard]] const std::vector<Eigen::Index>& highlightedFaceIndices() const noexcept {
-        return highlightedFaceIndices_;
+    /// Opens Mesh > Units & Scale in the Tool slot (deselects any row).
+    void openUnitsAndScale();
+
+    /// Closes the Tool slot and deselects the row.
+    void closeTool();
+
+    [[nodiscard]] std::size_t listCap() const noexcept {
+        return listCap_;
+    }
+    void setListCap(std::size_t cap) noexcept {
+        listCap_ = std::max<std::size_t>(cap, 1);
     }
 
-    /// Builds per-face surface colors and 3D curve/point overlay geometry for the current selection.
+    [[nodiscard]] std::size_t overlayCap() const noexcept {
+        return overlayCap_;
+    }
+    void setOverlayCap(std::size_t cap) noexcept {
+        overlayCap_ = cap;
+    }
+
+    /// Builds per-face colors and the 3D overlay geometry for the current selection.
     [[nodiscard]] HighlightOverlayGeometry buildHighlightOverlay() const;
+
+    // -------------------------------------------------------------------------
+    // Status messages (status bar)
+    // -------------------------------------------------------------------------
+
+    [[nodiscard]] const std::string& statusMessage() const noexcept {
+        return statusMessage_;
+    }
+    [[nodiscard]] bool statusMessageIsError() const noexcept {
+        return statusMessageIsError_;
+    }
+    /// Incremented whenever a new status message is posted.
+    [[nodiscard]] std::uint64_t statusMessageSerial() const noexcept {
+        return statusMessageSerial_;
+    }
+    void postStatusMessage(std::string message, bool isError = false);
+
+    // -------------------------------------------------------------------------
+    // Display state
+    // -------------------------------------------------------------------------
 
     [[nodiscard]] bool ghostMeshEnabled() const noexcept {
         return ghostMeshEnabled_;
@@ -265,6 +478,14 @@ public:
 
     void setGhostMeshEnabled(bool enabled) noexcept {
         ghostMeshEnabled_ = enabled;
+    }
+
+    /// Display > Transparency slider: values below 1 turn Ghost on with that opacity, 1 turns it off.
+    void setBaseMeshTransparency(double opacity) noexcept;
+
+    /// Opacity the base mesh is drawn with (1 when Ghost is off).
+    [[nodiscard]] double effectiveBaseOpacity() const noexcept {
+        return ghostMeshEnabled_ ? ghostMeshOpacity_ : 1.0;
     }
 
     [[nodiscard]] double ghostMeshOpacity() const noexcept {
@@ -324,8 +545,8 @@ public:
     /// Computes the geometric vertex centroid `(v0 + v1 + v2) / 3` of a single facet.
     [[nodiscard]] Eigen::Vector3d computeFaceCentroid(Eigen::Index faceIndex) const noexcept;
 
-    /// Computes the active selection center: exact vertex centroid for `SingleFace`,
-    /// or bounding-box center for `AllThinFaces` / `None`.
+    /// Computes the active selection center: the exact centroid of a focused single face, otherwise
+    /// the bounding-box center of the focused / selected / visible defects (or the whole mesh).
     [[nodiscard]] Eigen::Vector3d computeSelectionCentroid() const noexcept;
 
     /// Computes a unit viewing normal for inspecting `faceIndex`. Uses the triangle's
@@ -390,7 +611,7 @@ public:
     }
 
     /// Chooses the repair strategy for the selected face and re-evaluates the 2-ring preview.
-    /// Ignored unless `SelectionMode::SingleFace` is active.
+    /// Ignored unless a thin face is focused (`inspectorActive()`).
     void setSelectedHealAction(HealAction action);
 
     /// Live 2-ring preview of `selectedHealAction()` on the selected face (invalid with a reason if unsafe).
@@ -447,6 +668,9 @@ public:
     /// Returns false (mesh unchanged) if there is nothing to heal or no face could be healed.
     bool fixAllThinFaces();
 
+    /// Applies each selected thin face's recommended repair as one undoable step.
+    bool fixSelectedThinFaces();
+
     /// Outcome of the most recent single-face commit or batch repair.
     [[nodiscard]] const std::string& lastRepairStatusMessage() const noexcept {
         return lastRepairStatusMessage_;
@@ -469,15 +693,37 @@ public:
 private:
     /// Records the current mesh and inspection context before a modification.
     void pushUndoEntry(std::string actionLabel);
-    /// Swaps in a modified mesh without clearing the undo history or source label.
+    /// Swaps in a modified mesh: new generation, focus and picks cleared, history kept.
     void replaceMeshPreservingHistory(Mesh mesh);
+    /// Second half of every mesh edit (after `pushUndoEntry`): swap the mesh and re-check.
+    void finishMeshEdit(Mesh mesh);
+    /// Auto rows are queued, other checked rows turn Stale.
+    void onMeshEdited();
+    /// The given row's parameters changed: re-run (Auto) or mark Stale.
+    void onCheckParamsChanged(DefectCategory category);
+    void resetHealthReport();
+    void markRunning(DefectCategory category) noexcept;
+    void launchQueuedChecks();
+    void applyCheckResult(CategoryResult result);
+    void syncBrowserResult();
+    /// Refreshes the Inspector, orbit pivot and normal toggle after the browser focus changed.
+    void onFocusChanged();
+    [[nodiscard]] CheckParams checkParams() const noexcept;
+    [[nodiscard]] std::vector<Eigen::Index> activeFrameFaces() const;
+    /// Focused defect (or picked face) when it is a single face; -1 otherwise.
+    [[nodiscard]] Eigen::Index focusedSingleFace() const noexcept;
+    void analyzeFocusedFace(Eigen::Index faceIndex);
     void rebuildCgalMesh();
     void resetSingleFaceRepairState() noexcept;
     void refreshRepairPreview();
 
     [[nodiscard]] bool previewUsesCutout() const noexcept;
-    /// Appends deduplicated vertices, undirected edges, and triangles of `faces` to `overlay`.
-    void appendFaceGeometry(const std::vector<Eigen::Index>& faces, HighlightOverlayGeometry& overlay) const;
+    /// Appends deduplicated vertices, undirected edges, and (optionally) triangles of `faces` to `overlay`.
+    void appendFaceGeometry(
+        const std::vector<Eigen::Index>& faces,
+        HighlightOverlayGeometry& overlay,
+        bool addTriangles = true,
+        std::unordered_map<int, std::size_t>* nodeOf = nullptr) const;
 
     [[nodiscard]] BoundingBox computeActiveSelectionOrMeshBounds() const noexcept;
     [[nodiscard]] static Eigen::Vector3d computeOrthogonalUpVector(
@@ -488,16 +734,31 @@ private:
     CgalSurfaceMesh cgalMesh_;
     bool cgalMeshValid_ = false;
     std::string loadedSourceLabel_ = "(No mesh loaded)";
+    std::filesystem::path currentFilePath_;
+    bool modified_ = false;
     std::string lastErrorMessage_;
     ToleranceConfig toleranceConfig_{};
     ThinFaceThresholds thresholds_{};
+    double degenerateAreaEpsilon_ = settings::kDefaultDegenerateAreaEpsilon;
 
-    bool hasDiagnosticsReport_ = false;
-    ThinFaceReport thinFaceReport_{};
+    MeshHealthReport health_{};
+    std::array<bool, kDefectCategoryCount> autoCheckDefaults_{};
+    bool checkMeshAfterLoad_ = settings::kDefaultCheckMeshAfterLoad;
+    bool backgroundChecks_ = false;
+    std::uint64_t meshGeneration_ = 0;
+    HealthCheckRunner checkRunner_;
 
-    SelectionMode selectionMode_ = SelectionMode::None;
-    Eigen::Index selectedFaceIndex_ = -1;
-    std::vector<Eigen::Index> highlightedFaceIndices_;
+    std::optional<DefectCategory> selectedCategory_;
+    DefectBrowser browser_;
+    ToolSlot activeTool_ = ToolSlot::None;
+    std::size_t listCap_ = settings::kDefaultListCap;
+    std::size_t overlayCap_ = settings::kDefaultOverlayCap;
+    Eigen::Index pickedFaceIndex_ = -1;   ///< Face clicked with no row containing it
+    Eigen::Index selectedFaceIndex_ = -1; ///< Thin face shown in the repair Inspector
+
+    std::string statusMessage_;
+    bool statusMessageIsError_ = false;
+    std::uint64_t statusMessageSerial_ = 0;
 
     SliverAnalysis selectedFaceAnalysis_{};
     HealAction selectedHealAction_ = HealAction::None;
@@ -515,7 +776,7 @@ private:
     int lastFocusedNormalSign_ = 0;
 
     bool ghostMeshEnabled_ = false;
-    double ghostMeshOpacity_ = 0.25;
+    double ghostMeshOpacity_ = settings::kDefaultGhostOpacity;
 
     OverlayAppearance overlayAppearance_{};
 };

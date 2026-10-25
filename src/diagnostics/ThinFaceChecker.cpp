@@ -1,4 +1,5 @@
 #include "diagnostics/ThinFaceChecker.hpp"
+#include "core/Constants.hpp"
 
 #include <Eigen/Geometry>
 
@@ -7,6 +8,36 @@
 #include <limits>
 
 namespace ogun {
+
+const char* thinFaceSubtypeLabel(ThinFaceSubtype subtype) noexcept {
+    switch (subtype) {
+    case ThinFaceSubtype::ZeroArea:
+        return "Zero-area";
+    case ThinFaceSubtype::Needle:
+        return "Needle";
+    case ThinFaceSubtype::Cap:
+        return "Cap";
+    case ThinFaceSubtype::Small:
+        return "Small";
+    }
+    return "Unknown";
+}
+
+ThinFaceSubtype classifyThinDefect(
+    const ThinFaceDefect& defect,
+    double needleEdgeRatio,
+    double capAngleDeg) noexcept {
+    if (defect.isZeroArea()) {
+        return ThinFaceSubtype::ZeroArea;
+    }
+    if (defect.longestEdge > 0.0 && defect.shortestEdge / defect.longestEdge < needleEdgeRatio) {
+        return ThinFaceSubtype::Needle;
+    }
+    if (defect.maxAngleDeg > capAngleDeg) {
+        return ThinFaceSubtype::Cap;
+    }
+    return ThinFaceSubtype::Small;
+}
 
 const ThinFaceDefect* ThinFaceReport::findDefectForFace(Eigen::Index faceIdx) const noexcept {
     const auto it = std::lower_bound(
@@ -78,6 +109,15 @@ ThinFaceDefect ThinFaceChecker::evaluateTriangle(
 
     defect.shortestEdge = std::min({e0, e1, e2});
     defect.longestEdge = std::max({e0, e1, e2});
+
+    // Law of cosines for the angle opposite the longest edge
+    const double a = defect.shortestEdge;
+    const double b = e0 + e1 + e2 - defect.shortestEdge - defect.longestEdge;
+    if (a > 0.0 && b > 0.0) {
+        const double c = defect.longestEdge;
+        const double cosAngle = std::clamp((a * a + b * b - c * c) / (2.0 * a * b), -1.0, 1.0);
+        defect.maxAngleDeg = std::acos(cosAngle) * kRadToDeg;
+    }
 
     if (!defect.hasDuplicateVertexIndices && defect.longestEdge > 0.0) {
         defect.area = 0.5 * (v1 - v0).cross(v2 - v0).norm();

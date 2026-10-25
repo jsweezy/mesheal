@@ -60,6 +60,34 @@ inline constexpr int    kDefaultPreviewRings         = 2;         // Adjacent to
 inline constexpr int    kDefaultMaxBatchIterations   = 10;        // Max iterative flip/collapse sweeps before PMP cleanup
 
 // -----------------------------------------------------------------------------
+// Mesh Health Checks & Large Defect Counts
+// -----------------------------------------------------------------------------
+inline constexpr double kDefaultDegenerateAreaEpsilon = 1.0e-14; // Face area <= eps * bbox_diag^2 counts as degenerate (relative, unitless)
+inline constexpr std::size_t kDefaultListCap      = 100;      // Above this many (filtered) defects the Tool panel shows a summary instead of a list
+inline constexpr std::size_t kDefaultOverlayCap   = 5000;     // Above this many highlighted faces only face tint is drawn (no edge tubes / vertex spheres)
+inline constexpr std::size_t kHistogramBins       = 24;       // Number of bins in the Tool panel metric histogram
+inline constexpr bool   kDefaultCheckMeshAfterLoad = true;    // Run "Check Mesh" automatically after a file or sample is loaded
+inline constexpr std::array<double, 3> kDefaultCategoryTintColor = {0.95, 0.58, 0.16}; // RGB tint of every defect of the selected Mesh Health row
+inline constexpr std::array<double, 3> kDefaultCleanFaceColor    = {0.70, 0.75, 0.80}; // RGB of base-mesh faces that are not highlighted
+inline constexpr std::array<double, 3> kDefaultBaseEdgeColor     = {0.18, 0.20, 0.24}; // RGB of the base-mesh wireframe
+inline constexpr std::array<double, 3> kDefaultBackFaceColor     = {0.85, 0.30, 0.55}; // RGB of back faces in the "Custom" back-face mode
+inline constexpr double kDefaultGhostOpacity     = 0.25;          // Base-mesh opacity used when Ghost (G) is on
+inline constexpr double kMinGhostOpacity         = 0.05;          // Minimum base-mesh opacity
+
+// -----------------------------------------------------------------------------
+// GUI Layout (docked panels)
+// -----------------------------------------------------------------------------
+inline constexpr float kPanelMarginPx          = 6.0f;            // Gap between docked panels and window edges (px)
+inline constexpr float kLeftColumnWidthPx      = 290.0f;          // Width of the left column (Display / Navigate / Structures)
+inline constexpr float kRightColumnDefaultPx   = 420.0f;          // Default width of the right column (Mesh Health / Tool)
+inline constexpr float kRightColumnMinPx       = 340.0f;          // Minimum draggable right-column width
+inline constexpr float kRightColumnMaxPx       = 900.0f;          // Maximum draggable right-column width
+inline constexpr float kMinViewportWidthPx     = 400.0f;          // Below this 3D-view width the left column auto-collapses
+inline constexpr double kStatusMessageSeconds  = 8.0;             // Seconds a status-bar message stays before reverting to "Ready"
+inline constexpr float kMinUiScale             = 0.6f;            // Minimum Preferences > Interface UI scale
+inline constexpr float kMaxUiScale             = 2.5f;            // Maximum Preferences > Interface UI scale
+
+// -----------------------------------------------------------------------------
 // Mesh Modification Undo History
 // -----------------------------------------------------------------------------
 inline constexpr std::size_t kMaxUndoHistoryDepth    = 50;        // Max undo snapshots kept (oldest full-mesh copies are dropped first)

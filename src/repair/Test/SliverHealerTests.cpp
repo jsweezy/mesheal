@@ -465,3 +465,36 @@ TEST_CASE("healAllThinFaces heals every thin face", "[repair][batch]") {
         CHECK((after.max - box.max).norm() < 1e-9);
     }
 }
+
+TEST_CASE("healFaces repairs only the listed faces with their recommended actions", "[repair][selected]") {
+    ogun::Mesh cube = makeSubdividedCube(4, 10.0);
+    {
+        const Eigen::Index f = nearestFace(cube, {4.17, 3.33, 10.0});
+        const Eigen::Vector3d a = vertexOf(cube, f, 0);
+        const Eigen::Vector3d b = vertexOf(cube, f, 1);
+        const Eigen::Vector3d c = vertexOf(cube, f, 2);
+        const Eigen::Vector3d mid = 0.5 * (a + b);
+        splitFace(cube, f, mid + 1e-5 * (c - mid).normalized());
+    }
+    {
+        const Eigen::Index f = nearestFace(cube, {10.0, 4.17, 3.33});
+        const Eigen::Vector3d c = vertexOf(cube, f, 2);
+        const Eigen::Vector3d centroid = (vertexOf(cube, f, 0) + vertexOf(cube, f, 1) + c) / 3.0;
+        splitFace(cube, f, c + 1e-5 * (centroid - c).normalized());
+    }
+    const ogun::ThinFaceReport before = ogun::ThinFaceChecker::check(cube);
+    REQUIRE(before.numDefects() >= 2);
+
+    const ogun::RepairResults one = ogun::SliverHealer::healFaces(cube, {before.faceIndices.front()});
+    CHECK(one.success);
+    CHECK(one.remainingThinFaces < before.numDefects());
+    CHECK(one.remainingThinFaces > 0);
+
+    const ogun::RepairResults all = ogun::SliverHealer::healFaces(cube, before.faceIndices);
+    CHECK(all.success);
+    CHECK(all.remainingThinFaces < one.remainingThinFaces);
+
+    const ogun::RepairResults none = ogun::SliverHealer::healFaces(cube, {});
+    CHECK_FALSE(none.success);
+    CHECK(none.mesh.numFaces() == cube.numFaces());
+}

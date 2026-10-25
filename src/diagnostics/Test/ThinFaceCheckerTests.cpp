@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <limits>
+#include <string>
 #include <vector>
 
 TEST_CASE("ThinFaceChecker reports zero defects on a clean cube mesh and computes exact metrics for regular faces",
@@ -199,4 +200,27 @@ TEST_CASE("ThinFaceChecker handles empty meshes and topologically degenerate fac
         REQUIRE(report.defects[0].minAltitude == 0.0);
         REQUIRE(std::isinf(report.defects[0].aspectRatio));
     }
+}
+
+TEST_CASE("ThinFaceChecker computes the max angle and buckets thin faces by shape",
+          "[diagnostics][thin-faces]") {
+    const ogun::ThinFaceThresholds thresholds{1.0e-3, 1.0e-6, 1000.0};
+    const Eigen::Vector3d o(0.0, 0.0, 0.0);
+
+    const ogun::ThinFaceDefect right = ogun::ThinFaceChecker::evaluateTriangle(o, Eigen::Vector3d(1, 0, 0), Eigen::Vector3d(0, 1, 0), thresholds);
+    REQUIRE(right.maxAngleDeg == Catch::Approx(90.0));
+
+    const ogun::ThinFaceDefect cap = ogun::ThinFaceChecker::evaluateTriangle(o, Eigen::Vector3d(10, 0, 0), Eigen::Vector3d(5, 1.0e-4, 0), thresholds);
+    REQUIRE(cap.maxAngleDeg > 179.0);
+    REQUIRE(ogun::classifyThinDefect(cap) == ogun::ThinFaceSubtype::Cap);
+
+    const ogun::ThinFaceDefect needle = ogun::ThinFaceChecker::evaluateTriangle(o, Eigen::Vector3d(10, 0, 0), Eigen::Vector3d(10, 1.0e-4, 0), thresholds);
+    REQUIRE(ogun::classifyThinDefect(needle) == ogun::ThinFaceSubtype::Needle);
+
+    const ogun::ThinFaceDefect flat = ogun::ThinFaceChecker::evaluateTriangle(o, Eigen::Vector3d(10, 0, 0), Eigen::Vector3d(5, 0, 0), thresholds);
+    REQUIRE(ogun::classifyThinDefect(flat) == ogun::ThinFaceSubtype::ZeroArea);
+
+    const ogun::ThinFaceDefect tiny = ogun::ThinFaceChecker::evaluateTriangle(o, Eigen::Vector3d(1.0e-4, 0, 0), Eigen::Vector3d(0, 1.0e-4, 0), thresholds);
+    REQUIRE(ogun::classifyThinDefect(tiny) == ogun::ThinFaceSubtype::Small);
+    REQUIRE(std::string(ogun::thinFaceSubtypeLabel(ogun::ThinFaceSubtype::Cap)) == "Cap");
 }

@@ -14,7 +14,6 @@
 #include <polyscope/render/engine.h>
 #include <polyscope/surface_mesh.h>
 #include <polyscope/view.h>
-#include <portable-file-dialogs.h>
 
 #include <algorithm>
 #include <array>
@@ -134,26 +133,7 @@ void makeOuterBackgroundTransparent(std::vector<unsigned char>& rgba, int w, int
     }
 }
 
-constexpr std::array<PreviewDisplayMode, 3> kPreviewDisplayModes = {
-    PreviewDisplayMode::CutoutOriginalEdges,
-    PreviewDisplayMode::TranslucentBase,
-    PreviewDisplayMode::TranslucentPatch,
-};
 constexpr double kColorReadbackTolerance = 1.0e-4;
-const ImVec4 kWarningTextColor(1.0f, 0.35f, 0.35f, 1.0f);
-const ImVec4 kSuccessTextColor(0.28f, 0.90f, 0.42f, 1.0f);
-
-struct HealActionOption {
-    HealAction action;
-    const char* label;
-};
-
-constexpr std::array<HealActionOption, 4> kHealActionOptions = {{
-    {HealAction::FlipLongestEdge, "Flip Longest Edge (Best for Coplanar Caps)"},
-    {HealAction::CollapseShortestEdge, "Collapse Shortest Edge (Best for Needles)"},
-    {HealAction::SnapCollinearCollapse, "Snap Collinear Vertex (Cap on Feature Crease)"},
-    {HealAction::RemoveDegenerateFace, "Remove Degenerate Flap (Isolated / Redundant Face)"},
-}};
 
 glm::vec3 toGlm(const Eigen::Vector3d& v) {
     return glm::vec3(static_cast<float>(v.x()), static_cast<float>(v.y()), static_cast<float>(v.z()));
@@ -208,12 +188,14 @@ void PolyscopeGui::run() {
     polyscope::options::autoscaleStructures = false;
     polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
     polyscope::options::openImGuiWindowForUserCallback = false;
+    polyscope::options::buildDefaultGuiPanels = false;
 
     polyscope::init();
     polyscope::state::doDefaultMouseInteraction = false;
     applyTransparencyModeForPreview();
     loadAndApplyApplicationIcon();
 
+    controller_.setBackgroundChecks(true);
     if (controller_.hasMesh()) {
         syncMeshStructureToPolyscope(true);
     }
@@ -269,695 +251,59 @@ void PolyscopeGui::loadAndApplyApplicationIcon() {
 }
 
 void PolyscopeGui::drawUiFrame() {
+    if (controller_.pollBackgroundChecks()) {
+        requestSync();
+    }
     syncStylesFromPolyscopeUi();
     handleViewportMouseNavigation();
     handleKeyboardShortcuts();
 
-    const float winWidth = static_cast<float>(polyscope::view::windowWidth);
-    const float winHeight = static_cast<float>(polyscope::view::windowHeight);
-    const float panelWidth = 460.0f;
-    const float panelHeight = std::min(780.0f, std::max(480.0f, winHeight - 32.0f));
-    const float defaultRightX = std::max(330.0f, winWidth - panelWidth - 16.0f);
+    ImGui::GetIO().FontGlobalScale = uiScale_;
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    const float menuHeight = drawMenuBar();
+    const float statusHeight = ImGui::GetFrameHeight() + 2.0f * ImGui::GetStyle().WindowPadding.y;
+    const float top = menuHeight + settings::kPanelMarginPx;
+    const float bottom = display.y - statusHeight - settings::kPanelMarginPx;
 
-    if (!positionedMainWindowOnce_ && winWidth > 0.0f) {
-        ImGui::SetNextWindowPos(ImVec2(defaultRightX, 16.0f), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(panelWidth, panelHeight), ImGuiCond_FirstUseEver);
-        positionedMainWindowOnce_ = true;
+    drawRightColumn(top, bottom);
+    const float rightLeft = display.x - rightColumnWidth_ - settings::kPanelMarginPx;
+    drawLeftColumn(top, bottom, rightLeft);
+    drawStatusBar(display.y - statusHeight, statusHeight);
+
+    if (showPreferences_) {
+        drawPreferencesWindow();
     }
-
-    if (ImGui::Begin("Ogun - STL Diagnostics & Inspection")) {
-        drawFileBarSection();
-        ImGui::Separator();
-        drawUnitsAndScaleSection();
-        ImGui::Separator();
-        drawDiagnosticsSection();
-        ImGui::Separator();
-        drawMeshRepairSection();
-        ImGui::Separator();
-        drawHighlightAndNavigationSection();
-    }
-    ImGui::End();
-
     if (showNavigationHelpWindow_) {
         drawNavigationHelpWindow();
     }
+    drawModalPopups();
+    layoutResetPending_ = false;
 
+    processPendingSync();
     applyEffectiveHighlightSizingToPolyscope(false);
 }
 
-void PolyscopeGui::drawFileBarSection() {
-    if (appIconTexture_ != nullptr) {
-        ImGui::Image(
-            reinterpret_cast<ImTextureID>(appIconTexture_->getNativeHandle()),
-            ImVec2(40.0f, 40.0f));
-        ImGui::SameLine();
-        ImGui::BeginGroup();
-    }
-
-    ImGui::TextUnformatted("Mesh Source");
-
-    if (ImGui::Button("Open STL...")) {
-        auto selection = pfd::open_file(
-            "Open STL File",
-            "",
-            {"STL Mesh (*.stl)", "*.stl *.STL", "All Files", "*"},
-            pfd::opt::none).result();
-        if (!selection.empty()) {
-            if (controller_.loadStlFile(std::filesystem::path(selection.front()))) {
-                saveStatusMessage_.clear();
-                syncMeshStructureToPolyscope(true);
-            }
-        }
-    }
-
-    ImGui::SameLine();
-    if (ImGui::Button("Load Sample Test Mesh")) {
-        controller_.loadSampleDefectiveMesh();
-        saveStatusMessage_.clear();
-        syncMeshStructureToPolyscope(true);
-    }
-
-    ImGui::BeginDisabled(!controller_.hasMesh());
-    if (ImGui::Button("Save STL...")) {
-        auto destination = pfd::save_file(
-            "Save STL File",
-            "repaired.stl",
-            {"STL Mesh (*.stl)", "*.stl *.STL", "All Files", "*"},
-            pfd::opt::none).result();
-        if (!destination.empty()) {
-            std::filesystem::path outPath(destination);
-            if (!outPath.has_extension()) {
-                outPath.replace_extension(".stl");
-            }
-            saveStatusMessage_ = controller_.saveStlFile(outPath, exportFormat_)
-                ? "Saved " + outPath.filename().string()
-                : std::string{};
-        }
-    }
-    ImGui::EndDisabled();
-
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(110.0f);
-    const char* formatLabel = (exportFormat_ == StlFormat::Binary) ? "Binary STL" : "ASCII STL";
-    if (ImGui::BeginCombo("##ExportFormat", formatLabel)) {
-        if (ImGui::Selectable("Binary STL", exportFormat_ == StlFormat::Binary)) {
-            exportFormat_ = StlFormat::Binary;
-        }
-        if (ImGui::Selectable("ASCII STL", exportFormat_ == StlFormat::Ascii)) {
-            exportFormat_ = StlFormat::Ascii;
-        }
-        ImGui::EndCombo();
-    }
-
-    ImGui::SameLine();
-    drawUndoButton("FileBar");
-
-    if (appIconTexture_ != nullptr) {
-        ImGui::EndGroup();
-    }
-
-    ImGui::Text("Loaded: %s", controller_.loadedSourceLabel().c_str());
-    if (controller_.hasMesh()) {
-        ImGui::Text(
-            "Vertices: %lld   |   Triangles: %lld",
-            static_cast<long long>(controller_.mesh().numVertices()),
-            static_cast<long long>(controller_.mesh().numFaces()));
-    } else {
-        ImGui::TextDisabled("No mesh loaded. Click 'Open STL...' or 'Load Sample Test Mesh'.");
-    }
-
-    if (!controller_.lastErrorMessage().empty()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, kWarningTextColor);
-        ImGui::TextWrapped("Error: %s", controller_.lastErrorMessage().c_str());
-        ImGui::PopStyleColor();
-    } else if (!saveStatusMessage_.empty()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, kSuccessTextColor);
-        ImGui::TextWrapped("%s", saveStatusMessage_.c_str());
-        ImGui::PopStyleColor();
-    }
+void PolyscopeGui::requestSync(bool meshChanged) noexcept {
+    syncPending_ = true;
+    syncMeshChanged_ = syncMeshChanged_ || meshChanged;
 }
 
-void PolyscopeGui::drawUndoButton(const char* idSuffix) {
-    const std::string undoLabel = controller_.canUndo()
-        ? "Undo: " + controller_.lastUndoActionLabel() + " (Ctrl+Z / Cmd+Z)##" + idSuffix
-        : std::string("Undo (Ctrl+Z / Cmd+Z)##") + idSuffix;
-    ImGui::BeginDisabled(!controller_.canUndo());
-    if (ImGui::Button(undoLabel.c_str())) {
-        undoLastModification();
+void PolyscopeGui::processPendingSync() {
+    if (!syncPending_) {
+        return;
     }
-    ImGui::EndDisabled();
+    if (syncMeshChanged_) {
+        polyscope::resetSelection();
+    }
+    syncPending_ = false;
+    syncMeshChanged_ = false;
+    syncHighlightOverlaysToPolyscope();
 }
 
 void PolyscopeGui::undoLastModification() {
     if (controller_.undoLastModification()) {
-        syncModifiedMeshToPolyscope();
+        requestSync(true);
     }
-}
-
-void PolyscopeGui::drawUnitsAndScaleSection() {
-    ImGui::TextUnformatted("Units & Coordinate Scale");
-
-    const Unit currentUnit = controller_.fileUnit();
-    const std::string currentLabel(unitDisplayName(currentUnit));
-    ImGui::SetNextItemWidth(175.0f);
-    if (ImGui::BeginCombo("File Units", currentLabel.c_str())) {
-        for (const Unit candidate : kAllUnits) {
-            const bool isSelected = (candidate == currentUnit);
-            const std::string itemLabel(unitDisplayName(candidate));
-            if (ImGui::Selectable(itemLabel.c_str(), isSelected)) {
-                controller_.setFileUnit(candidate);
-            }
-            if (isSelected) {
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-        ImGui::EndCombo();
-    }
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("Note: Changing File Units re-interprets units without altering vertex coordinates.");
-    ImGui::PopTextWrapPos();
-
-    const std::string sym(unitSymbol(controller_.fileUnit()));
-    if (controller_.hasMesh()) {
-        const BoundingBox bbox = controller_.mesh().boundingBox();
-        const Eigen::Vector3d ext = bbox.extents();
-        ImGui::Text(
-            "Bounding Box: %.4g x %.4g x %.4g %s (diag: %.4g %s)",
-            ext.x(), ext.y(), ext.z(), sym.c_str(),
-            bbox.diagonal(), sym.c_str());
-        ImGui::Text(
-            "  Min: (%.4g, %.4g, %.4g) %s",
-            bbox.min.x(), bbox.min.y(), bbox.min.z(), sym.c_str());
-        ImGui::Text(
-            "  Max: (%.4g, %.4g, %.4g) %s",
-            bbox.max.x(), bbox.max.y(), bbox.max.z(), sym.c_str());
-    }
-
-    if (ImGui::TreeNode("Scale Mesh Coordinates...")) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.78f, 0.28f, 1.0f));
-        ImGui::TextWrapped(
-            "Warning: This action multiplies vertex coordinates V to convert geometry from %s into the target unit.",
-            sym.c_str());
-        ImGui::PopStyleColor();
-
-        const std::string targetLabel(unitDisplayName(pendingScaleTargetUnit_));
-        ImGui::SetNextItemWidth(175.0f);
-        if (ImGui::BeginCombo("Target Unit", targetLabel.c_str())) {
-            for (const Unit candidate : kAllUnits) {
-                const bool isSelected = (candidate == pendingScaleTargetUnit_);
-                const std::string itemLabel(unitDisplayName(candidate));
-                if (ImGui::Selectable(itemLabel.c_str(), isSelected)) {
-                    pendingScaleTargetUnit_ = candidate;
-                }
-                if (isSelected) {
-                    ImGui::SetItemDefaultFocus();
-                }
-            }
-            ImGui::EndCombo();
-        }
-
-        const double factor = unitConversionFactor(controller_.fileUnit(), pendingScaleTargetUnit_);
-        ImGui::Text("Coordinate multiplier: %.6g", factor);
-
-        ImGui::BeginDisabled(!controller_.hasMesh() || pendingScaleTargetUnit_ == controller_.fileUnit());
-        if (ImGui::Button("Scale Mesh Coordinates Now")) {
-            controller_.scaleMeshCoordinatesToUnit(pendingScaleTargetUnit_);
-            polyscope::resetSelection();
-            syncMeshStructureToPolyscope(true);
-        }
-        ImGui::EndDisabled();
-
-        ImGui::TreePop();
-    }
-
-    if (ImGui::TreeNode("Preferences / Welding & Tolerance")) {
-        ToleranceConfig tol = controller_.toleranceConfig();
-        bool changed = false;
-        ImGui::PushItemWidth(110.0f);
-        if (ImGui::InputDouble("Atomic Floor (cm)", &tol.absFloorCm, 0.0, 0.0, "%.0e")) {
-            tol.absFloorCm = std::max(0.0, tol.absFloorCm);
-            changed = true;
-        }
-        if (ImGui::InputDouble("Relative Tolerance", &tol.relTol, 0.0, 0.0, "%.0e")) {
-            tol.relTol = std::max(0.0, tol.relTol);
-            changed = true;
-        }
-        ImGui::PopItemWidth();
-        if (changed) {
-            controller_.setToleranceConfig(tol);
-        }
-        ImGui::Text(
-            "Active floor in %s: %.0e %s",
-            sym.c_str(),
-            controller_.toleranceConfig().absFloorInUnit(controller_.fileUnit()),
-            sym.c_str());
-        if (ImGui::Button("Reset Default Tolerances")) {
-            controller_.setToleranceConfig(ToleranceConfig{});
-        }
-        ImGui::TreePop();
-    }
-}
-
-void PolyscopeGui::drawDiagnosticsSection() {
-    ImGui::TextUnformatted("Diagnostics -- Check Manifold (Thin / Sliver Faces)");
-
-    const std::string sym(unitSymbol(controller_.fileUnit()));
-    ThinFaceThresholds thresh = controller_.thresholds();
-    bool threshChanged = false;
-
-    ImGui::PushItemWidth(110.0f);
-    const std::string minAltLabel = "Min Altitude h_min (" + sym + ")";
-    if (ImGui::InputDouble(minAltLabel.c_str(), &thresh.minAltitude, 0.0, 0.0, "%.0e")) {
-        thresh.minAltitude = std::max(0.0, thresh.minAltitude);
-        threshChanged = true;
-    }
-
-    const std::string minAreaLabel = "Min Area A (" + sym + "^2)";
-    if (ImGui::InputDouble(minAreaLabel.c_str(), &thresh.minArea, 0.0, 0.0, "%.0e")) {
-        thresh.minArea = std::max(0.0, thresh.minArea);
-        threshChanged = true;
-    }
-
-    if (ImGui::InputDouble("Max Aspect Ratio (l_max / h_min)", &thresh.maxAspectRatio, 0.0, 0.0, "%.0f")) {
-        thresh.maxAspectRatio = std::max(1.0, thresh.maxAspectRatio);
-        threshChanged = true;
-    }
-    ImGui::PopItemWidth();
-
-    if (threshChanged) {
-        controller_.setThresholds(thresh);
-    }
-
-    ImGui::BeginDisabled(!controller_.hasMesh());
-    if (ImGui::Button("Check Manifold")) {
-        controller_.runCheckManifold();
-        syncHighlightOverlaysToPolyscope();
-    }
-    ImGui::EndDisabled();
-
-    if (!controller_.hasDiagnosticsReport()) {
-        ImGui::TextDisabled("Click 'Check Manifold' to inspect mesh facets.");
-        return;
-    }
-
-    const ThinFaceReport& report = controller_.thinFaceReport();
-    if (report.empty()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, kSuccessTextColor);
-        ImGui::Text(
-            "0 thin/sliver faces detected across %lld triangles.",
-            static_cast<long long>(report.totalFacesChecked));
-        ImGui::PopStyleColor();
-        return;
-    }
-
-    char categoryHeader[128];
-    std::snprintf(
-        categoryHeader,
-        sizeof(categoryHeader),
-        "Thin / Near-Zero-Area Faces (%zu)  [Click to Highlight All]",
-        report.numDefects());
-
-    const bool categorySelected = (controller_.selectionMode() == SelectionMode::AllThinFaces);
-    if (ImGui::Selectable(categoryHeader, categorySelected)) {
-        controller_.selectAllThinFaces();
-        syncHighlightOverlaysToPolyscope();
-    }
-
-    ImGui::BeginChild("DefectListScrollRegion", ImVec2(0.0f, 175.0f), true);
-    for (const ThinFaceDefect& defect : report.defects) {
-        char rowLabel[256];
-        if (std::isfinite(defect.aspectRatio)) {
-            std::snprintf(
-                rowLabel,
-                sizeof(rowLabel),
-                "Face #%lld | h_min=%.2e %s | A=%.2e %s^2 | AR=%.1f",
-                static_cast<long long>(defect.faceIndex),
-                defect.minAltitude,
-                sym.c_str(),
-                defect.area,
-                sym.c_str(),
-                defect.aspectRatio);
-        } else {
-            std::snprintf(
-                rowLabel,
-                sizeof(rowLabel),
-                "Face #%lld | h_min=%.2e %s | A=%.2e %s^2 | AR=INF",
-                static_cast<long long>(defect.faceIndex),
-                defect.minAltitude,
-                sym.c_str(),
-                defect.area,
-                sym.c_str());
-        }
-
-        const bool rowSelected =
-            (controller_.selectionMode() == SelectionMode::SingleFace) &&
-            (controller_.selectedFaceIndex() == defect.faceIndex);
-
-        if (ImGui::Selectable(rowLabel, rowSelected)) {
-            controller_.selectSingleFace(defect.faceIndex);
-            syncHighlightOverlaysToPolyscope();
-        }
-    }
-    ImGui::EndChild();
-}
-
-void PolyscopeGui::drawMeshRepairSection() {
-    ImGui::TextUnformatted("Mesh Repair -- Thin / Sliver Faces");
-
-    const bool hasDefects = controller_.hasDiagnosticsReport() && controller_.thinFaceReport().hasDefects();
-    ImGui::BeginDisabled(!hasDefects);
-    if (ImGui::Button("Fix All Thin / Sliver Faces")) {
-        if (controller_.fixAllThinFaces()) {
-            syncModifiedMeshToPolyscope();
-        }
-    }
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    drawUndoButton("RepairSection");
-
-    if (!controller_.lastRepairStatusMessage().empty()) {
-        ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextDisabled("%s", controller_.lastRepairStatusMessage().c_str());
-        ImGui::PopTextWrapPos();
-    }
-
-    if (controller_.selectionMode() == SelectionMode::SingleFace) {
-        drawSingleFaceRepairInspector();
-    } else {
-        ImGui::TextDisabled("Select a face in the defect list or click it in the 3D viewport to inspect it.");
-    }
-}
-
-void PolyscopeGui::drawSingleFaceRepairInspector() {
-    const SliverAnalysis& analysis = controller_.selectedFaceAnalysis();
-    const SingleFaceRepairPreview& preview = controller_.repairPreview();
-
-    ImGui::Spacing();
-    ImGui::Text("Selected Face #%lld", static_cast<long long>(controller_.selectedFaceIndex()));
-    ImGui::Text("Detected Type: %s", sliverTypeLabel(analysis.type));
-    ImGui::Text(
-        "Max Angle: %.3f deg   |   Min/Max Edge Ratio: %.3e",
-        analysis.maxAngleDeg,
-        analysis.edgeRatio);
-    if (analysis.recommendedAction != HealAction::None) {
-        ImGui::TextDisabled("Recommended: %s", healActionLabel(analysis.recommendedAction));
-    }
-
-    for (const HealActionOption& option : kHealActionOptions) {
-        if (ImGui::RadioButton(option.label, controller_.selectedHealAction() == option.action)) {
-            controller_.setSelectedHealAction(option.action);
-            syncHighlightOverlaysToPolyscope();
-        }
-    }
-
-    bool showPreview = controller_.repairPreviewVisible();
-    if (ImGui::Checkbox("Show 3D Repair Preview Patch", &showPreview)) {
-        controller_.setRepairPreviewVisible(showPreview);
-        syncHighlightOverlaysToPolyscope();
-    }
-
-    ImGui::SetNextItemWidth(200.0f);
-    if (ImGui::BeginCombo("Preview Display", previewDisplayModeLabel(controller_.previewDisplayMode()))) {
-        for (const PreviewDisplayMode mode : kPreviewDisplayModes) {
-            const bool isSelected = (mode == controller_.previewDisplayMode());
-            if (ImGui::Selectable(previewDisplayModeLabel(mode), isSelected)) {
-                controller_.setPreviewDisplayMode(mode);
-                applyTransparencyModeForPreview();
-                syncHighlightOverlaysToPolyscope();
-            }
-            if (isSelected) {
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-        ImGui::EndCombo();
-    }
-
-    ImGui::SetNextItemWidth(200.0f);
-    if (controller_.previewDisplayMode() == PreviewDisplayMode::TranslucentBase) {
-        auto opacity = static_cast<float>(controller_.previewBaseOpacity());
-        if (ImGui::SliderFloat("Base Mesh Opacity", &opacity, 0.05f, 1.0f, "%.2f")) {
-            controller_.setPreviewBaseOpacity(static_cast<double>(opacity));
-            syncMeshTransparencyToPolyscope();
-        }
-    } else if (controller_.previewDisplayMode() == PreviewDisplayMode::TranslucentPatch) {
-        auto opacity = static_cast<float>(controller_.previewPatchOpacity());
-        if (ImGui::SliderFloat("Patch Opacity", &opacity, 0.05f, 1.0f, "%.2f")) {
-            controller_.setPreviewPatchOpacity(static_cast<double>(opacity));
-            syncMeshTransparencyToPolyscope();
-        }
-    } else if (controller_.previewDisplayMode() == PreviewDisplayMode::CutoutOriginalEdges) {
-        OverlayAppearance appearance = controller_.overlayAppearance();
-        bool appearanceChanged = false;
-        auto widthPx = static_cast<float>(appearance.originalEdgeWidthPx);
-        if (ImGui::SliderFloat(
-                "Original Edge Width (px)",
-                &widthPx,
-                static_cast<float>(settings::kMinOverlayEdgeWidthPx),
-                static_cast<float>(settings::kMaxOverlayEdgeWidthPx),
-                "%.2f")) {
-            appearance.originalEdgeWidthPx = static_cast<double>(widthPx);
-            appearanceChanged = true;
-        }
-        ImGui::SetNextItemWidth(200.0f);
-        auto opacity = static_cast<float>(appearance.originalEdgeOpacity);
-        if (ImGui::SliderFloat("Original Edge Opacity", &opacity, 0.05f, 1.0f, "%.2f")) {
-            appearance.originalEdgeOpacity = static_cast<double>(opacity);
-            appearanceChanged = true;
-        }
-        if (appearanceChanged) {
-            controller_.setOverlayAppearance(appearance);
-            applyOverlayAppearanceToPolyscope();
-        }
-    }
-
-    if (!preview.statusMessage.empty()) {
-        const bool unsafe = !preview.valid && controller_.selectedHealAction() != HealAction::None;
-        ImGui::PushStyleColor(ImGuiCol_Text, unsafe ? kWarningTextColor : kSuccessTextColor);
-        ImGui::TextWrapped("%s%s", unsafe ? "Warning: " : "", preview.statusMessage.c_str());
-        ImGui::PopStyleColor();
-    }
-
-    ImGui::BeginDisabled(controller_.selectedHealAction() == HealAction::None);
-    if (ImGui::Button("Commit Repair")) {
-        if (controller_.commitSelectedFaceRepair()) {
-            syncModifiedMeshToPolyscope();
-        }
-    }
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    if (ImGui::Button("Cancel")) {
-        if (controller_.hasDiagnosticsReport() && controller_.thinFaceReport().hasDefects()) {
-            controller_.selectAllThinFaces();
-        } else {
-            controller_.clearSelection();
-        }
-        syncHighlightOverlaysToPolyscope();
-    }
-    ImGui::SameLine();
-    drawUndoButton("Inspector");
-}
-
-void PolyscopeGui::drawHighlightAndNavigationSection() {
-    ImGui::TextUnformatted("3D Highlight & Camera Navigation");
-
-    OverlayAppearance appearance = controller_.overlayAppearance();
-    bool appearanceChanged = false;
-    ImGui::PushItemWidth(160.0f);
-    auto pointRadiusPx = static_cast<float>(appearance.pointRadiusPx);
-    if (ImGui::SliderFloat(
-            "Defect Point Radius (px)",
-            &pointRadiusPx,
-            static_cast<float>(settings::kMinHighlightPointRadiusPx),
-            static_cast<float>(settings::kMaxHighlightPointRadiusPx),
-            "%.1f")) {
-        appearance.pointRadiusPx = static_cast<double>(pointRadiusPx);
-        appearanceChanged = true;
-    }
-    auto edgeWidthPx = static_cast<float>(appearance.selectedFaces.edgeWidthPx);
-    if (ImGui::SliderFloat(
-            "Defect Edge Width (px)",
-            &edgeWidthPx,
-            static_cast<float>(settings::kMinOverlayEdgeWidthPx),
-            static_cast<float>(settings::kMaxOverlayEdgeWidthPx),
-            "%.2f")) {
-        appearance.selectedFaces.edgeWidthPx = static_cast<double>(edgeWidthPx);
-        appearance.selectedFaces.showEdges = true;
-        appearanceChanged = true;
-    }
-    ImGui::PopItemWidth();
-    if (appearanceChanged) {
-        controller_.setOverlayAppearance(appearance);
-        applyOverlayAppearanceToPolyscope();
-    }
-
-    if (ImGui::Button("Reset Default Highlight Styles")) {
-        controller_.resetOverlayAppearanceToDefaults();
-        syncHighlightOverlaysToPolyscope();
-    }
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled(
-        "Color, Edges, Edge Color and Width of 'Selected Defect Faces' and 'Repair Preview Patch' are in Polyscope's Structures panel.");
-    ImGui::PopTextWrapPos();
-
-    bool ghost = controller_.ghostMeshEnabled();
-    if (ImGui::Checkbox("Ghost / Transparent Mesh", &ghost)) {
-        controller_.setGhostMeshEnabled(ghost);
-        syncMeshTransparencyToPolyscope();
-    }
-
-    if (controller_.ghostMeshEnabled()) {
-        ImGui::SetNextItemWidth(160.0f);
-        auto opacity = static_cast<float>(controller_.ghostMeshOpacity());
-        if (ImGui::SliderFloat("Ghost Mesh Opacity", &opacity, 0.08f, 0.90f, "%.2f")) {
-            controller_.setGhostMeshOpacity(static_cast<double>(opacity));
-            syncMeshTransparencyToPolyscope();
-        }
-    }
-
-    ImGui::Checkbox("Show Polyscope Structures Sidebar", &polyscope::options::buildDefaultGuiPanels);
-
-    if (controller_.hasMesh()) {
-        const std::string sym(unitSymbol(controller_.fileUnit()));
-        const Eigen::Vector3d& pivot = controller_.orbitPivot();
-        if (controller_.selectionMode() == SelectionMode::SingleFace) {
-            const int normSign = controller_.lastFocusedNormalSign();
-            const char* sideTag = (normSign > 0) ? " [+Normal]" : ((normSign < 0) ? " [-Normal]" : "");
-            ImGui::TextDisabled(
-                "Orbit Pivot (Face #%lld Centroid%s): (%.4g, %.4g, %.4g) %s",
-                static_cast<long long>(controller_.selectedFaceIndex()),
-                sideTag,
-                pivot.x(), pivot.y(), pivot.z(),
-                sym.c_str());
-        } else if (controller_.selectionMode() == SelectionMode::AllThinFaces) {
-            ImGui::TextDisabled(
-                "Orbit Pivot (Selection): (%.4g, %.4g, %.4g) %s",
-                pivot.x(), pivot.y(), pivot.z(),
-                sym.c_str());
-        } else {
-            ImGui::TextDisabled(
-                "Orbit Pivot (Mesh Center): (%.4g, %.4g, %.4g) %s",
-                pivot.x(), pivot.y(), pivot.z(),
-                sym.c_str());
-        }
-    }
-
-    ImGui::BeginDisabled(!controller_.hasMesh());
-    if (ImGui::Button("Zoom +Normal (.)")) {
-        focusCameraOnSelection(FocusNormalSide::PositiveNormal);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Zoom -Normal (Shift+.)")) {
-        focusCameraOnSelection(FocusNormalSide::NegativeNormal);
-    }
-
-    if (ImGui::Button("Reset View (Home)")) {
-        resetCameraAndPivotToHome();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Clear Selection")) {
-        controller_.clearSelection();
-        syncHighlightOverlaysToPolyscope();
-    }
-    ImGui::EndDisabled();
-
-    ImGui::SameLine();
-    if (ImGui::Button("? Navigation Help")) {
-        showNavigationHelpWindow_ = !showNavigationHelpWindow_;
-    }
-
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled(
-        "Tip: Press '.' for +Normal (press '.' again / '..' to toggle -Normal), 'Shift+.' for -Normal, 'Home' to reset.");
-    ImGui::PopTextWrapPos();
-}
-
-void PolyscopeGui::drawNavigationHelpWindow() {
-    ImGui::SetNextWindowSize(ImVec2(500.0f, 360.0f), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("3D Viewport Navigation & Shortcuts", &showNavigationHelpWindow_)) {
-        ImGui::TextWrapped(
-            "Ogun uses Blender-inspired selection-centric camera navigation so inspecting microscopic sliver facets feels smooth at any zoom depth.");
-        ImGui::Separator();
-
-        ImGui::TextUnformatted("Mouse Controls (3D Viewport)");
-        if (ImGui::BeginTable("MouseNavTable", 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg)) {
-            ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 175.0f);
-            ImGui::TableSetupColumn("Input / Behavior", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableHeadersRow();
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted("Orbit / Rotate");
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextWrapped("Left-Click Drag (orbits around active Orbit Pivot)");
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted("Pan Camera & Pivot");
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextWrapped("Shift + Left-Click Drag, Right-Click Drag, or Middle-Click Drag (shifts Orbit Pivot with camera, scaled by depth)");
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted("Zoom (Dolly)");
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextWrapped("Scroll Wheel or Ctrl + Shift + Left-Click Drag (speed scales with distance to Orbit Pivot)");
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted("Select Face / Clear Pick");
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextWrapped("Left-Click a mesh face to select it, set the Orbit Pivot to its centroid, and open the Single-Face Repair Inspector with a live preview; Right-Click to clear the Polyscope pick");
-
-            ImGui::EndTable();
-        }
-
-        ImGui::Spacing();
-        ImGui::TextUnformatted("Keyboard Shortcuts & Orbit Pivot");
-        if (ImGui::BeginTable("KeyNavTable", 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg)) {
-            ImGui::TableSetupColumn("Shortcut", ImGuiTableColumnFlags_WidthFixed, 175.0f);
-            ImGui::TableSetupColumn("Behavior", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableHeadersRow();
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted("Click Defect in List");
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextWrapped("Highlights facet and immediately sets Orbit Pivot to its centroid (v0 + v1 + v2) / 3");
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted(".  or  Numpad .");
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextWrapped("Frames selected facet looking down +Normal. Press '.' again (or '..') to toggle to -Normal!");
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted("Shift + .");
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextWrapped("Frames selected facet directly from the -Normal (back/inward) side");
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted("Home  or  H");
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextWrapped("Frames entire mesh and resets Orbit Pivot to the full mesh center");
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted("Ctrl+Z  or  Cmd+Z");
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextWrapped("Undoes the last mesh modification (single-face repair, Fix All Thin / Sliver Faces, or Scale Mesh Coordinates), one step at a time");
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted("?  or  F1");
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextWrapped("Toggles this Navigation & Shortcuts help window");
-
-            ImGui::EndTable();
-        }
-    }
-    ImGui::End();
 }
 
 void PolyscopeGui::handleViewportMouseNavigation() {
@@ -1077,8 +423,12 @@ void PolyscopeGui::handleViewportFacePick(const polyscope::PickResult& pickResul
     }
 
     const auto localFace = static_cast<std::size_t>(elementId - nVerts);
-    controller_.selectSingleFace(faceMap ? (*faceMap)[localFace] : static_cast<Eigen::Index>(localFace));
-    syncHighlightOverlaysToPolyscope();
+    const PickOutcome outcome =
+        controller_.pickFace(faceMap ? (*faceMap)[localFace] : static_cast<Eigen::Index>(localFace));
+    if (outcome == PickOutcome::FocusedDefect || outcome == PickOutcome::SelectedRow) {
+        scrollListToFocus_ = true;
+    }
+    requestSync();
 }
 
 void PolyscopeGui::processPivotRotate(float dragDeltaX, float dragDeltaY) {
@@ -1197,35 +547,68 @@ void PolyscopeGui::processPivotZoom(double amount, double effectiveDist) {
 
 void PolyscopeGui::handleKeyboardShortcuts() {
     const ImGuiIO& io = ImGui::GetIO();
-    if (io.WantCaptureKeyboard) {
+    if (io.WantTextInput) {
         return;
     }
+    const bool mod = io.KeyCtrl || io.KeySuper;
 
     if ((ImGui::IsKeyPressed(ImGuiKey_Slash, false) && io.KeyShift) ||
         ImGui::IsKeyPressed(ImGuiKey_F1, false)) {
         showNavigationHelpWindow_ = !showNavigationHelpWindow_;
     }
-
-    if (ImGui::IsKeyPressed(ImGuiKey_Z, false) && (io.KeyCtrl || io.KeySuper)) {
+    if (mod && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
         undoLastModification();
     }
-
-    if (!controller_.hasMesh()) {
-        return;
+    if (mod && ImGui::IsKeyPressed(ImGuiKey_O, false)) {
+        openFileDialog();
     }
-
-    if (ImGui::IsKeyPressed(ImGuiKey_Period, false) ||
-        ImGui::IsKeyPressed(ImGuiKey_KeypadDecimal, false)) {
+    if (mod && ImGui::IsKeyPressed(ImGuiKey_S, false)) {
         if (io.KeyShift) {
-            focusCameraOnSelection(FocusNormalSide::NegativeNormal);
+            saveAsDialog(saveFormat_);
         } else {
-            focusCameraOnSelection(FocusNormalSide::AutoToggleNormal);
+            saveCurrentFile();
         }
     }
+    if (mod && ImGui::IsKeyPressed(ImGuiKey_Comma, false)) {
+        showPreferences_ = true;
+    }
 
+    // Plain keys below must not fire while an ImGui widget has keyboard focus (e.g. a slider)
+    if (io.WantCaptureKeyboard && ImGui::IsAnyItemActive()) {
+        return;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        if (controller_.escape()) {
+            requestSync();
+        }
+    }
+    if (!controller_.hasMesh() || mod) {
+        return;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_F5, false)) {
+        checkMesh();
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_N, false)) {
+        stepDefectFocus(io.KeyShift ? -1 : +1);
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_G, false)) {
+        toggleGhost();
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_Period, false) ||
+        ImGui::IsKeyPressed(ImGuiKey_KeypadDecimal, false)) {
+        focusCameraOnSelection(io.KeyShift ? FocusNormalSide::NegativeNormal : FocusNormalSide::AutoToggleNormal);
+    }
     if (ImGui::IsKeyPressed(ImGuiKey_Home, false) ||
         ImGui::IsKeyPressed(ImGuiKey_H, false)) {
         resetCameraAndPivotToHome();
+    }
+}
+
+void PolyscopeGui::stepDefectFocus(int direction) {
+    if (controller_.focusNextDefect(direction)) {
+        scrollListToFocus_ = true;
+        requestSync();
+        focusCameraOnSelection(FocusNormalSide::PositiveNormal);
     }
 }
 
@@ -1271,9 +654,6 @@ void PolyscopeGui::registerBaseMeshToPolyscope(const HighlightOverlayGeometry& o
     // Re-registering replaces the structure, so carry over the user's Structures-panel settings
     if (polyscope::hasSurfaceMesh(kSurfaceMeshName)) {
         auto* previous = polyscope::getSurfaceMesh(kSurfaceMeshName);
-        baseStyle_.color = fromGlm(previous->getSurfaceColor());
-        baseStyle_.edgeColor = fromGlm(previous->getEdgeColor());
-        baseStyle_.adoptPolyscopeEdgeWidth(previous->getEdgeWidth());
         baseMaterial_ = previous->getMaterial();
         baseEnabled_ = previous->isEnabled();
         baseStyleCaptured_ = true;
@@ -1290,14 +670,10 @@ void PolyscopeGui::registerBaseMeshToPolyscope(const HighlightOverlayGeometry& o
 
     auto* psMesh = polyscope::registerSurfaceMesh(kSurfaceMeshName, mesh.V, baseIsCut_ ? display.F : mesh.F);
     if (baseStyleCaptured_) {
-        psMesh->setSurfaceColor(toGlm(baseStyle_.color));
         psMesh->setMaterial(baseMaterial_);
         psMesh->setEnabled(baseEnabled_);
     }
-    psMesh->setEdgeColor(toGlm(baseStyle_.edgeColor));
-    psMesh->setEdgeWidth(baseStyle_.effectiveEdgeWidth());
-    psMesh->setSmoothShade(false);
-    psMesh->setBackFacePolicy(polyscope::BackFacePolicy::Different);
+    applyBaseMeshStyleToPolyscope();
 
     std::vector<Eigen::Vector3d> faceColors;
     if (baseIsCut_) {
@@ -1309,6 +685,33 @@ void PolyscopeGui::registerBaseMeshToPolyscope(const HighlightOverlayGeometry& o
         faceColors = overlay.faceColors;
     }
     psMesh->addFaceColorQuantity(kFaceColorQuantityName, faceColors)->setEnabled(true);
+}
+
+void PolyscopeGui::applyBaseMeshStyleToPolyscope() {
+    if (!polyscope::hasSurfaceMesh(kSurfaceMeshName)) {
+        return;
+    }
+    const OverlayAppearance& appearance = controller_.overlayAppearance();
+    auto* psMesh = polyscope::getSurfaceMesh(kSurfaceMeshName);
+    psMesh->setSurfaceColor(toGlm(appearance.baseMesh.color));
+    psMesh->setEdgeColor(toGlm(appearance.baseMesh.edgeColor));
+    psMesh->setEdgeWidth(appearance.baseMesh.effectiveEdgeWidth());
+    psMesh->setSmoothShade(appearance.smoothShade);
+    switch (appearance.backFaceMode) {
+    case BackFaceMode::Identical:
+        psMesh->setBackFacePolicy(polyscope::BackFacePolicy::Identical);
+        break;
+    case BackFaceMode::Darker:
+        psMesh->setBackFacePolicy(polyscope::BackFacePolicy::Different);
+        break;
+    case BackFaceMode::Custom:
+        psMesh->setBackFacePolicy(polyscope::BackFacePolicy::Custom);
+        psMesh->setBackFaceColor(toGlm(appearance.backFaceColor));
+        break;
+    case BackFaceMode::Cull:
+        psMesh->setBackFacePolicy(polyscope::BackFacePolicy::Cull);
+        break;
+    }
 }
 
 void PolyscopeGui::syncDefectOverlaysToPolyscope(const HighlightOverlayGeometry& overlay) {
@@ -1332,9 +735,7 @@ void PolyscopeGui::syncDefectOverlaysToPolyscope(const HighlightOverlayGeometry&
 }
 
 void PolyscopeGui::syncMeshTransparencyToPolyscope() {
-    float alpha = controller_.ghostMeshEnabled()
-        ? static_cast<float>(controller_.ghostMeshOpacity())
-        : 1.0f;
+    auto alpha = static_cast<float>(controller_.effectiveBaseOpacity());
     const bool previewShown = controller_.repairPreviewShown();
     if (previewShown && controller_.previewDisplayMode() == PreviewDisplayMode::TranslucentBase) {
         alpha = std::min(alpha, static_cast<float>(controller_.previewBaseOpacity()));
@@ -1418,15 +819,13 @@ void PolyscopeGui::syncStylesFromPolyscopeUi() {
         return;
     }
 
-    if (polyscope::hasSurfaceMesh(kSurfaceMeshName)) {
-        auto* psMesh = polyscope::getSurfaceMesh(kSurfaceMeshName);
-        if (baseStyle_.adoptPolyscopeEdgeWidth(psMesh->getEdgeWidth())) {
-            psMesh->setEdgeWidth(baseStyle_.effectiveEdgeWidth());
-        }
-    }
-
     OverlayAppearance appearance = controller_.overlayAppearance();
     bool changed = false;
+    if (polyscope::hasSurfaceMesh(kSurfaceMeshName)) {
+        auto* psMesh = polyscope::getSurfaceMesh(kSurfaceMeshName);
+        changed |= adoptColor(psMesh->getEdgeColor(), appearance.baseMesh.edgeColor);
+        changed |= appearance.baseMesh.adoptPolyscopeEdgeWidth(psMesh->getEdgeWidth());
+    }
     const auto adoptSurfaceStyle = [&changed](const char* name, SurfaceStyle& style) {
         if (polyscope::hasSurfaceMesh(name)) {
             auto* psMesh = polyscope::getSurfaceMesh(name);
@@ -1463,6 +862,7 @@ void PolyscopeGui::syncStylesFromPolyscopeUi() {
 
     if (changed) {
         controller_.setOverlayAppearance(appearance);
+        applyBaseMeshStyleToPolyscope();
         applyOverlayAppearanceToPolyscope();
     }
 }
@@ -1482,11 +882,6 @@ bool PolyscopeGui::adoptOverlayRadius(double polyscopeRadius, double& lastApplie
     valuePx = polyscopeRadius / worldPerPx;
     lastApplied = polyscopeRadius;
     return true;
-}
-
-void PolyscopeGui::syncModifiedMeshToPolyscope() {
-    polyscope::resetSelection();
-    syncMeshStructureToPolyscope(false);
 }
 
 Eigen::Vector3d PolyscopeGui::currentCameraWorldPosition() const noexcept {

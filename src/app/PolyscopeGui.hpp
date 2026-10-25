@@ -2,6 +2,8 @@
 
 #include "app/AppController.hpp"
 
+#include <chrono>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -17,6 +19,11 @@ class TextureBuffer;
 namespace ogun {
 
 /// Thin Polyscope + Dear ImGui visual presentation layer bound to `ogun::AppController`.
+/// Layout (UI_DESIGN.md §3): menu bar, left column (Display / Navigate / Structures), right column
+/// (Mesh Health + Tool slot) and a status bar, all docked by code every frame.
+/// Implementation is split across PolyscopeGui.cpp (Polyscope sync, mouse, keys),
+/// PolyscopeGuiShell.cpp (layout, menus, status bar, windows), PolyscopeGuiPanels.cpp
+/// (Display / Navigate / Structures) and PolyscopeGuiHealth.cpp (Mesh Health, Tool slot).
 class PolyscopeGui {
 public:
     static constexpr const char* kSurfaceMeshName = "STL Surface Mesh";
@@ -36,60 +43,130 @@ private:
     /// Per-frame Dear ImGui callback invoked by Polyscope.
     void drawUiFrame();
 
-    void drawFileBarSection();
-    void drawUnitsAndScaleSection();
-    void drawDiagnosticsSection();
-    void drawMeshRepairSection();
-    void drawSingleFaceRepairInspector();
-    void drawUndoButton(const char* idSuffix);
-    void drawHighlightAndNavigationSection();
+    // ---- Shell: layout, menus, status bar, floating windows (PolyscopeGuiShell.cpp) ----
+    float drawMenuBar();
+    void drawFileMenu();
+    void drawEditMenu();
+    void drawViewMenu();
+    void drawMeshMenu();
+    void drawRepairMenu();
+    void drawHelpMenu();
+    void drawStatusBar(float top, float height);
+    void drawLeftColumn(float top, float bottom, float rightColumnLeft);
+    void drawRightColumn(float top, float bottom);
+    void drawPreferencesWindow();
     void drawNavigationHelpWindow();
+    void drawModalPopups();
+    void resetLayout();
+    void openFileDialog();
+    void saveCurrentFile();
+    void saveAsDialog(StlFormat format);
+    void saveTo(const std::string& path, StlFormat format);
+    void loadSample(bool bunny);
+
+    // ---- Left column panels (PolyscopeGuiPanels.cpp) ----
+    void drawDisplayPanel();
+    void drawNavigatePanel();
+    void drawStructuresPanel();
+    void flyToStandardView(int view);
+    void toggleGhost();
+    void toggleOrthographic();
+
+    // ---- Right column: Mesh Health & Tool slot (PolyscopeGuiHealth.cpp) ----
+    void drawHealthPanel();
+    void drawHealthRow(DefectCategory category);
+    void drawMeshInfo();
+    void drawToolPanel();
+    void drawCategoryTool(DefectCategory category);
+    void drawCategorySettings(DefectCategory category);
+    void drawCategoryActions(DefectCategory category);
+    void drawDefectTable(float height);
+    void drawDefectSummary();
+    void drawHistogram();
+    void drawInspector();
+    void drawThinFaceInspector();
+    void drawUnitsAndScaleOperator();
+    void fixAll(DefectCategory category);
+    void checkMesh();
+
+    // ---- Viewport input & Polyscope sync (PolyscopeGui.cpp) ----
     void handleViewportMouseNavigation();
     void handleKeyboardShortcuts();
     void handleViewportFacePick(const polyscope::PickResult& pickResult);
-
     void processPivotRotate(float dragDeltaX, float dragDeltaY);
     void processPivotTranslate(float dragDeltaX, float dragDeltaY, double effectiveDist);
     void processPivotZoom(double amount, double effectiveDist);
 
-    /// Registers or updates the Polyscope surface mesh, face color quantity, and curve/point overlays.
     void loadAndApplyApplicationIcon();
+    /// Re-registers everything after a new mesh was loaded and frames it.
     void syncMeshStructureToPolyscope(bool resetCameraToHome);
     void syncHighlightOverlaysToPolyscope();
     void syncMeshTransparencyToPolyscope();
     /// Registers the base mesh without the faces cut out by `AppController::buildBaseMeshDisplay()`.
     void registerBaseMeshToPolyscope(const HighlightOverlayGeometry& overlay);
+    void applyBaseMeshStyleToPolyscope();
     void syncDefectOverlaysToPolyscope(const HighlightOverlayGeometry& overlay);
     void syncRepairPreviewToPolyscope();
     /// Sets Polyscope's transparency mode preferred by the active preview display mode.
     void applyTransparencyModeForPreview();
     /// Pushes overlay styles (colors, edge widths, point color) to the overlay structures.
     void applyOverlayAppearanceToPolyscope();
-    /// Adopts style edits made in Polyscope's Structures panel and restores edge widths after
-    /// Polyscope's "Edges" checkbox re-enables them at its default width.
+    /// Adopts style edits made in the Structures panel and restores edge widths after Polyscope's
+    /// "Edges" checkbox re-enables them at its default width.
     void syncStylesFromPolyscopeUi();
     /// Converts a tube / sphere radius edited in Polyscope's UI back into screen pixels.
     bool adoptOverlayRadius(double polyscopeRadius, double& lastApplied, double& valuePx);
-    /// Re-registers the modified mesh (after a repair, scale, or undo) without moving the camera.
-    void syncModifiedMeshToPolyscope();
-    void undoLastModification();
     void applyEffectiveHighlightSizingToPolyscope(bool forceUpdate = false);
+    void undoLastModification();
+
+    /// Marks the 3D overlays for a rebuild at the end of the frame (`meshChanged`: clear the pick too).
+    void requestSync(bool meshChanged = false) noexcept;
+    void processPendingSync();
 
     [[nodiscard]] Eigen::Vector3d currentCameraWorldPosition() const noexcept;
 
-    /// Animates the 3D Polyscope camera to focus on the current selection (or whole mesh)
-    /// and updates the 3D center of rotation (orbit pivot) to the target centroid.
+    /// Animates the camera to the current selection (or whole mesh) and moves the orbit pivot there.
     void focusCameraOnSelection(FocusNormalSide normalSide = FocusNormalSide::AutoToggleNormal);
+    /// Focuses the next / previous defect and flies the camera to it (N / Shift+N).
+    void stepDefectFocus(int direction);
 
     /// Resets the orbit pivot to the full mesh center and flies the camera to the home view.
     void resetCameraAndPivotToHome();
 
     AppController& controller_;
     std::shared_ptr<polyscope::render::TextureBuffer> appIconTexture_;
+
+    // Panels & layout (View menu, Reset Layout)
+    bool showHealth_ = true;
+    bool showTool_ = true;
+    bool showDisplay_ = true;
+    bool showNavigate_ = true;
+    bool showStructures_ = true;
+    bool showMeshInfo_ = false;
+    bool showPreferences_ = false;
+    bool showNavigationHelpWindow_ = false;
+    bool requestAbout_ = false;
+    bool requestSaveConfirm_ = false;
+    bool layoutResetPending_ = true;
+    bool leftColumnAutoCollapsed_ = false;
+    float rightColumnWidth_ = settings::kRightColumnDefaultPx;
+    float uiScale_ = 1.0f;
+
+    // Status bar message (mirrors the controller's latest message for a few seconds)
+    std::uint64_t shownMessageSerial_ = 0;
+    std::chrono::steady_clock::time_point messageTime_{};
+
+    // File state
+    StlFormat saveFormat_ = StlFormat::Binary;
+    std::string overwriteConfirmedFor_;
     Unit pendingScaleTargetUnit_ = Unit::Centimeter;
-    StlFormat exportFormat_ = StlFormat::Binary;
-    std::string saveStatusMessage_;
-    SurfaceStyle baseStyle_{Eigen::Vector3d::Constant(0.5), Eigen::Vector3d(0.18, 0.20, 0.24)};
+
+    // Tool panel
+    bool scrollListToFocus_ = false;
+
+    // 3D sync
+    bool syncPending_ = false;
+    bool syncMeshChanged_ = false;
     std::string baseMaterial_;
     bool baseEnabled_ = true;
     bool baseStyleCaptured_ = false;
@@ -100,8 +177,6 @@ private:
     double lastAppliedOriginalEdgeRadius_ = -1.0;
     double lastAppliedPointRadius_ = -1.0;
     float dragDistSinceLastRelease_ = 0.0f;
-    bool positionedMainWindowOnce_ = false;
-    bool showNavigationHelpWindow_ = false;
 };
 
 } // namespace ogun

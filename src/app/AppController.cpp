@@ -8,6 +8,7 @@
 #include <cmath>
 #include <system_error>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace ogun {
@@ -24,9 +25,50 @@ const char* previewDisplayModeLabel(PreviewDisplayMode mode) noexcept {
     return "Unknown";
 }
 
+const char* healthStatusLabel(HealthStatus status) noexcept {
+    switch (status) {
+    case HealthStatus::NotRun:
+        return "Not checked yet";
+    case HealthStatus::Running:
+        return "Checking...";
+    case HealthStatus::Ok:
+        return "OK";
+    case HealthStatus::Defects:
+        return "Problems found";
+    case HealthStatus::Stale:
+        return "Stale: the mesh changed since this check ran";
+    }
+    return "Unknown";
+}
+
+const char* backFaceModeLabel(BackFaceMode mode) noexcept {
+    switch (mode) {
+    case BackFaceMode::Identical:
+        return "Identical";
+    case BackFaceMode::Darker:
+        return "Darker";
+    case BackFaceMode::Custom:
+        return "Custom";
+    case BackFaceMode::Cull:
+        return "Hidden (cull)";
+    }
+    return "Unknown";
+}
+
+std::size_t CategoryHealth::displayCount(DefectCategory category) const noexcept {
+    if (!result) {
+        return 0;
+    }
+    return categoryInfo(category).infoOnly ? result->infoCount : result->size();
+}
+
 AppController::AppController()
     : thresholds_(ThinFaceThresholds::defaultsForUnit(Unit::Millimeter)) {
     mesh_.fileUnit = Unit::Millimeter;
+    for (const DefectCategory category : kAllDefectCategories) {
+        autoCheckDefaults_[categoryIndex(category)] = categoryInfo(category).autoDefault;
+    }
+    resetHealthReport();
 }
 
 std::filesystem::path AppController::resolveApplicationIconPath() noexcept {
@@ -54,11 +96,30 @@ std::filesystem::path AppController::resolveApplicationIconPath() noexcept {
     return {};
 }
 
+std::filesystem::path AppController::resolveSampleBunnyPath() noexcept {
+    const std::array<std::filesystem::path, 2> candidates = {
+        std::filesystem::path("examples/stanford_bunny.stl"),
+#ifdef OGUN_SOURCE_EXAMPLES_DIR
+        std::filesystem::path(OGUN_SOURCE_EXAMPLES_DIR) / "stanford_bunny.stl",
+#else
+        std::filesystem::path{},
+#endif
+    };
+    std::error_code ec;
+    for (const auto& candidate : candidates) {
+        if (!candidate.empty() && std::filesystem::exists(candidate, ec) && !ec) {
+            return candidate;
+        }
+    }
+    return {};
+}
+
 bool AppController::loadStlFile(const std::filesystem::path& filepath) {
     Mesh loadedMesh;
     std::string err;
     if (!ogun::loadStl(filepath, loadedMesh, mesh_.fileUnit, toleranceConfig_, &err)) {
         lastErrorMessage_ = std::move(err);
+        postStatusMessage(lastErrorMessage_, true);
         return false;
     }
 
@@ -67,6 +128,8 @@ bool AppController::loadStlFile(const std::filesystem::path& filepath) {
         ? filepath.string()
         : filepath.filename().string();
     setMesh(std::move(loadedMesh), label);
+    currentFilePath_ = filepath;
+    postStatusMessage("Loaded " + label);
     return true;
 }
 
@@ -75,19 +138,48 @@ void AppController::loadSampleDefectiveMesh() {
     setMesh(SampleMeshes::createSampleDefectiveMesh(mesh_.fileUnit), "Sample Defective Mesh");
 }
 
+bool AppController::loadSampleBunny() {
+    const std::filesystem::path path = resolveSampleBunnyPath();
+    if (path.empty()) {
+        lastErrorMessage_ = "Sample file examples/stanford_bunny.stl was not found.";
+        postStatusMessage(lastErrorMessage_, true);
+        return false;
+    }
+    if (!loadStlFile(path)) {
+        return false;
+    }
+    currentFilePath_.clear(); // samples are never overwritten by Save
+    return true;
+}
+
 void AppController::setMesh(Mesh mesh, std::string sourceLabel) {
     loadedSourceLabel_ = std::move(sourceLabel);
+    currentFilePath_.clear();
+    modified_ = false;
     undoStack_.clear();
     lastRepairStatusMessage_.clear();
+    checkRunner_.cancel();
+    selectedCategory_.reset();
+    activeTool_ = ToolSlot::None;
     replaceMeshPreservingHistory(std::move(mesh));
+    resetHealthReport();
+    syncBrowserResult();
+    if (checkMeshAfterLoad_ && !mesh_.empty()) {
+        checkMesh();
+    }
 }
 
 void AppController::replaceMeshPreservingHistory(Mesh mesh) {
     mesh_ = std::move(mesh);
+    ++meshGeneration_;
     rebuildCgalMesh();
-    hasDiagnosticsReport_ = false;
-    thinFaceReport_ = ThinFaceReport{};
-    clearSelection();
+    pickedFaceIndex_ = -1;
+    browser_.setResult(nullptr);
+    selectedFaceIndex_ = -1;
+    lastFocusedFaceIndex_ = -1;
+    lastFocusedNormalSign_ = 0;
+    resetSingleFaceRepairState();
+    orbitPivot_ = computeSelectionCentroid();
 }
 
 void AppController::rebuildCgalMesh() {
@@ -98,10 +190,20 @@ bool AppController::saveStlFile(const std::filesystem::path& filepath, StlFormat
     std::string err;
     if (!ogun::saveStl(filepath, mesh_, format, &err)) {
         lastErrorMessage_ = err.empty() ? "Failed to save STL file." : std::move(err);
+        postStatusMessage(lastErrorMessage_, true);
         return false;
     }
     lastErrorMessage_.clear();
+    currentFilePath_ = filepath;
+    modified_ = false;
+    postStatusMessage("Saved " + filepath.filename().string());
     return true;
+}
+
+void AppController::postStatusMessage(std::string message, bool isError) {
+    statusMessage_ = std::move(message);
+    statusMessageIsError_ = isError;
+    ++statusMessageSerial_;
 }
 
 void AppController::setFileUnit(Unit newUnit) noexcept {
@@ -112,86 +214,436 @@ void AppController::setFileUnit(Unit newUnit) noexcept {
 
     ogun::setFileUnit(mesh_, newUnit);
     thresholds_ = thresholds_.convertedToUnit(oldUnit, newUnit);
-
-    if (hasDiagnosticsReport_) {
-        thinFaceReport_.unit = newUnit;
-        thinFaceReport_.thresholds = thresholds_;
-    }
+    // Same numbers, new unit: lengths in results stay valid, but the thin thresholds changed meaning
+    onCheckParamsChanged(DefectCategory::ThinFaces);
 }
 
 void AppController::scaleMeshCoordinatesToUnit(Unit targetUnit) {
     const Unit oldUnit = mesh_.fileUnit;
-    if (oldUnit == targetUnit) {
+    if (oldUnit == targetUnit || mesh_.empty()) {
         return;
     }
 
     pushUndoEntry(
         "Scale Mesh Coordinates (" + std::string(unitSymbol(oldUnit)) + " -> " +
         std::string(unitSymbol(targetUnit)) + ")");
-    ogun::scaleMeshToUnit(mesh_, targetUnit);
+    Mesh scaled = mesh_;
+    ogun::scaleMeshToUnit(scaled, targetUnit);
     thresholds_ = thresholds_.convertedToUnit(oldUnit, targetUnit);
-    rebuildCgalMesh();
+    finishMeshEdit(std::move(scaled));
+    postStatusMessage("Scaled coordinates from " + std::string(unitSymbol(oldUnit)) + " to " +
+                      std::string(unitSymbol(targetUnit)) + ".");
+}
 
-    if (hasDiagnosticsReport_) {
-        const SelectionMode prevMode = selectionMode_;
-        const Eigen::Index prevFace = selectedFaceIndex_;
-        thinFaceReport_ = ThinFaceChecker::check(mesh_, thresholds_);
-        if (prevMode == SelectionMode::SingleFace && prevFace >= 0 && prevFace < mesh_.numFaces()) {
-            selectSingleFace(prevFace);
-        } else if (prevMode == SelectionMode::AllThinFaces && thinFaceReport_.hasDefects()) {
-            selectAllThinFaces();
-        } else if (thinFaceReport_.hasDefects()) {
-            selectAllThinFaces();
-        } else {
-            clearSelection();
-        }
-    } else {
-        resetOrbitPivotToSelection();
+// -----------------------------------------------------------------------------
+// Mesh Health
+// -----------------------------------------------------------------------------
+
+CheckParams AppController::checkParams() const noexcept {
+    CheckParams params;
+    params.thinThresholds = thresholds_;
+    params.degenerateAreaEpsilon = degenerateAreaEpsilon_;
+    return params;
+}
+
+void AppController::resetHealthReport() {
+    for (const DefectCategory category : kAllDefectCategories) {
+        CategoryHealth& row = health_[category];
+        row.status = HealthStatus::NotRun;
+        row.autoCheck = autoCheckDefaults_[categoryIndex(category)];
+        row.result.reset();
     }
 }
 
-const ThinFaceReport& AppController::runCheckManifold() {
-    thinFaceReport_ = ThinFaceChecker::check(mesh_, thresholds_);
-    hasDiagnosticsReport_ = true;
-
-    if (thinFaceReport_.hasDefects()) {
-        selectAllThinFaces();
-    } else {
-        clearSelection();
+void AppController::setThresholds(const ThinFaceThresholds& thresholds) {
+    const bool changed = thresholds.minAltitude != thresholds_.minAltitude ||
+                         thresholds.minArea != thresholds_.minArea ||
+                         thresholds.maxAspectRatio != thresholds_.maxAspectRatio;
+    thresholds_ = thresholds;
+    if (changed) {
+        onCheckParamsChanged(DefectCategory::ThinFaces);
     }
-
-    return thinFaceReport_;
 }
 
-void AppController::selectAllThinFaces() {
-    if (!hasDiagnosticsReport_ || thinFaceReport_.empty()) {
-        clearSelection();
+void AppController::setDegenerateAreaEpsilon(double epsilon) {
+    if (!std::isfinite(epsilon) || epsilon < 0.0 || epsilon == degenerateAreaEpsilon_) {
         return;
     }
-    selectionMode_ = SelectionMode::AllThinFaces;
-    selectedFaceIndex_ = -1;
-    highlightedFaceIndices_ = thinFaceReport_.faceIndices;
+    degenerateAreaEpsilon_ = epsilon;
+    onCheckParamsChanged(DefectCategory::Degenerate);
+}
+
+void AppController::markRunning(DefectCategory category) noexcept {
+    health_[category].status = HealthStatus::Running;
+}
+
+void AppController::checkMesh() {
+    if (mesh_.empty()) {
+        return;
+    }
+    for (const DefectCategory category : kAllDefectCategories) {
+        markRunning(category);
+    }
+    syncBrowserResult();
+    launchQueuedChecks();
+}
+
+void AppController::recheckCategory(DefectCategory category) {
+    if (mesh_.empty()) {
+        return;
+    }
+    markRunning(category);
+    syncBrowserResult();
+    launchQueuedChecks();
+}
+
+void AppController::setAutoCheck(DefectCategory category, bool enabled) {
+    CategoryHealth& row = health_[category];
+    row.autoCheck = enabled;
+    if (enabled && row.status == HealthStatus::Stale) {
+        recheckCategory(category);
+    }
+}
+
+void AppController::onCheckParamsChanged(DefectCategory category) {
+    CategoryHealth& row = health_[category];
+    if (row.status == HealthStatus::NotRun || mesh_.empty()) {
+        return;
+    }
+    if (row.autoCheck || row.status == HealthStatus::Running) {
+        recheckCategory(category);
+    } else {
+        row.status = HealthStatus::Stale;
+        syncBrowserResult();
+    }
+}
+
+void AppController::onMeshEdited() {
+    checkRunner_.cancel();
+    for (const DefectCategory category : kAllDefectCategories) {
+        CategoryHealth& row = health_[category];
+        if (row.status == HealthStatus::NotRun) {
+            continue;
+        }
+        if (row.autoCheck || row.status == HealthStatus::Running) {
+            row.status = HealthStatus::Running;
+        } else {
+            row.status = HealthStatus::Stale;
+        }
+    }
+    syncBrowserResult();
+    launchQueuedChecks();
+}
+
+void AppController::cancelChecks() {
+    checkRunner_.cancel();
+    for (CategoryHealth& row : health_.rows) {
+        if (row.status == HealthStatus::Running) {
+            row.status = row.result ? HealthStatus::Stale : HealthStatus::NotRun;
+        }
+    }
+    syncBrowserResult();
+}
+
+void AppController::setBackgroundChecks(bool enabled) {
+    if (!enabled) {
+        checkRunner_.cancel();
+    }
+    backgroundChecks_ = enabled;
+    launchQueuedChecks();
+}
+
+void AppController::launchQueuedChecks() {
+    std::vector<DefectCategory> queued;
+    for (const DefectCategory category : kAllDefectCategories) {
+        if (health_[category].status == HealthStatus::Running) {
+            queued.push_back(category);
+        }
+    }
+    if (queued.empty() || mesh_.empty()) {
+        return;
+    }
+    if (backgroundChecks_) {
+        checkRunner_.start(CheckRequest{meshGeneration_, std::make_shared<const Mesh>(mesh_), queued, checkParams()});
+        return;
+    }
+    const CheckParams params = checkParams();
+    for (const DefectCategory category : queued) {
+        CategoryResult result = runCategoryCheck(category, mesh_, params);
+        result.meshGeneration = meshGeneration_;
+        applyCheckResult(std::move(result));
+    }
+}
+
+void AppController::applyCheckResult(CategoryResult result) {
+    CategoryHealth& row = health_[result.category];
+    if (result.cancelled || result.meshGeneration != meshGeneration_ || row.status != HealthStatus::Running) {
+        return;
+    }
+    const DefectCategory category = result.category;
+    const bool infoOnly = categoryInfo(category).infoOnly;
+    row.status = (infoOnly || result.empty()) ? HealthStatus::Ok : HealthStatus::Defects;
+    row.result = std::move(result);
+    if (selectedCategory_ == category) {
+        syncBrowserResult();
+    }
+}
+
+bool AppController::pollBackgroundChecks() {
+    const bool wasBusy = checkRunner_.busy();
+    std::vector<CategoryResult> finished = checkRunner_.takeFinished();
+    const bool changed = !finished.empty();
+    for (CategoryResult& result : finished) {
+        applyCheckResult(std::move(result));
+    }
+    // A job that ended without covering every queued row (e.g. restarted mid-way) is relaunched
+    if (backgroundChecks_ && !wasBusy && !checkRunner_.busy()) {
+        for (const CategoryHealth& row : health_.rows) {
+            if (row.status == HealthStatus::Running) {
+                launchQueuedChecks();
+                break;
+            }
+        }
+    }
+    return changed;
+}
+
+void AppController::waitForChecks() {
+    checkRunner_.waitIdle();
+    for (CategoryResult& result : checkRunner_.takeFinished()) {
+        applyCheckResult(std::move(result));
+    }
+}
+
+bool AppController::checksRunning() const noexcept {
+    for (const CategoryHealth& row : health_.rows) {
+        if (row.status == HealthStatus::Running) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::size_t AppController::totalProblemCount() const noexcept {
+    std::size_t total = 0;
+    for (const DefectCategory category : kAllDefectCategories) {
+        const CategoryHealth& row = health_[category];
+        if (row.status == HealthStatus::Defects && !categoryInfo(category).infoOnly) {
+            total += row.displayCount(category);
+        }
+    }
+    return total;
+}
+
+WatertightState AppController::watertightState() const noexcept {
+    const CategoryHealth& open = health_[DefectCategory::OpenEdges];
+    const CategoryHealth& nonManifold = health_[DefectCategory::NonManifoldEdges];
+    if (open.status == HealthStatus::Defects || nonManifold.status == HealthStatus::Defects) {
+        return WatertightState::NotWatertight;
+    }
+    if (open.status == HealthStatus::Ok && nonManifold.status == HealthStatus::Ok) {
+        return WatertightState::Watertight;
+    }
+    return WatertightState::Unknown;
+}
+
+// -----------------------------------------------------------------------------
+// Selected Row, Filters, Selection & Focus
+// -----------------------------------------------------------------------------
+
+void AppController::syncBrowserResult() {
+    const CategoryResult* wanted = nullptr;
+    if (selectedCategory_) {
+        const CategoryHealth& row = health_[*selectedCategory_];
+        if (row.result && (row.status == HealthStatus::Ok || row.status == HealthStatus::Defects)) {
+            wanted = &*row.result;
+        }
+    }
+    if (browser_.result() != wanted) {
+        browser_.setResult(wanted);
+        onFocusChanged();
+    }
+}
+
+void AppController::selectCategory(std::optional<DefectCategory> category) {
+    pickedFaceIndex_ = -1;
+    selectedCategory_ = category;
+    activeTool_ = category ? ToolSlot::DefectCategory : ToolSlot::None;
+    browser_.setResult(nullptr);
+    syncBrowserResult();
+    onFocusChanged();
+}
+
+void AppController::setSubtypeFilter(int subtype) {
+    browser_.setSubtypeFilter(subtype);
+    onFocusChanged();
+}
+
+void AppController::selectHistogramBin(std::size_t bin, bool extend) {
+    browser_.selectBin(bin, extend);
+    browser_.selectAllVisible();
+    onFocusChanged();
+}
+
+void AppController::stepHistogramBin(int direction) {
+    browser_.stepBin(direction);
+    browser_.selectAllVisible();
+    onFocusChanged();
+}
+
+void AppController::clearHistogramBinFilter() {
+    browser_.clearBinFilter();
+    onFocusChanged();
+}
+
+void AppController::setDefectSort(int column, bool descending) {
+    browser_.setSort(column, descending);
+}
+
+void AppController::clickDefectRow(std::size_t visiblePosition, bool toggle, bool range) {
+    browser_.clickRow(visiblePosition, toggle, range);
+    onFocusChanged();
+}
+
+void AppController::selectAllVisibleDefects() {
+    browser_.selectAllVisible();
+    onFocusChanged();
+}
+
+void AppController::selectNoDefects() {
+    browser_.selectNone();
+    onFocusChanged();
+}
+
+void AppController::invertDefectSelection() {
+    browser_.invertSelection();
+    onFocusChanged();
+}
+
+void AppController::focusDefect(std::size_t element) {
+    browser_.focusElement(element);
+    onFocusChanged();
+}
+
+bool AppController::focusNextDefect(int direction) {
+    if (!browser_.focusStep(direction)) {
+        return false;
+    }
+    onFocusChanged();
+    return true;
+}
+
+PickOutcome AppController::pickFace(Eigen::Index faceIndex) {
+    if (mesh_.empty() || faceIndex < 0 || faceIndex >= mesh_.numFaces()) {
+        return PickOutcome::None;
+    }
+
+    if (selectedCategory_ && browsableResult()) {
+        const std::size_t element = browser_.findVisibleElementWithFace(faceIndex);
+        if (element != DefectBrowser::kNone) {
+            focusDefect(element);
+            return PickOutcome::FocusedDefect;
+        }
+        postStatusMessage("Face #" + std::to_string(faceIndex) + " is not one of the " +
+                          categoryInfo(*selectedCategory_).name + " shown.");
+        return PickOutcome::NotInSelectedRow;
+    }
+
+    // No row selected: open the first checked row containing the face (thin faces first: repairable)
+    std::array<DefectCategory, kDefectCategoryCount> order = kAllDefectCategories;
+    std::stable_partition(order.begin(), order.end(), [](DefectCategory c) { return c == DefectCategory::ThinFaces; });
+    for (const DefectCategory category : order) {
+        const CategoryHealth& row = health_[category];
+        if (categoryInfo(category).infoOnly || row.status != HealthStatus::Defects || !row.result) {
+            continue;
+        }
+        for (std::size_t element = 0; element < row.result->size(); ++element) {
+            for (const Eigen::Index f : row.result->facesOf(element)) {
+                if (f == faceIndex) {
+                    selectCategory(category);
+                    focusDefect(element);
+                    return PickOutcome::SelectedRow;
+                }
+            }
+        }
+    }
+
+    selectCategory(std::nullopt);
+    pickedFaceIndex_ = faceIndex;
     lastFocusedFaceIndex_ = -1;
     lastFocusedNormalSign_ = 0;
-    resetSingleFaceRepairState();
     orbitPivot_ = computeSelectionCentroid();
+    postStatusMessage("Face #" + std::to_string(faceIndex) + ": no defects found on this face.");
+    return PickOutcome::PickedFace;
 }
 
-void AppController::selectSingleFace(Eigen::Index faceIndex) {
-    if (mesh_.empty() || faceIndex < 0 || faceIndex >= mesh_.numFaces()) {
-        clearSelection();
-        return;
+bool AppController::escape() {
+    if (browser_.selectedCount() > 0 || browser_.hasFocus()) {
+        selectNoDefects();
+        return true;
     }
-    const bool newSelection = selectedFaceIndex_ != faceIndex || selectionMode_ != SelectionMode::SingleFace;
-    if (newSelection) {
+    if (pickedFaceIndex_ >= 0 || selectedCategory_ || activeTool_ != ToolSlot::None) {
+        clearSelection();
+        return true;
+    }
+    return false;
+}
+
+void AppController::clearSelection() noexcept {
+    pickedFaceIndex_ = -1;
+    selectedCategory_.reset();
+    activeTool_ = ToolSlot::None;
+    browser_.setResult(nullptr);
+    onFocusChanged();
+}
+
+void AppController::openUnitsAndScale() {
+    clearSelection();
+    activeTool_ = ToolSlot::UnitsAndScale;
+}
+
+void AppController::closeTool() {
+    clearSelection();
+}
+
+Eigen::Index AppController::focusedSingleFace() const noexcept {
+    if (pickedFaceIndex_ >= 0) {
+        return pickedFaceIndex_;
+    }
+    const CategoryResult* result = browser_.result();
+    if (result != nullptr && browser_.hasFocus()) {
+        const auto faces = result->facesOf(browser_.focusedElement());
+        if (faces.size() == 1 && categoryInfo(result->category).kind == ElementKind::Face) {
+            return faces.front();
+        }
+    }
+    return -1;
+}
+
+Eigen::Index AppController::focusedFaceIndex() const noexcept {
+    return focusedSingleFace();
+}
+
+void AppController::onFocusChanged() {
+    const Eigen::Index face = focusedSingleFace();
+    const bool thinFocus = face >= 0 && pickedFaceIndex_ < 0 && browser_.result() != nullptr &&
+                           browser_.result()->category == DefectCategory::ThinFaces;
+    if (face != lastFocusedFaceIndex_) {
         lastFocusedFaceIndex_ = -1;
         lastFocusedNormalSign_ = 0;
     }
-    selectionMode_ = SelectionMode::SingleFace;
-    selectedFaceIndex_ = faceIndex;
-    highlightedFaceIndices_ = {faceIndex};
+    if (thinFocus) {
+        analyzeFocusedFace(face);
+    } else {
+        selectedFaceIndex_ = -1;
+        resetSingleFaceRepairState();
+    }
     orbitPivot_ = computeSelectionCentroid();
+}
 
+void AppController::analyzeFocusedFace(Eigen::Index faceIndex) {
+    const bool newSelection = selectedFaceIndex_ != faceIndex;
+    selectedFaceIndex_ = faceIndex;
     selectedFaceAnalysis_ = cgalMeshValid_
         ? SliverHealer::analyzeFace(
               cgalMesh_,
@@ -204,15 +656,45 @@ void AppController::selectSingleFace(Eigen::Index faceIndex) {
     refreshRepairPreview();
 }
 
-void AppController::clearSelection() noexcept {
-    selectionMode_ = SelectionMode::None;
-    selectedFaceIndex_ = -1;
-    highlightedFaceIndices_.clear();
-    lastFocusedFaceIndex_ = -1;
-    lastFocusedNormalSign_ = 0;
-    resetSingleFaceRepairState();
-    orbitPivot_ = computeSelectionCentroid();
+std::vector<Eigen::Index> AppController::highlightedFaceIndices() const {
+    std::vector<Eigen::Index> faces;
+    if (pickedFaceIndex_ >= 0) {
+        faces.push_back(pickedFaceIndex_);
+        return faces;
+    }
+    const CategoryResult* result = browser_.result();
+    if (result == nullptr) {
+        return faces;
+    }
+    for (const std::size_t element : browser_.selectedElements()) {
+        const auto ef = result->facesOf(element);
+        faces.insert(faces.end(), ef.begin(), ef.end());
+    }
+    if (browser_.hasFocus() && !browser_.isSelected(browser_.focusedElement())) {
+        const auto ef = result->facesOf(browser_.focusedElement());
+        faces.insert(faces.end(), ef.begin(), ef.end());
+    }
+    std::sort(faces.begin(), faces.end());
+    faces.erase(std::unique(faces.begin(), faces.end()), faces.end());
+    return faces;
 }
+
+std::vector<Eigen::Index> AppController::activeFrameFaces() const {
+    std::vector<Eigen::Index> faces = highlightedFaceIndices();
+    const CategoryResult* result = browser_.result();
+    if (!faces.empty() || result == nullptr) {
+        return faces;
+    }
+    for (const std::size_t element : browser_.visibleRows()) {
+        const auto ef = result->facesOf(element);
+        faces.insert(faces.end(), ef.begin(), ef.end());
+    }
+    return faces;
+}
+
+// -----------------------------------------------------------------------------
+// Single-Face Repair Inspector
+// -----------------------------------------------------------------------------
 
 void AppController::resetSingleFaceRepairState() noexcept {
     selectedFaceAnalysis_ = SliverAnalysis{};
@@ -221,7 +703,7 @@ void AppController::resetSingleFaceRepairState() noexcept {
 }
 
 void AppController::refreshRepairPreview() {
-    if (selectionMode_ != SelectionMode::SingleFace || !cgalMeshValid_) {
+    if (selectedFaceIndex_ < 0 || !cgalMeshValid_) {
         repairPreview_ = SingleFaceRepairPreview{};
         return;
     }
@@ -262,7 +744,8 @@ HighlightOverlayGeometry AppController::buildRepairPreviewOriginalEdges() const 
 BaseMeshDisplay AppController::buildBaseMeshDisplay() const {
     BaseMeshDisplay display;
     const bool cutPreview = previewUsesCutout();
-    if (mesh_.empty() || (highlightedFaceIndices_.empty() && !cutPreview)) {
+    const std::vector<Eigen::Index> highlighted = highlightedFaceIndices();
+    if (mesh_.empty() || (highlighted.empty() && !cutPreview)) {
         return display;
     }
 
@@ -274,7 +757,7 @@ BaseMeshDisplay AppController::buildBaseMeshDisplay() const {
             }
         }
     };
-    hide(highlightedFaceIndices_);
+    hide(highlighted);
     if (cutPreview) {
         hide(repairPreview_.sourceFaceIndices);
     }
@@ -294,15 +777,25 @@ BaseMeshDisplay AppController::buildBaseMeshDisplay() const {
 }
 
 void AppController::setSelectedHealAction(HealAction action) {
-    if (selectionMode_ != SelectionMode::SingleFace) {
+    if (selectedFaceIndex_ < 0) {
         return;
     }
     selectedHealAction_ = action;
     refreshRepairPreview();
 }
 
+// -----------------------------------------------------------------------------
+// Mesh edits (all undoable)
+// -----------------------------------------------------------------------------
+
+void AppController::finishMeshEdit(Mesh mesh) {
+    replaceMeshPreservingHistory(std::move(mesh));
+    modified_ = true;
+    onMeshEdited();
+}
+
 bool AppController::commitSelectedFaceRepair() {
-    if (selectionMode_ != SelectionMode::SingleFace || selectedHealAction_ == HealAction::None) {
+    if (selectedFaceIndex_ < 0 || selectedHealAction_ == HealAction::None) {
         lastRepairStatusMessage_ = "Select a face and a repair strategy first.";
         return false;
     }
@@ -313,14 +806,15 @@ bool AppController::commitSelectedFaceRepair() {
     RepairResults results = SliverHealer::healSingleFace(mesh_, faceIndex, action, thresholds_);
     if (!results.success) {
         lastRepairStatusMessage_ = faceLabel + ": " + results.statusMessage;
+        postStatusMessage(lastRepairStatusMessage_, true);
         return false;
     }
 
     pushUndoEntry("Single-Face Repair (" + faceLabel + ")");
-    replaceMeshPreservingHistory(std::move(results.mesh));
-    runCheckManifold();
+    finishMeshEdit(std::move(results.mesh));
     lastRepairStatusMessage_ = std::string(healActionLabel(action)) + " committed on " + faceLabel + " (" +
-                               std::to_string(thinFaceReport_.numDefects()) + " thin faces remaining).";
+                               std::to_string(results.remainingThinFaces) + " thin faces remaining).";
+    postStatusMessage(lastRepairStatusMessage_);
     return true;
 }
 
@@ -333,17 +827,44 @@ bool AppController::fixAllThinFaces() {
     RepairResults results = SliverHealer::healAllThinFaces(mesh_, thresholds_);
     if (results.initialThinFaces == 0) {
         lastRepairStatusMessage_ = "No thin / sliver faces to heal.";
+        postStatusMessage(lastRepairStatusMessage_);
         return false;
     }
     if (!results.success) {
         lastRepairStatusMessage_ = results.statusMessage;
+        postStatusMessage(lastRepairStatusMessage_, true);
         return false;
     }
 
     pushUndoEntry("Fix All Thin / Sliver Faces");
-    replaceMeshPreservingHistory(std::move(results.mesh));
-    runCheckManifold();
+    finishMeshEdit(std::move(results.mesh));
     lastRepairStatusMessage_ = std::move(results.statusMessage);
+    postStatusMessage(lastRepairStatusMessage_);
+    return true;
+}
+
+bool AppController::fixSelectedThinFaces() {
+    const CategoryResult* result = browser_.result();
+    if (result == nullptr || result->category != DefectCategory::ThinFaces || browser_.selectedCount() == 0) {
+        lastRepairStatusMessage_ = "Select thin / sliver faces first.";
+        return false;
+    }
+    std::vector<Eigen::Index> faces;
+    faces.reserve(browser_.selectedCount());
+    for (const std::size_t element : browser_.selectedElements()) {
+        faces.push_back(result->elements[element].index);
+    }
+
+    RepairResults results = SliverHealer::healFaces(mesh_, faces, thresholds_);
+    if (!results.success) {
+        lastRepairStatusMessage_ = results.statusMessage;
+        postStatusMessage(lastRepairStatusMessage_, true);
+        return false;
+    }
+    pushUndoEntry("Fix Selected Thin Faces (" + std::to_string(faces.size()) + ")");
+    finishMeshEdit(std::move(results.mesh));
+    lastRepairStatusMessage_ = std::move(results.statusMessage);
+    postStatusMessage(lastRepairStatusMessage_);
     return true;
 }
 
@@ -351,10 +872,11 @@ void AppController::pushUndoEntry(std::string actionLabel) {
     undoStack_.push_back(UndoEntry{
         mesh_,
         thresholds_,
-        hasDiagnosticsReport_,
-        selectionMode_,
+        health_,
+        selectedCategory_,
         selectedFaceIndex_,
         selectedHealAction_,
+        modified_,
         std::move(actionLabel)});
     if (undoStack_.size() > settings::kMaxUndoHistoryDepth) {
         undoStack_.erase(undoStack_.begin());
@@ -372,28 +894,45 @@ bool AppController::undoLastModification() {
     UndoEntry entry = std::move(undoStack_.back());
     undoStack_.pop_back();
 
+    checkRunner_.cancel();
     replaceMeshPreservingHistory(std::move(entry.mesh));
     thresholds_ = entry.thresholds;
-    if (entry.hadDiagnosticsReport) {
-        thinFaceReport_ = ThinFaceChecker::check(mesh_, thresholds_);
-        hasDiagnosticsReport_ = true;
-    }
+    modified_ = entry.modified;
 
-    if (entry.selectionMode == SelectionMode::SingleFace &&
-        entry.selectedFaceIndex >= 0 && entry.selectedFaceIndex < mesh_.numFaces()) {
-        selectSingleFace(entry.selectedFaceIndex);
-        if (entry.selectedHealAction != HealAction::None && entry.selectedHealAction != selectedHealAction_) {
-            setSelectedHealAction(entry.selectedHealAction);
+    // The restored mesh is identical to the snapshot, so its results are valid again
+    health_ = std::move(entry.health);
+    for (CategoryHealth& row : health_.rows) {
+        if (row.result) {
+            row.result->meshGeneration = meshGeneration_;
         }
-    } else if (entry.selectionMode == SelectionMode::AllThinFaces) {
-        selectAllThinFaces();
-    } else {
-        clearSelection();
     }
+    selectedCategory_ = entry.selectedCategory;
+    if (selectedCategory_) {
+        activeTool_ = ToolSlot::DefectCategory;
+    } else if (activeTool_ == ToolSlot::DefectCategory) {
+        activeTool_ = ToolSlot::None;
+    }
+    syncBrowserResult();
+
+    if (entry.focusedFaceIndex >= 0 && browser_.result() != nullptr) {
+        const std::size_t element = browser_.findVisibleElementWithFace(entry.focusedFaceIndex);
+        if (element != DefectBrowser::kNone) {
+            focusDefect(element);
+            if (entry.selectedHealAction != HealAction::None && entry.selectedHealAction != selectedHealAction_) {
+                setSelectedHealAction(entry.selectedHealAction);
+            }
+        }
+    }
+    launchQueuedChecks();
 
     lastRepairStatusMessage_ = "Undid: " + entry.actionLabel;
+    postStatusMessage(lastRepairStatusMessage_);
     return true;
 }
+
+// -----------------------------------------------------------------------------
+// 3D highlight overlays
+// -----------------------------------------------------------------------------
 
 HighlightOverlayGeometry AppController::buildHighlightOverlay() const {
     HighlightOverlayGeometry overlay;
@@ -401,35 +940,80 @@ HighlightOverlayGeometry AppController::buildHighlightOverlay() const {
         return overlay;
     }
 
-    const Eigen::Vector3d kCleanFaceColor(0.70, 0.75, 0.80);
-    const Eigen::Vector3d kSecondaryDefectColor(0.95, 0.58, 0.16);
-    const Eigen::Vector3d& activeHighlightColor = overlayAppearance_.selectedFaces.color;
-
     const auto numFaces = static_cast<std::size_t>(mesh_.numFaces());
-    overlay.faceColors.assign(numFaces, kCleanFaceColor);
+    overlay.faceColors.assign(numFaces, overlayAppearance_.baseMesh.color);
+    const auto paint = [&](Eigen::Index f, const Eigen::Vector3d& color) {
+        if (f >= 0 && f < mesh_.numFaces()) {
+            overlay.faceColors[static_cast<std::size_t>(f)] = color;
+        }
+    };
 
-    if (hasDiagnosticsReport_) {
-        for (const Eigen::Index defectFaceIdx : thinFaceReport_.faceIndices) {
-            if (defectFaceIdx >= 0 && defectFaceIdx < mesh_.numFaces()) {
-                overlay.faceColors[static_cast<std::size_t>(defectFaceIdx)] = kSecondaryDefectColor;
+    const std::vector<Eigen::Index> highlighted = highlightedFaceIndices();
+    const CategoryResult* result = browser_.result();
+    std::unordered_map<int, std::size_t> nodeOf;
+    if (result != nullptr) {
+        // Tint every visible defect; tubes / spheres for all of them only under the overlay cap
+        std::vector<Eigen::Index> visibleFaces;
+        for (const std::size_t element : browser_.visibleRows()) {
+            for (const Eigen::Index f : result->facesOf(element)) {
+                paint(f, overlayAppearance_.categoryTintColor);
+                visibleFaces.push_back(f);
+            }
+        }
+        const ElementKind kind = categoryInfo(result->category).kind;
+        const bool underCap = visibleFaces.size() <= overlayCap_;
+        if (kind == ElementKind::Face && underCap) {
+            appendFaceGeometry(visibleFaces, overlay, false, &nodeOf);
+        }
+        if (kind == ElementKind::Edge || kind == ElementKind::Vertex) {
+            const auto node = [&](int v) {
+                const auto [it, inserted] = nodeOf.try_emplace(v, overlay.overlayPoints.size());
+                if (inserted) {
+                    overlay.overlayPoints.emplace_back(mesh_.V.row(v).transpose());
+                }
+                return it->second;
+            };
+            const bool emphasizeOnly = !underCap;
+            for (const std::size_t element : browser_.visibleRows()) {
+                const bool emphasized = browser_.isSelected(element) || browser_.focusedElement() == element;
+                if (emphasizeOnly && !emphasized) {
+                    continue;
+                }
+                const DefectElement& e = result->elements[element];
+                if (kind == ElementKind::Edge) {
+                    overlay.overlayEdges.push_back({node(e.edge[0]), node(e.edge[1])});
+                } else {
+                    node(static_cast<int>(e.index));
+                }
             }
         }
     }
 
-    for (const Eigen::Index faceIdx : highlightedFaceIndices_) {
-        if (faceIdx >= 0 && faceIdx < mesh_.numFaces()) {
-            overlay.faceColors[static_cast<std::size_t>(faceIdx)] = activeHighlightColor;
-        }
+    for (const Eigen::Index f : highlighted) {
+        paint(f, overlayAppearance_.selectedFaces.color);
     }
-    appendFaceGeometry(highlightedFaceIndices_, overlay);
+    appendFaceGeometry(highlighted, overlay, true, &nodeOf);
     return overlay;
 }
 
 void AppController::appendFaceGeometry(
     const std::vector<Eigen::Index>& faces,
-    HighlightOverlayGeometry& overlay) const {
-    std::unordered_map<int, std::size_t> globalVertToOverlayNode;
-    std::vector< std::pair<std::size_t, std::size_t> > seenUndirectedEdges;
+    HighlightOverlayGeometry& overlay,
+    bool addTriangles,
+    std::unordered_map<int, std::size_t>* nodeOf) const {
+    // Points and edges already in `overlay` (from earlier calls sharing `nodeOf`) are reused
+    std::unordered_map<int, std::size_t> localNodeOf;
+    std::unordered_map<int, std::size_t>& globalVertToOverlayNode = nodeOf != nullptr ? *nodeOf : localNodeOf;
+    globalVertToOverlayNode.reserve(overlay.overlayPoints.size() + faces.size() * 3);
+    std::unordered_set<std::uint64_t> seenUndirectedEdges;
+    seenUndirectedEdges.reserve(overlay.overlayEdges.size() + faces.size() * 3);
+    const auto packEdge = [](std::size_t u, std::size_t v) {
+        const auto [lo, hi] = std::minmax(u, v);
+        return (static_cast<std::uint64_t>(lo) << 32) | static_cast<std::uint64_t>(hi);
+    };
+    for (const auto& edge : overlay.overlayEdges) {
+        seenUndirectedEdges.insert(packEdge(edge[0], edge[1]));
+    }
 
     for (const Eigen::Index faceIdx : faces) {
         if (faceIdx < 0 || faceIdx >= mesh_.numFaces()) {
@@ -445,16 +1029,15 @@ void AppController::appendFaceGeometry(
             }
             localNodes[static_cast<std::size_t>(c)] = it->second;
         }
-        overlay.overlayFaces.push_back(localNodes);
-        overlay.overlayFaceIndices.push_back(faceIdx);
+        if (addTriangles) {
+            overlay.overlayFaces.push_back(localNodes);
+            overlay.overlayFaceIndices.push_back(faceIdx);
+        }
 
         for (std::size_t c = 0; c < 3; ++c) {
             const std::size_t u = localNodes[c];
             const std::size_t v = localNodes[(c + 1) % 3];
-            const auto canonicalEdge = std::minmax(u, v);
-            if (std::find(seenUndirectedEdges.begin(), seenUndirectedEdges.end(), canonicalEdge) ==
-                seenUndirectedEdges.end()) {
-                seenUndirectedEdges.push_back(canonicalEdge);
+            if (seenUndirectedEdges.insert(packEdge(u, v)).second) {
                 overlay.overlayEdges.push_back({u, v});
             }
         }
@@ -462,7 +1045,21 @@ void AppController::appendFaceGeometry(
 }
 
 void AppController::setGhostMeshOpacity(double opacity) noexcept {
-    ghostMeshOpacity_ = std::clamp(opacity, 0.05, 1.0);
+    if (std::isfinite(opacity)) {
+        ghostMeshOpacity_ = std::clamp(opacity, settings::kMinGhostOpacity, 1.0);
+    }
+}
+
+void AppController::setBaseMeshTransparency(double opacity) noexcept {
+    if (!std::isfinite(opacity)) {
+        return;
+    }
+    if (opacity >= 1.0) {
+        ghostMeshEnabled_ = false;
+        return;
+    }
+    setGhostMeshOpacity(opacity);
+    ghostMeshEnabled_ = true;
 }
 
 bool SurfaceStyle::adoptPolyscopeEdgeWidth(double polyscopeWidth) noexcept {
@@ -601,10 +1198,9 @@ Eigen::Vector3d AppController::computeSelectionCentroid() const noexcept {
     if (mesh_.empty()) {
         return Eigen::Vector3d::Zero();
     }
-    if (selectionMode_ == SelectionMode::SingleFace &&
-        selectedFaceIndex_ >= 0 &&
-        selectedFaceIndex_ < mesh_.numFaces()) {
-        return computeFaceCentroid(selectedFaceIndex_);
+    const Eigen::Index face = focusedSingleFace();
+    if (face >= 0 && face < mesh_.numFaces()) {
+        return computeFaceCentroid(face);
     }
     return computeActiveSelectionOrMeshBounds().center();
 }
@@ -726,7 +1322,7 @@ BoundingBox AppController::computeActiveSelectionOrMeshBounds() const noexcept {
     bool initializedBounds = false;
     BoundingBox bounds;
 
-    for (const Eigen::Index faceIdx : highlightedFaceIndices_) {
+    for (const Eigen::Index faceIdx : activeFrameFaces()) {
         if (faceIdx < 0 || faceIdx >= mesh_.numFaces()) {
             continue;
         }
@@ -777,21 +1373,21 @@ CameraFocusTarget AppController::computeCameraFocusTarget(
     Eigen::Vector3d viewDir = currentViewDirection;
     int resolvedNormalSign = 0;
 
-    if (selectionMode_ == SelectionMode::SingleFace &&
-        selectedFaceIndex_ >= 0 &&
-        selectedFaceIndex_ < mesh_.numFaces() &&
+    const Eigen::Index focusedFace = focusedSingleFace();
+    if (focusedFace >= 0 &&
+        focusedFace < mesh_.numFaces() &&
         normalSide != FocusNormalSide::PreserveViewDirection) {
         if (normalSide == FocusNormalSide::NegativeNormal) {
             resolvedNormalSign = -1;
         } else if (normalSide == FocusNormalSide::PositiveNormal) {
             resolvedNormalSign = +1;
         } else if (normalSide == FocusNormalSide::AutoToggleNormal) {
-            resolvedNormalSign = (lastFocusedFaceIndex_ == selectedFaceIndex_ && lastFocusedNormalSign_ == +1)
+            resolvedNormalSign = (lastFocusedFaceIndex_ == focusedFace && lastFocusedNormalSign_ == +1)
                 ? -1
                 : +1;
         }
 
-        const Eigen::Vector3d faceNormal = computeFaceInspectionNormal(selectedFaceIndex_);
+        const Eigen::Vector3d faceNormal = computeFaceInspectionNormal(focusedFace);
         // Looking at the face from the +N side means the camera sits at +N and looks along -N
         viewDir = -static_cast<double>(resolvedNormalSign) * faceNormal;
     }
@@ -821,8 +1417,8 @@ CameraFocusTarget AppController::focusOnSelection(
     }
 
     orbitPivot_ = focus.targetCenter;
-    if (selectionMode_ == SelectionMode::SingleFace && focus.normalSideSign != 0) {
-        lastFocusedFaceIndex_ = selectedFaceIndex_;
+    if (focus.normalSideSign != 0) {
+        lastFocusedFaceIndex_ = focusedSingleFace();
         lastFocusedNormalSign_ = focus.normalSideSign;
     } else {
         lastFocusedFaceIndex_ = -1;

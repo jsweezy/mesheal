@@ -10,7 +10,9 @@ Unlike 3D printing repair tools—which often voxelize or aggressively alter geo
 
 - **Edge-Aware Multi-Scale Vertex Welding on Load**: Converts raw unindexed STL triangle soup into a shared-vertex mesh using local coordinate-relative tolerances ($10^{-9}$ relative, $10^{-9}\text{ cm}$ atomic floor). An **edge-aware guard** guarantees that zero-area and sliver triangles are never collapsed on load, preserving defects for inspection.
 - **Physical Units Management (Without Accidental Scaling)**: Switch active File Units (`mm`, `cm`, `m`, `in`, `ft`) to interpret coordinates and tolerances without altering vertex positions. Rescaling geometry coordinates is handled through an explicit, separate action.
-- **Deterministic Manifold & Sliver Diagnostics**: Identifies degenerate, near-zero-area, and high-aspect-ratio sliver triangles via configurable Minimum Altitude ($h_{\min} = \frac{2A}{\ell_{\max}}$), Minimum Area ($A$), and Aspect Ratio thresholds.
+- **Mesh Health Panel**: A live status list (like Blender's 3D-Print Toolbox) of open edges (holes), non-manifold edges and vertices, flipped normals, shells, thin / sliver faces, degenerate and duplicate faces. Checks run in the background after loading (F5 re-runs them), Auto rows re-check after every edit, and a status-bar badge shows whether the mesh is watertight.
+- **Deterministic Sliver Diagnostics**: Identifies degenerate, near-zero-area, and high-aspect-ratio sliver triangles via configurable Minimum Altitude ($h_{\min} = \frac{2A}{\ell_{\max}}$), Minimum Area ($A$), and Aspect Ratio thresholds, bucketed as Zero-area / Needle / Cap / Small.
+- **Scales to Huge Defect Counts**: Above a list cap (100) a defect type becomes a 3D highlight plus a clickable worst-first histogram, Next / Prev (`N` / `Shift+N`) and 3D picking instead of an unusable list.
 - **Selection-Centric 3D Viewport Navigation**: Blender-inspired camera controls:
   - Focus on selection with **`.`** (toggle between `+Normal` and `-Normal` views with `..` or `Shift+.`).
   - Automatic orbit pivot centered on selected facet centroids.
@@ -18,17 +20,18 @@ Unlike 3D printing repair tools—which often voxelize or aggressively alter geo
   - Ghost / semi-transparent mesh toggling and interactive clipping plane.
 - **Synchronized Dual Mesh Architecture**: Combines `ogun::Mesh` (contiguous `Eigen` buffers for high-performance Polyscope rendering) with **CGAL** (`CGAL::Surface_mesh<EPICK::Point_3>`) for $O(1)$ halfedge queries and exact geometric predicates.
 - **Interactive Single-Face Live Repair Preview**: Classifies defective facets into **Caps**, **Needles**, **Microscopic Triangles**, and **Dangling Flaps**. Generates a live 3D preview of the 2-ring neighborhood across targeted Euler operators (*Flip Longest Edge*, *Collapse Shortest Edge*, *Snap Collinear Vertex*, *Remove Degenerate Flap*) before committing.
-- **Batch Sliver Healing**: One-click **"Fix All Thin / Sliver Faces"** combining iterative Cap edge-flips, link-safe Needle edge-collapses, and CGAL `remove_almost_degenerate_faces` while protecting sharp feature creases.
+- **Batch Sliver Healing**: **Fix All** (or **Fix Selected** for a hand-picked set) combining iterative Cap edge-flips, link-safe Needle edge-collapses, and CGAL `remove_almost_degenerate_faces` while protecting sharp feature creases.
 - **Universal Multi-Step Undo (`Ctrl+Z` / `Cmd+Z`)**: Every operation modifying the mesh in memory (single-face repair commits, batch repairs, coordinate scaling) pushes a snapshot to Ogun's undo history stack.
-- **STL Export ("Save STL...")**: Save repaired meshes in **Binary STL** (default) or **ASCII STL** formats.
+- **STL Export (File > Save / Save As)**: Save repaired meshes in **Binary STL** (default) or **ASCII STL** formats.
+- **Menu-Bar GUI**: `File Edit View Mesh Repair Help` menus, docked Display / Navigate / Structures panels on the left, Mesh Health and a per-defect Tool panel on the right, and a status bar ([UI_DESIGN.md](UI_DESIGN.md)).
 
 ---
 
 ## Documentation
 
-- **[docs/NAVIGATION.md](docs/NAVIGATION.md)**: 3D viewport mouse controls, Blender-style keyboard shortcuts (`.`, `..`, `Shift+.`, `Home`/`H`, `?`/`F1`), selection mechanics, and clipping plane usage.
+- **[docs/NAVIGATION.md](docs/NAVIGATION.md)**: 3D viewport mouse controls, keyboard shortcuts (`.`, `Shift+.`, `N`, `G`, `Esc`, `F5`, `Home`/`H`, `?`/`F1`), selection mechanics, and clipping plane usage.
 - **[VISION.md](VISION.md)**: Physical simulation motivation, multi-scale tolerance philosophy, decoupled architecture, and licensing rationale.
-- **[UI_DESIGN.md](UI_DESIGN.md)**: GUI redesign: menu bar, Mesh Health panel, per-defect Tool panels, operator panels, large-defect-count handling, and the phased implementation plan.
+- **[UI_DESIGN.md](UI_DESIGN.md)**: GUI design (P1-P3 built): menu bar, Mesh Health panel, per-defect Tool panels, operator panels, large-defect-count handling, implementation notes, and the remaining phases.
 - **[PLAN.md](PLAN.md)**: Incremental development roadmap, module structure, and Test-Driven Development (TDD) harness with Catch2.
 - **[TODO.md](TODO.md)**: Punch list tracking completed and upcoming features.
 - **[LICENSE.md](LICENSE.md)**: Full text of the GNU General Public License v3.0.
@@ -71,10 +74,10 @@ ogun_stl_repair_tool/
     ├── core/           # Mathematical constants & centralized default settings (+ src/core/Test/)
     ├── mesh/           # Indexed Face-Vertex Mesh, CGAL Interop, Units & ToleranceConfig (+ src/mesh/Test/)
     ├── io/             # STL reading, edge-aware welding, STL export & sample meshes (+ src/io/Test/)
-    ├── diagnostics/    # Manifold & thin/sliver face detection (+ src/diagnostics/Test/)
+    ├── diagnostics/    # Mesh Health checks: topology, thin/sliver, degenerate, duplicates (+ src/diagnostics/Test/)
     ├── repair/         # CGAL single-face live preview/repair & batch sliver healing (+ src/repair/Test/)
     ├── app/            # Headless AppController (+ src/app/Test/) & Polyscope/ImGui viewer
-    └── mockup/         # Throwaway clickable UI mockup of UI_DESIGN.md (fake defect data)
+    └── mockup/         # Historical clickable UI mockup of UI_DESIGN.md (fake defect data)
 ```
 
 ---
@@ -111,7 +114,7 @@ ctest --test-dir build --output-on-failure -j 4
 # Launch the Ogun viewer (optionally passing an STL file path)
 ./build/src/app/ogun [path/to/model.stl]
 
-# Try the proposed GUI layout from UI_DESIGN.md (fake defect data)
+# Historical first-draft mockup of UI_DESIGN.md (fake defect data)
 ./build/src/mockup/ogun_ui_mockup [path/to/model.stl]
 ```
 

@@ -53,6 +53,7 @@ struct ThinFaceDefect {
     double shortestEdge = 0.0;
     double longestEdge = 0.0;
     double aspectRatio = std::numeric_limits<double>::infinity();
+    double maxAngleDeg = 0.0; ///< Interior angle opposite the longest edge (180 for collinear faces).
 
     bool belowMinArea = false;
     bool belowMinAltitude = false;
@@ -69,6 +70,24 @@ struct ThinFaceDefect {
         return hasDuplicateVertexIndices || belowMinArea || belowMinAltitude || aboveMaxAspectRatio;
     }
 };
+
+/// Geometric shape bucket of a thin face, used by the Tool panel's sub-type filter.
+enum class ThinFaceSubtype {
+    ZeroArea, ///< Zero area / altitude or a repeated vertex index.
+    Needle,   ///< One edge much shorter than the longest (l_min / l_max below the needle ratio).
+    Cap,      ///< One interior angle close to 180 degrees.
+    Small     ///< Well shaped but below the area / altitude thresholds.
+};
+
+inline constexpr int kThinFaceSubtypeCount = 4;
+
+[[nodiscard]] const char* thinFaceSubtypeLabel(ThinFaceSubtype subtype) noexcept;
+
+/// Buckets `defect` by shape: zero-area first, then needle (edge ratio), then cap (max angle), else small.
+[[nodiscard]] ThinFaceSubtype classifyThinDefect(
+    const ThinFaceDefect& defect,
+    double needleEdgeRatio = settings::kDefaultNeedleEdgeRatio,
+    double capAngleDeg = settings::kDefaultCapAngleDeg) noexcept;
 
 /// Result of running `ThinFaceChecker::check()` across an entire `ogun::Mesh`.
 struct ThinFaceReport {

@@ -11,7 +11,7 @@ Whenever you add, modify, or remove features, workflows, UI controls, diagnostic
    - Keep `docs/NAVIGATION.md` synchronized with any changes to 3D viewport mouse controls, keyboard shortcuts, camera framing behavior, orbit pivot mechanics, clipping plane behavior, or highlight sizing behavior.
 
 3. **In-App Help Window ("3D Viewport Navigation & Shortcuts")**
-   - Keep the in-app help window in `src/app/PolyscopeGui.cpp` (`PolyscopeGui::drawNavigationHelpWindow()`, titled `"3D Viewport Navigation & Shortcuts"`) and any related tooltip/status tips in `PolyscopeGui::drawHighlightAndNavigationSection()` synchronized with `docs/NAVIGATION.md` and the actual implementation in `PolyscopeGui` / `AppController`.
+   - Keep the in-app help window in `src/app/PolyscopeGuiShell.cpp` (`PolyscopeGui::drawNavigationHelpWindow()`, titled `"3D Viewport Navigation & Shortcuts"`) and the key tooltips in the Navigate panel (`PolyscopeGui::drawNavigatePanel()`, `src/app/PolyscopeGuiPanels.cpp`) synchronized with `docs/NAVIGATION.md` and the actual implementation in `PolyscopeGui` / `AppController`.
    - Any new or modified mouse interaction, keyboard shortcut, or selection/camera behavior must appear accurately in both `docs/NAVIGATION.md` and the `"3D Viewport Navigation & Shortcuts"` ImGui window.
 
 4. **Project & Architecture Documentation (`README.md`, `VISION.md`, and `docs/*`)**

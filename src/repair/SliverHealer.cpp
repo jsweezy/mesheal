@@ -612,6 +612,63 @@ RepairResults SliverHealer::healSingleFace(
     return results;
 }
 
+RepairResults SliverHealer::healFaces(
+    const Mesh& mesh,
+    const std::vector<Eigen::Index>& faceIndices,
+    const ThinFaceThresholds& thresholds,
+    const SliverHealerSettings& settings) {
+    RepairResults results;
+    results.mesh = mesh;
+    results.initialThinFaces = ThinFaceChecker::check(mesh, thresholds).numDefects();
+    results.remainingThinFaces = results.initialThinFaces;
+
+    CgalSurfaceMesh surface;
+    if (!toCgalSurfaceMesh(mesh, surface)) {
+        results.statusMessage = "Mesh could not be converted to a halfedge mesh.";
+        return results;
+    }
+
+    // Lazy deletion keeps the handles of faces not yet visited valid while earlier repairs run
+    std::vector<CgalFaceIndex> faces;
+    faces.reserve(faceIndices.size());
+    for (const Eigen::Index faceIndex : faceIndices) {
+        CgalFaceIndex face;
+        if (toFaceIndex(surface, faceIndex, face)) {
+            faces.push_back(face);
+        }
+    }
+
+    std::size_t healed = 0;
+    for (const CgalFaceIndex f : faces) {
+        if (!isLiveFace(surface, f)) {
+            continue;
+        }
+        const SliverAnalysis a = analyzeFace(surface, f, thresholds, settings);
+        if (a.recommendedAction == HealAction::None) {
+            continue;
+        }
+        for (const HealAction action : fallbackOrder(a.recommendedAction)) {
+            if (applyHealAction(surface, f, action, settings)) {
+                countAction(results, action);
+                ++healed;
+                break;
+            }
+        }
+    }
+
+    if (healed == 0) {
+        results.statusMessage = "None of the " + std::to_string(faces.size()) + " selected faces could be repaired safely.";
+        return results;
+    }
+    surface.collect_garbage();
+    results.mesh = fromCgalSurfaceMesh(surface, mesh.fileUnit);
+    results.remainingThinFaces = ThinFaceChecker::check(results.mesh, thresholds).numDefects();
+    results.success = true;
+    results.statusMessage = "Repaired " + std::to_string(healed) + " of " + std::to_string(faces.size()) +
+                            " selected faces (" + std::to_string(results.remainingThinFaces) + " thin faces remaining).";
+    return results;
+}
+
 RepairResults SliverHealer::healAllThinFaces(
     const Mesh& mesh,
     const ThinFaceThresholds& thresholds,

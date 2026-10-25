@@ -151,6 +151,14 @@ public:
         const ThinFaceThresholds& thresholds = {},
         const SliverHealerSettings& settings = {});
 
+    /// Applies each listed face's recommended action (with the batch fallbacks) in one pass and
+    /// returns the compacted result. Faces removed by an earlier repair in the list are skipped.
+    [[nodiscard]] static RepairResults healFaces(
+        const Mesh& mesh,
+        const std::vector<Eigen::Index>& faceIndices,
+        const ThinFaceThresholds& thresholds = {},
+        const SliverHealerSettings& settings = {});
+
     /// Batch repair: (1) flip coplanar caps and remove dangling flaps, (2) collapse needles,
     /// creased caps and microscopic faces, repeated until convergence, then (3) a
     /// `PMP::remove_almost_degenerate_faces` cleanup pass that preserves feature creases.

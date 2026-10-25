@@ -1,0 +1,139 @@
+#pragma once
+
+#include "core/Settings.hpp"
+#include "diagnostics/ThinFaceChecker.hpp"
+#include "mesh/Mesh.hpp"
+
+#include <Eigen/Core>
+
+#include <array>
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <span>
+#include <stop_token>
+#include <vector>
+
+namespace ogun {
+
+/// One row of the Mesh Health panel (UI_DESIGN.md §5.1).
+enum class DefectCategory : std::uint8_t {
+    OpenEdges,
+    NonManifoldEdges,
+    NonManifoldVertices,
+    FlippedNormals,
+    Shells,
+    ThinFaces,
+    Degenerate,
+    Duplicates
+};
+
+inline constexpr std::size_t kDefectCategoryCount = 8;
+
+inline constexpr std::array<DefectCategory, kDefectCategoryCount> kAllDefectCategories = {
+    DefectCategory::OpenEdges,
+    DefectCategory::NonManifoldEdges,
+    DefectCategory::NonManifoldVertices,
+    DefectCategory::FlippedNormals,
+    DefectCategory::Shells,
+    DefectCategory::ThinFaces,
+    DefectCategory::Degenerate,
+    DefectCategory::Duplicates,
+};
+
+[[nodiscard]] constexpr std::size_t categoryIndex(DefectCategory category) noexcept {
+    return static_cast<std::size_t>(category);
+}
+
+/// What one defect element of a category refers to.
+enum class ElementKind { Face, Edge, Vertex, Shell };
+
+enum class CategoryGroup { Topology, Geometry };
+
+/// Physical dimension of a list column or metric, used to append the unit symbol.
+enum class ValueDimension { None, Length, Area };
+
+struct CategoryColumn {
+    const char* name = nullptr; ///< nullptr: column unused
+    ValueDimension dimension = ValueDimension::None;
+};
+
+/// Static description of a Mesh Health row: labels, tooltips, list columns and histogram metric.
+struct CategoryInfo {
+    const char* name;           ///< Row label, e.g. "Open edges (holes)"
+    const char* menuName;       ///< Repair menu label, e.g. "Open Edges (holes)"
+    CategoryGroup group;
+    const char* description;    ///< One-line explanation (tooltip and Tool panel description)
+    ElementKind kind;
+    const char* elementNoun;    ///< Plural noun for counts, e.g. "edges"
+    bool autoDefault;           ///< Default of the row's Auto checkbox
+    bool infoOnly;              ///< Information row: never orange (e.g. shells)
+    bool hasFixAll;             ///< True once a Fix All repair exists for this row
+    std::array<CategoryColumn, 3> columns;
+    const char* metricName;     ///< Histogram metric (nullptr: no histogram)
+    ValueDimension metricDimension;
+    bool metricLogScale;
+    bool metricLowIsWorst;
+    std::array<const char*, 4> subtypes; ///< Sub-type filter labels (nullptr-terminated)
+};
+
+[[nodiscard]] const CategoryInfo& categoryInfo(DefectCategory category) noexcept;
+
+/// Number of non-null entries in `CategoryInfo::subtypes`.
+[[nodiscard]] std::size_t categorySubtypeCount(DefectCategory category) noexcept;
+
+/// One defect found by a check (a face, edge, vertex or shell).
+struct DefectElement {
+    Eigen::Index index = -1;           ///< Face, vertex or shell index (edges: the first vertex)
+    std::array<int, 2> edge{-1, -1};   ///< Edge kinds: the two vertex indices (sorted)
+    double metric = 0.0;               ///< Sort / histogram value
+    std::array<double, 3> columns{};   ///< Values of `CategoryInfo::columns`
+    int subtype = -1;                  ///< Index into `CategoryInfo::subtypes` (-1: none)
+};
+
+/// Result of one Mesh Health check. Elements are sorted worst first.
+struct CategoryResult {
+    DefectCategory category = DefectCategory::ThinFaces;
+    std::uint64_t meshGeneration = 0;
+    std::vector<DefectElement> elements;
+    /// Faces of each element in CSR form: element i owns `faces[faceOffsets[i] .. faceOffsets[i + 1])`.
+    std::vector<std::uint32_t> faceOffsets{0};
+    std::vector<Eigen::Index> faces;
+    std::size_t infoCount = 0; ///< Hole loops (open edges) or shell count (shells)
+    double elapsedMs = 0.0;
+    bool cancelled = false;
+
+    [[nodiscard]] std::size_t size() const noexcept {
+        return elements.size();
+    }
+
+    [[nodiscard]] bool empty() const noexcept {
+        return elements.empty();
+    }
+
+    [[nodiscard]] std::span<const Eigen::Index> facesOf(std::size_t element) const noexcept {
+        return {faces.data() + faceOffsets[element], faces.data() + faceOffsets[element + 1]};
+    }
+
+    /// Element count per sub-type (index matches `CategoryInfo::subtypes`).
+    [[nodiscard]] std::array<std::size_t, 4> subtypeCounts() const noexcept;
+};
+
+/// Thresholds and tolerances used by the checks.
+struct CheckParams {
+    ThinFaceThresholds thinThresholds{};
+    double degenerateAreaEpsilon = settings::kDefaultDegenerateAreaEpsilon;
+    double needleEdgeRatio = settings::kDefaultNeedleEdgeRatio;
+    double capAngleDeg = settings::kDefaultCapAngleDeg;
+};
+
+/// Runs one check on `mesh`. Pure (no GUI); polls `stopToken` and reports 0..1 through `progress`.
+/// A stopped check returns a result with `cancelled == true`.
+[[nodiscard]] CategoryResult runCategoryCheck(
+    DefectCategory category,
+    const Mesh& mesh,
+    const CheckParams& params,
+    std::stop_token stopToken = {},
+    std::atomic<float>* progress = nullptr);
+
+} // namespace ogun
