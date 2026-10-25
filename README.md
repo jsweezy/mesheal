@@ -1,6 +1,6 @@
 # Ogun — STL Repair Tool for Simulation Meshes
 
-**Ogun** (named after the Orisha of iron, metalwork, and forging) is an open-source C++ desktop application and geometry library for inspecting, diagnosing, and repairing STL surface meshes for Monte Carlo particle transport (built as a companion to **Legba**, as well as MCNP, OpenMC, DAGMC, Geant4, and Serpent) and computational physics workflows.
+**Ogun** (named after the Orisha of iron, metalwork, and forging) is an open-source C++ desktop application and geometry library for inspecting, diagnosing, and repairing STL surface meshes for engineering analysis, specifically targeting ray-tracing applications, such as Monte Carlo particle transport that need manifold (water-tight) meshes.
 
 Unlike 3D printing repair tools—which often voxelize or aggressively alter geometry in ways that compromise ray-tracing accuracy—or complex 3D modeling suites like Blender, **Ogun** provides a focused, deterministic workflow: **load an STL with multi-scale edge-aware welding, verify physical units without accidental scaling, diagnose manifold and sliver integrity, inspect defects in 3D with Blender-style navigation, and apply targeted repairs with live previews and universal undo.**
 
@@ -130,6 +130,6 @@ All third-party libraries used in Ogun are licensed under compatible open-source
 | **[Manifold](https://github.com/elalish/manifold)** | **Apache-2.0** | Watertight geometric manifold representations & `MeshGL` interop |
 | **[Polyscope](https://polyscope.run/)** | **MIT** | 3D scientific visualization & viewport rendering |
 | **[Dear ImGui](https://github.com/ocornut/imgui)** | **MIT** | Immediate-mode user interface panels |
-| **[portable-file-dialogs](https://github.com/samhocevar/portable-file-dialogs)** | **WTFPL** | Native cross-platform file open/save dialogs |
+| **[portable-file-dialogs](https://github.com/samhocevar/portable-file-dialogs)** | **WTFPL** | Native cross-platform file open/save dialogs n|
 | **[Catch2](https://github.com/catchorg/Catch2)** | **BSL-1.0** | Unit testing framework |
 | **[Boost](https://www.boost.org/)** | **BSL-1.0** | Graph algorithms & C++ utility libraries required by CGAL |
