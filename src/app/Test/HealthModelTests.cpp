@@ -4,6 +4,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <memory>
 
@@ -224,4 +225,67 @@ TEST_CASE("Undo never leaves the Tool slot open without a selected row", "[app][
     REQUIRE(controller.undoLastModification());
     REQUIRE_FALSE(controller.selectedCategory());
     REQUIRE(controller.activeTool() == ogun::ToolSlot::None);
+}
+
+TEST_CASE("Intersecting faces: Auto off, Check Mesh runs it, edits and tolerance mark it Stale",
+          "[app][health][intersections]") {
+    ogun::AppController controller;
+    REQUIRE_FALSE(controller.categoryHealth(DefectCategory::Intersections).autoCheck);
+    controller.setMesh(ogun::SampleMeshes::createSelfIntersectingBoxMesh(), "box");
+    REQUIRE(status(controller, DefectCategory::Intersections) == HealthStatus::Defects);
+
+    controller.scaleMeshCoordinatesToUnit(ogun::Unit::Centimeter);
+    REQUIRE(status(controller, DefectCategory::Intersections) == HealthStatus::Stale);
+    controller.checkMesh();
+    REQUIRE(status(controller, DefectCategory::Intersections) == HealthStatus::Defects);
+
+    controller.setIntersectionTolerance(1.0e-3);
+    REQUIRE(status(controller, DefectCategory::Intersections) == HealthStatus::Stale);
+    controller.recheckCategory(DefectCategory::Intersections);
+    REQUIRE(status(controller, DefectCategory::Intersections) == HealthStatus::Defects);
+}
+
+TEST_CASE("Intersection partners are highlighted and can be focused", "[app][health][intersections]") {
+    ogun::AppController controller;
+    controller.setMesh(ogun::SampleMeshes::createSelfIntersectingBoxMesh(), "box");
+    controller.selectCategory(DefectCategory::Intersections);
+    controller.focusDefect(0);
+    const Eigen::Index focused = controller.focusedFaceIndex();
+    const std::vector<Eigen::Index> partners(controller.focusedRelatedFaces().begin(),
+                                             controller.focusedRelatedFaces().end());
+    REQUIRE(focused >= 0);
+    REQUIRE_FALSE(partners.empty());
+
+    const std::vector<Eigen::Index> highlighted = controller.highlightedFaceIndices();
+    REQUIRE(std::find(highlighted.begin(), highlighted.end(), focused) != highlighted.end());
+    for (const Eigen::Index partner : partners) {
+        REQUIRE(std::find(highlighted.begin(), highlighted.end(), partner) != highlighted.end());
+    }
+
+    REQUIRE(controller.focusRelatedFace(partners.front()));
+    REQUIRE(controller.focusedFaceIndex() == partners.front());
+    const auto back = controller.focusedRelatedFaces();
+    REQUIRE(std::find(back.begin(), back.end(), focused) != back.end());
+}
+
+TEST_CASE("The self-intersecting box example is watertight and only intersects itself",
+          "[app][health][intersections]") {
+    ogun::AppController controller;
+    REQUIRE_FALSE(ogun::AppController::resolveExamplePath("self_intersecting_box.stl").empty());
+    REQUIRE(controller.loadSampleFile("self_intersecting_box.stl"));
+    REQUIRE(controller.currentFilePath().empty()); // samples are never overwritten by Save
+    REQUIRE(controller.watertightState() == ogun::WatertightState::Watertight);
+    for (const DefectCategory category : {DefectCategory::OpenEdges, DefectCategory::NonManifoldEdges,
+                                          DefectCategory::NonManifoldVertices, DefectCategory::FlippedNormals,
+                                          DefectCategory::ThinFaces, DefectCategory::Degenerate,
+                                          DefectCategory::Duplicates}) {
+        INFO(ogun::categoryInfo(category).name);
+        REQUIRE(status(controller, category) == HealthStatus::Ok);
+    }
+    const auto& intersections = controller.categoryHealth(DefectCategory::Intersections).result;
+    REQUIRE(intersections.has_value());
+    const ogun::CategoryResult expected = ogun::runCategoryCheck(
+        DefectCategory::Intersections, ogun::SampleMeshes::createSelfIntersectingBoxMesh(), ogun::CheckParams{});
+    REQUIRE(intersections->size() == expected.size());
+    REQUIRE_FALSE(controller.loadSampleFile("no_such_example.stl"));
 }

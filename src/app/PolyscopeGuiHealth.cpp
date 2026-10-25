@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <optional>
+#include <span>
 #include <string>
 
 namespace ogun {
@@ -384,6 +386,18 @@ void PolyscopeGui::drawCategorySettings(DefectCategory category) {
         gui::helpMarker("A face counts as zero-area when its area is below epsilon times the squared bounding-box diagonal.");
         break;
     }
+    case DefectCategory::Intersections: {
+        double tolerance = controller_.intersectionTolerance();
+        if (ImGui::InputDouble("Tolerance (x diagonal)", &tolerance, 0.0, 0.0, "%.0e",
+                               ImGuiInputTextFlags_EnterReturnsTrue)) {
+            controller_.setIntersectionTolerance(tolerance);
+            requestSync();
+        }
+        gui::helpMarker("Tolerance as a fraction of the bounding-box diagonal. Faces that only touch, or "
+                        "cross by less than this length, are not reported. Neighbours sharing an edge are "
+                        "reported only when folded flat onto each other.");
+        break;
+    }
     case DefectCategory::FlippedNormals:
         ImGui::TextDisabled("Faces wound against the majority of their shell are listed.");
         break;
@@ -661,9 +675,38 @@ void PolyscopeGui::drawInspector() {
                     gui::formatValue(element.columns[c], info.columns[c].dimension).c_str(), suffix.c_str());
     }
     ImGui::Text("Faces: %s", withThousands(result.facesOf(browser.focusedElement()).size()).c_str());
+    if (result.category == DefectCategory::Intersections) {
+        drawIntersectionPartners();
+    }
     ImGui::TextDisabled("Per-defect repairs for this row are planned (P4).");
     if (ImGui::Button("Frame (.)")) {
         focusCameraOnSelection(FocusNormalSide::AutoToggleNormal);
+    }
+}
+
+void PolyscopeGui::drawIntersectionPartners() {
+    constexpr std::size_t kMaxPartnerButtons = 20;
+    const std::span<const Eigen::Index> partners = controller_.focusedRelatedFaces();
+    ImGui::TextUnformatted("Crosses faces (shown in 3D; click to inspect):");
+    std::optional<Eigen::Index> clicked;
+    for (std::size_t i = 0; i < std::min(partners.size(), kMaxPartnerButtons); ++i) {
+        if (i > 0) {
+            ImGui::SameLine();
+            if (ImGui::GetContentRegionAvail().x < ImGui::GetFontSize() * 4.0f) {
+                ImGui::NewLine();
+            }
+        }
+        const std::string label = "#" + std::to_string(partners[i]);
+        if (ImGui::SmallButton(label.c_str())) {
+            clicked = partners[i];
+        }
+    }
+    if (partners.size() > kMaxPartnerButtons) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("+%s more", withThousands(partners.size() - kMaxPartnerButtons).c_str());
+    }
+    if (clicked && controller_.focusRelatedFace(*clicked)) {
+        requestSync();
     }
 }
 

@@ -50,6 +50,14 @@ Mesh SampleMeshes::createCubeMesh(double sideLength, Unit unit) {
     return mesh;
 }
 
+Mesh SampleMeshes::createSelfIntersectingBoxMesh(double sideLength, Unit unit) {
+    Mesh mesh = createCubeMesh(sideLength, unit);
+    constexpr Eigen::Index kTopCorner = 6;
+    mesh.V.row(kTopCorner) << 0.5 * sideLength, 0.5 * sideLength, -0.5 * sideLength;
+    mesh.recomputeNormals();
+    return mesh;
+}
+
 std::string SampleMeshes::createCubeAsciiStl(double sideLength) {
     const Mesh cube = createCubeMesh(sideLength, Unit::Millimeter);
 

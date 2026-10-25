@@ -1,6 +1,8 @@
 add_executable(ogun_diagnostics_tests
     ThinFaceCheckerTests.cpp
     MeshChecksTests.cpp
+    TriTriIntersectTests.cpp
+    SelfIntersectionTests.cpp
     HistogramTests.cpp
 )
 

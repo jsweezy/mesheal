@@ -22,7 +22,9 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -222,11 +224,11 @@ public:
     /// Loads the built-in sample cube mesh containing 3 known thin/degenerate triangles.
     void loadSampleDefectiveMesh();
 
-    /// Path of `examples/stanford_bunny.stl` (empty if it cannot be found).
-    [[nodiscard]] static std::filesystem::path resolveSampleBunnyPath() noexcept;
+    /// Path of `examples/<fileName>` in the working directory or the source tree (empty if not found).
+    [[nodiscard]] static std::filesystem::path resolveExamplePath(std::string_view fileName);
 
-    /// Loads the Stanford bunny sample (File > Load Sample). Returns false if it is missing.
-    bool loadSampleBunny();
+    /// Loads an STL from `examples/` (File > Load Sample). Returns false if it is missing.
+    bool loadSampleFile(std::string_view fileName);
 
     /// Replaces the current mesh directly. Clears the undo history and the Mesh Health report, then
     /// runs Check Mesh when `checkMeshAfterLoad()` is on.
@@ -301,6 +303,13 @@ public:
     }
 
     void setDegenerateAreaEpsilon(double epsilon);
+
+    /// Intersection tolerance as a fraction of the bounding-box diagonal.
+    [[nodiscard]] double intersectionTolerance() const noexcept {
+        return intersectionTolerance_;
+    }
+
+    void setIntersectionTolerance(double tolerance);
 
     [[nodiscard]] const MeshHealthReport& healthReport() const noexcept {
         return health_;
@@ -402,6 +411,10 @@ public:
     void selectNoDefects();
     void invertDefectSelection();
     void focusDefect(std::size_t element);
+    /// Faces related to the focused defect (intersections: the faces it crosses; empty otherwise).
+    [[nodiscard]] std::span<const Eigen::Index> focusedRelatedFaces() const noexcept;
+    /// Focuses the defect owning face `faceIndex` in the selected row (e.g. an intersection partner).
+    bool focusRelatedFace(Eigen::Index faceIndex);
     /// Next (+1) / previous (-1) defect within the filter, worst first. Returns false if none.
     bool focusNextDefect(int direction);
 
@@ -740,6 +753,7 @@ private:
     ToleranceConfig toleranceConfig_{};
     ThinFaceThresholds thresholds_{};
     double degenerateAreaEpsilon_ = settings::kDefaultDegenerateAreaEpsilon;
+    double intersectionTolerance_ = settings::kDefaultIntersectionTolerance;
 
     MeshHealthReport health_{};
     std::array<bool, kDefectCategoryCount> autoCheckDefaults_{};

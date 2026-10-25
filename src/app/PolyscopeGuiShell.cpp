@@ -166,11 +166,17 @@ void PolyscopeGui::drawFileMenu() {
     plannedMenuItem("Open Recent", "Planned (P5).");
     if (ImGui::BeginMenu("Load Sample")) {
         if (ImGui::MenuItem("Defective test cube")) {
-            loadSample(false);
+            loadSample(nullptr);
         }
-        const bool haveBunny = !AppController::resolveSampleBunnyPath().empty();
-        if (ImGui::MenuItem("Stanford bunny", nullptr, false, haveBunny)) {
-            loadSample(true);
+        constexpr std::array<std::pair<const char*, const char*>, 2> kExampleFiles = {{
+            {"Self-intersecting box", "self_intersecting_box.stl"},
+            {"Stanford bunny", "stanford_bunny.stl"},
+        }};
+        for (const auto& [label, file] : kExampleFiles) {
+            const bool found = !AppController::resolveExamplePath(file).empty();
+            if (ImGui::MenuItem(label, nullptr, false, found)) {
+                loadSample(file);
+            }
         }
         ImGui::EndMenu();
     }
@@ -383,9 +389,9 @@ void PolyscopeGui::openFileDialog() {
     }
 }
 
-void PolyscopeGui::loadSample(bool bunny) {
-    if (bunny) {
-        if (!controller_.loadSampleBunny()) {
+void PolyscopeGui::loadSample(const char* exampleFile) {
+    if (exampleFile != nullptr) {
+        if (!controller_.loadSampleFile(exampleFile)) {
             return;
         }
     } else {

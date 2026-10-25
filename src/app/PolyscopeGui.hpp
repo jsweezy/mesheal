@@ -62,7 +62,8 @@ private:
     void saveCurrentFile();
     void saveAsDialog(StlFormat format);
     void saveTo(const std::string& path, StlFormat format);
-    void loadSample(bool bunny);
+    /// Loads `examples/<exampleFile>`, or the built-in defective cube when `exampleFile` is null.
+    void loadSample(const char* exampleFile);
 
     // ---- Left column panels (PolyscopeGuiPanels.cpp) ----
     void drawDisplayPanel();
@@ -85,6 +86,7 @@ private:
     void drawHistogram();
     void drawInspector();
     void drawThinFaceInspector();
+    void drawIntersectionPartners();
     void drawUnitsAndScaleOperator();
     void fixAll(DefectCategory category);
     void checkMesh();

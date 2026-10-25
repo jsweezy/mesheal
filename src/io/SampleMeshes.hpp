@@ -25,6 +25,14 @@ struct SampleMeshes {
         double sideLength = 10.0,
         Unit unit = Unit::Millimeter);
 
+    /// Generates the `createCubeMesh()` cube with its top corner (s, s, s) pulled down to (s/2, s/2, -s/2),
+    /// so the faces around that corner pass through the bottom. Still one closed, manifold,
+    /// consistently wound shell: only the self-intersection check reports it
+    /// (`examples/self_intersecting_box.stl`).
+    [[nodiscard]] static Mesh createSelfIntersectingBoxMesh(
+        double sideLength = 10.0,
+        Unit unit = Unit::Millimeter);
+
     /// Generates an ASCII STL string representing the 12-triangle cube (36 raw soup vertices).
     [[nodiscard]] static std::string createCubeAsciiStl(double sideLength = 10.0);
 

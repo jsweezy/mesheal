@@ -10,7 +10,8 @@ Unlike 3D printing repair tools—which often voxelize or aggressively alter geo
 
 - **Edge-Aware Multi-Scale Vertex Welding on Load**: Converts raw unindexed STL triangle soup into a shared-vertex mesh using local coordinate-relative tolerances ($10^{-9}$ relative, $10^{-9}\text{ cm}$ atomic floor). An **edge-aware guard** guarantees that zero-area and sliver triangles are never collapsed on load, preserving defects for inspection.
 - **Physical Units Management (Without Accidental Scaling)**: Switch active File Units (`mm`, `cm`, `m`, `in`, `ft`) to interpret coordinates and tolerances without altering vertex positions. Rescaling geometry coordinates is handled through an explicit, separate action.
-- **Mesh Health Panel**: A live status list (like Blender's 3D-Print Toolbox) of open edges (holes), non-manifold edges and vertices, flipped normals, shells, thin / sliver faces, degenerate and duplicate faces. Checks run in the background after loading (F5 re-runs them), Auto rows re-check after every edit, and a status-bar badge shows whether the mesh is watertight.
+- **Mesh Health Panel**: A live status list (like Blender's 3D-Print Toolbox) of open edges (holes), non-manifold edges and vertices, flipped normals, shells, intersecting faces, thin / sliver faces, degenerate and duplicate faces. Checks run in the background after loading (F5 re-runs them), Auto rows re-check after every edit, and a status-bar badge shows whether the mesh is watertight.
+- **Self-Intersection Detection**: Finds faces that pass through (or overlap coplanar with) other faces, the way Blender's 3D-Print Toolbox does: a multi-threaded AABB-tree self-overlap followed by Möller's fast triangle-triangle test. Its Auto checkbox is off by default because it is the slowest check (about 45 ms on the 69k-triangle bunny in a release build). Try *File > Load Sample > Self-intersecting box* (`examples/self_intersecting_box.stl`).
 - **Deterministic Sliver Diagnostics**: Identifies degenerate, near-zero-area, and high-aspect-ratio sliver triangles via configurable Minimum Altitude ($h_{\min} = \frac{2A}{\ell_{\max}}$), Minimum Area ($A$), and Aspect Ratio thresholds, bucketed as Zero-area / Needle / Cap / Small.
 - **Scales to Huge Defect Counts**: Above a list cap (100) a defect type becomes a 3D highlight plus a clickable worst-first histogram, Next / Prev (`N` / `Shift+N`) and 3D picking instead of an unusable list.
 - **Selection-Centric 3D Viewport Navigation**: Blender-inspired camera controls:
@@ -74,7 +75,7 @@ ogun_stl_repair_tool/
     ├── core/           # Mathematical constants & centralized default settings (+ src/core/Test/)
     ├── mesh/           # Indexed Face-Vertex Mesh, CGAL Interop, Units & ToleranceConfig (+ src/mesh/Test/)
     ├── io/             # STL reading, edge-aware welding, STL export & sample meshes (+ src/io/Test/)
-    ├── diagnostics/    # Mesh Health checks: topology, thin/sliver, degenerate, duplicates (+ src/diagnostics/Test/)
+    ├── diagnostics/    # Mesh Health checks: topology, self-intersections, thin/sliver, degenerate, duplicates (+ src/diagnostics/Test/)
     ├── repair/         # CGAL single-face live preview/repair & batch sliver healing (+ src/repair/Test/)
     ├── app/            # Headless AppController (+ src/app/Test/) & Polyscope/ImGui viewer
     └── mockup/         # Historical clickable UI mockup of UI_DESIGN.md (fake defect data)

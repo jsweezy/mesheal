@@ -2,6 +2,8 @@ add_library(ogun_diagnostics STATIC
     ThinFaceChecker.cpp
     MeshHealth.cpp
     MeshChecks.cpp
+    TriTriIntersect.cpp
+    SelfIntersections.cpp
     Histogram.cpp
 )
 add_library(ogun::diagnostics ALIAS ogun_diagnostics)

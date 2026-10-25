@@ -1,5 +1,6 @@
 #include "diagnostics/MeshHealth.hpp"
 #include "diagnostics/MeshChecks.hpp"
+#include "diagnostics/SelfIntersections.hpp"
 
 #include <chrono>
 
@@ -40,6 +41,12 @@ constexpr std::array<CategoryInfo, kDefectCategoryCount> kCategoryInfos = {{
      {{{"Faces", ValueDimension::None}, {"Area", ValueDimension::Area}, kNoColumn}},
      nullptr, ValueDimension::None, false, true,
      {nullptr, nullptr, nullptr, nullptr}},
+    {"Intersecting faces", "Intersecting Faces", CategoryGroup::Geometry,
+     "Triangles that pass through other triangles (or overlap them while lying in the same plane).",
+     ElementKind::Face, "faces", false, false, false,
+     {{{"Crosses", ValueDimension::None}, {"First partner", ValueDimension::None}, kNoColumn}},
+     "Faces crossed", ValueDimension::None, false, false,
+     {"Crossing", "Coplanar overlap", nullptr, nullptr}},
     {"Thin / sliver faces", "Thin / Sliver Faces", CategoryGroup::Geometry,
      "Triangles with a tiny altitude, area, or a huge aspect ratio.",
      ElementKind::Face, "faces", true, false, true,
@@ -114,6 +121,9 @@ CategoryResult runCategoryCheck(
         break;
     case DefectCategory::Shells:
         result = checkShells(mesh, stopToken);
+        break;
+    case DefectCategory::Intersections:
+        result = checkSelfIntersections(mesh, params, stopToken, progress);
         break;
     case DefectCategory::ThinFaces:
         result = checkThinFaces(mesh, params, stopToken);

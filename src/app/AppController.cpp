@@ -96,11 +96,11 @@ std::filesystem::path AppController::resolveApplicationIconPath() noexcept {
     return {};
 }
 
-std::filesystem::path AppController::resolveSampleBunnyPath() noexcept {
+std::filesystem::path AppController::resolveExamplePath(std::string_view fileName) {
     const std::array<std::filesystem::path, 2> candidates = {
-        std::filesystem::path("examples/stanford_bunny.stl"),
+        std::filesystem::path("examples") / fileName,
 #ifdef OGUN_SOURCE_EXAMPLES_DIR
-        std::filesystem::path(OGUN_SOURCE_EXAMPLES_DIR) / "stanford_bunny.stl",
+        std::filesystem::path(OGUN_SOURCE_EXAMPLES_DIR) / fileName,
 #else
         std::filesystem::path{},
 #endif
@@ -138,10 +138,10 @@ void AppController::loadSampleDefectiveMesh() {
     setMesh(SampleMeshes::createSampleDefectiveMesh(mesh_.fileUnit), "Sample Defective Mesh");
 }
 
-bool AppController::loadSampleBunny() {
-    const std::filesystem::path path = resolveSampleBunnyPath();
+bool AppController::loadSampleFile(std::string_view fileName) {
+    const std::filesystem::path path = resolveExamplePath(fileName);
     if (path.empty()) {
-        lastErrorMessage_ = "Sample file examples/stanford_bunny.stl was not found.";
+        lastErrorMessage_ = "Sample file examples/" + std::string(fileName) + " was not found.";
         postStatusMessage(lastErrorMessage_, true);
         return false;
     }
@@ -243,6 +243,7 @@ CheckParams AppController::checkParams() const noexcept {
     CheckParams params;
     params.thinThresholds = thresholds_;
     params.degenerateAreaEpsilon = degenerateAreaEpsilon_;
+    params.intersectionTolerance = intersectionTolerance_;
     return params;
 }
 
@@ -271,6 +272,14 @@ void AppController::setDegenerateAreaEpsilon(double epsilon) {
     }
     degenerateAreaEpsilon_ = epsilon;
     onCheckParamsChanged(DefectCategory::Degenerate);
+}
+
+void AppController::setIntersectionTolerance(double tolerance) {
+    if (!std::isfinite(tolerance) || tolerance < 0.0 || tolerance == intersectionTolerance_) {
+        return;
+    }
+    intersectionTolerance_ = tolerance;
+    onCheckParamsChanged(DefectCategory::Intersections);
 }
 
 void AppController::markRunning(DefectCategory category) noexcept {
@@ -525,6 +534,27 @@ void AppController::focusDefect(std::size_t element) {
     onFocusChanged();
 }
 
+std::span<const Eigen::Index> AppController::focusedRelatedFaces() const noexcept {
+    const CategoryResult* result = browser_.result();
+    if (result == nullptr || !browser_.hasFocus()) {
+        return {};
+    }
+    return result->relatedOf(browser_.focusedElement());
+}
+
+bool AppController::focusRelatedFace(Eigen::Index faceIndex) {
+    if (browser_.result() == nullptr) {
+        return false;
+    }
+    const std::size_t element = browser_.findVisibleElementWithFace(faceIndex);
+    if (element == DefectBrowser::kNone) {
+        postStatusMessage("Face #" + std::to_string(faceIndex) + " is hidden by the current filter.");
+        return false;
+    }
+    focusDefect(element);
+    return true;
+}
+
 bool AppController::focusNextDefect(int direction) {
     if (!browser_.focusStep(direction)) {
         return false;
@@ -674,6 +704,9 @@ std::vector<Eigen::Index> AppController::highlightedFaceIndices() const {
         const auto ef = result->facesOf(browser_.focusedElement());
         faces.insert(faces.end(), ef.begin(), ef.end());
     }
+    // Intersections: also show the faces the focused face crosses
+    const auto related = focusedRelatedFaces();
+    faces.insert(faces.end(), related.begin(), related.end());
     std::sort(faces.begin(), faces.end());
     faces.erase(std::unique(faces.begin(), faces.end()), faces.end());
     return faces;

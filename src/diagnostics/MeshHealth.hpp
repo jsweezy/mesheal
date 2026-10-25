@@ -23,12 +23,13 @@ enum class DefectCategory : std::uint8_t {
     NonManifoldVertices,
     FlippedNormals,
     Shells,
+    Intersections,
     ThinFaces,
     Degenerate,
     Duplicates
 };
 
-inline constexpr std::size_t kDefectCategoryCount = 8;
+inline constexpr std::size_t kDefectCategoryCount = 9;
 
 inline constexpr std::array<DefectCategory, kDefectCategoryCount> kAllDefectCategories = {
     DefectCategory::OpenEdges,
@@ -36,6 +37,7 @@ inline constexpr std::array<DefectCategory, kDefectCategoryCount> kAllDefectCate
     DefectCategory::NonManifoldVertices,
     DefectCategory::FlippedNormals,
     DefectCategory::Shells,
+    DefectCategory::Intersections,
     DefectCategory::ThinFaces,
     DefectCategory::Degenerate,
     DefectCategory::Duplicates,
@@ -99,6 +101,10 @@ struct CategoryResult {
     /// Faces of each element in CSR form: element i owns `faces[faceOffsets[i] .. faceOffsets[i + 1])`.
     std::vector<std::uint32_t> faceOffsets{0};
     std::vector<Eigen::Index> faces;
+    /// Related faces of each element in CSR form (intersections: the faces it crosses). Empty for
+    /// categories without related faces.
+    std::vector<std::uint32_t> relatedOffsets;
+    std::vector<Eigen::Index> related;
     std::size_t infoCount = 0; ///< Hole loops (open edges) or shell count (shells)
     double elapsedMs = 0.0;
     bool cancelled = false;
@@ -115,6 +121,13 @@ struct CategoryResult {
         return {faces.data() + faceOffsets[element], faces.data() + faceOffsets[element + 1]};
     }
 
+    [[nodiscard]] std::span<const Eigen::Index> relatedOf(std::size_t element) const noexcept {
+        if (element + 1 >= relatedOffsets.size()) {
+            return {};
+        }
+        return {related.data() + relatedOffsets[element], related.data() + relatedOffsets[element + 1]};
+    }
+
     /// Element count per sub-type (index matches `CategoryInfo::subtypes`).
     [[nodiscard]] std::array<std::size_t, 4> subtypeCounts() const noexcept;
 };
@@ -125,6 +138,7 @@ struct CheckParams {
     double degenerateAreaEpsilon = settings::kDefaultDegenerateAreaEpsilon;
     double needleEdgeRatio = settings::kDefaultNeedleEdgeRatio;
     double capAngleDeg = settings::kDefaultCapAngleDeg;
+    double intersectionTolerance = settings::kDefaultIntersectionTolerance; ///< Fraction of the bbox diagonal
 };
 
 /// Runs one check on `mesh`. Pure (no GUI); polls `stopToken` and reports 0..1 through `progress`.
