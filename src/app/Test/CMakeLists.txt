@@ -2,6 +2,7 @@ add_executable(ogun_app_tests
     AppControllerTests.cpp
     DefectBrowserTests.cpp
     HealthModelTests.cpp
+    ShellBrowserTests.cpp
 )
 
 target_link_libraries(ogun_app_tests

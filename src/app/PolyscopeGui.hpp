@@ -19,11 +19,12 @@ class TextureBuffer;
 namespace ogun {
 
 /// Thin Polyscope + Dear ImGui visual presentation layer bound to `ogun::AppController`.
-/// Layout (UI_DESIGN.md §3): menu bar, left column (Display / Navigate / Structures), right column
-/// (Mesh Health + Tool slot) and a status bar, all docked by code every frame.
+/// Layout (UI_DESIGN.md §3): menu bar, left column (Display / Navigate / Shells / Structures), right
+/// column (Mesh Health + Tool slot) and a status bar, all docked by code every frame.
 /// Implementation is split across PolyscopeGui.cpp (Polyscope sync, mouse, keys),
 /// PolyscopeGuiShell.cpp (layout, menus, status bar, windows), PolyscopeGuiPanels.cpp
-/// (Display / Navigate / Structures) and PolyscopeGuiHealth.cpp (Mesh Health, Tool slot).
+/// (Display / Navigate / Structures), PolyscopeGuiShells.cpp (Shells panel) and
+/// PolyscopeGuiHealth.cpp (Mesh Health, Tool slot).
 class PolyscopeGui {
 public:
     static constexpr const char* kSurfaceMeshName = "STL Surface Mesh";
@@ -72,6 +73,18 @@ private:
     void flyToStandardView(int view);
     void toggleGhost();
     void toggleOrthographic();
+
+    // ---- Shells panel (PolyscopeGuiShells.cpp) ----
+    void drawShellsPanel();
+    void drawShellTable(float height);
+    void drawShellRowTooltip(std::size_t shell);
+    /// Frame, Isolate, Hide, Delete, Save As... (right-click menu and Mesh > Shells).
+    void drawShellActionItems();
+    void drawShellSelectPopup();
+    void toggleIsolateShells();
+    /// Deletes the selected shells at the end of the frame (undoable).
+    void deleteSelectedShells();
+    void saveSelectedShellsDialog(bool eachOwnFile);
 
     // ---- Right column: Mesh Health & Tool slot (PolyscopeGuiHealth.cpp) ----
     void drawHealthPanel();
@@ -144,6 +157,8 @@ private:
     bool showDisplay_ = true;
     bool showNavigate_ = true;
     bool showStructures_ = true;
+    bool showShells_ = true;           ///< Shells panel (shown only for multi-shell meshes)
+    bool structuresCollapsed_ = true;  ///< Structures panel state, to size the Shells panel above it
     bool showMeshInfo_ = false;
     bool showPreferences_ = false;
     bool showNavigationHelpWindow_ = false;
@@ -165,6 +180,10 @@ private:
 
     // Tool panel
     bool scrollListToFocus_ = false;
+
+    // Shells panel
+    int smallShellFaces_ = settings::kDefaultSmallShellFaces;
+    bool deleteShellsRequested_ = false;
 
     // 3D sync
     bool syncPending_ = false;

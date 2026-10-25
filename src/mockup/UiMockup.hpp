@@ -36,7 +36,8 @@ struct MockDefect {
     int subtype = 0;
     bool selected = false;
     int shell = -1;        ///< Shell that owns `faceIndex` (-1: unusable face)
-    int partnerShell = -1; ///< Intersections: another shell this face crosses (-1: none)
+    std::vector<int> partnerShells; ///< Intersections: other shells this face crosses
+    bool selfCrossing = false;      ///< Intersections: also crosses a face of its own shell
 };
 
 /// One connected piece of the real mesh (from `checkShells`), largest first.
@@ -193,6 +194,7 @@ private:
     [[nodiscard]] bool shellLive(int shell) const;
     [[nodiscard]] bool faceShown(Eigen::Index face) const;
     [[nodiscard]] bool shellInScope(int root) const;
+    [[nodiscard]] bool crossesOwnShell(const MockDefect& defect) const;
     [[nodiscard]] bool defectInScope(const MockDefect& defect) const;
     [[nodiscard]] bool rowVisible(const HealthCategory& category, std::size_t row) const;
     [[nodiscard]] bool fixableByFixAll(std::size_t categoryIndex, const MockDefect& defect) const;
@@ -208,7 +210,7 @@ private:
     [[nodiscard]] std::vector<ShellHealth> shellHealth() const;
     [[nodiscard]] bool healthKnown() const;
     [[nodiscard]] std::string shellLabel(int shell) const;
-    [[nodiscard]] Eigen::RowVector3d shellColour(int root) const;
+    [[nodiscard]] Eigen::RowVector3d shellColor(int root) const;
     [[nodiscard]] Mesh extractShells(const std::vector<int>& roots) const;
 
     Mesh mesh_;
@@ -228,10 +230,10 @@ private:
     std::optional<std::vector<bool>> isolateRestore_; ///< Visibility to restore when un-isolating
     int shellAnchor_ = -1;
     std::size_t selectedShellCount_ = 0;
-    bool colourByShell_ = false;
+    bool colorByShell_ = true;
     bool showShells_ = true;
     bool structuresCollapsed_ = true;
-    ScopeModel scopeModel_ = ScopeModel::VisibleShells;
+    ScopeModel scopeModel_ = ScopeModel::SelectedShells;
     int smallShellFaces_ = 100;
     double mergeGapTolerance_ = 1.0e-8;
     std::future<std::vector<CategoryResult>> realChecks_;

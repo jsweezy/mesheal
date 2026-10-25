@@ -783,3 +783,267 @@ TEST_CASE("AppController cutout preview hides every replaced face of a 2-ring pa
     REQUIRE(originalEdges.overlayPoints.size() == 6);
     REQUIRE(originalEdges.overlayEdges.size() == 11);
 }
+
+namespace {
+
+/// Appends `part` shifted by `offset` to `mesh` (a new shell).
+void appendShell(ogun::Mesh& mesh, ogun::Mesh part, const Eigen::Vector3d& offset) {
+    part.V.rowwise() += offset.transpose();
+    const Eigen::Index nv = mesh.V.rows();
+    const Eigen::Index nf = mesh.F.rows();
+    mesh.V.conservativeResize(nv + part.V.rows(), 3);
+    mesh.F.conservativeResize(nf + part.F.rows(), 3);
+    mesh.V.bottomRows(part.V.rows()) = part.V;
+    mesh.F.bottomRows(part.F.rows()) = part.F.array() + static_cast<int>(nv);
+    mesh.recomputeNormals();
+}
+
+/// Shells: the defective sample (a cube and two loose triangles, 3 thin faces, inside 0..10), a clean
+/// cube crossing it (5..15) and a clean cube far away. Loads them into `controller` and returns the
+/// sample cube's, the crossing cube's and the far cube's shell numbers.
+void loadThreeShells(ogun::AppController& controller, std::size_t& sample, std::size_t& crossing, std::size_t& far) {
+    ogun::Mesh mesh = ogun::SampleMeshes::createSampleDefectiveMesh();
+    appendShell(mesh, ogun::SampleMeshes::createCubeMesh(10.0, ogun::Unit::Millimeter), {5.0, 5.0, 5.0});
+    appendShell(mesh, ogun::SampleMeshes::createCubeMesh(2.0, ogun::Unit::Millimeter), {40.0, 0.0, 0.0});
+    controller.setMesh(std::move(mesh), "three_shells.stl");
+    const ogun::ShellBrowser& shells = controller.shells();
+    for (std::size_t s = 0; s < shells.size(); ++s) {
+        const ogun::ShellInfo& shell = shells.shell(s);
+        if (shell.bbox.min.x() > 30.0) {
+            far = s;
+        } else if (shell.bbox.min.x() == 5.0) {
+            crossing = s;
+        } else if (shell.faces.size() == 13) {
+            sample = s;
+        }
+    }
+}
+
+/// The three shells of the defective sample.
+bool isSample(const ogun::AppController& controller, std::size_t shell) {
+    return controller.shells().shell(shell).bbox.max.x() <= 10.0;
+}
+
+std::size_t count(const ogun::AppController& controller, ogun::DefectCategory category) {
+    return controller.rowCount(category);
+}
+
+} // namespace
+
+TEST_CASE("AppController scopes Mesh Health to the selected shells, else the visible ones",
+          "[app][controller][shells]") {
+    std::size_t sample = 0;
+    std::size_t crossing = 0;
+    std::size_t far = 0;
+    ogun::AppController controller;
+    loadThreeShells(controller, sample, crossing, far);
+    REQUIRE(controller.shells().size() == 5);
+    using ogun::DefectCategory;
+    const std::size_t allCrossings = count(controller, DefectCategory::Intersections);
+    REQUIRE(allCrossings > 0);
+    REQUIRE(count(controller, DefectCategory::ThinFaces) == 3);
+    REQUIRE(controller.shellHealthKnown());
+    std::size_t sampleThin = 0;
+    for (std::size_t s = 0; s < controller.shells().size(); ++s) {
+        sampleThin += controller.shellHealth()[s].counts[ogun::categoryIndex(DefectCategory::ThinFaces)];
+    }
+    REQUIRE(sampleThin == 3);
+    REQUIRE(controller.shellHealth()[sample].counts[ogun::categoryIndex(DefectCategory::ThinFaces)] == 1);
+    REQUIRE(controller.shellHealth()[crossing].between > 0);
+
+    // One clean shell: nothing in scope, the rows read OK
+    controller.clickShell(far, false, false, {});
+    REQUIRE(count(controller, DefectCategory::ThinFaces) == 0);
+    REQUIRE(count(controller, DefectCategory::Intersections) == 0);
+    REQUIRE(controller.rowStatus(DefectCategory::ThinFaces) == ogun::HealthStatus::Ok);
+    REQUIRE(controller.totalProblemCount() == 0);
+    controller.selectCategory(DefectCategory::ThinFaces);
+    REQUIRE(controller.browser().visibleRows().empty());
+
+    // The sample alone: its thin faces, but not its crossings with the unselected cube
+    controller.selectShellsWhere([&](std::size_t s) { return isSample(controller, s); });
+    REQUIRE(count(controller, DefectCategory::ThinFaces) == 3);
+    REQUIRE(controller.browser().visibleRows().size() == 3);
+    const std::size_t sampleOnly = count(controller, DefectCategory::Intersections);
+    REQUIRE(sampleOnly < allCrossings);
+
+    // Both crossing shells selected: every crossing is back
+    controller.clickShell(crossing, true, false, {});
+    REQUIRE(count(controller, DefectCategory::Intersections) == allCrossings);
+
+    // No selection: the visible shells are the scope
+    controller.selectShellsWhere([](std::size_t) { return false; });
+    for (std::size_t s = 0; s < controller.shells().size(); ++s) {
+        controller.setShellVisible(s, !isSample(controller, s));
+    }
+    REQUIRE(count(controller, DefectCategory::ThinFaces) == 0);
+    REQUIRE(count(controller, DefectCategory::Intersections) == 0);
+    controller.showAllShells();
+    REQUIRE(count(controller, DefectCategory::Intersections) == allCrossings);
+}
+
+TEST_CASE("AppController hides shells from the base mesh display and Esc clears the shell selection",
+          "[app][controller][shells]") {
+    std::size_t sample = 0;
+    std::size_t crossing = 0;
+    std::size_t far = 0;
+    ogun::AppController controller;
+    loadThreeShells(controller, sample, crossing, far);
+    REQUIRE_FALSE(controller.buildBaseMeshDisplay().isCut);
+
+    controller.setShellVisible(far, false);
+    const ogun::BaseMeshDisplay display = controller.buildBaseMeshDisplay();
+    REQUIRE(display.isCut);
+    REQUIRE(display.faceIndices.size() ==
+            static_cast<std::size_t>(controller.mesh().numFaces()) - controller.shells().shell(far).faces.size());
+    for (const Eigen::Index f : display.faceIndices) {
+        REQUIRE(controller.shells().shellOfFace(f) != static_cast<int>(far));
+    }
+
+    // Color by shell (on by default) and the selected-shell tint
+    REQUIRE(controller.colorByShell());
+    controller.showAllShells();
+    REQUIRE(controller.pickShell(controller.shells().shell(far).faces.front(), false));
+    REQUIRE(controller.shells().shell(far).selected);
+    const ogun::HighlightOverlayGeometry overlay = controller.buildHighlightOverlay();
+    const Eigen::Index farFace = controller.shells().shell(far).faces.front();
+    const Eigen::Index otherFace = controller.shells().shell(crossing).faces.front();
+    REQUIRE(overlay.faceColors[static_cast<std::size_t>(otherFace)].isApprox(ogun::AppController::shellColor(crossing)));
+    REQUIRE_FALSE(overlay.faceColors[static_cast<std::size_t>(farFace)].isApprox(ogun::AppController::shellColor(far)));
+
+    // Selected shells are framed when no defect is highlighted
+    const ogun::CameraFocusTarget focus = controller.computeCameraFocusTarget();
+    REQUIRE(focus.selectionBounds.min.isApprox(controller.shells().shell(far).bbox.min));
+
+    REQUIRE(controller.escape());
+    REQUIRE(controller.shells().selectedCount() == 0);
+    REQUIRE_FALSE(controller.escape());
+}
+
+TEST_CASE("AppController deletes the selected shells as one undoable step",
+          "[app][controller][shells][undo]") {
+    std::size_t sample = 0;
+    std::size_t crossing = 0;
+    std::size_t far = 0;
+    ogun::AppController controller;
+    loadThreeShells(controller, sample, crossing, far);
+    const ogun::Mesh before = controller.mesh();
+    const std::size_t farFaces = controller.shells().shell(far).faces.size();
+
+    REQUIRE_FALSE(controller.deleteSelectedShells()); // nothing selected
+    controller.selectShellsWhere([](std::size_t) { return true; });
+    REQUIRE_FALSE(controller.deleteSelectedShells()); // would delete everything
+    REQUIRE_FALSE(controller.canUndo());
+
+    controller.setShellVisible(sample, false);
+    controller.clickShell(far, false, false, {});
+    REQUIRE(controller.deleteSelectedShells());
+    REQUIRE(controller.shells().size() == 4);
+    REQUIRE(controller.mesh().numFaces() == before.numFaces() - static_cast<Eigen::Index>(farFaces));
+    REQUIRE(controller.mesh().numVertices() == before.numVertices() - 8);
+    REQUIRE(controller.isModified());
+    REQUIRE(controller.lastUndoActionLabel() == "Delete 1 Shell(s)");
+    // The hidden shell stays hidden
+    std::size_t hidden = 0;
+    for (const ogun::ShellInfo& shell : controller.shells().shells()) {
+        hidden += shell.visible ? 0 : 1;
+    }
+    REQUIRE(hidden == 1);
+
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().F == before.F);
+    REQUIRE(controller.mesh().V == before.V);
+    REQUIRE(controller.shells().size() == 5);
+    REQUIRE(controller.shells().shell(far).selected);
+    REQUIRE_FALSE(controller.shells().shell(sample).visible);
+    REQUIRE_FALSE(controller.isModified());
+}
+
+TEST_CASE("AppController Fix All heals only the shells in scope and undo restores them",
+          "[app][controller][shells][repair][undo]") {
+    std::size_t sample = 0;
+    std::size_t crossing = 0;
+    std::size_t far = 0;
+    ogun::AppController controller;
+    loadThreeShells(controller, sample, crossing, far);
+    const ogun::Mesh before = controller.mesh();
+
+    controller.clickShell(far, false, false, {});
+    REQUIRE_FALSE(controller.fixAllThinFaces()); // the far cube is clean
+    REQUIRE_FALSE(controller.canUndo());
+
+    controller.selectShellsWhere([&](std::size_t s) { return isSample(controller, s); });
+    REQUIRE(controller.fixAllThinFaces());
+    REQUIRE(controller.lastUndoActionLabel() == "Fix All Thin / Sliver Faces (3 shells)");
+    REQUIRE(controller.rowCount(ogun::DefectCategory::ThinFaces) == 0);
+    // The other shells are untouched and stay unselected
+    std::size_t untouched = 0;
+    for (const ogun::ShellInfo& shell : controller.shells().shells()) {
+        if (shell.bbox.min.x() >= 5.0) {
+            REQUIRE(shell.faces.size() == 12);
+            REQUIRE_FALSE(shell.selected);
+            ++untouched;
+        }
+    }
+    REQUIRE(untouched == 2);
+
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().F == before.F);
+    REQUIRE(controller.rowCount(ogun::DefectCategory::ThinFaces) == 3);
+    REQUIRE(controller.shells().shell(sample).selected);
+}
+
+TEST_CASE("AppController saves selected shells to one STL or one file each",
+          "[app][controller][shells][io]") {
+    std::size_t sample = 0;
+    std::size_t crossing = 0;
+    std::size_t far = 0;
+    ogun::AppController controller;
+    loadThreeShells(controller, sample, crossing, far);
+    REQUIRE(controller.shellFileStem() == "three_shells");
+    const auto path = makeTempStlPath("shells");
+    REQUIRE_FALSE(controller.saveSelectedShells(path)); // nothing selected
+
+    controller.clickShell(crossing, false, false, {});
+    controller.clickShell(far, true, false, {});
+    REQUIRE(controller.saveSelectedShells(path));
+    REQUIRE_FALSE(controller.isModified());
+    {
+        ogun::AppController reloaded;
+        REQUIRE(reloaded.loadStlFile(path));
+        REQUIRE(reloaded.mesh().numFaces() == 24);
+        REQUIRE(reloaded.shells().size() == 2);
+    }
+    std::filesystem::remove(path);
+
+    const std::filesystem::path dir = path.parent_path() / (path.stem().string() + "_each");
+    std::filesystem::create_directories(dir);
+    REQUIRE(controller.saveEachSelectedShell(dir) == 2);
+    for (const std::size_t s : {crossing, far}) {
+        const auto file = dir / ("three_shells_shell_0" + std::to_string(s + 1) + ".stl");
+        REQUIRE(std::filesystem::exists(file));
+        REQUIRE(std::filesystem::file_size(file) == 84 + 50 * 12);
+    }
+    std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("AppController tags a shell lying inside another without crossing it as nested",
+          "[app][controller][shells]") {
+    ogun::Mesh mesh = ogun::SampleMeshes::createCubeMesh(10.0, ogun::Unit::Millimeter);
+    appendShell(mesh, ogun::SampleMeshes::createCubeMesh(2.0, ogun::Unit::Millimeter), {4.0, 4.0, 4.0});
+    appendShell(mesh, ogun::SampleMeshes::createCubeMesh(2.0, ogun::Unit::Millimeter), {40.0, 0.0, 0.0});
+    ogun::AppController controller;
+    controller.setMesh(std::move(mesh), "nested.stl");
+    REQUIRE(controller.shells().size() == 3);
+    REQUIRE(controller.shells().shell(0).nestedIn == -1);
+    REQUIRE(controller.shells().shell(1).nestedIn == 0);
+    REQUIRE(controller.shells().shell(2).nestedIn == -1);
+
+    // The tag survives deleting another shell, before the intersection check runs again
+    controller.setAutoCheck(ogun::DefectCategory::Intersections, false);
+    controller.clickShell(2, false, false, {});
+    REQUIRE(controller.deleteSelectedShells());
+    REQUIRE(controller.shells().size() == 2);
+    REQUIRE(controller.categoryHealth(ogun::DefectCategory::Intersections).status == ogun::HealthStatus::Stale);
+    REQUIRE(controller.shells().shell(1).nestedIn == 0);
+}

@@ -2,11 +2,13 @@
 
 #include <algorithm>
 #include <numeric>
+#include <utility>
 
 namespace ogun {
 
 void DefectBrowser::setResult(const CategoryResult* result) {
     result_ = result;
+    scopeMask_.clear();
     subtypeFilter_ = -1;
     binFilter_.reset();
     sortColumn_ = -1;
@@ -21,7 +23,42 @@ void DefectBrowser::setResult(const CategoryResult* result) {
 }
 
 bool DefectBrowser::passesSubtype(std::size_t element) const noexcept {
-    return subtypeFilter_ < 0 || result_->elements[element].subtype == subtypeFilter_;
+    return inScope(element) && (subtypeFilter_ < 0 || result_->elements[element].subtype == subtypeFilter_);
+}
+
+void DefectBrowser::setScopeMask(std::vector<std::uint8_t> mask) {
+    if (mask == scopeMask_) {
+        return;
+    }
+    scopeMask_ = std::move(mask);
+    binFilter_.reset();
+    rebuildHistogram();
+    rebuildVisible();
+    pruneHidden();
+}
+
+std::array<std::size_t, 4> DefectBrowser::subtypeCounts() const noexcept {
+    std::array<std::size_t, 4> counts{};
+    if (result_ == nullptr) {
+        return counts;
+    }
+    for (std::size_t i = 0; i < result_->size(); ++i) {
+        const int subtype = result_->elements[i].subtype;
+        if (inScope(i) && subtype >= 0 && subtype < static_cast<int>(counts.size())) {
+            ++counts[static_cast<std::size_t>(subtype)];
+        }
+    }
+    return counts;
+}
+
+std::size_t DefectBrowser::scopedCount() const noexcept {
+    if (result_ == nullptr) {
+        return 0;
+    }
+    if (scopeMask_.empty()) {
+        return result_->size();
+    }
+    return static_cast<std::size_t>(std::count_if(scopeMask_.begin(), scopeMask_.end(), [](std::uint8_t m) { return m != 0; }));
 }
 
 std::size_t DefectBrowser::binOfElement(std::size_t element) const noexcept {

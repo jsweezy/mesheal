@@ -5,6 +5,7 @@
 
 #include <Eigen/Core>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -37,6 +38,20 @@ public:
     }
 
     // ---- Filters (changing one drops hidden rows from the selection and focus: FB-13) ----
+
+    /// Shell scope (UI_DESIGN.md §16): element i is listed only when `mask[i]` is non-zero. An empty
+    /// mask lists every element. Clears the bin filter, since the histogram changes.
+    void setScopeMask(std::vector<std::uint8_t> mask);
+
+    [[nodiscard]] bool inScope(std::size_t element) const noexcept {
+        return scopeMask_.empty() || (element < scopeMask_.size() && scopeMask_[element] != 0);
+    }
+
+    /// In-scope elements per sub-type (index matches `CategoryInfo::subtypes`).
+    [[nodiscard]] std::array<std::size_t, 4> subtypeCounts() const noexcept;
+
+    /// In-scope elements.
+    [[nodiscard]] std::size_t scopedCount() const noexcept;
 
     /// Sub-type filter (-1: all).
     [[nodiscard]] int subtypeFilter() const noexcept {
@@ -120,11 +135,13 @@ private:
     void rebuildHistogram();
     void rebuildVisible();
     void pruneHidden();
+    /// In scope and of the filtered sub-type.
     [[nodiscard]] bool passesSubtype(std::size_t element) const noexcept;
     [[nodiscard]] std::size_t binOfElement(std::size_t element) const noexcept;
     void setSelected(std::size_t element, bool selected) noexcept;
 
     const CategoryResult* result_ = nullptr;
+    std::vector<std::uint8_t> scopeMask_;
     int subtypeFilter_ = -1;
     std::optional<BinRange> binFilter_;
     MetricHistogram histogram_;

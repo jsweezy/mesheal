@@ -2,6 +2,7 @@
 
 #include "app/DefectBrowser.hpp"
 #include "app/HealthCheckRunner.hpp"
+#include "app/ShellBrowser.hpp"
 #include "core/Settings.hpp"
 #include "diagnostics/MeshHealth.hpp"
 #include "diagnostics/ThinFaceChecker.hpp"
@@ -21,6 +22,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -61,6 +63,15 @@ struct MeshHealthReport {
     [[nodiscard]] const CategoryHealth& operator[](DefectCategory category) const noexcept {
         return rows[categoryIndex(category)];
     }
+};
+
+/// Defect counts of one shell by Mesh Health row. Faces that cross only other shells are counted
+/// apart: Merge Shells (a union) removes them, so they do not block cleaning up one shell.
+struct ShellHealth {
+    std::array<std::size_t, kDefectCategoryCount> counts{};
+    std::size_t between = 0;
+    std::size_t total = 0;
+    std::vector<int> crosses; ///< Other shells whose faces cross this one (sorted)
 };
 
 /// Status-bar watertight badge: green only when open and non-manifold edges both checked to 0.
@@ -197,6 +208,7 @@ struct UndoEntry {
     Eigen::Index focusedFaceIndex = -1;
     HealAction selectedHealAction = HealAction::None;
     bool modified = false;
+    ShellBrowser shells;
     std::string actionLabel;
 };
 
@@ -370,8 +382,17 @@ public:
         return checkRunner_.currentCategory();
     }
 
-    /// Defects across all non-information rows that are checked and not stale.
+    /// Defects across all non-information rows that are checked and not stale (in the shell scope).
     [[nodiscard]] std::size_t totalProblemCount() const noexcept;
+
+    /// Count shown in a Mesh Health row: in-scope elements (UI_DESIGN.md §16), or the information count.
+    [[nodiscard]] std::size_t rowCount(DefectCategory category) const noexcept;
+
+    /// Row status with the shell scope applied: a Defects row with nothing in scope reads Ok.
+    [[nodiscard]] HealthStatus rowStatus(DefectCategory category) const noexcept;
+
+    /// True when element `element` of the row's current result is in the shell scope.
+    [[nodiscard]] bool elementInScope(DefectCategory category, std::size_t element) const noexcept;
 
     [[nodiscard]] WatertightState watertightState() const noexcept;
 
@@ -464,6 +485,57 @@ public:
 
     /// Builds per-face colors and the 3D overlay geometry for the current selection.
     [[nodiscard]] HighlightOverlayGeometry buildHighlightOverlay() const;
+
+    // -------------------------------------------------------------------------
+    // Shells (UI_DESIGN.md §16): view state, scope and shell edits
+    // -------------------------------------------------------------------------
+
+    /// Shells of the current mesh with their visibility and selection (read-only; use the methods below).
+    [[nodiscard]] const ShellBrowser& shells() const noexcept {
+        return shells_;
+    }
+
+    /// Defects of each shell (empty until a row has a current result).
+    [[nodiscard]] const std::vector<ShellHealth>& shellHealth() const noexcept {
+        return shellHealth_;
+    }
+
+    /// True when some non-information row has a result for the current mesh.
+    [[nodiscard]] bool shellHealthKnown() const noexcept;
+
+    void clickShell(std::size_t shell, bool toggle, bool range, std::span<const std::size_t> order);
+    void selectShellsWhere(const std::function<bool(std::size_t)>& predicate);
+    void setShellVisible(std::size_t shell, bool visible);
+    void showAllShells();
+    void hideAllShells();
+    void hideSelectedShells();
+    /// Isolate (I): see `ShellBrowser::toggleIsolate()`. Posts a status message either way.
+    bool toggleIsolateShells();
+
+    /// Alt+click in 3D: selects (or with `toggle` flips) the shell owning `faceIndex`.
+    bool pickShell(Eigen::Index faceIndex, bool toggle);
+
+    /// Deletes the selected shells (undoable). Refuses to delete every shell.
+    bool deleteSelectedShells();
+
+    /// Writes the selected shells to one STL file. The mesh and its file are unchanged.
+    bool saveSelectedShells(const std::filesystem::path& path, StlFormat format = StlFormat::Binary);
+
+    /// Writes each selected shell to `directory/<stem>_shell_NN.stl`. Returns the number written.
+    std::size_t saveEachSelectedShell(const std::filesystem::path& directory, StlFormat format = StlFormat::Binary);
+
+    /// File name stem used by `saveEachSelectedShell` (the loaded file's stem, or "mesh").
+    [[nodiscard]] std::string shellFileStem() const;
+
+    [[nodiscard]] bool colorByShell() const noexcept {
+        return colorByShell_;
+    }
+    void setColorByShell(bool enabled) noexcept {
+        colorByShell_ = enabled;
+    }
+
+    /// Muted color of shell `shell` (hues green..purple, never a defect color).
+    [[nodiscard]] static Eigen::Vector3d shellColor(std::size_t shell) noexcept;
 
     // -------------------------------------------------------------------------
     // Status messages (status bar)
@@ -677,7 +749,7 @@ public:
     /// diagnostics. Returns false (mesh unchanged) if nothing is selected or the repair is unsafe.
     bool commitSelectedFaceRepair();
 
-    /// Batch heals every thin / sliver face (undoable) and re-runs diagnostics.
+    /// Batch heals every thin / sliver face in the shell scope (undoable) and re-runs diagnostics.
     /// Returns false (mesh unchanged) if there is nothing to heal or no face could be healed.
     bool fixAllThinFaces();
 
@@ -706,8 +778,9 @@ public:
 private:
     /// Records the current mesh and inspection context before a modification.
     void pushUndoEntry(std::string actionLabel);
-    /// Swaps in a modified mesh: new generation, focus and picks cleared, history kept.
-    void replaceMeshPreservingHistory(Mesh mesh);
+    /// Swaps in a modified mesh: new generation, focus and picks cleared, history kept. The shells are
+    /// rebuilt (keeping their view state) unless `shells` restores a snapshot.
+    void replaceMeshPreservingHistory(Mesh mesh, std::optional<ShellBrowser> shells = std::nullopt);
     /// Second half of every mesh edit (after `pushUndoEntry`): swap the mesh and re-check.
     void finishMeshEdit(Mesh mesh);
     /// Auto rows are queued, other checked rows turn Stale.
@@ -719,6 +792,16 @@ private:
     void launchQueuedChecks();
     void applyCheckResult(CategoryResult result);
     void syncBrowserResult();
+    /// The row's result belongs to the current mesh (not a stale or running row's old result).
+    [[nodiscard]] const CategoryResult* currentResult(DefectCategory category) const noexcept;
+    /// Recomputes one row's scope mask and count.
+    void computeScope(DefectCategory category);
+    /// Shell visibility or selection changed: recompute every scope and refresh the browser.
+    void onShellsChanged();
+    /// Hands the selected row's scope mask to the browser (refocusing if the focus was dropped).
+    void applyScopeToBrowser();
+    /// Recomputes `shellHealth_` and the nested-shell tags from the current results.
+    void refreshShellHealth();
     /// Refreshes the Inspector, orbit pivot and normal toggle after the browser focus changed.
     void onFocusChanged();
     [[nodiscard]] CheckParams checkParams() const noexcept;
@@ -756,6 +839,11 @@ private:
     double intersectionTolerance_ = settings::kDefaultIntersectionTolerance;
 
     MeshHealthReport health_{};
+    ShellBrowser shells_;
+    std::array<std::vector<std::uint8_t>, kDefectCategoryCount> scopeMasks_{}; ///< Empty: every element in scope
+    std::array<std::size_t, kDefectCategoryCount> scopedCounts_{};
+    std::vector<ShellHealth> shellHealth_;
+    bool colorByShell_ = settings::kDefaultColorByShell;
     std::array<bool, kDefectCategoryCount> autoCheckDefaults_{};
     bool checkMeshAfterLoad_ = settings::kDefaultCheckMeshAfterLoad;
     bool backgroundChecks_ = false;

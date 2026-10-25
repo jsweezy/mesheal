@@ -323,15 +323,16 @@ void UiMockup::applyRealResults(std::vector<CategoryResult> results) {
             d.subtype = std::max(element.subtype, 0);
             d.shell = faceShell_[static_cast<std::size_t>(d.faceIndex)];
             if (i == kIntersections) {
-                d.subtype = kWithinShell;
                 for (const Eigen::Index partner : result.relatedOf(e)) {
                     const int other = faceShell_[static_cast<std::size_t>(partner)];
-                    if (other >= 0 && d.shell >= 0 && other != d.shell) {
-                        d.partnerShell = other;
-                        d.subtype = kBetweenShells;
+                    if (other < 0 || d.shell < 0 || other == d.shell) {
+                        d.selfCrossing = true;
+                    } else if (std::find(d.partnerShells.begin(), d.partnerShells.end(), other) == d.partnerShells.end()) {
+                        d.partnerShells.push_back(other);
                         crossingPairs_.emplace(std::min(other, d.shell), std::max(other, d.shell));
                     }
                 }
+                d.subtype = d.selfCrossing ? kWithinShell : kBetweenShells;
             }
             // Shells deleted while the checks ran stay deleted
             if (d.shell >= 0 && shellFlags_[static_cast<std::size_t>(rootShell(d.shell))].deleted) {
@@ -399,6 +400,7 @@ void UiMockup::generateFakeDefects() {
             d.metric = std::pow(10.0, logMetric(rng));
             d.area = d.metric * d.metric * 10.0;
             d.subtype = id == kIntersections ? kWithinShell : subtype(rng);
+            d.selfCrossing = id == kIntersections;
             d.shell = faceShell_[static_cast<std::size_t>(d.faceIndex)];
             pending.push_back(d);
         }
@@ -755,11 +757,11 @@ float UiMockup::drawMenuBar() {
 
     if (ImGui::BeginMenu("Mockup")) {
         ImGui::TextDisabled("Scope model: which shells Mesh Health covers");
-        if (ImGui::MenuItem("Visible shells (recommended)", nullptr, scopeModel_ == ScopeModel::VisibleShells)) {
+        if (ImGui::MenuItem("Visible shells", nullptr, scopeModel_ == ScopeModel::VisibleShells)) {
             scopeModel_ = ScopeModel::VisibleShells;
             pruneOutOfScope();
         }
-        if (ImGui::MenuItem("Selected shells (visible if none selected)", nullptr, scopeModel_ == ScopeModel::SelectedShells)) {
+        if (ImGui::MenuItem("Selected shells (chosen; visible if none selected)", nullptr, scopeModel_ == ScopeModel::SelectedShells)) {
             scopeModel_ = ScopeModel::SelectedShells;
             pruneOutOfScope();
         }
@@ -1098,7 +1100,7 @@ void UiMockup::drawHealthRow(std::size_t i) {
             // Shells are managed in their own panel, not in the Tool slot
             if (hasShellPanel()) {
                 showShells_ = true;
-                colourByShell_ = true;
+                colorByShell_ = true;
                 refreshFaceColors();
             } else {
                 setStatusMessage("One shell: nothing to manage.");
@@ -1111,7 +1113,7 @@ void UiMockup::drawHealthRow(std::size_t i) {
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 26.0f);
         ImGui::TextUnformatted(c.tooltip);
         if (i == kShells && hasShellPanel()) {
-            ImGui::TextDisabled("Click to open the Shells panel and colour each shell.");
+            ImGui::TextDisabled("Click to open the Shells panel and color each shell.");
         }
         ImGui::TextDisabled("%s", statusLabel(c.status));
         ImGui::PopTextWrapPos();
@@ -1459,9 +1461,12 @@ void UiMockup::drawInspector(const HealthCategory& category) {
     ImGui::Text("%s = %.3e   Area = %.3e", category.metricLabel, d.metric, d.area);
     if (d.shell >= 0 && hasShellPanel()) {
         ImGui::Text("In shell %s", shellLabel(rootShell(d.shell)).c_str());
-        if (d.partnerShell >= 0 && rootShell(d.partnerShell) != rootShell(d.shell)) {
-            ImGui::SameLine();
-            ImGui::TextDisabled("- crosses shell %s (Merge Shells removes this)", shellLabel(rootShell(d.partnerShell)).c_str());
+        std::string others;
+        for (const int p : d.partnerShells) {
+            if (rootShell(p) != rootShell(d.shell)) others += (others.empty() ? "" : ", ") + shellLabel(rootShell(p));
+        }
+        if (!others.empty()) {
+            ImGui::TextDisabled("Also crosses shell %s (Merge Shells removes those crossings)", others.c_str());
         }
     }
     if (selectedCategory_ == static_cast<int>(kSlivers)) {
@@ -1608,7 +1613,7 @@ void UiMockup::drawHelpWindow() {
         {"Left drag", "Orbit"},
         {"Right / Shift+Left drag", "Pan"},
         {"Scroll", "Zoom"},
-        {"Left click face", "Focus that defect (row open), otherwise select its shell"},
+        {"Left click face", "Focus that defect (if it belongs to the selected type)"},
         {"Alt+click face", "Select its shell (Ctrl/Cmd: toggle, Shift: add)"},
         {"I", "Isolate the selected shells (again to undo)"},
         {"Delete / Backspace", "Delete the selected shells (undoable)"},
@@ -1701,7 +1706,7 @@ void UiMockup::handleViewportClick() {
         return;
     }
     HealthCategory* cat = selectedCategory();
-    const bool shellPick = hasShellPanel() && (io.KeyAlt || cat == nullptr);
+    const bool shellPick = hasShellPanel() && io.KeyAlt;
     if (cat == nullptr && !shellPick) {
         return;
     }
@@ -1717,9 +1722,6 @@ void UiMockup::handleViewportClick() {
     if (shellPick) {
         const bool toggle = io.KeyCtrl || io.KeySuper;
         if (face < 0 || faceShell_[static_cast<std::size_t>(face)] < 0) {
-            if (!toggle && !io.KeyShift) {
-                selectShellsWhere([](int) { return false; });
-            }
             return;
         }
         const int shell = rootShell(faceShell_[static_cast<std::size_t>(face)]);
@@ -2023,12 +2025,12 @@ void UiMockup::refreshFaceColors() {
     const Eigen::RowVector3d shellSelected(shellSelectedColor_[0], shellSelectedColor_[1], shellSelectedColor_[2]);
     const bool shellsShown = hasShellPanel();
 
-    // Layers: shell colour, then the selected-shell tint, then defect tints
+    // Layers: shell color, then the selected-shell tint, then defect tints
     Eigen::MatrixXd colors(static_cast<Eigen::Index>(displayFaces_.size()), 3);
     for (std::size_t row = 0; row < displayFaces_.size(); ++row) {
         const int shell = shellsShown ? faceShell_[static_cast<std::size_t>(displayFaces_[row])] : -1;
         const int root = shell >= 0 ? rootShell(shell) : -1;
-        Eigen::RowVector3d c = root >= 0 && colourByShell_ ? shellColour(root) : base;
+        Eigen::RowVector3d c = root >= 0 && colorByShell_ ? shellColor(root) : base;
         if (root >= 0 && shellFlags_[static_cast<std::size_t>(root)].selected) {
             c = 0.35 * c + 0.65 * shellSelected;
         }
@@ -2170,8 +2172,25 @@ bool UiMockup::shellInScope(int root) const {
     return true;
 }
 
+bool UiMockup::crossesOwnShell(const MockDefect& defect) const {
+    const int own = rootShell(defect.shell);
+    return defect.selfCrossing || std::any_of(defect.partnerShells.begin(), defect.partnerShells.end(),
+                                              [&](int p) { return rootShell(p) == own; });
+}
+
 bool UiMockup::defectInScope(const MockDefect& defect) const {
-    return defect.shell < 0 || shellInScope(rootShell(defect.shell));
+    if (defect.shell < 0) {
+        return true;
+    }
+    if (!shellInScope(rootShell(defect.shell))) {
+        return false;
+    }
+    if (defect.partnerShells.empty() || crossesOwnShell(defect)) {
+        return true;
+    }
+    // A face that only crosses other shells counts when one of those shells is in scope too
+    return std::any_of(defect.partnerShells.begin(), defect.partnerShells.end(),
+                       [this](int p) { return shellInScope(rootShell(p)); });
 }
 
 bool UiMockup::rowVisible(const HealthCategory& category, std::size_t row) const {
@@ -2181,8 +2200,7 @@ bool UiMockup::rowVisible(const HealthCategory& category, std::size_t row) const
 
 bool UiMockup::fixableByFixAll(std::size_t categoryIndex, const MockDefect& defect) const {
     // Crossings between two shells are resolved by Merge Shells (a union), not by a per-shell repair
-    return !(categoryIndex == kIntersections && defect.partnerShell >= 0 &&
-             rootShell(defect.partnerShell) != rootShell(defect.shell));
+    return !(categoryIndex == kIntersections && !defect.partnerShells.empty() && !crossesOwnShell(defect));
 }
 
 std::size_t UiMockup::scopedCount(const HealthCategory& category) const {
@@ -2278,7 +2296,7 @@ std::string UiMockup::shellLabel(int shell) const {
     return "#" + std::to_string(shell + 1);
 }
 
-Eigen::RowVector3d UiMockup::shellColour(int root) const {
+Eigen::RowVector3d UiMockup::shellColor(int root) const {
     // Golden-ratio hue steps inside green..purple: no red, orange or yellow, which mean defects
     const float t = std::fmod(static_cast<float>(root) * 0.618034f, 1.0f);
     const float hue = 0.28f + 0.55f * t;
@@ -2451,11 +2469,13 @@ void UiMockup::deleteSelectedShells() {
         shellFlags_[static_cast<std::size_t>(s)].deleted = true;
         shellFlags_[static_cast<std::size_t>(s)].selected = false;
     }
-    const auto gone = [this](const MockDefect& d) {
-        const auto deleted = [this](int shell) {
-            return shell >= 0 && shellFlags_[static_cast<std::size_t>(rootShell(shell))].deleted;
-        };
-        return deleted(d.shell) || deleted(d.partnerShell);
+    const auto deleted = [this](int shell) {
+        return shell >= 0 && shellFlags_[static_cast<std::size_t>(rootShell(shell))].deleted;
+    };
+    const auto gone = [&](MockDefect& d) {
+        const bool hadPartners = !d.partnerShells.empty();
+        std::erase_if(d.partnerShells, deleted);
+        return deleted(d.shell) || (hadPartners && d.partnerShells.empty() && !d.selfCrossing);
     };
     for (HealthCategory& c : categories_) {
         std::erase_if(c.defects, gone);
@@ -2517,8 +2537,13 @@ void UiMockup::applyMerge(const std::vector<int>& roots) {
     // The union removes the crossings between the merged shells
     HealthCategory& crossings = categories_[kIntersections];
     const std::size_t before = crossings.defects.size();
-    std::erase_if(crossings.defects, [this](const MockDefect& d) {
-        return d.partnerShell >= 0 && d.shell >= 0 && rootShell(d.partnerShell) == rootShell(d.shell);
+    std::erase_if(crossings.defects, [this](MockDefect& d) {
+        if (d.shell < 0 || d.partnerShells.empty()) {
+            return false;
+        }
+        const int own = rootShell(d.shell);
+        std::erase_if(d.partnerShells, [&](int p) { return rootShell(p) == own; });
+        return d.partnerShells.empty() && !d.selfCrossing;
     });
     if (crossings.status == HealthStatus::Defects && crossings.defects.empty()) {
         crossings.status = HealthStatus::Ok;
@@ -2568,10 +2593,10 @@ void UiMockup::pruneOutOfScope() {
 
 void UiMockup::drawShellsPanelContents() {
     const std::vector<ShellHealth> health = shellHealth();
-    if (ImGui::Checkbox("Colour by shell", &colourByShell_)) {
+    if (ImGui::Checkbox("Color by shell", &colorByShell_)) {
         refreshFaceColors();
     }
-    tooltip("Give each shell its own muted colour (no reds or oranges, so defect tints stay clear).");
+    tooltip("Give each shell its own muted color (no reds or oranges, so defect tints stay clear).");
     const float selectWidth = ImGui::CalcTextSize("Select...").x + 2.0f * ImGui::GetStyle().FramePadding.x;
     ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - selectWidth);
     if (ImGui::Button("Select...")) {
@@ -2580,11 +2605,10 @@ void UiMockup::drawShellsPanelContents() {
     tooltip("Select all, none, invert, unhealthy, nested, or small shells.");
     drawShellSelectPopup(health);
 
-    const ImGuiStyle& style = ImGui::GetStyle();
-    const float footer = ImGui::GetTextLineHeightWithSpacing() + 2.0f * ImGui::GetFrameHeightWithSpacing() + style.ItemSpacing.y;
+    // Footer: a summary only; actions live in the right-click menu (and Mesh > Shells)
+    const float footer = 2.0f * ImGui::GetTextLineHeightWithSpacing();
     drawShellTable(health, std::max(80.0f, ImGui::GetContentRegionAvail().y - footer));
 
-    // Footer: every action works on the selected shells
     const std::vector<int> selected = selectedShells();
     const std::vector<std::size_t> faces = shellFaceCounts();
     if (selected.empty()) {
@@ -2594,51 +2618,8 @@ void UiMockup::drawShellsPanelContents() {
         for (const int s : selected) faceCount += faces[static_cast<std::size_t>(s)];
         ImGui::Text("%s selected - %s faces", withThousands(selected.size()).c_str(), withThousands(faceCount).c_str());
     }
-    const float w = (ImGui::GetContentRegionAvail().x - 2.0f * style.ItemSpacing.x) / 3.0f;
-    const ImVec2 size(w, 0.0f);
-    const bool none = selected.empty();
-
-    // While isolated, a different selection re-targets Isolate instead of offering Un-isolate
-    const bool unisolate = isolateRestore_ && (none || selectionMatchesVisible());
-    ImGui::BeginDisabled(none && !isolateRestore_);
-    if (ImGui::Button(unisolate ? "Un-isolate" : "Isolate", size)) toggleIsolate();
-    ImGui::EndDisabled();
-    tooltip(unisolate ? "Bring back the shells hidden by Isolate.  Key: I"
-            : isolateRestore_ ? "Isolate the selected shells instead (Un-isolate later restores the original view).  Key: I"
-                              : "Show only the selected shells, so Mesh Health covers just them.  Key: I (again to go back)");
-    ImGui::SameLine();
-    ImGui::BeginDisabled(none);
-    if (ImGui::Button("Hide", size)) hideSelectedShells();
-    ImGui::EndDisabled();
-    tooltip("Hide the selected shells. Hidden shells are not checked or fixed, but they are still saved.");
-    ImGui::SameLine();
-    const std::vector<int> live = liveShells();
-    const bool allShown = std::all_of(live.begin(), live.end(), [this](int s) { return shellFlags_[static_cast<std::size_t>(s)].visible; });
-    if (ImGui::Button(allShown ? "Hide all" : "Show all", size)) {
-        allShown ? hideAllShells() : showAllShells();
-    }
-    tooltip(allShown ? "Hide every shell; then tick Vis to show just the ones you want."
-                     : "Show every shell again.");
-
-    ImGui::BeginDisabled(none);
-    if (ImGui::Button("Delete", size)) deleteSelectedShells();
-    tooltip("Delete the selected shells (one undo step).  Key: Delete / Backspace");
-    ImGui::SameLine();
-    if (ImGui::Button("Save As...", size)) ImGui::OpenPopup("ShellSave");
-    tooltip("Write the selected shells to STL. The mesh is not changed.");
-    ImGui::EndDisabled();
-    if (ImGui::BeginPopup("ShellSave")) {
-        drawShellSavePopup();
-        ImGui::EndPopup();
-    }
-    ImGui::SameLine();
-    ImGui::BeginDisabled(selected.size() < 2);
-    if (ImGui::Button("Merge...", size)) openOperator(ToolSlot::MergeShells);
-    ImGui::EndDisabled();
-    tooltip(selected.size() < 2
-                ? "Select two or more shells to merge: Cmd/Ctrl+click or Shift+click rows, or Select... > Visible shells. "
-                  "Ticking Vis only shows a shell; it does not select it."
-                : "Merge the selected shells into one (a boolean union; checks that each is clean first).");
+    ImGui::TextDisabled("Right-click a shell for actions.");
+    tooltip("Frame (.), Isolate (I), Hide, Hide All / Show All, Delete (Delete key), Save As, Merge.");
 }
 
 void UiMockup::drawShellTable(const std::vector<ShellHealth>& health, float height) {
@@ -2696,8 +2677,8 @@ void UiMockup::drawShellTable(const std::vector<ShellHealth>& health, float heig
             // The name cell is submitted first so the visibility checkbox (column 0) stays clickable
             ImGui::TableSetColumnIndex(1);
             ImGui::AlignTextToFramePadding();
-            if (colourByShell_) {
-                const Eigen::RowVector3d c = shellColour(s);
+            if (colorByShell_) {
+                const Eigen::RowVector3d c = shellColor(s);
                 const float side = ImGui::GetTextLineHeight() * 0.8f;
                 const ImVec2 p = ImGui::GetCursorScreenPos();
                 const float pad = (ImGui::GetTextLineHeight() - side) * 0.5f + ImGui::GetStyle().FramePadding.y;
@@ -2833,6 +2814,9 @@ void UiMockup::drawShellActionItems() {
         ImGui::EndMenu();
     }
     if (ImGui::MenuItem("Merge...", nullptr, false, selected.size() >= 2)) openOperator(ToolSlot::MergeShells);
+    if (selected.size() < 2) {
+        tooltip("Select two or more shells to merge: Cmd/Ctrl+click or Shift+click rows, or Select... > Visible shells.");
+    }
     ImGui::MenuItem("Flip Normals (future)", nullptr, false, false);
 }
 
@@ -2953,11 +2937,12 @@ void UiMockup::drawMergeTool() {
 
     std::size_t between = 0;
     for (const MockDefect& d : categories_[kIntersections].defects) {
-        if (d.shell >= 0 && d.partnerShell >= 0) {
+        const auto inGroup = [&](int s) { return std::find(roots.begin(), roots.end(), s) != roots.end(); };
+        if (d.shell >= 0 && inGroup(rootShell(d.shell))) {
             const int a = rootShell(d.shell);
-            const int b = rootShell(d.partnerShell);
-            const auto inGroup = [&](int s) { return std::find(roots.begin(), roots.end(), s) != roots.end(); };
-            between += a != b && inGroup(a) && inGroup(b) ? 1 : 0;
+            between += std::any_of(d.partnerShells.begin(), d.partnerShells.end(), [&](int p) {
+                return rootShell(p) != a && inGroup(rootShell(p));
+            }) ? 1 : 0;
         }
     }
     ImGui::TextDisabled("%s faces cross between these shells; the union removes them.", withThousands(between).c_str());

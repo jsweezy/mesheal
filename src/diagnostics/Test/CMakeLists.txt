@@ -4,6 +4,7 @@ add_executable(ogun_diagnostics_tests
     TriTriIntersectTests.cpp
     SelfIntersectionTests.cpp
     HistogramTests.cpp
+    ShellNestingTests.cpp
 )
 
 target_link_libraries(ogun_diagnostics_tests

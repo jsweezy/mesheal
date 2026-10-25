@@ -6,6 +6,8 @@
 #include <Eigen/Core>
 #include <manifold/manifold.h>
 
+#include <span>
+
 namespace ogun {
 
 /// Axis-aligned 3D bounding box in the mesh's active file units.
@@ -75,6 +77,9 @@ struct Mesh {
         const manifold::MeshGL64& meshGl64,
         Unit unit = Unit::Millimeter);
 };
+
+/// Copies the listed faces (in order) into a new mesh and keeps only the vertices they use.
+[[nodiscard]] Mesh extractFaces(const Mesh& mesh, std::span<const Eigen::Index> faces);
 
 /// Free-function convenience wrapper around `Mesh::toMeshGL()`.
 [[nodiscard]] manifold::MeshGL toMeshGL(const Mesh& mesh);

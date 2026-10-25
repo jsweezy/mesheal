@@ -1,11 +1,14 @@
 #include "app/AppController.hpp"
 #include "core/Constants.hpp"
 #include "core/Settings.hpp"
+#include "diagnostics/ShellNesting.hpp"
 
 #include <Eigen/Geometry>
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <set>
 #include <system_error>
 #include <unordered_map>
 #include <unordered_set>
@@ -161,6 +164,7 @@ void AppController::setMesh(Mesh mesh, std::string sourceLabel) {
     checkRunner_.cancel();
     selectedCategory_.reset();
     activeTool_ = ToolSlot::None;
+    shells_.clear();
     replaceMeshPreservingHistory(std::move(mesh));
     resetHealthReport();
     syncBrowserResult();
@@ -169,10 +173,20 @@ void AppController::setMesh(Mesh mesh, std::string sourceLabel) {
     }
 }
 
-void AppController::replaceMeshPreservingHistory(Mesh mesh) {
+void AppController::replaceMeshPreservingHistory(Mesh mesh, std::optional<ShellBrowser> shells) {
     mesh_ = std::move(mesh);
     ++meshGeneration_;
     rebuildCgalMesh();
+    if (shells) {
+        shells_ = std::move(*shells);
+    } else {
+        shells_.rebuild(mesh_);
+    }
+    for (std::vector<std::uint8_t>& mask : scopeMasks_) {
+        mask.clear();
+    }
+    scopedCounts_.fill(0);
+    shellHealth_.clear();
     pickedFaceIndex_ = -1;
     browser_.setResult(nullptr);
     selectedFaceIndex_ = -1;
@@ -396,6 +410,24 @@ void AppController::applyCheckResult(CategoryResult result) {
     const bool infoOnly = categoryInfo(category).infoOnly;
     row.status = (infoOnly || result.empty()) ? HealthStatus::Ok : HealthStatus::Defects;
     row.result = std::move(result);
+    computeScope(category);
+    refreshShellHealth();
+    if (category == DefectCategory::Intersections && shells_.multiShell()) {
+        // A shell inside another that it does not cross is nested (e.g. a hidden internal part)
+        std::set<std::pair<int, int>> crossing;
+        for (std::size_t s = 0; s < shellHealth_.size(); ++s) {
+            for (const int other : shellHealth_[s].crosses) {
+                const auto own = static_cast<int>(s);
+                crossing.insert({std::min(own, other), std::max(own, other)});
+            }
+        }
+        std::vector<std::vector<Eigen::Index>> shellFaces;
+        shellFaces.reserve(shells_.size());
+        for (const ShellInfo& shell : shells_.shells()) {
+            shellFaces.push_back(shell.faces);
+        }
+        shells_.setNestedIn(findNestedShells(mesh_, shellFaces, crossing));
+    }
     if (selectedCategory_ == category) {
         syncBrowserResult();
     }
@@ -439,12 +471,136 @@ bool AppController::checksRunning() const noexcept {
 std::size_t AppController::totalProblemCount() const noexcept {
     std::size_t total = 0;
     for (const DefectCategory category : kAllDefectCategories) {
-        const CategoryHealth& row = health_[category];
-        if (row.status == HealthStatus::Defects && !categoryInfo(category).infoOnly) {
-            total += row.displayCount(category);
+        if (health_[category].status == HealthStatus::Defects && !categoryInfo(category).infoOnly) {
+            total += rowCount(category);
         }
     }
     return total;
+}
+
+std::size_t AppController::rowCount(DefectCategory category) const noexcept {
+    const CategoryHealth& row = health_[category];
+    if (categoryInfo(category).infoOnly || currentResult(category) == nullptr) {
+        return row.displayCount(category);
+    }
+    return scopedCounts_[categoryIndex(category)];
+}
+
+HealthStatus AppController::rowStatus(DefectCategory category) const noexcept {
+    const HealthStatus status = health_[category].status;
+    return status == HealthStatus::Defects && rowCount(category) == 0 ? HealthStatus::Ok : status;
+}
+
+bool AppController::elementInScope(DefectCategory category, std::size_t element) const noexcept {
+    const std::vector<std::uint8_t>& mask = scopeMasks_[categoryIndex(category)];
+    return mask.empty() || (element < mask.size() && mask[element] != 0);
+}
+
+const CategoryResult* AppController::currentResult(DefectCategory category) const noexcept {
+    const CategoryHealth& row = health_[category];
+    return row.result && row.result->meshGeneration == meshGeneration_ ? &*row.result : nullptr;
+}
+
+void AppController::computeScope(DefectCategory category) {
+    std::vector<std::uint8_t>& mask = scopeMasks_[categoryIndex(category)];
+    mask.clear();
+    const CategoryResult* result = currentResult(category);
+    if (result == nullptr) {
+        scopedCounts_[categoryIndex(category)] = 0;
+        return;
+    }
+    if (!shells_.scoped() || categoryInfo(category).infoOnly) {
+        scopedCounts_[categoryIndex(category)] = result->size();
+        return;
+    }
+    const auto inScope = [this](Eigen::Index f) { return shells_.inScope(shells_.shellOfFace(f)); };
+    mask.assign(result->size(), 0);
+    std::size_t count = 0;
+    for (std::size_t e = 0; e < result->size(); ++e) {
+        const auto faces = result->facesOf(e);
+        bool in = false;
+        if (category == DefectCategory::Intersections && !faces.empty()) {
+            // FB-22: a crossing counts when its own shell and the shell it crosses are both in scope
+            const auto related = result->relatedOf(e);
+            in = inScope(faces.front()) &&
+                 (related.empty() || std::any_of(related.begin(), related.end(), inScope));
+        } else {
+            in = faces.empty() || std::any_of(faces.begin(), faces.end(), inScope);
+        }
+        mask[e] = in ? 1 : 0;
+        count += in ? 1 : 0;
+    }
+    scopedCounts_[categoryIndex(category)] = count;
+}
+
+void AppController::onShellsChanged() {
+    for (const DefectCategory category : kAllDefectCategories) {
+        computeScope(category);
+    }
+    applyScopeToBrowser();
+    orbitPivot_ = computeSelectionCentroid();
+}
+
+void AppController::applyScopeToBrowser() {
+    if (browser_.result() == nullptr) {
+        return;
+    }
+    const std::size_t focused = browser_.focusedElement();
+    browser_.setScopeMask(scopeMasks_[categoryIndex(browser_.result()->category)]);
+    if (browser_.focusedElement() != focused) {
+        onFocusChanged();
+    }
+}
+
+void AppController::refreshShellHealth() {
+    shellHealth_.clear();
+    if (!shells_.multiShell()) {
+        return;
+    }
+    shellHealth_.resize(shells_.size());
+    for (const DefectCategory category : kAllDefectCategories) {
+        const CategoryResult* result = currentResult(category);
+        if (result == nullptr || categoryInfo(category).infoOnly) {
+            continue;
+        }
+        for (std::size_t e = 0; e < result->size(); ++e) {
+            const auto faces = result->facesOf(e);
+            const int own = faces.empty() ? -1 : shells_.shellOfFace(faces.front());
+            if (own < 0) {
+                continue;
+            }
+            ShellHealth& health = shellHealth_[static_cast<std::size_t>(own)];
+            const auto related = result->relatedOf(e);
+            const bool betweenOnly = !related.empty() && std::none_of(related.begin(), related.end(), [&](Eigen::Index p) {
+                return shells_.shellOfFace(p) == own;
+            });
+            if (betweenOnly) {
+                ++health.between;
+            } else {
+                ++health.counts[categoryIndex(category)];
+                ++health.total;
+            }
+            for (const Eigen::Index p : related) {
+                const int other = shells_.shellOfFace(p);
+                if (other >= 0 && other != own) {
+                    health.crosses.push_back(other);
+                }
+            }
+        }
+    }
+    for (ShellHealth& health : shellHealth_) {
+        std::sort(health.crosses.begin(), health.crosses.end());
+        health.crosses.erase(std::unique(health.crosses.begin(), health.crosses.end()), health.crosses.end());
+    }
+}
+
+bool AppController::shellHealthKnown() const noexcept {
+    for (const DefectCategory category : kAllDefectCategories) {
+        if (!categoryInfo(category).infoOnly && currentResult(category) != nullptr) {
+            return true;
+        }
+    }
+    return false;
 }
 
 WatertightState AppController::watertightState() const noexcept {
@@ -473,6 +629,7 @@ void AppController::syncBrowserResult() {
     }
     if (browser_.result() != wanted) {
         browser_.setResult(wanted);
+        applyScopeToBrowser();
         onFocusChanged();
     }
 }
@@ -591,6 +748,9 @@ PickOutcome AppController::pickFace(Eigen::Index faceIndex) {
             continue;
         }
         for (std::size_t element = 0; element < row.result->size(); ++element) {
+            if (!elementInScope(category, element)) {
+                continue;
+            }
             for (const Eigen::Index f : row.result->facesOf(element)) {
                 if (f == faceIndex) {
                     selectCategory(category);
@@ -617,6 +777,11 @@ bool AppController::escape() {
     }
     if (pickedFaceIndex_ >= 0 || selectedCategory_ || activeTool_ != ToolSlot::None) {
         clearSelection();
+        return true;
+    }
+    if (shells_.selectedCount() > 0) {
+        shells_.selectNone();
+        onShellsChanged();
         return true;
     }
     return false;
@@ -718,7 +883,8 @@ std::vector<Eigen::Index> AppController::highlightedFaceIndices() const {
 std::vector<Eigen::Index> AppController::activeFrameFaces() const {
     std::vector<Eigen::Index> faces = highlightedFaceIndices();
     const CategoryResult* result = browser_.result();
-    if (!faces.empty() || result == nullptr) {
+    // Selected shells are framed by their boxes (computeActiveSelectionOrMeshBounds)
+    if (!faces.empty() || result == nullptr || shells_.selectedCount() > 0) {
         return faces;
     }
     for (const std::size_t element : browser_.visibleRows()) {
@@ -781,7 +947,8 @@ BaseMeshDisplay AppController::buildBaseMeshDisplay() const {
     BaseMeshDisplay display;
     const bool cutPreview = previewUsesCutout();
     const std::vector<Eigen::Index> highlighted = highlightedFaceIndices();
-    if (mesh_.empty() || (highlighted.empty() && !cutPreview)) {
+    const bool shellsHidden = shells_.visibleCount() < shells_.size();
+    if (mesh_.empty() || (highlighted.empty() && !cutPreview && !shellsHidden)) {
         return display;
     }
 
@@ -796,6 +963,11 @@ BaseMeshDisplay AppController::buildBaseMeshDisplay() const {
     hide(highlighted);
     if (cutPreview) {
         hide(repairPreview_.sourceFaceIndices);
+    }
+    for (const ShellInfo& shell : shells_.shells()) {
+        if (!shell.visible) {
+            hide(shell.faces);
+        }
     }
 
     display.faceIndices.reserve(hidden.size());
@@ -860,11 +1032,37 @@ bool AppController::fixAllThinFaces() {
         return false;
     }
 
-    RepairResults results = SliverHealer::healAllThinFaces(mesh_, thresholds_);
-    if (results.initialThinFaces == 0) {
-        lastRepairStatusMessage_ = "No thin / sliver faces to heal.";
-        postStatusMessage(lastRepairStatusMessage_);
-        return false;
+    std::string label = "Fix All Thin / Sliver Faces";
+    RepairResults results;
+    if (shells_.scoped()) {
+        // Only the shells in scope are healed; hidden or unselected shells are never edited
+        CategoryResult checked;
+        const CategoryResult* thin = currentResult(DefectCategory::ThinFaces);
+        if (thin == nullptr) {
+            checked = runCategoryCheck(DefectCategory::ThinFaces, mesh_, checkParams());
+            thin = &checked;
+        }
+        std::vector<Eigen::Index> faces;
+        for (std::size_t e = 0; e < thin->size(); ++e) {
+            const Eigen::Index f = thin->elements[e].index;
+            if (shells_.inScope(shells_.shellOfFace(f))) {
+                faces.push_back(f);
+            }
+        }
+        if (faces.empty()) {
+            lastRepairStatusMessage_ = "No thin / sliver faces in the shells in scope.";
+            postStatusMessage(lastRepairStatusMessage_);
+            return false;
+        }
+        results = SliverHealer::healFaces(mesh_, faces, thresholds_);
+        label += " (" + std::to_string(shells_.scopeCount()) + " shells)";
+    } else {
+        results = SliverHealer::healAllThinFaces(mesh_, thresholds_);
+        if (results.initialThinFaces == 0) {
+            lastRepairStatusMessage_ = "No thin / sliver faces to heal.";
+            postStatusMessage(lastRepairStatusMessage_);
+            return false;
+        }
     }
     if (!results.success) {
         lastRepairStatusMessage_ = results.statusMessage;
@@ -872,7 +1070,7 @@ bool AppController::fixAllThinFaces() {
         return false;
     }
 
-    pushUndoEntry("Fix All Thin / Sliver Faces");
+    pushUndoEntry(std::move(label));
     finishMeshEdit(std::move(results.mesh));
     lastRepairStatusMessage_ = std::move(results.statusMessage);
     postStatusMessage(lastRepairStatusMessage_);
@@ -913,6 +1111,7 @@ void AppController::pushUndoEntry(std::string actionLabel) {
         selectedFaceIndex_,
         selectedHealAction_,
         modified_,
+        shells_,
         std::move(actionLabel)});
     if (undoStack_.size() > settings::kMaxUndoHistoryDepth) {
         undoStack_.erase(undoStack_.begin());
@@ -931,7 +1130,7 @@ bool AppController::undoLastModification() {
     undoStack_.pop_back();
 
     checkRunner_.cancel();
-    replaceMeshPreservingHistory(std::move(entry.mesh));
+    replaceMeshPreservingHistory(std::move(entry.mesh), std::move(entry.shells));
     thresholds_ = entry.thresholds;
     modified_ = entry.modified;
 
@@ -942,6 +1141,10 @@ bool AppController::undoLastModification() {
             row.result->meshGeneration = meshGeneration_;
         }
     }
+    for (const DefectCategory category : kAllDefectCategories) {
+        computeScope(category);
+    }
+    refreshShellHealth();
     selectedCategory_ = entry.selectedCategory;
     if (selectedCategory_) {
         activeTool_ = ToolSlot::DefectCategory;
@@ -967,6 +1170,170 @@ bool AppController::undoLastModification() {
 }
 
 // -----------------------------------------------------------------------------
+// Shells
+// -----------------------------------------------------------------------------
+
+void AppController::clickShell(std::size_t shell, bool toggle, bool range, std::span<const std::size_t> order) {
+    shells_.click(shell, toggle, range, order);
+    onShellsChanged();
+}
+
+void AppController::selectShellsWhere(const std::function<bool(std::size_t)>& predicate) {
+    shells_.selectWhere(predicate);
+    onShellsChanged();
+}
+
+void AppController::setShellVisible(std::size_t shell, bool visible) {
+    shells_.setVisible(shell, visible);
+    onShellsChanged();
+}
+
+void AppController::showAllShells() {
+    shells_.showAll();
+    onShellsChanged();
+}
+
+void AppController::hideAllShells() {
+    shells_.hideAll();
+    onShellsChanged();
+    postStatusMessage("All shells hidden. Tick Vis in the Shells panel to show the ones to work on.");
+}
+
+void AppController::hideSelectedShells() {
+    shells_.hideSelected();
+    onShellsChanged();
+}
+
+bool AppController::toggleIsolateShells() {
+    const bool wasIsolated = shells_.isolated();
+    if (!shells_.toggleIsolate()) {
+        postStatusMessage("Select one or more shells to isolate (click a row, or Alt+click in 3D).");
+        return false;
+    }
+    onShellsChanged();
+    if (wasIsolated && !shells_.isolated()) {
+        postStatusMessage("Isolate off: the other shells are back.");
+    } else {
+        postStatusMessage("Isolated " + std::to_string(shells_.selectedCount()) +
+                          " shell(s): Mesh Health covers only them. Press I to go back.");
+    }
+    return true;
+}
+
+bool AppController::pickShell(Eigen::Index faceIndex, bool toggle) {
+    const int shell = shells_.shellOfFace(faceIndex);
+    if (shell < 0 || !shells_.multiShell()) {
+        return false;
+    }
+    shells_.click(static_cast<std::size_t>(shell), toggle, false, {});
+    onShellsChanged();
+    postStatusMessage("Shell #" + std::to_string(shell + 1) + " (" +
+                      std::to_string(shells_.shell(static_cast<std::size_t>(shell)).faces.size()) + " faces)" +
+                      (shells_.shell(static_cast<std::size_t>(shell)).selected ? " selected." : " deselected."));
+    return true;
+}
+
+bool AppController::deleteSelectedShells() {
+    const std::vector<std::size_t> selected = shells_.selectedShells();
+    if (selected.empty()) {
+        postStatusMessage("Select the shells to delete first.");
+        return false;
+    }
+    if (selected.size() == shells_.size()) {
+        postStatusMessage("Every shell is selected: deleting them all would leave no mesh.", true);
+        return false;
+    }
+    std::vector<bool> drop(static_cast<std::size_t>(mesh_.numFaces()), false);
+    for (const Eigen::Index f : shells_.facesOf(selected)) {
+        drop[static_cast<std::size_t>(f)] = true;
+    }
+    std::vector<Eigen::Index> keep;
+    keep.reserve(drop.size());
+    for (std::size_t f = 0; f < drop.size(); ++f) {
+        if (!drop[f]) {
+            keep.push_back(static_cast<Eigen::Index>(f));
+        }
+    }
+    const std::string label = "Delete " + std::to_string(selected.size()) + " Shell(s)";
+    pushUndoEntry(label);
+    shells_.selectNone(); // the deleted shells were the selection
+    finishMeshEdit(extractFaces(mesh_, keep));
+    postStatusMessage(label + ": " + std::to_string(drop.size() - keep.size()) + " faces removed.");
+    return true;
+}
+
+bool AppController::saveSelectedShells(const std::filesystem::path& path, StlFormat format) {
+    const std::vector<std::size_t> selected = shells_.selectedShells();
+    if (selected.empty()) {
+        postStatusMessage("Select the shells to save first.");
+        return false;
+    }
+    std::string err;
+    if (!ogun::saveStl(path, extractFaces(mesh_, shells_.facesOf(selected)), format, &err)) {
+        lastErrorMessage_ = err.empty() ? "Failed to save STL file." : std::move(err);
+        postStatusMessage(lastErrorMessage_, true);
+        return false;
+    }
+    lastErrorMessage_.clear();
+    postStatusMessage("Saved " + std::to_string(selected.size()) + " shell(s) to " + path.filename().string());
+    return true;
+}
+
+std::string AppController::shellFileStem() const {
+    // Samples and custom meshes have a label with no file extension
+    const std::filesystem::path source = currentFilePath_.empty() ? std::filesystem::path(loadedSourceLabel_) : currentFilePath_;
+    const std::string stem = source.stem().string();
+    return stem.empty() || !source.has_extension() ? std::string("mesh") : stem;
+}
+
+std::size_t AppController::saveEachSelectedShell(const std::filesystem::path& directory, StlFormat format) {
+    const std::vector<std::size_t> selected = shells_.selectedShells();
+    if (selected.empty()) {
+        postStatusMessage("Select the shells to save first.");
+        return 0;
+    }
+    const int width = std::max(2, static_cast<int>(std::to_string(shells_.size()).size()));
+    const std::string stem = shellFileStem();
+    std::size_t written = 0;
+    for (const std::size_t s : selected) {
+        std::array<char, 32> number{};
+        std::snprintf(number.data(), number.size(), "%0*zu", width, s + 1);
+        const std::filesystem::path path = directory / (stem + "_shell_" + number.data() + ".stl");
+        const std::array<std::size_t, 1> one{s};
+        std::string err;
+        if (!ogun::saveStl(path, extractFaces(mesh_, shells_.facesOf(one)), format, &err)) {
+            lastErrorMessage_ = err.empty() ? "Failed to save " + path.string() : std::move(err);
+            postStatusMessage(lastErrorMessage_, true);
+            return written;
+        }
+        ++written;
+    }
+    lastErrorMessage_.clear();
+    postStatusMessage("Saved " + std::to_string(written) + " shell file(s) to " + directory.string());
+    return written;
+}
+
+Eigen::Vector3d AppController::shellColor(std::size_t shell) noexcept {
+    // Golden-ratio hue steps inside the green..purple band: red, orange and yellow mean defects
+    const double t = std::fmod(static_cast<double>(shell) * 0.618033988749895, 1.0);
+    const double h = 6.0 * (settings::kShellHueMin + settings::kShellHueSpan * t);
+    const double v = settings::kShellColorValues[shell % 2];
+    const double sat = settings::kShellColorSaturation;
+    const double f = h - std::floor(h);
+    const double p = v * (1.0 - sat);
+    const double q = v * (1.0 - sat * f);
+    const double u = v * (1.0 - sat * (1.0 - f));
+    switch (static_cast<int>(h) % 6) {
+    case 0: return {v, u, p};
+    case 1: return {q, v, p};
+    case 2: return {p, v, u};
+    case 3: return {p, q, v};
+    case 4: return {u, p, v};
+    default: return {v, p, q};
+    }
+}
+
+// -----------------------------------------------------------------------------
 // 3D highlight overlays
 // -----------------------------------------------------------------------------
 
@@ -978,6 +1345,24 @@ HighlightOverlayGeometry AppController::buildHighlightOverlay() const {
 
     const auto numFaces = static_cast<std::size_t>(mesh_.numFaces());
     overlay.faceColors.assign(numFaces, overlayAppearance_.baseMesh.color);
+    // Layers: shell color, then the selected-shell tint, then the defect tints
+    if (shells_.multiShell()) {
+        const Eigen::Vector3d tint = rgbFromArray(settings::kDefaultShellSelectedColor);
+        constexpr double w = settings::kShellSelectedTintWeight;
+        for (std::size_t s = 0; s < shells_.size(); ++s) {
+            const ShellInfo& shell = shells_.shell(s);
+            if (!colorByShell_ && !shell.selected) {
+                continue;
+            }
+            Eigen::Vector3d color = colorByShell_ ? shellColor(s) : overlayAppearance_.baseMesh.color;
+            if (shell.selected) {
+                color = (1.0 - w) * color + w * tint;
+            }
+            for (const Eigen::Index f : shell.faces) {
+                overlay.faceColors[static_cast<std::size_t>(f)] = color;
+            }
+        }
+    }
     const auto paint = [&](Eigen::Index f, const Eigen::Vector3d& color) {
         if (f >= 0 && f < mesh_.numFaces()) {
             overlay.faceColors[static_cast<std::size_t>(f)] = color;
@@ -1357,6 +1742,10 @@ Eigen::Vector3d AppController::computeOrthogonalUpVector(
 BoundingBox AppController::computeActiveSelectionOrMeshBounds() const noexcept {
     bool initializedBounds = false;
     BoundingBox bounds;
+    const auto addBox = [&](const BoundingBox& box) {
+        bounds = initializedBounds ? BoundingBox{bounds.min.cwiseMin(box.min), bounds.max.cwiseMax(box.max)} : box;
+        initializedBounds = true;
+    };
 
     for (const Eigen::Index faceIdx : activeFrameFaces()) {
         if (faceIdx < 0 || faceIdx >= mesh_.numFaces()) {
@@ -1379,6 +1768,17 @@ BoundingBox AppController::computeActiveSelectionOrMeshBounds() const noexcept {
         }
     }
 
+    // No defect to frame: the selected shells, else the visible ones when some are hidden
+    if (!initializedBounds && shells_.multiShell()) {
+        const bool selected = shells_.selectedCount() > 0;
+        if (selected || shells_.visibleCount() < shells_.size()) {
+            for (const ShellInfo& shell : shells_.shells()) {
+                if (selected ? shell.selected : shell.visible) {
+                    addBox(shell.bbox);
+                }
+            }
+        }
+    }
     if (!initializedBounds && !mesh_.empty()) {
         bounds = mesh_.boundingBox();
     }

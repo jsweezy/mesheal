@@ -4,6 +4,7 @@ add_library(ogun_app_controller STATIC
     AppController.cpp
     DefectBrowser.cpp
     HealthCheckRunner.cpp
+    ShellBrowser.cpp
 )
 add_library(ogun::app_controller ALIAS ogun_app_controller)
 
@@ -38,6 +39,7 @@ if(OGUN_BUILD_GUI)
         PolyscopeGuiShell.cpp
         PolyscopeGuiPanels.cpp
         PolyscopeGuiHealth.cpp
+        PolyscopeGuiShells.cpp
         GuiWidgets.cpp
         MacAppIcon.cpp
     )

@@ -279,6 +279,13 @@ void PolyscopeGui::drawUiFrame() {
     drawModalPopups();
     layoutResetPending_ = false;
 
+    // Deferred: deleting rebuilds the shell list the Shells table may still be iterating
+    if (deleteShellsRequested_) {
+        deleteShellsRequested_ = false;
+        if (controller_.deleteSelectedShells()) {
+            requestSync(true);
+        }
+    }
     processPendingSync();
     applyEffectiveHighlightSizingToPolyscope(false);
 }
@@ -423,8 +430,17 @@ void PolyscopeGui::handleViewportFacePick(const polyscope::PickResult& pickResul
     }
 
     const auto localFace = static_cast<std::size_t>(elementId - nVerts);
-    const PickOutcome outcome =
-        controller_.pickFace(faceMap ? (*faceMap)[localFace] : static_cast<Eigen::Index>(localFace));
+    const Eigen::Index face = faceMap ? (*faceMap)[localFace] : static_cast<Eigen::Index>(localFace);
+    // Alt+click selects the shell (Cmd/Ctrl too: toggles it); a plain click never changes the shell selection
+    const ImGuiIO& io = ImGui::GetIO();
+    if (io.KeyAlt && controller_.shells().multiShell()) {
+        if (controller_.pickShell(face, io.KeyCtrl || io.KeySuper)) {
+            showShells_ = true;
+            requestSync();
+        }
+        return;
+    }
+    const PickOutcome outcome = controller_.pickFace(face);
     if (outcome == PickOutcome::FocusedDefect || outcome == PickOutcome::SelectedRow) {
         scrollListToFocus_ = true;
     }
@@ -593,6 +609,15 @@ void PolyscopeGui::handleKeyboardShortcuts() {
     }
     if (ImGui::IsKeyPressed(ImGuiKey_G, false)) {
         toggleGhost();
+    }
+    if (controller_.shells().multiShell()) {
+        if (ImGui::IsKeyPressed(ImGuiKey_I, false)) {
+            toggleIsolateShells();
+        }
+        if ((ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false)) &&
+            controller_.shells().selectedCount() > 0) {
+            deleteSelectedShells();
+        }
     }
     if (ImGui::IsKeyPressed(ImGuiKey_Period, false) ||
         ImGui::IsKeyPressed(ImGuiKey_KeypadDecimal, false)) {

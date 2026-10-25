@@ -83,12 +83,12 @@ void PolyscopeGui::drawDisplayPanel() {
     ImGui::PushItemWidth(130.0f);
 
     if (ImGui::CollapsingHeader("Base mesh", ImGuiTreeNodeFlags_DefaultOpen)) {
-        tintChanged |= colorSwatch("Colour##base", appearance.baseMesh.color);
+        tintChanged |= colorSwatch("Color##base", appearance.baseMesh.color);
         ImGui::SameLine();
         baseChanged |= ImGui::Checkbox("Edges##base", &appearance.baseMesh.showEdges);
         ImGui::SameLine();
         baseChanged |= colorSwatch("##baseEdgeColor", appearance.baseMesh.edgeColor);
-        tooltip("Edge colour");
+        tooltip("Edge color");
         if (appearance.baseMesh.showEdges) {
             baseChanged |= widthSlider("Edge width##base", appearance.baseMesh.edgeWidthPx);
         }
@@ -109,7 +109,7 @@ void PolyscopeGui::drawDisplayPanel() {
             }
             ImGui::EndCombo();
         }
-        tooltip("How the inside of triangles is drawn. 'Custom' with a bright colour makes flipped normals stand out.");
+        tooltip("How the inside of triangles is drawn. 'Custom' with a bright color makes flipped normals stand out.");
         if (appearance.backFaceMode == BackFaceMode::Custom) {
             ImGui::SameLine();
             baseChanged |= colorSwatch("##backFaceColor", appearance.backFaceColor);
@@ -130,7 +130,7 @@ void PolyscopeGui::drawDisplayPanel() {
             overlayChanged = true;
         }
         tintChanged |= colorSwatch("Tint", appearance.categoryTintColor);
-        tooltip("Colour of every defect of the selected Mesh Health row.");
+        tooltip("Color of every defect of the selected Mesh Health row.");
         ImGui::SameLine();
         tintChanged |= colorSwatch("Selected", appearance.selectedFaces.color);
         ImGui::SameLine();
@@ -293,7 +293,7 @@ void PolyscopeGui::drawNavigatePanel() {
     if (ImGui::Button("+Normal", size)) {
         focusCameraOnSelection(FocusNormalSide::PositiveNormal);
     }
-    tooltip("Frame the focused defect (or the selection) from its front.  Key: .  (press again for the back)");
+    tooltip("Frame the focused defect (or the selected shells) from its front.  Key: .  (press again for the back)");
     ImGui::SameLine();
     if (ImGui::Button("-Normal", size)) {
         focusCameraOnSelection(FocusNormalSide::NegativeNormal);

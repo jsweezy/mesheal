@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace ogun {
 
@@ -114,6 +115,31 @@ Mesh Mesh::fromMeshGL(const manifold::MeshGL& meshGl, Unit unit) {
 
 Mesh Mesh::fromMeshGL64(const manifold::MeshGL64& meshGl64, Unit unit) {
     return convertFromMeshGLP(meshGl64, unit);
+}
+
+Mesh extractFaces(const Mesh& mesh, std::span<const Eigen::Index> faces) {
+    Mesh out;
+    out.fileUnit = mesh.fileUnit;
+    out.F.resize(static_cast<Eigen::Index>(faces.size()), 3);
+    std::vector<int> remap(static_cast<std::size_t>(mesh.numVertices()), -1);
+    std::vector<Eigen::Index> used;
+    used.reserve(faces.size());
+    for (std::size_t row = 0; row < faces.size(); ++row) {
+        for (int corner = 0; corner < 3; ++corner) {
+            const auto v = static_cast<std::size_t>(mesh.F(faces[row], corner));
+            if (remap[v] < 0) {
+                remap[v] = static_cast<int>(used.size());
+                used.push_back(static_cast<Eigen::Index>(v));
+            }
+            out.F(static_cast<Eigen::Index>(row), corner) = remap[v];
+        }
+    }
+    out.V.resize(static_cast<Eigen::Index>(used.size()), 3);
+    for (std::size_t i = 0; i < used.size(); ++i) {
+        out.V.row(static_cast<Eigen::Index>(i)) = mesh.V.row(used[i]);
+    }
+    out.recomputeNormals();
+    return out;
 }
 
 manifold::MeshGL toMeshGL(const Mesh& mesh) {

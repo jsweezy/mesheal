@@ -91,6 +91,22 @@ inline constexpr float kMinUiScale             = 0.6f;            // Minimum Pre
 inline constexpr float kMaxUiScale             = 2.5f;            // Maximum Preferences > Interface UI scale
 
 // -----------------------------------------------------------------------------
+// Shells panel (UI_DESIGN.md §16)
+// -----------------------------------------------------------------------------
+inline constexpr bool   kDefaultColorByShell     = true;          // Shells panel "Color by shell" starts on for multi-shell meshes
+inline constexpr std::array<double, 3> kDefaultShellSelectedColor = {0.40, 0.70, 1.00}; // RGB tint of selected shells (not a defect color)
+inline constexpr double kShellSelectedTintWeight = 0.65;          // Blend weight of the selected-shell tint over the shell color
+inline constexpr double kShellHueMin             = 0.28;          // Shell colors use hues [min, min + span]: green..purple, no red/orange/yellow
+inline constexpr double kShellHueSpan            = 0.55;          // Width of the shell hue band (HSV hue in [0, 1])
+inline constexpr double kShellColorSaturation    = 0.38;          // Shell colors are muted so defect tints stay readable
+inline constexpr std::array<double, 2> kShellColorValues = {0.82, 0.70}; // HSV value of even / odd shells
+inline constexpr double kShellMatchBoxTolerance  = 1.0e-9;        // Box tolerance (fraction of the mesh diagonal) for "same shell" after an edit
+inline constexpr double kShellMatchMinOverlap    = 0.5;           // Min box overlap (IoU) for an edited shell to keep its view state
+inline constexpr int    kDefaultSmallShellFaces  = 100;           // Shells panel "Select > Smaller than N faces" default
+inline constexpr float  kShellsPanelMinHeightPx  = 160.0f;        // Shells panel never gets shorter than this
+inline constexpr float  kStructuresShareOfShellsColumn = 0.4f;    // Expanded Structures takes this share of the column below Navigate
+
+// -----------------------------------------------------------------------------
 // Mesh Modification Undo History
 // -----------------------------------------------------------------------------
 inline constexpr std::size_t kMaxUndoHistoryDepth    = 50;        // Max undo snapshots kept (oldest full-mesh copies are dropped first)

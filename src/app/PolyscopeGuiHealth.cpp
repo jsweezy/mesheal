@@ -115,6 +115,23 @@ void PolyscopeGui::drawHealthPanel() {
         ImGui::TextColored(gui::kDefectColor, "%s problem%s", withThousands(problems).c_str(), problems == 1 ? "" : "s");
     }
 
+    // Only while part of the mesh is out of scope (UI_DESIGN.md §16)
+    const ShellBrowser& shells = controller_.shells();
+    if (shells.scoped()) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(gui::kInfoColor, "Scope: %s of %s shells (%s)", withThousands(shells.scopeCount()).c_str(),
+                           withThousands(shells.size()).c_str(), shells.selectedCount() > 0 ? "selected" : "visible");
+        tooltip("Mesh Health counts, lists and Fix All cover only these shells: the selected shells, or the visible "
+                "ones when none is selected. Crossings with shells outside the scope are not shown.");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("All shells")) {
+            controller_.selectShellsWhere([](std::size_t) { return false; });
+            controller_.showAllShells();
+            requestSync();
+        }
+        tooltip("Clear the shell selection and show every shell.");
+    }
+
     const ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit;
     if (ImGui::BeginTable("HealthTable", 4, tableFlags)) {
         ImGui::TableSetupColumn("##status", ImGuiTableColumnFlags_WidthFixed);
@@ -155,13 +172,21 @@ void PolyscopeGui::drawHealthRow(DefectCategory category) {
     ImGui::TableNextRow();
     ImGui::PushID(static_cast<int>(categoryIndex(category)));
 
+    const HealthStatus status = controller_.rowStatus(category);
     ImGui::TableSetColumnIndex(0);
-    gui::statusDot(row.status, info.infoOnly);
+    gui::statusDot(status, info.infoOnly);
 
     ImGui::TableSetColumnIndex(1);
     const bool selected = controller_.selectedCategory() == category;
+    const bool opensShellsPanel = category == DefectCategory::Shells && controller_.shells().multiShell();
     if (ImGui::Selectable(info.name, selected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap)) {
-        controller_.selectCategory(selected ? std::nullopt : std::optional<DefectCategory>(category));
+        if (opensShellsPanel) {
+            // Shells are worked on in the Shells panel, not the Tool slot
+            showShells_ = true;
+            controller_.setColorByShell(true);
+        } else {
+            controller_.selectCategory(selected ? std::nullopt : std::optional<DefectCategory>(category));
+        }
         requestSync();
     }
     if (ImGui::BeginItemTooltip()) {
@@ -170,6 +195,9 @@ void PolyscopeGui::drawHealthRow(DefectCategory category) {
         if (category == DefectCategory::OpenEdges || category == DefectCategory::NonManifoldEdges) {
             ImGui::TextDisabled("A hole edge has one triangle, a non-manifold edge three or more. "
                                 "Watertight meshes have exactly two on every edge.");
+        }
+        if (opensShellsPanel) {
+            ImGui::TextDisabled("Click to open the Shells panel.");
         }
         ImGui::TextDisabled("Status: %s", healthStatusLabel(row.status));
         if (row.result && row.status != HealthStatus::Running) {
@@ -182,8 +210,8 @@ void PolyscopeGui::drawHealthRow(DefectCategory category) {
     ImGui::TableSetColumnIndex(2);
     std::string count;
     ImVec4 color = gui::kMutedColor;
-    const std::size_t n = row.displayCount(category);
-    switch (row.status) {
+    const std::size_t n = controller_.rowCount(category);
+    switch (status) {
     case HealthStatus::NotRun:
         count = "-";
         break;
@@ -280,8 +308,8 @@ void PolyscopeGui::drawCategoryTool(DefectCategory category) {
     // Optional sub-type filter with counts
     const std::size_t subtypeCount = categorySubtypeCount(category);
     if (result != nullptr && subtypeCount > 0 && !result->empty()) {
-        const std::array<std::size_t, 4> counts = result->subtypeCounts();
-        const std::string all = "All (" + withThousands(result->size()) + ")";
+        const std::array<std::size_t, 4> counts = browser.subtypeCounts();
+        const std::string all = "All (" + withThousands(browser.scopedCount()) + ")";
         if (ImGui::RadioButton(all.c_str(), browser.subtypeFilter() < 0)) {
             controller_.setSubtypeFilter(-1);
             requestSync();
@@ -308,11 +336,12 @@ void PolyscopeGui::drawCategoryTool(DefectCategory category) {
     if (info.infoOnly) {
         ImGui::Text("%s %s.", withThousands(result->infoCount).c_str(), info.elementNoun);
     }
-    if (result->empty()) {
-        ImGui::TextColored(gui::kOkColor, "No %s found.", info.name);
+    if (browser.scopedCount() == 0) {
+        ImGui::TextColored(gui::kOkColor, "No %s found%s.", info.name,
+                           result->empty() ? "" : " in the shells in scope");
         return;
     }
-    if (category == DefectCategory::OpenEdges) {
+    if (category == DefectCategory::OpenEdges && !controller_.shells().scoped()) {
         ImGui::Text("%s open edges around %s hole%s.", withThousands(result->size()).c_str(),
                     withThousands(result->infoCount).c_str(), result->infoCount == 1 ? "" : "s");
     }
@@ -412,7 +441,7 @@ void PolyscopeGui::drawCategoryActions(DefectCategory category) {
     const CategoryInfo& info = categoryInfo(category);
     const CategoryHealth& row = controller_.categoryHealth(category);
     const DefectBrowser& browser = controller_.browser();
-    const std::size_t count = row.status == HealthStatus::Defects ? row.displayCount(category) : 0;
+    const std::size_t count = row.status == HealthStatus::Defects ? controller_.rowCount(category) : 0;
 
     if (!info.infoOnly) {
         ImGui::BeginDisabled(!info.hasFixAll || count == 0 || !controller_.browsableResult());
@@ -423,8 +452,9 @@ void PolyscopeGui::drawCategoryActions(DefectCategory category) {
         }
         ImGui::PopStyleColor();
         ImGui::EndDisabled();
-        tooltip(info.hasFixAll ? "Repair every defect of this type in one undoable step."
-                               : "Fix All for this row is planned (P4).");
+        tooltip(!info.hasFixAll                  ? "Fix All for this row is planned (P4)."
+                : controller_.shells().scoped() ? "Repair every defect of this type in the shells in scope, in one undoable step."
+                                                : "Repair every defect of this type in one undoable step.");
         ImGui::SameLine();
 
         const bool canFixSelected = category == DefectCategory::ThinFaces && browser.selectedCount() > 0;

@@ -15,6 +15,7 @@ Ogun uses **Blender-inspired, selection-centric 3D camera navigation** tailored 
 | **Zoom (Dolly)** | `Scroll Wheel` or `Ctrl + Shift + Left-Click Drag` | Dollies the camera toward/away from the active **Orbit Pivot**. Zoom step size scales proportionally with the distance to the pivot so you never overshoot microscopic facets. |
 | **Adjust Near Clip Plane** | `Shift + Scroll Wheel` | Manually shifts the camera near clipping plane (in addition to Ogun's automatic zoom-proportional near clip adjustment). |
 | **Select Face / Clear Pick** | `Left-Click` / `Right-Click` | Left-clicking a face without dragging: if it is a defect of the selected **Mesh Health** row, it becomes the **focus** (highlighted, the **Orbit Pivot** moves to its centroid, and for thin / sliver faces the **Inspector** opens with a live 3D repair preview). This works even when the row has more defects than the list cap and no list is shown. With no row selected, clicking a defective face opens the row that contains it (thin / sliver faces first). Clicking a face of another type, or a clean face, only shows a status-bar message (a clean face also moves the Orbit Pivot). Right-clicking clears the Polyscope pick. |
+| **Select Shell** | `Alt + Left-Click` (`Alt + Ctrl/Cmd + Left-Click` toggles) | Multi-shell meshes: selects the whole shell under the cursor in the **Shells** panel (or adds / removes it). A plain click never changes the shell selection, so working on a set of shells is never undone by clicking a defect. |
 
 ---
 
@@ -24,14 +25,16 @@ Ogun uses **Blender-inspired, selection-centric 3D camera navigation** tailored 
 
 | Shortcut | UI Equivalent | Behavior |
 | :--- | :--- | :--- |
-| **`.`** or **`Numpad .`** | Navigate > `+Normal`, View > Camera > Frame focused defect | **Frame Focused Facet (`+Normal` / Toggle):** Zooms in on the focused facet's centroid looking straight down its **outward positive normal (`+N`)**. Pressing **`.`** again while aligned with `+N` flips the camera to the **negative normal (`-N`)** side. Without a single focused face it frames the selected / visible defects (or the whole mesh). |
+| **`.`** or **`Numpad .`** | Navigate > `+Normal`, View > Camera > Frame selection, Shells right-click > Frame | **Frame Focused Facet (`+Normal` / Toggle):** Zooms in on the focused facet's centroid looking straight down its **outward positive normal (`+N`)**. Pressing **`.`** again while aligned with `+N` flips the camera to the **negative normal (`-N`)** side. Without a single focused face it frames the selected defects, else the selected shells, else the visible defects or shells (or the whole mesh). |
 | **`Shift + .`** | Navigate > `-Normal`, Inspector > `Back side` | **Frame Focused Facet (`-Normal`):** Directly frames the focused facet from its **inward negative normal (`-N`)** side. |
 | **`N`** / **`Shift + N`** | Navigate > `Next >` / `< Prev`, Edit > Select | **Next / Previous Defect:** Focuses the next (previous) defect of the selected Mesh Health row, worst first and within the active filter (sub-type or histogram bin), and flies the camera to it. Wraps around. |
 | **`Home`** or **`H`** | Navigate > `Home`, View > Camera > Home | **Frame All:** Flies the camera back to the full-mesh home view and resets the **Orbit Pivot** to the mesh center. The Home tooltip shows the current Orbit Pivot. |
 | **`G`** | View > Ghost Mesh, Display > Transparency | **Ghost:** Toggles the base mesh between opaque and the last transparency. |
-| **`Esc`** | Edit > Select > None | **Staged clear:** The first press clears the defect selection and focus; the next press closes the Tool panel and deselects the row (or cancels an open Mesh operation). |
+| **`Esc`** | Edit > Select > None | **Staged clear:** The first press clears the defect selection and focus; the next press closes the Tool panel and deselects the row (or cancels an open Mesh operation); the last press clears the shell selection. |
+| **`I`** | Shells right-click > Isolate, Mesh > Shells > Isolate | **Isolate Shells:** Shows only the selected shells, so Mesh Health, the Tool list, Next / Prev and *Fix All* cover only them. Press again to bring back the view from before the first Isolate. With a different shell selected, `I` switches the isolation to it. View only: no undo step. |
+| **`Delete`** / **`Backspace`** | Shells right-click > Delete, Mesh > Shells > Delete | **Delete Shells:** Removes the selected shells from the mesh as one undoable step (`Ctrl + Z`). Refuses to delete every shell. |
 | **`F5`** | Mesh Health > `Check Mesh`, Repair > Check Mesh | **Check Mesh:** Runs every Mesh Health row in the background, including rows whose **Auto** is off. Progress and **Cancel** are in the status bar. |
-| **`Ctrl + Z`** | Edit > Undo *label*, Inspector > `Undo` | **Undo Mesh Modification:** Reverts the last mesh modification (single-face repair, *Fix All*, *Fix Selected*, or *Apply Scale*) one step at a time, restoring the Mesh Health results, the selected row, the focused face, chosen repair strategy and live preview. |
+| **`Ctrl + Z`** | Edit > Undo *label*, Inspector > `Undo` | **Undo Mesh Modification:** Reverts the last mesh modification (single-face repair, *Fix All*, *Fix Selected*, *Apply Scale*, or *Delete Shells*) one step at a time, restoring the Mesh Health results, the selected row, the focused face, chosen repair strategy and live preview. |
 | **`Ctrl + O`** / **`Ctrl + S`** / **`Ctrl + Shift + S`** | File > Open / Save / Save As | Open an STL; save over the current file (asks the first time); save as a new Binary or ASCII STL. |
 | **`Ctrl + ,`** | Edit > Preferences | Opens the Preferences window. |
 | **`?`** (`Shift + /`) or **`F1`** | Help > Navigation & Shortcuts | Opens or closes the in-app **3D Viewport Navigation & Shortcuts** window. |
@@ -47,6 +50,18 @@ Ogun uses **Blender-inspired, selection-centric 3D camera navigation** tailored 
 | `Double-Click` | Focuses the defect and flies the camera to it. |
 | Click a column header | Sorts by that column (third click restores worst-first order). |
 | Click a histogram bar (`Shift` for a range) or the `<` `>` arrows | Filters to that bin and selects its defects; its list opens once it holds no more than the list cap. |
+
+### Mouse in the Shells panel (multi-shell meshes)
+
+The **Shells** panel (left column, between Navigate and Structures) appears only when the mesh has more than one shell. Mesh Health covers the **selected** shells, or the **visible** shells when none is selected; a *Scope* line in Mesh Health says so, with an *All shells* button. A crossing counts only when both of its shells are in scope.
+
+| Input | Behavior |
+| :--- | :--- |
+| `Click` / `Ctrl/Cmd + Click` / `Shift + Click` | Selects one shell / adds or removes one / selects a range, as in the defect list. |
+| `Double-Click` | Selects the shell and frames it. |
+| `Right-Click` | Frame, Isolate / Un-isolate, Hide, Hide All, Show All, Delete, Save As (one STL, or one STL per shell). *Merge...* stays greyed out until Merge Shells exists (Milestone 4). |
+| Vis checkbox (header: all) | Shows or hides a shell (or all). Hidden shells are cut from the 3D view and never edited, but are still saved. |
+| `Select...` | All, None, Invert, Visible shells, Unhealthy, Nested inside another shell, Smaller than N faces. |
 
 ---
 
@@ -83,5 +98,5 @@ In STL repair, inspecting a defective facet from both its outward (`+N`) and inw
 - **Near Clip Scaling:** As you zoom closer to a facet, Ogun reduces the camera's near clipping ratio so microscopic triangles are never clipped.
 - **Constant Screen-Size Overlays:** Defect vertex spheres (Display > Defect highlight > **Point radius**, default `3 px`) and defect / pre-repair edge lines (**Edge width**, default `1 px`) keep the same on-screen size at any zoom depth.
 - **3D Overlay Cap:** Selecting a row tints all of its defects. Edge tubes and vertex spheres are drawn for all of them only up to the overlay cap (default 5,000 faces, Preferences > Performance); above it they are drawn just for the selected / focused defects, which keeps 20,000-defect rows responsive.
-- **Styles:** The **Display** panel holds the base-mesh colour, edges, transparency, back-face mode (*Custom* makes flipped normals easy to spot) and shading, the defect highlight colours, and the repair-preview styles. The **Structures (advanced)** panel still shows Polyscope's own per-structure controls; Ogun remembers each edge width when you toggle **Edges** off and on.
+- **Styles:** The **Display** panel holds the base-mesh color, edges, transparency, back-face mode (*Custom* makes flipped normals easy to spot) and shading, the defect highlight colors, and the repair-preview styles. The **Structures (advanced)** panel still shows Polyscope's own per-structure controls; Ogun remembers each edge width when you toggle **Edges** off and on.
 

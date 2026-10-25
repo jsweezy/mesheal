@@ -43,6 +43,7 @@ void PolyscopeGui::resetLayout() {
     showDisplay_ = true;
     showNavigate_ = true;
     showStructures_ = true;
+    showShells_ = true;
     rightColumnWidth_ = settings::kRightColumnDefaultPx;
     layoutResetPending_ = true;
 }
@@ -70,7 +71,11 @@ void PolyscopeGui::drawLeftColumn(float top, float bottom, float rightColumnLeft
         } else {
             ImGui::SetNextWindowCollapsed(startCollapsed, ImGuiCond_FirstUseEver);
         }
-        if (ImGui::Begin(title, open, kDockedFlags | ImGuiWindowFlags_AlwaysAutoResize)) {
+        const bool expanded = ImGui::Begin(title, open, kDockedFlags | ImGuiWindowFlags_AlwaysAutoResize);
+        if (open == &showStructures_) {
+            structuresCollapsed_ = ImGui::IsWindowCollapsed();
+        }
+        if (expanded) {
             body();
         }
         y += ImGui::GetWindowHeight() + margin;
@@ -79,6 +84,31 @@ void PolyscopeGui::drawLeftColumn(float top, float bottom, float rightColumnLeft
 
     stackedPanel("Display", &showDisplay_, false, [this] { drawDisplayPanel(); });
     stackedPanel("Navigate", &showNavigate_, false, [this] { drawNavigatePanel(); });
+
+    // Shells (multi-shell meshes only) fills the column down to Structures, a title bar while collapsed
+    const ShellBrowser& shells = controller_.shells();
+    if (showShells_ && shells.multiShell() && y < bottom) {
+        const bool structures = showStructures_;
+        const float structuresHeight = !structures ? 0.0f
+                                       : structuresCollapsed_ ? ImGui::GetFrameHeight()
+                                                              : (bottom - y) * settings::kStructuresShareOfShellsColumn;
+        const float height = std::max(bottom - y - (structures ? structuresHeight + margin : 0.0f),
+                                      settings::kShellsPanelMinHeightPx);
+        ImGui::SetNextWindowPos(ImVec2(margin, y), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(width, height), ImGuiCond_Always);
+        if (collapseNow) {
+            ImGui::SetNextWindowCollapsed(true, ImGuiCond_Always);
+        } else if (layoutResetPending_) {
+            ImGui::SetNextWindowCollapsed(false, ImGuiCond_Always);
+        }
+        const std::string title = "Shells (" + gui::withThousands(shells.size()) + ")###Shells";
+        if (ImGui::Begin(title.c_str(), &showShells_, kDockedFlags | ImGuiWindowFlags_NoResize)) {
+            drawShellsPanel();
+        }
+        y += ImGui::GetWindowHeight() + margin;
+        ImGui::End();
+    }
+
     stackedPanel("Structures (advanced)", &showStructures_, true, [this] { drawStructuresPanel(); });
 }
 
@@ -168,9 +198,10 @@ void PolyscopeGui::drawFileMenu() {
         if (ImGui::MenuItem("Defective test cube")) {
             loadSample(nullptr);
         }
-        constexpr std::array<std::pair<const char*, const char*>, 2> kExampleFiles = {{
+        constexpr std::array<std::pair<const char*, const char*>, 3> kExampleFiles = {{
             {"Self-intersecting box", "self_intersecting_box.stl"},
             {"Stanford bunny", "stanford_bunny.stl"},
+            {"Turkey (28 shells)", "Turkey.stl"},
         }};
         for (const auto& [label, file] : kExampleFiles) {
             const bool found = !AppController::resolveExamplePath(file).empty();
@@ -193,6 +224,18 @@ void PolyscopeGui::drawFileMenu() {
             saveAsDialog(StlFormat::Ascii);
         }
         ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("Export Selected Shells", controller_.shells().selectedCount() > 0)) {
+        if (ImGui::MenuItem("To one STL...")) {
+            saveSelectedShellsDialog(false);
+        }
+        if (ImGui::MenuItem("Each to its own STL...")) {
+            saveSelectedShellsDialog(true);
+        }
+        ImGui::EndMenu();
+    }
+    if (controller_.shells().selectedCount() == 0) {
+        tooltip("Select shells in the Shells panel first (multi-shell meshes).");
     }
     plannedMenuItem("Export Health Report...", "Planned.");
     ImGui::Separator();
@@ -253,13 +296,17 @@ void PolyscopeGui::drawViewMenu() {
     ImGui::MenuItem("Tool / Operation", nullptr, &showTool_);
     ImGui::MenuItem("Display", nullptr, &showDisplay_);
     ImGui::MenuItem("Navigate", nullptr, &showNavigate_);
+    ImGui::MenuItem("Shells", nullptr, &showShells_, controller_.shells().multiShell());
+    if (!controller_.shells().multiShell()) {
+        tooltip("Shown for meshes made of several separate shells.");
+    }
     ImGui::MenuItem("Structures (advanced)", nullptr, &showStructures_);
     ImGui::Separator();
     if (ImGui::BeginMenu("Camera", controller_.hasMesh())) {
         if (ImGui::MenuItem("Home (frame all)", "Home / H")) {
             resetCameraAndPivotToHome();
         }
-        if (ImGui::MenuItem("Frame focused defect", ".")) {
+        if (ImGui::MenuItem("Frame selection", ".")) {
             focusCameraOnSelection(FocusNormalSide::AutoToggleNormal);
         }
         ImGui::Separator();
@@ -315,7 +362,20 @@ void PolyscopeGui::drawMeshMenu() {
         plannedMenuItem("Weld / Merge Vertices...", "Planned (P5).");
         plannedMenuItem("Remove Degenerate Faces...", "Planned (P5).");
         plannedMenuItem("Remove Duplicate Faces", "Planned (P5).");
-        plannedMenuItem("Remove Small Shells", "Planned (P5).");
+        if (ImGui::MenuItem("Remove Small Shells...", nullptr, false, controller_.shells().multiShell())) {
+            // Selecting them in the Shells panel lets the user review before pressing Delete
+            const auto limit = static_cast<std::size_t>(smallShellFaces_);
+            controller_.selectShellsWhere([&](std::size_t s) { return controller_.shells().shell(s).faces.size() < limit; });
+            showShells_ = true;
+            controller_.postStatusMessage(withThousands(controller_.shells().selectedCount()) + " shell(s) under " +
+                                          withThousands(limit) + " faces selected: press Delete to remove them.");
+            requestSync();
+        }
+        tooltip("Selects the shells smaller than N faces in the Shells panel (Select... sets N).");
+        ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("Shells", controller_.shells().multiShell())) {
+        drawShellActionItems();
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Simplify")) {
@@ -345,7 +405,7 @@ void PolyscopeGui::drawRepairMenu() {
             continue;
         }
         const CategoryHealth& row = controller_.categoryHealth(category);
-        const std::size_t count = row.status == HealthStatus::Defects ? row.displayCount(category) : 0;
+        const std::size_t count = row.status == HealthStatus::Defects ? controller_.rowCount(category) : 0;
         const std::string label = std::string("Fix All ") + info.menuName +
                                   (count > 0 ? " (" + withThousands(count) + ")" : std::string());
         if (ImGui::MenuItem(label.c_str(), nullptr, false, info.hasFixAll && count > 0)) {
@@ -725,20 +785,24 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"Pan Camera & Pivot", "Shift + Left-Click Drag, Right-Click Drag, or Middle-Click Drag (shifts the Orbit Pivot with the camera, scaled by depth)"},
         {"Zoom (Dolly)", "Scroll Wheel or Ctrl + Shift + Left-Click Drag (speed scales with distance to the Orbit Pivot)"},
         {"Select Face", "Left-Click a face: if it is a defect of the selected Mesh Health row it becomes the focus (Inspector, Orbit Pivot at its centroid); with no row selected, the row containing it opens; a clean face only moves the Orbit Pivot. Right-Click clears the Polyscope pick."},
+        {"Select Shell", "Alt + Left-Click a face selects its whole shell in the Shells panel (multi-shell meshes); Alt + Ctrl/Cmd + Click adds or removes it. A plain click never changes the shell selection."},
     });
 
     ImGui::Spacing();
     ImGui::TextUnformatted("Keyboard Shortcuts");
     table("KeyNavTable", "Shortcut", {
         {"Click defect in list", "Focuses it and sets the Orbit Pivot to its centroid; Ctrl/Cmd+click toggles, Shift+click selects a range, double-click flies to it"},
+        {"Click shell in Shells panel", "Selects it (Ctrl/Cmd+click toggles, Shift+click selects a range, double-click frames it); right-click for Frame, Isolate, Hide, Delete, Save As"},
         {"N  /  Shift+N", "Next / previous defect of the selected row (worst first, within the active filter) and fly to it"},
-        {".  or  Numpad .", "Frames the focused facet looking down +Normal. Press '.' again to toggle to -Normal"},
+        {".  or  Numpad .", "Frames the focused facet looking down +Normal (press '.' again to toggle to -Normal); with no focused defect, frames the selected shells"},
         {"Shift + .", "Frames the focused facet from the -Normal (back) side"},
         {"Home  or  H", "Frames the entire mesh and resets the Orbit Pivot to the mesh center"},
         {"G", "Toggles Ghost (base-mesh transparency)"},
-        {"Esc", "Clears the defect selection; press again to close the Tool and deselect the row"},
+        {"Esc", "Clears the defect selection; press again to close the Tool and deselect the row, then again to clear the shell selection"},
+        {"I", "Shells: isolate the selected shells (Mesh Health then covers only them); press again to bring the others back. With another shell selected, switches the isolation to it"},
+        {"Delete  /  Backspace", "Shells: deletes the selected shells (undoable)"},
         {"F5", "Check Mesh: runs every Mesh Health row in the background"},
-        {"Ctrl/Cmd + Z", "Undoes the last mesh modification (repair, Fix All / Fix Selected, Scale), one step at a time"},
+        {"Ctrl/Cmd + Z", "Undoes the last mesh modification (repair, Fix All / Fix Selected, Scale, Delete Shells), one step at a time"},
         {"Ctrl/Cmd + O / S / Shift+S", "Open, Save (overwrite, asks the first time), Save As"},
         {"Ctrl/Cmd + ,", "Preferences"},
         {"?  or  F1", "Toggles this Navigation & Shortcuts window"},

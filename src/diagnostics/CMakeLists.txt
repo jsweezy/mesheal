@@ -5,6 +5,7 @@ add_library(ogun_diagnostics STATIC
     TriTriIntersect.cpp
     SelfIntersections.cpp
     Histogram.cpp
+    ShellNesting.cpp
 )
 add_library(ogun::diagnostics ALIAS ogun_diagnostics)
 

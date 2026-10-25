@@ -5,6 +5,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <vector>
+
 namespace {
 
 ogun::Mesh makeTestTetrahedron(ogun::Unit unit = ogun::Unit::Millimeter) {
@@ -48,6 +50,29 @@ TEST_CASE("Changing File Units leaves vertex coordinates V untouched and convert
     REQUIRE(tolConfig.absFloorInUnit(ogun::Unit::Meter) == Catch::Approx(1e-11).epsilon(1e-12));
     REQUIRE(tolConfig.absFloorInUnit(ogun::Unit::Inch) == Catch::Approx(1e-9 / 2.54).epsilon(1e-12));
     REQUIRE(tolConfig.absFloorInUnit(ogun::Unit::Foot) == Catch::Approx(1e-9 / 30.48).epsilon(1e-12));
+}
+
+TEST_CASE("extractFaces keeps only the listed faces and the vertices they use", "[mesh]") {
+    const ogun::Mesh mesh = makeTestTetrahedron(ogun::Unit::Inch);
+    const std::vector<Eigen::Index> faces{3, 1};
+
+    const ogun::Mesh part = ogun::extractFaces(mesh, faces);
+    REQUIRE(part.fileUnit == ogun::Unit::Inch);
+    REQUIRE(part.numFaces() == 2);
+    REQUIRE(part.numVertices() == 4);
+    REQUIRE(part.N.rows() == 2);
+    for (Eigen::Index row = 0; row < part.numFaces(); ++row) {
+        for (int corner = 0; corner < 3; ++corner) {
+            REQUIRE(part.V.row(part.F(row, corner)) == mesh.V.row(mesh.F(faces[static_cast<std::size_t>(row)], corner)));
+        }
+    }
+
+    const std::vector<Eigen::Index> one{2};
+    const ogun::Mesh single = ogun::extractFaces(mesh, one);
+    REQUIRE(single.numVertices() == 3);
+    REQUIRE(single.F.maxCoeff() == 2);
+
+    REQUIRE(ogun::extractFaces(mesh, {}).empty());
 }
 
 TEST_CASE("Explicit scaleMeshToUnit multiplies V by exact scale factor and updates bounding box",
