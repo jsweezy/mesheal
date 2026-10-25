@@ -62,3 +62,7 @@ add_subdirectory(src/io)
 add_subdirectory(src/diagnostics)
 add_subdirectory(src/repair)
 add_subdirectory(src/app)
+
+if(OGUN_BUILD_GUI)
+    add_subdirectory(src/mockup)
+endif()

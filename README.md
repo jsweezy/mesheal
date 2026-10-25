@@ -28,6 +28,7 @@ Unlike 3D printing repair tools—which often voxelize or aggressively alter geo
 
 - **[docs/NAVIGATION.md](docs/NAVIGATION.md)**: 3D viewport mouse controls, Blender-style keyboard shortcuts (`.`, `..`, `Shift+.`, `Home`/`H`, `?`/`F1`), selection mechanics, and clipping plane usage.
 - **[VISION.md](VISION.md)**: Physical simulation motivation, multi-scale tolerance philosophy, decoupled architecture, and licensing rationale.
+- **[UI_DESIGN.md](UI_DESIGN.md)**: GUI redesign: menu bar, Mesh Health panel, per-defect Tool panels, operator panels, large-defect-count handling, and the phased implementation plan.
 - **[PLAN.md](PLAN.md)**: Incremental development roadmap, module structure, and Test-Driven Development (TDD) harness with Catch2.
 - **[TODO.md](TODO.md)**: Punch list tracking completed and upcoming features.
 - **[LICENSE.md](LICENSE.md)**: Full text of the GNU General Public License v3.0.
@@ -59,6 +60,7 @@ ogun_stl_repair_tool/
 ├── VISION.md
 ├── PLAN.md
 ├── TODO.md
+├── UI_DESIGN.md
 ├── assets/
 │   └── icons/          # Application & toolbar icons (ogun.jpeg, ogun.png, ogun.icns)
 ├── docs/
@@ -71,7 +73,8 @@ ogun_stl_repair_tool/
     ├── io/             # STL reading, edge-aware welding, STL export & sample meshes (+ src/io/Test/)
     ├── diagnostics/    # Manifold & thin/sliver face detection (+ src/diagnostics/Test/)
     ├── repair/         # CGAL single-face live preview/repair & batch sliver healing (+ src/repair/Test/)
-    └── app/            # Headless AppController (+ src/app/Test/) & Polyscope/ImGui viewer
+    ├── app/            # Headless AppController (+ src/app/Test/) & Polyscope/ImGui viewer
+    └── mockup/         # Throwaway clickable UI mockup of UI_DESIGN.md (fake defect data)
 ```
 
 ---
@@ -107,6 +110,9 @@ ctest --test-dir build --output-on-failure -j 4
 
 # Launch the Ogun viewer (optionally passing an STL file path)
 ./build/src/app/ogun [path/to/model.stl]
+
+# Try the proposed GUI layout from UI_DESIGN.md (fake defect data)
+./build/src/mockup/ogun_ui_mockup [path/to/model.stl]
 ```
 
 ---
