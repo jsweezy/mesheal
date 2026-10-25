@@ -718,20 +718,27 @@ void PolyscopeGui::syncDefectOverlaysToPolyscope(const HighlightOverlayGeometry&
     defectFaceIndices_ = overlay.overlayFaceIndices;
     lastAppliedDefectEdgeRadius_ = -1.0;
     lastAppliedPointRadius_ = -1.0;
-    if (!overlay.hasSelectionOverlay()) {
+    // Polyscope aborts when drawing a structure without elements, so each one is registered only when
+    // it has content (a selected row with no selected defects has tubes and points but no faces)
+    if (overlay.overlayFaces.empty()) {
         removeSurfaceMeshIfPresent(kDefectFacesName);
-        removeCurveNetworkIfPresent(kOverlayCurveName);
-        removePointCloudIfPresent(kOverlayPointName);
-        return;
+    } else {
+        auto* psFaces = polyscope::registerSurfaceMesh(kDefectFacesName, overlay.overlayPoints, overlay.overlayFaces);
+        psFaces->setSmoothShade(false);
+        psFaces->setBackFacePolicy(polyscope::BackFacePolicy::Identical);
     }
 
-    auto* psFaces = polyscope::registerSurfaceMesh(kDefectFacesName, overlay.overlayPoints, overlay.overlayFaces);
-    psFaces->setSmoothShade(false);
-    psFaces->setBackFacePolicy(polyscope::BackFacePolicy::Identical);
-
     // Edge tubes and vertex spheres keep zero-area and sub-pixel slivers visible at any zoom
-    polyscope::registerCurveNetwork(kOverlayCurveName, overlay.overlayPoints, overlay.overlayEdges);
-    polyscope::registerPointCloud(kOverlayPointName, overlay.overlayPoints);
+    if (overlay.overlayEdges.empty()) {
+        removeCurveNetworkIfPresent(kOverlayCurveName);
+    } else {
+        polyscope::registerCurveNetwork(kOverlayCurveName, overlay.overlayPoints, overlay.overlayEdges);
+    }
+    if (overlay.overlayPoints.empty()) {
+        removePointCloudIfPresent(kOverlayPointName);
+    } else {
+        polyscope::registerPointCloud(kOverlayPointName, overlay.overlayPoints);
+    }
 }
 
 void PolyscopeGui::syncMeshTransparencyToPolyscope() {
