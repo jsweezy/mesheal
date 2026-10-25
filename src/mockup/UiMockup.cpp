@@ -1,5 +1,9 @@
 #include "mockup/UiMockup.hpp"
 
+#include "core/Constants.hpp"
+#include "diagnostics/MeshChecks.hpp"
+#include "io/StlWriter.hpp"
+
 #include <imgui.h>
 #include <polyscope/pick.h>
 #include <polyscope/polyscope.h>
@@ -14,8 +18,12 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
+#include <limits>
 #include <numeric>
 #include <random>
+#include <span>
+#include <tuple>
 #include <utility>
 
 namespace ogun::mockup {
@@ -57,8 +65,11 @@ enum CategoryId : std::size_t {
     kDuplicates,
     kCategoryCount,
 };
+static_assert(kCategoryCount == kDefectCategoryCount, "mockup rows follow kAllDefectCategories");
+static_assert(kCategoryCount <= std::tuple_size_v<decltype(ShellHealth::counts)>);
 
-constexpr std::array<const char*, 3> kSliverSubtypes = {"Zero-area", "Needle", "Cap"};
+constexpr int kWithinShell = 0;
+constexpr int kBetweenShells = 1;
 constexpr std::array<const char*, 4> kSliverStrategies = {
     "Flip Longest Edge (Best for Coplanar Caps)",
     "Collapse Shortest Edge (Best for Needles)",
@@ -91,7 +102,7 @@ void helpMarker(const char* text) {
 }
 
 void tooltip(const char* text) {
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_AllowWhenDisabled)) {
         ImGui::SetTooltip("%s", text);
     }
 }
@@ -143,10 +154,51 @@ void sortWorstFirst(std::vector<MockDefect>& defects) {
     });
 }
 
+/// `yOffset`: FramePadding.y when the line was aligned with AlignTextToFramePadding().
+void dot(const ImVec4& color, float yOffset = 0.0f) {
+    const float radius = ImGui::GetTextLineHeight() * 0.3f;
+    const ImVec2 cursor = ImGui::GetCursorScreenPos();
+    const ImVec2 center(cursor.x + radius + 2.0f, cursor.y + yOffset + ImGui::GetTextLineHeight() * 0.5f);
+    ImGui::GetWindowDrawList()->AddCircleFilled(center, radius, ImGui::GetColorU32(color), 12);
+    ImGui::Dummy(ImVec2(radius * 2.0f + 4.0f, ImGui::GetTextLineHeight()));
+}
+
+// Möller-Trumbore: does the ray origin + t * dir (t > 0) hit triangle abc?
+bool rayHitsTriangle(const Eigen::Vector3d& origin, const Eigen::Vector3d& dir, const Eigen::Vector3d& a,
+                     const Eigen::Vector3d& b, const Eigen::Vector3d& c) {
+    const Eigen::Vector3d e1 = b - a;
+    const Eigen::Vector3d e2 = c - a;
+    const Eigen::Vector3d p = dir.cross(e2);
+    const double det = e1.dot(p);
+    if (std::abs(det) <= 1.0e-14 * e1.norm() * e2.norm()) {
+        return false;
+    }
+    const double inv = 1.0 / det;
+    const Eigen::Vector3d s = origin - a;
+    const double u = s.dot(p) * inv;
+    if (u < 0.0 || u > 1.0) {
+        return false;
+    }
+    const Eigen::Vector3d q = s.cross(e1);
+    const double v = dir.dot(q) * inv;
+    if (v < 0.0 || u + v > 1.0) {
+        return false;
+    }
+    return e2.dot(q) * inv > 0.0;
+}
+
+bool boxInside(const BoundingBox& inner, const BoundingBox& outer) {
+    return (inner.min.array() > outer.min.array()).all() && (inner.max.array() < outer.max.array()).all();
+}
+
+BoundingBox mergeBoxes(const BoundingBox& a, const BoundingBox& b) {
+    return {a.min.cwiseMin(b.min), a.max.cwiseMax(b.max)};
+}
+
 } // namespace
 
-UiMockup::UiMockup(Mesh mesh, std::string sourceLabel)
-    : mesh_(std::move(mesh)), sourceLabel_(std::move(sourceLabel)) {
+UiMockup::UiMockup(Mesh mesh, std::string sourceLabel, bool fakeDefects)
+    : mesh_(std::move(mesh)), sourceLabel_(std::move(sourceLabel)), fakeDefects_(fakeDefects) {
     if (mesh_.N.rows() != mesh_.F.rows()) {
         mesh_.recomputeNormals();
     }
@@ -183,9 +235,144 @@ UiMockup::UiMockup(Mesh mesh, std::string sourceLabel)
     define(kDuplicates, "Duplicate faces", "Geometry", "Copies", false,
            "Triangles that use the same three vertices as another triangle.");
     categories_[kShells].infoOnly = true;
-    categories_[kShells].infoValue = 1;
+    const auto realSubtypes = [this](CategoryId id) {
+        for (const char* label : categoryInfo(kAllDefectCategories[id]).subtypes) {
+            if (label != nullptr) {
+                categories_[id].subtypes.push_back(label);
+            }
+        }
+    };
+    realSubtypes(kSlivers);
+    realSubtypes(kDegenerate);
+    realSubtypes(kDuplicates);
+    // The real check splits Crossing / Coplanar; the shell workflow needs Within / Between shells
+    categories_[kIntersections].subtypes = {"Within shell", "Between shells"};
 
-    generateFakeDefects();
+    buildShells();
+    categories_[kShells].infoValue = shells_.size();
+    if (fakeDefects_) {
+        generateFakeDefects();
+        findNestedShells();
+    }
+}
+
+void UiMockup::buildShells() {
+    const CategoryResult result = checkShells(mesh_);
+    std::vector<std::size_t> order(result.size());
+    std::iota(order.begin(), order.end(), std::size_t{0});
+    std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+        return result.facesOf(a).size() > result.facesOf(b).size();
+    });
+
+    faceShell_.assign(static_cast<std::size_t>(mesh_.numFaces()), -1);
+    shells_.clear();
+    shells_.reserve(order.size());
+    for (const std::size_t element : order) {
+        const std::span<const Eigen::Index> faces = result.facesOf(element);
+        MockShell shell;
+        shell.faces.assign(faces.begin(), faces.end());
+        shell.bbox.min = Eigen::Vector3d::Constant(std::numeric_limits<double>::infinity());
+        shell.bbox.max = Eigen::Vector3d::Constant(-std::numeric_limits<double>::infinity());
+        for (const Eigen::Index f : faces) {
+            faceShell_[static_cast<std::size_t>(f)] = static_cast<int>(shells_.size());
+            for (int corner = 0; corner < 3; ++corner) {
+                const Eigen::Vector3d p = mesh_.V.row(mesh_.F(f, corner)).transpose();
+                shell.bbox.min = shell.bbox.min.cwiseMin(p);
+                shell.bbox.max = shell.bbox.max.cwiseMax(p);
+            }
+        }
+        shells_.push_back(std::move(shell));
+    }
+    shellFlags_.assign(shells_.size(), ShellFlags{});
+}
+
+void UiMockup::startRealChecks() {
+    // A copy of the mesh, so the checks cannot race with anything the GUI does
+    realChecks_ = std::async(std::launch::async, [mesh = mesh_]() {
+        std::vector<CategoryResult> results(kDefectCategoryCount);
+        const CheckParams params;
+        for (const DefectCategory category : kAllDefectCategories) {
+            if (category != DefectCategory::Shells) {
+                results[categoryIndex(category)] = runCategoryCheck(category, mesh, params);
+            }
+        }
+        return results;
+    });
+}
+
+void UiMockup::applyRealResults(std::vector<CategoryResult> results) {
+    crossingPairs_.clear();
+    for (std::size_t i = 0; i < categories_.size(); ++i) {
+        if (i == kShells) {
+            continue;
+        }
+        const CategoryResult& result = results[i];
+        auto& pending = categories_[i].pending;
+        pending.clear();
+        pending.reserve(result.size());
+        for (std::size_t e = 0; e < result.size(); ++e) {
+            const std::span<const Eigen::Index> faces = result.facesOf(e);
+            if (faces.empty()) {
+                continue;
+            }
+            const DefectElement& element = result.elements[e];
+            MockDefect d;
+            d.faceIndex = faces.front();
+            d.metric = element.metric;
+            d.area = element.columns[1];
+            d.subtype = std::max(element.subtype, 0);
+            d.shell = faceShell_[static_cast<std::size_t>(d.faceIndex)];
+            if (i == kIntersections) {
+                d.subtype = kWithinShell;
+                for (const Eigen::Index partner : result.relatedOf(e)) {
+                    const int other = faceShell_[static_cast<std::size_t>(partner)];
+                    if (other >= 0 && d.shell >= 0 && other != d.shell) {
+                        d.partnerShell = other;
+                        d.subtype = kBetweenShells;
+                        crossingPairs_.emplace(std::min(other, d.shell), std::max(other, d.shell));
+                    }
+                }
+            }
+            // Shells deleted while the checks ran stay deleted
+            if (d.shell >= 0 && shellFlags_[static_cast<std::size_t>(rootShell(d.shell))].deleted) {
+                continue;
+            }
+            pending.push_back(d);
+        }
+    }
+    findNestedShells();
+    realChecksApplied_ = true;
+}
+
+void UiMockup::findNestedShells() {
+    // A shell is nested in k when its box lies inside k's box, it does not cross k, and one of its
+    // vertices is inside k (odd number of ray hits). The skewed direction avoids hitting edges.
+    const Eigen::Vector3d dir = Eigen::Vector3d(kAlphaX, kAlphaY, kAlphaZ).normalized();
+    for (std::size_t s = 0; s < shells_.size(); ++s) {
+        MockShell& shell = shells_[s];
+        shell.nestedIn = -1;
+        const Eigen::Vector3d probe = mesh_.V.row(mesh_.F(shell.faces.front(), 0)).transpose();
+        // Smallest container wins, so a shell inside a cavity reports the cavity
+        for (std::size_t k = shells_.size(); k-- > 0;) {
+            const auto si = static_cast<int>(s);
+            const auto ki = static_cast<int>(k);
+            if (k == s || !boxInside(shell.bbox, shells_[k].bbox) ||
+                crossingPairs_.contains({std::min(si, ki), std::max(si, ki)})) {
+                continue;
+            }
+            std::size_t hits = 0;
+            for (const Eigen::Index f : shells_[k].faces) {
+                hits += rayHitsTriangle(probe, dir, mesh_.V.row(mesh_.F(f, 0)).transpose(),
+                                        mesh_.V.row(mesh_.F(f, 1)).transpose(), mesh_.V.row(mesh_.F(f, 2)).transpose())
+                    ? 1
+                    : 0;
+            }
+            if (hits % 2 == 1) {
+                shell.nestedIn = ki;
+                break;
+            }
+        }
+    }
 }
 
 void UiMockup::generateFakeDefects() {
@@ -211,7 +398,8 @@ void UiMockup::generateFakeDefects() {
             d.faceIndex = order[next++];
             d.metric = std::pow(10.0, logMetric(rng));
             d.area = d.metric * d.metric * 10.0;
-            d.subtype = subtype(rng);
+            d.subtype = id == kIntersections ? kWithinShell : subtype(rng);
+            d.shell = faceShell_[static_cast<std::size_t>(d.faceIndex)];
             pending.push_back(d);
         }
         sortWorstFirst(pending);
@@ -227,7 +415,7 @@ void UiMockup::generateFakeDefects() {
 }
 
 void UiMockup::run() {
-    polyscope::options::programName = "Ogun - UI Mockup (fake defect data)";
+    polyscope::options::programName = "Ogun - UI Mockup (simulated fixes)";
     polyscope::options::autocenterStructures = false;
     polyscope::options::autoscaleStructures = false;
     polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
@@ -237,7 +425,12 @@ void UiMockup::run() {
 
     registerMesh();
     polyscope::view::resetCameraToHomeView();
-    setStatusMessage("Mockup: defect counts are fake. Press F5 or click 'Check All' to start.");
+    if (!fakeDefects_) {
+        startRealChecks();
+    }
+    startCheckAll();
+    setStatusMessage(fakeDefects_ ? "Mockup: defect counts are fake (--fake)."
+                                  : "Mockup: shells and defects are real; fixes, deletes and merges are simulated.");
 
     polyscope::state::userCallback = [this]() { drawFrame(); };
     polyscope::show();
@@ -302,12 +495,32 @@ void UiMockup::drawLeftColumn(float top, float bottom) {
     stackedPanel("Display", &showDisplay_, [this] { drawDisplayPanelContents(); });
     stackedPanel("Navigate", &showNavigation_, [this] { drawNavigationPanelContents(); });
 
+    // Shells fills the rest of the column (only for multi-shell meshes); Structures sits below it,
+    // a title bar while collapsed
+    const bool structures = showStructures_ && y < bottom;
+    const float structuresHeight = !structures ? 0.0f
+                                   : structuresCollapsed_ ? ImGui::GetFrameHeight()
+                                                          : (bottom - y) * 0.4f;
+    if (showShells_ && hasShellPanel() && y < bottom) {
+        const float height = std::max(bottom - y - (structures ? structuresHeight + kMargin : 0.0f), 120.0f);
+        ImGui::SetNextWindowPos(ImVec2(kMargin, y), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(kLeftColumnWidth, height), ImGuiCond_Always);
+        const std::string title = "Shells (" + withThousands(liveShellCount()) + ")###Shells";
+        if (ImGui::Begin(title.c_str(), &showShells_, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize)) {
+            drawShellsPanelContents();
+        }
+        y += ImGui::GetWindowHeight() + kMargin;
+        ImGui::End();
+    }
+
     // Last panel fills the rest of the column and scrolls
-    if (showStructures_ && y < bottom) {
+    if (structures && y < bottom) {
         ImGui::SetNextWindowPos(ImVec2(kMargin, y), ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImVec2(kLeftColumnWidth, bottom - y), ImGuiCond_Always);
         ImGui::SetNextWindowCollapsed(true, ImGuiCond_FirstUseEver);
-        if (ImGui::Begin("Structures (advanced)", &showStructures_, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize)) {
+        const bool open = ImGui::Begin("Structures (advanced)", &showStructures_, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+        structuresCollapsed_ = ImGui::IsWindowCollapsed();
+        if (open) {
             drawStructuresPanelContents();
         }
         ImGui::End();
@@ -342,6 +555,7 @@ void UiMockup::drawRightColumn(float top, float bottom) {
     case ToolSlot::Decimate: title = "Operation: Decimate"; break;
     case ToolSlot::WeldVertices: title = "Operation: Weld / Merge Vertices"; break;
     case ToolSlot::RemoveDegenerate: title = "Operation: Remove Degenerate Faces"; break;
+    case ToolSlot::MergeShells: title = "Operation: Merge Shells"; break;
     case ToolSlot::None: break;
     }
     title += "###ToolSlot";
@@ -397,6 +611,10 @@ float UiMockup::drawMenuBar() {
             if (ImGui::MenuItem("ASCII STL...")) mockAction("Save As ASCII STL");
             ImGui::EndMenu();
         }
+        if (ImGui::BeginMenu("Export Selected Shells", !selectedShells().empty())) {
+            drawShellSavePopup();
+            ImGui::EndMenu();
+        }
         ImGui::MenuItem("Export Health Report... (future)", nullptr, false, false);
         ImGui::Separator();
         if (ImGui::MenuItem("Quit")) polyscope::unshow();
@@ -412,7 +630,7 @@ float UiMockup::drawMenuBar() {
         HealthCategory* cat = selectedCategory();
         if (ImGui::BeginMenu("Select", cat != nullptr)) {
             if (ImGui::MenuItem("All of this type")) {
-                for (auto& d : cat->defects) d.selected = true;
+                for (std::size_t r = 0; r < cat->defects.size(); ++r) cat->defects[r].selected = rowVisible(*cat, r);
                 refreshFaceColors();
             }
             if (ImGui::MenuItem("None", "Esc")) {
@@ -440,6 +658,7 @@ float UiMockup::drawMenuBar() {
         ImGui::MenuItem("Tool / Operation", nullptr, &showTool_);
         ImGui::MenuItem("Display", nullptr, &showDisplay_);
         ImGui::MenuItem("Navigate", nullptr, &showNavigation_);
+        ImGui::MenuItem("Shells", nullptr, &showShells_, hasShellPanel());
         ImGui::MenuItem("Structures (advanced)", nullptr, &showStructures_);
         ImGui::Separator();
         if (ImGui::BeginMenu("Camera")) {
@@ -449,6 +668,7 @@ float UiMockup::drawMenuBar() {
                     flyToFace(c->defects[static_cast<std::size_t>(focusedRow_)].faceIndex, 1.0);
                 }
             }
+            if (ImGui::MenuItem("Frame selected shells", ".", false, !selectedShells().empty())) frameSelectedShells();
             ImGui::Separator();
             if (ImGui::MenuItem("Front (+Z)")) flyToAxisView(Eigen::Vector3d::UnitZ());
             if (ImGui::MenuItem("Back (-Z)")) flyToAxisView(-Eigen::Vector3d::UnitZ());
@@ -486,7 +706,19 @@ float UiMockup::drawMenuBar() {
             if (ImGui::MenuItem("Weld / Merge Vertices...")) openOperator(ToolSlot::WeldVertices);
             if (ImGui::MenuItem("Remove Degenerate Faces...")) openOperator(ToolSlot::RemoveDegenerate);
             ImGui::MenuItem("Remove Duplicate Faces (future)", nullptr, false, false);
-            ImGui::MenuItem("Remove Small Shells (future)", nullptr, false, false);
+            if (ImGui::MenuItem("Remove Small Shells...", nullptr, false, hasShellPanel())) {
+                showShells_ = true;
+                const std::vector<std::size_t> faces = shellFaceCounts();
+                selectShellsWhere([&](int s) { return faces[static_cast<std::size_t>(s)] < static_cast<std::size_t>(smallShellFaces_); });
+                setStatusMessage(withThousands(selectedShells().size()) + " shell(s) under " +
+                                 withThousands(static_cast<std::size_t>(smallShellFaces_)) +
+                                 " faces selected (change N in Shells > Select). Press Delete to remove them.");
+            }
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("Shells", hasShellPanel())) {
+            ImGui::MenuItem("Show Shells Panel", nullptr, &showShells_);
+            drawShellActionItems();
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Simplify")) {
@@ -510,14 +742,33 @@ float UiMockup::drawMenuBar() {
             if (c.infoOnly) {
                 continue;
             }
-            const std::string label = "Fix All " + std::string(c.name) +
-                (c.defects.empty() ? std::string() : " (" + withThousands(c.defects.size()) + ")");
-            if (ImGui::MenuItem(label.c_str(), nullptr, false, !c.defects.empty() && !jobRunning_)) {
+            const std::size_t n = fixAllCount(i);
+            const std::string label = "Fix All " + std::string(c.name) + (n == 0 ? std::string() : " (" + withThousands(n) + ")");
+            if (ImGui::MenuItem(label.c_str(), nullptr, false, n > 0 && !jobRunning_)) {
                 fixAll(i);
             }
         }
         ImGui::Separator();
         ImGui::MenuItem("Auto-Repair in Safe Order (future)", nullptr, false, false);
+        ImGui::EndMenu();
+    }
+
+    if (ImGui::BeginMenu("Mockup")) {
+        ImGui::TextDisabled("Scope model: which shells Mesh Health covers");
+        if (ImGui::MenuItem("Visible shells (recommended)", nullptr, scopeModel_ == ScopeModel::VisibleShells)) {
+            scopeModel_ = ScopeModel::VisibleShells;
+            pruneOutOfScope();
+        }
+        if (ImGui::MenuItem("Selected shells (visible if none selected)", nullptr, scopeModel_ == ScopeModel::SelectedShells)) {
+            scopeModel_ = ScopeModel::SelectedShells;
+            pruneOutOfScope();
+        }
+        if (ImGui::MenuItem("Whole mesh (no scope)", nullptr, scopeModel_ == ScopeModel::WholeMesh)) {
+            scopeModel_ = ScopeModel::WholeMesh;
+            pruneOutOfScope();
+        }
+        ImGui::Separator();
+        ImGui::TextDisabled(fakeDefects_ ? "Defects: fake (--fake)" : "Defects: real checks; fixes simulated");
         ImGui::EndMenu();
     }
 
@@ -750,7 +1001,7 @@ void UiMockup::drawHealthPanelContents() {
     bool anyRun = false;
     for (const HealthCategory& c : categories_) {
         if (!c.infoOnly) {
-            issues += c.defects.size();
+            issues += scopedCount(c);
             anyRun |= c.status != HealthStatus::NotRun;
         }
     }
@@ -764,6 +1015,32 @@ void UiMockup::drawHealthPanelContents() {
         ImGui::TextColored(kOkColor, "No problems found");
     } else {
         ImGui::TextColored(kDefectColor, "%s problems", withThousands(issues).c_str());
+    }
+
+    // Scope line: only while the counts cover part of the mesh
+    if (hasShellPanel() && scopeModel_ != ScopeModel::WholeMesh) {
+        const std::vector<int> live = liveShells();
+        const std::size_t shown = static_cast<std::size_t>(std::count_if(live.begin(), live.end(), [this](int s) {
+            return shellFlags_[static_cast<std::size_t>(s)].visible;
+        }));
+        const std::size_t selected = selectedShells().size();
+        if (scopeModel_ == ScopeModel::SelectedShells && selected > 0) {
+            ImGui::TextColored(kRunningColor, "Scope: %s selected shell%s", withThousands(selected).c_str(),
+                               selected == 1 ? "" : "s");
+            tooltip("Counts, lists, Next/Prev and Fix All cover only the selected shells.");
+            ImGui::SameLine();
+            if (ImGui::SmallButton("All shells")) {
+                selectShellsWhere([](int) { return false; });
+            }
+        } else if (shown < live.size()) {
+            ImGui::TextColored(kRunningColor, "Scope: %s of %s shells", withThousands(shown).c_str(),
+                               withThousands(live.size()).c_str());
+            tooltip("Hidden shells are not counted, listed or fixed. They are still saved with the mesh.");
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Show all")) {
+                showAllShells();
+            }
+        }
     }
 
     const ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit;
@@ -811,16 +1088,31 @@ void UiMockup::drawHealthRow(std::size_t i) {
     ImGui::PushID(static_cast<int>(i));
 
     ImGui::TableSetColumnIndex(0);
-    statusDot(c.status);
+    // The dot follows the scoped count, so an isolated clean shell shows green rows
+    statusDot(c.status == HealthStatus::Defects && scopedCount(c) == 0 ? HealthStatus::Ok : c.status);
 
     ImGui::TableSetColumnIndex(1);
     const bool selected = selectedCategory_ == static_cast<int>(i);
     if (ImGui::Selectable(c.name, selected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap)) {
-        selectCategory(selected ? -1 : static_cast<int>(i));
+        if (i == kShells) {
+            // Shells are managed in their own panel, not in the Tool slot
+            if (hasShellPanel()) {
+                showShells_ = true;
+                colourByShell_ = true;
+                refreshFaceColors();
+            } else {
+                setStatusMessage("One shell: nothing to manage.");
+            }
+        } else {
+            selectCategory(selected ? -1 : static_cast<int>(i));
+        }
     }
     if (ImGui::BeginItemTooltip()) {
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 26.0f);
         ImGui::TextUnformatted(c.tooltip);
+        if (i == kShells && hasShellPanel()) {
+            ImGui::TextDisabled("Click to open the Shells panel and colour each shell.");
+        }
         ImGui::TextDisabled("%s", statusLabel(c.status));
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
@@ -834,10 +1126,10 @@ void UiMockup::drawHealthRow(std::size_t i) {
     case HealthStatus::Running: count = "..."; color = kRunningColor; break;
     case HealthStatus::Ok:
     case HealthStatus::Defects:
-        count = withThousands(c.infoOnly ? c.infoValue : c.defects.size());
-        color = c.infoOnly ? ImGui::GetStyleColorVec4(ImGuiCol_Text) : (c.defects.empty() ? kOkColor : kDefectColor);
+        count = withThousands(c.infoOnly ? liveShellCount() : scopedCount(c));
+        color = c.infoOnly ? ImGui::GetStyleColorVec4(ImGuiCol_Text) : (scopedCount(c) == 0 ? kOkColor : kDefectColor);
         break;
-    case HealthStatus::Stale: count = withThousands(c.defects.size()) + "?"; break;
+    case HealthStatus::Stale: count = withThousands(scopedCount(c)) + "?"; break;
     }
     const float textWidth = ImGui::CalcTextSize(count.c_str()).x;
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetColumnWidth() - textWidth);
@@ -881,42 +1173,58 @@ void UiMockup::drawCategoryTool(HealthCategory& category) {
     }
 
     if (category.infoOnly) {
-        ImGui::Text("%zu shell(s).", category.infoValue);
-        if (ImGui::Button("Remove shells smaller than... (future)")) mockAction("Remove small shells");
+        ImGui::Text("%s shell(s). Manage them in the Shells panel.", withThousands(liveShellCount()).c_str());
         return;
     }
 
-    // Subtype filter chips (slivers only); a filter can bring the count under the list cap
-    if (categoryIndex == kSlivers && !category.defects.empty()) {
-        std::array<std::size_t, 3> perType{};
-        for (const auto& d : category.defects) ++perType[static_cast<std::size_t>(d.subtype)];
-        const std::string all = "All (" + withThousands(category.defects.size()) + ")";
+    // Subtype filter chips; a filter can bring the count under the list cap
+    const std::size_t inScope = scopedCount(category);
+    if (!category.subtypes.empty() && inScope > 0) {
+        std::vector<std::size_t> perType(category.subtypes.size(), 0);
+        for (const auto& d : category.defects) {
+            if (defectInScope(d) && static_cast<std::size_t>(d.subtype) < perType.size()) {
+                ++perType[static_cast<std::size_t>(d.subtype)];
+            }
+        }
+        const std::string all = "All (" + withThousands(inScope) + ")";
         if (ImGui::RadioButton(all.c_str(), subtypeFilter_ < 0)) subtypeFilter_ = -1;
-        for (std::size_t t = 0; t < kSliverSubtypes.size(); ++t) {
-            ImGui::SameLine();
-            const std::string label = std::string(kSliverSubtypes[t]) + " (" + std::to_string(perType[t]) + ")";
+        for (std::size_t t = 0; t < category.subtypes.size(); ++t) {
+            const std::string label = std::string(category.subtypes[t]) + " (" + withThousands(perType[t]) + ")";
+            const float nextRight = ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + ImGui::GetFrameHeight() +
+                                    ImGui::GetStyle().ItemInnerSpacing.x + ImGui::CalcTextSize(label.c_str()).x;
+            if (nextRight < ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x) {
+                ImGui::SameLine();
+            }
             if (ImGui::RadioButton(label.c_str(), subtypeFilter_ == static_cast<int>(t))) {
                 subtypeFilter_ = static_cast<int>(t);
             }
         }
     }
+    if (categoryIndex == kIntersections && hasShellPanel()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("Crossings between shells are removed by Merge Shells, not by Fix All.");
+        ImGui::PopStyleColor();
+    }
 
     std::vector<std::size_t> visibleRows;
     visibleRows.reserve(category.defects.size());
     for (std::size_t r = 0; r < category.defects.size(); ++r) {
-        if (subtypeFilter_ < 0 || category.defects[r].subtype == subtypeFilter_) {
+        if (rowVisible(category, r)) {
             visibleRows.push_back(r);
         }
     }
     const std::size_t selectedCount = selectedRowCount(category);
+    const std::size_t fixable = fixAllCount(categoryIndex);
 
     ImGui::Separator();
-    ImGui::BeginDisabled(category.defects.empty() || jobRunning_);
-    const std::string fixAllLabel = "Fix All " + withThousands(category.defects.size());
+    ImGui::BeginDisabled(fixable == 0 || jobRunning_);
+    const std::string fixAllLabel = "Fix All " + withThousands(fixable);
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.45f, 0.25f, 1.0f));
     if (ImGui::Button(fixAllLabel.c_str())) fixAll(categoryIndex);
     ImGui::PopStyleColor();
-    tooltip("Repair every defect of this type in one undoable step.");
+    tooltip(hasShellPanel() && scopeModel_ != ScopeModel::WholeMesh
+                ? "Repair every defect of this type in the scoped shells, in one undoable step."
+                : "Repair every defect of this type in one undoable step.");
     ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::BeginDisabled(selectedCount == 0 || jobRunning_);
@@ -928,9 +1236,10 @@ void UiMockup::drawCategoryTool(HealthCategory& category) {
     if (ImGui::Button("Check")) startCheckOne(categoryIndex);
     ImGui::EndDisabled();
 
-    if (category.defects.empty()) {
-        if (category.status == HealthStatus::Ok) {
-            ImGui::TextColored(kOkColor, "No %s.", category.name);
+    if (inScope == 0) {
+        if (category.status == HealthStatus::Ok || category.status == HealthStatus::Defects) {
+            ImGui::TextColored(kOkColor, "No %s%s.", category.name,
+                               category.defects.empty() ? "" : " in the scoped shells");
         }
         return;
     }
@@ -941,12 +1250,13 @@ void UiMockup::drawCategoryTool(HealthCategory& category) {
         drawDefectSummary(category, visibleRows);
     }
 
-    if (static_cast<int>(category.defects.size()) > overlayCap_) {
+    if (static_cast<int>(visibleRows.size()) > overlayCap_) {
         ImGui::TextDisabled("3D: face tint only (%s faces > overlay cap %d).",
-                            withThousands(category.defects.size()).c_str(), overlayCap_);
+                            withThousands(visibleRows.size()).c_str(), overlayCap_);
     }
 
-    if (focusedRow_ >= 0 && static_cast<std::size_t>(focusedRow_) < category.defects.size()) {
+    if (focusedRow_ >= 0 && static_cast<std::size_t>(focusedRow_) < category.defects.size() &&
+        rowVisible(category, static_cast<std::size_t>(focusedRow_))) {
         drawInspector(category);
     }
 }
@@ -991,7 +1301,7 @@ void UiMockup::drawCategorySettings(std::size_t categoryIndex) {
 
 void UiMockup::drawDefectTable(HealthCategory& category, const std::vector<std::size_t>& visibleRows) {
     const ImGuiIO& io = ImGui::GetIO();
-    const bool showSubtype = selectedCategory_ == static_cast<int>(kSlivers);
+    const bool showSubtype = !category.subtypes.empty();
     const float inspectorReserve = focusedRow_ >= 0 ? 230.0f : 40.0f;
     const float tableHeight = std::max(120.0f, ImGui::GetContentRegionAvail().y - inspectorReserve);
     const ImGuiTableFlags flags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter |
@@ -1081,7 +1391,9 @@ void UiMockup::drawDefectTable(HealthCategory& category, const std::vector<std::
         ImGui::Text("%.2e", d.area);
         if (showSubtype) {
             ImGui::TableSetColumnIndex(3);
-            ImGui::TextUnformatted(kSliverSubtypes[static_cast<std::size_t>(d.subtype)]);
+            ImGui::TextUnformatted(static_cast<std::size_t>(d.subtype) < category.subtypes.size()
+                                       ? category.subtypes[static_cast<std::size_t>(d.subtype)]
+                                       : "-");
         }
         ImGui::PopID();
     }
@@ -1103,14 +1415,22 @@ void UiMockup::drawDefectSummary(HealthCategory& category, const std::vector<std
 
     // Distribution of the metric so the user can judge the problem without a list
     std::array<float, 24> histogram{};
+    double lo = std::numeric_limits<double>::infinity();
+    double hi = -std::numeric_limits<double>::infinity();
+    const auto logMetric = [&](std::size_t row) { return std::log10(std::max(category.defects[row].metric, 1.0e-12)); };
     for (const std::size_t row : visibleRows) {
-        const double logValue = std::log10(std::max(category.defects[row].metric, 1.0e-12));
-        const double t = std::clamp((logValue + 9.0) / 6.0, 0.0, 0.999);
+        lo = std::min(lo, logMetric(row));
+        hi = std::max(hi, logMetric(row));
+    }
+    const double span = std::max(hi - lo, 1.0e-9);
+    for (const std::size_t row : visibleRows) {
+        const double t = std::clamp((logMetric(row) - lo) / span, 0.0, 0.999);
         histogram[static_cast<std::size_t>(t * static_cast<double>(histogram.size()))] += 1.0f;
     }
-    const std::string histLabel = std::string("log10 ") + category.metricLabel + ": -9 .. -3";
+    char histLabel[96];
+    std::snprintf(histLabel, sizeof(histLabel), "log10 %s: %.1f .. %.1f", category.metricLabel, lo, hi);
     ImGui::PlotHistogram("##MetricHistogram", histogram.data(), static_cast<int>(histogram.size()), 0,
-                         histLabel.c_str(), 0.0f, FLT_MAX, ImVec2(-1.0f, 70.0f));
+                         histLabel, 0.0f, FLT_MAX, ImVec2(-1.0f, 70.0f));
     if (!visibleRows.empty()) {
         ImGui::Text("Worst %s: %.2e   Best: %.2e", category.metricLabel,
                     category.defects[visibleRows.front()].metric, category.defects[visibleRows.back()].metric);
@@ -1120,9 +1440,11 @@ void UiMockup::drawDefectSummary(HealthCategory& category, const std::vector<std
     ImGui::SameLine();
     if (ImGui::Button("Next >")) stepFocus(+1);
     ImGui::SameLine();
-    if (focusedRow_ >= 0) {
-        ImGui::Text("Defect %s of %s (worst first)", withThousands(static_cast<std::size_t>(focusedRow_) + 1).c_str(),
-                    withThousands(category.defects.size()).c_str());
+    const auto focusedPos = std::find(visibleRows.begin(), visibleRows.end(), static_cast<std::size_t>(focusedRow_));
+    if (focusedRow_ >= 0 && focusedPos != visibleRows.end()) {
+        ImGui::Text("Defect %s of %s (worst first)",
+                    withThousands(static_cast<std::size_t>(focusedPos - visibleRows.begin()) + 1).c_str(),
+                    withThousands(visibleRows.size()).c_str());
     } else {
         ImGui::TextDisabled("None focused");
     }
@@ -1135,8 +1457,17 @@ void UiMockup::drawInspector(const HealthCategory& category) {
         return;
     }
     ImGui::Text("%s = %.3e   Area = %.3e", category.metricLabel, d.metric, d.area);
+    if (d.shell >= 0 && hasShellPanel()) {
+        ImGui::Text("In shell %s", shellLabel(rootShell(d.shell)).c_str());
+        if (d.partnerShell >= 0 && rootShell(d.partnerShell) != rootShell(d.shell)) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("- crosses shell %s (Merge Shells removes this)", shellLabel(rootShell(d.partnerShell)).c_str());
+        }
+    }
     if (selectedCategory_ == static_cast<int>(kSlivers)) {
-        ImGui::Text("Detected type: %s", kSliverSubtypes[static_cast<std::size_t>(d.subtype)]);
+        ImGui::Text("Detected type: %s", static_cast<std::size_t>(d.subtype) < category.subtypes.size()
+                                             ? category.subtypes[static_cast<std::size_t>(d.subtype)]
+                                             : "-");
         for (std::size_t s = 0; s < kSliverStrategies.size(); ++s) {
             ImGui::RadioButton(kSliverStrategies[s], &sliverStrategy_, static_cast<int>(s));
         }
@@ -1153,6 +1484,10 @@ void UiMockup::drawInspector(const HealthCategory& category) {
 }
 
 void UiMockup::drawOperatorTool() {
+    if (toolSlot_ == ToolSlot::MergeShells) {
+        drawMergeTool();
+        return;
+    }
     const std::string sym(unitSymbol(fileUnit_));
     ImGui::PushItemWidth(150.0f);
     switch (toolSlot_) {
@@ -1269,18 +1604,21 @@ void UiMockup::drawHelpWindow() {
         ImGui::End();
         return;
     }
-    const std::array<std::pair<const char*, const char*>, 16> rows = {{
+    const std::array<std::pair<const char*, const char*>, 19> rows = {{
         {"Left drag", "Orbit"},
         {"Right / Shift+Left drag", "Pan"},
         {"Scroll", "Zoom"},
-        {"Left click face", "Focus that defect (if it belongs to the selected type)"},
-        {".", "Frame focused defect (+Normal; again for -Normal)"},
+        {"Left click face", "Focus that defect (row open), otherwise select its shell"},
+        {"Alt+click face", "Select its shell (Ctrl/Cmd: toggle, Shift: add)"},
+        {"I", "Isolate the selected shells (again to undo)"},
+        {"Delete / Backspace", "Delete the selected shells (undoable)"},
+        {".", "Frame focused defect (+Normal; again for -Normal), else the selected shells"},
         {"Shift+.", "Frame focused defect from behind"},
         {"Home / H", "Frame whole mesh"},
         {"N / Shift+N", "Next / previous defect (worst first)"},
         {"F5", "Check All"},
         {"G", "Toggle ghost mesh"},
-        {"Esc", "Clear selection / close tool"},
+        {"Esc", "Clear selection / close tool / clear shells"},
         {"Ctrl/Cmd+Z", "Undo"},
         {"Ctrl/Cmd+O / S", "Open / Save"},
         {"Ctrl/Cmd+,", "Preferences"},
@@ -1322,6 +1660,11 @@ void UiMockup::handleKeyboardShortcuts() {
         showHelp_ = !showHelp_;
     }
     if (ImGui::IsKeyPressed(ImGuiKey_N, false)) stepFocus(io.KeyShift ? -1 : +1);
+    if (ImGui::IsKeyPressed(ImGuiKey_I, false) && hasShellPanel()) toggleIsolate();
+    if ((ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false)) &&
+        !selectedShells().empty()) {
+        deleteSelectedShells();
+    }
     if (ImGui::IsKeyPressed(ImGuiKey_G, false)) {
         ghost_ = !ghost_;
         applyBaseStyle();
@@ -1332,6 +1675,8 @@ void UiMockup::handleKeyboardShortcuts() {
     if (ImGui::IsKeyPressed(ImGuiKey_Period, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadDecimal, false)) {
         if (HealthCategory* c = selectedCategory(); c && focusedRow_ >= 0) {
             flyToFace(c->defects[static_cast<std::size_t>(focusedRow_)].faceIndex, io.KeyShift ? -1.0 : 1.0);
+        } else if (!selectedShells().empty()) {
+            frameSelectedShells();
         }
     }
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
@@ -1341,8 +1686,10 @@ void UiMockup::handleKeyboardShortcuts() {
             for (auto& d : c->defects) d.selected = false;
             focusedRow_ = -1;
             refreshFaceColors();
-        } else {
+        } else if (selectedCategory_ >= 0) {
             selectCategory(-1);
+        } else if (!selectedShells().empty()) {
+            selectShellsWhere([](int) { return false; });
         }
     }
 }
@@ -1354,21 +1701,44 @@ void UiMockup::handleViewportClick() {
         return;
     }
     HealthCategory* cat = selectedCategory();
-    if (cat == nullptr) {
+    const bool shellPick = hasShellPanel() && (io.KeyAlt || cat == nullptr);
+    if (cat == nullptr && !shellPick) {
         return;
     }
     const ImVec2 p = ImGui::GetMousePos();
     const polyscope::PickResult pick = polyscope::pickAtScreenCoords(glm::vec2{p.x, p.y});
-    if (!pick.isHit || pick.structureName != kMeshName) {
-        return;
-    }
+    Eigen::Index face = -1;
     const auto nVerts = static_cast<std::uint64_t>(mesh_.numVertices());
-    if (pick.localIndex < nVerts || pick.localIndex >= nVerts + static_cast<std::uint64_t>(mesh_.numFaces())) {
+    if (pick.isHit && pick.structureName == kMeshName && pick.localIndex >= nVerts &&
+        pick.localIndex < nVerts + static_cast<std::uint64_t>(displayFaces_.size())) {
+        face = displayFaces_[static_cast<std::size_t>(pick.localIndex - nVerts)];
+    }
+
+    if (shellPick) {
+        const bool toggle = io.KeyCtrl || io.KeySuper;
+        if (face < 0 || faceShell_[static_cast<std::size_t>(face)] < 0) {
+            if (!toggle && !io.KeyShift) {
+                selectShellsWhere([](int) { return false; });
+            }
+            return;
+        }
+        const int shell = rootShell(faceShell_[static_cast<std::size_t>(face)]);
+        if (io.KeyShift) {
+            shellFlags_[static_cast<std::size_t>(shell)].selected = true;
+            shellAnchor_ = shell;
+            onShellSelectionChanged();
+        } else {
+            clickShell(shell, toggle, false, {});
+        }
+        setStatusMessage("Shell " + shellLabel(shell) + ": " + withThousands(shellFaceCounts()[static_cast<std::size_t>(shell)]) +
+                         " faces.");
         return;
     }
-    const auto face = static_cast<Eigen::Index>(pick.localIndex - nVerts);
+    if (face < 0) {
+        return;
+    }
     const auto it = std::find_if(cat->defects.begin(), cat->defects.end(),
-                                 [face](const MockDefect& d) { return d.faceIndex == face; });
+                                 [this, face](const MockDefect& d) { return d.faceIndex == face && defectInScope(d); });
     if (it == cat->defects.end()) {
         setStatusMessage("Face #" + std::to_string(face) + " is not one of the " + cat->name + ".");
         return;
@@ -1412,6 +1782,13 @@ void UiMockup::advanceCheckJob() {
     if (elapsed < duration) {
         return;
     }
+    // Hold the row on Running until the real checks have finished in the background
+    if (!fakeDefects_ && !realChecksApplied_) {
+        if (!realChecks_.valid() || realChecks_.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+            return;
+        }
+        applyRealResults(realChecks_.get());
+    }
 
     // The first check "discovers" the pre-generated defects; later checks keep what fixes left
     if (!c.pending.empty()) {
@@ -1425,7 +1802,16 @@ void UiMockup::advanceCheckJob() {
 
     if (jobSingle_ || jobCategory_ + 1 >= categories_.size()) {
         jobRunning_ = false;
-        setStatusMessage(jobSingle_ ? std::string(c.name) + " checked." : "Check All finished.");
+        std::string done = jobSingle_ ? std::string(c.name) + " checked." : "Check All finished.";
+        const std::vector<int> live = liveShells();
+        const auto nested = std::count_if(live.begin(), live.end(), [this](int s) {
+            const int in = shells_[static_cast<std::size_t>(s)].nestedIn;
+            return in >= 0 && shellLive(rootShell(in)) && rootShell(in) != s;
+        });
+        if (!jobSingle_ && nested > 0) {
+            done += " " + std::to_string(nested) + " shell(s) lie inside another shell (Shells > Select... > Nested).";
+        }
+        setStatusMessage(done);
         return;
     }
     ++jobCategory_;
@@ -1459,10 +1845,14 @@ void UiMockup::selectCategory(int categoryIndex) {
 
 void UiMockup::fixAll(std::size_t categoryIndex) {
     HealthCategory& c = categories_[categoryIndex];
-    const std::size_t count = c.defects.size();
+    const std::size_t count = fixAllCount(categoryIndex);
+    if (count == 0) {
+        return;
+    }
     pushUndo(std::string("Fix All ") + c.name);
-    c.defects.clear();
-    c.status = HealthStatus::Ok;
+    std::erase_if(c.defects, [&](const MockDefect& d) { return defectInScope(d) && fixableByFixAll(categoryIndex, d); });
+    for (MockDefect& d : c.defects) d.selected = false;
+    c.status = c.defects.empty() ? HealthStatus::Ok : HealthStatus::Defects;
     modified_ = true;
     bool markedStale = false;
     for (std::size_t i = 0; i < categories_.size(); ++i) {
@@ -1473,8 +1863,13 @@ void UiMockup::fixAll(std::size_t categoryIndex) {
     }
     focusedRow_ = -1;
     refreshFaceColors();
-    setStatusMessage("Fixed " + withThousands(count) + " " + c.name + " (mockup). Fast checks re-ran" +
-                     (markedStale ? "; slow checks marked stale." : "."));
+    const std::vector<int> live = liveShells();
+    const bool scoped = std::any_of(live.begin(), live.end(), [this](int s) { return !shellInScope(s); });
+    const bool betweenLeft = categoryIndex == kIntersections &&
+        std::any_of(c.defects.begin(), c.defects.end(), [this](const MockDefect& d) { return defectInScope(d); });
+    setStatusMessage("Fixed " + withThousands(count) + " " + c.name + (scoped ? " in the scoped shells" : "") +
+                     " (mockup). Fast checks re-ran" + (markedStale ? "; slow checks marked stale." : ".") +
+                     (betweenLeft ? " Crossings between shells are left for Merge Shells." : ""));
 }
 
 void UiMockup::fixSelected(std::size_t categoryIndex) {
@@ -1484,7 +1879,7 @@ void UiMockup::fixSelected(std::size_t categoryIndex) {
     }
     const std::size_t before = c.defects.size();
     pushUndo(std::string("Fix Selected ") + c.name);
-    std::erase_if(c.defects, [](const MockDefect& d) { return d.selected; });
+    std::erase_if(c.defects, [this](const MockDefect& d) { return d.selected && defectInScope(d); });
     if (c.defects.empty()) {
         c.status = HealthStatus::Ok;
     }
@@ -1509,6 +1904,7 @@ void UiMockup::pushUndo(const std::string& label) {
         snap.defects.push_back(c.defects);
         snap.statuses.push_back(c.status);
     }
+    snap.shellFlags = shellFlags_;
     undoStack_.push_back(std::move(snap));
 }
 
@@ -1522,9 +1918,17 @@ void UiMockup::undo() {
         categories_[i].defects = std::move(snap.defects[i]);
         categories_[i].status = snap.statuses[i];
     }
+    const bool visibilityChanged = std::any_of(shellFlags_.begin(), shellFlags_.end(), [&](const ShellFlags& f) {
+        const ShellFlags& old = snap.shellFlags[static_cast<std::size_t>(&f - shellFlags_.data())];
+        return f.visible != old.visible || f.deleted != old.deleted || f.mergedInto != old.mergedInto;
+    });
+    shellFlags_ = std::move(snap.shellFlags);
     modified_ = !undoStack_.empty();
     focusedRow_ = -1;
-    refreshFaceColors();
+    if (visibilityChanged) {
+        registerMesh();
+    }
+    pruneOutOfScope();
     setStatusMessage("Undid: " + snap.label);
 }
 
@@ -1535,11 +1939,13 @@ void UiMockup::stepFocus(int direction) {
     }
     const auto n = static_cast<std::ptrdiff_t>(cat->defects.size());
     std::ptrdiff_t row = focusedRow_ < 0 ? (direction > 0 ? 0 : n - 1) : (focusedRow_ + direction + n) % n;
-    // Respect the subtype filter while stepping
-    for (std::ptrdiff_t guard = 0; guard < n && subtypeFilter_ >= 0 &&
-                                   cat->defects[static_cast<std::size_t>(row)].subtype != subtypeFilter_;
-         ++guard) {
+    // Respect the scope and the subtype filter while stepping
+    std::ptrdiff_t guard = 0;
+    for (; guard < n && !rowVisible(*cat, static_cast<std::size_t>(row)); ++guard) {
         row = (row + direction + n) % n;
+    }
+    if (guard == n) {
+        return;
     }
     for (auto& d : cat->defects) d.selected = false;
     focusDefectRow(static_cast<std::size_t>(row), true);
@@ -1581,7 +1987,26 @@ void UiMockup::mockAction(const char* what) {
 // -----------------------------------------------------------------------------
 
 void UiMockup::registerMesh() {
-    auto* psMesh = polyscope::registerSurfaceMesh(kMeshName, mesh_.V, mesh_.F);
+    // Hidden and deleted shells are cut out; displayFaces_ maps picks back to mesh faces
+    displayFaces_.clear();
+    displayFaces_.reserve(static_cast<std::size_t>(mesh_.numFaces()));
+    faceToRow_.assign(static_cast<std::size_t>(mesh_.numFaces()), -1);
+    for (Eigen::Index f = 0; f < mesh_.numFaces(); ++f) {
+        if (faceShown(f)) {
+            faceToRow_[static_cast<std::size_t>(f)] = static_cast<Eigen::Index>(displayFaces_.size());
+            displayFaces_.push_back(f);
+        }
+    }
+    // Polyscope aborts when drawing a structure without faces
+    if (displayFaces_.empty()) {
+        polyscope::removeSurfaceMesh(kMeshName, false);
+        return;
+    }
+    Eigen::MatrixXi faces(static_cast<Eigen::Index>(displayFaces_.size()), 3);
+    for (std::size_t row = 0; row < displayFaces_.size(); ++row) {
+        faces.row(static_cast<Eigen::Index>(row)) = mesh_.F.row(displayFaces_[row]);
+    }
+    auto* psMesh = polyscope::registerSurfaceMesh(kMeshName, mesh_.V, faces);
     psMesh->setSmoothShade(false);
     psMesh->setBackFacePolicy(polyscope::BackFacePolicy::Different);
     applyBaseStyle();
@@ -1595,10 +2020,27 @@ void UiMockup::refreshFaceColors() {
     const Eigen::RowVector3d base(baseColor_[0], baseColor_[1], baseColor_[2]);
     const Eigen::RowVector3d category(categoryColor_[0], categoryColor_[1], categoryColor_[2]);
     const Eigen::RowVector3d selected(selectedColor_[0], selectedColor_[1], selectedColor_[2]);
-    Eigen::MatrixXd colors = base.replicate(mesh_.numFaces(), 1);
+    const Eigen::RowVector3d shellSelected(shellSelectedColor_[0], shellSelectedColor_[1], shellSelectedColor_[2]);
+    const bool shellsShown = hasShellPanel();
+
+    // Layers: shell colour, then the selected-shell tint, then defect tints
+    Eigen::MatrixXd colors(static_cast<Eigen::Index>(displayFaces_.size()), 3);
+    for (std::size_t row = 0; row < displayFaces_.size(); ++row) {
+        const int shell = shellsShown ? faceShell_[static_cast<std::size_t>(displayFaces_[row])] : -1;
+        const int root = shell >= 0 ? rootShell(shell) : -1;
+        Eigen::RowVector3d c = root >= 0 && colourByShell_ ? shellColour(root) : base;
+        if (root >= 0 && shellFlags_[static_cast<std::size_t>(root)].selected) {
+            c = 0.35 * c + 0.65 * shellSelected;
+        }
+        colors.row(static_cast<Eigen::Index>(row)) = c;
+    }
     if (const HealthCategory* cat = selectedCategory()) {
-        for (const MockDefect& d : cat->defects) {
-            colors.row(d.faceIndex) = d.selected ? selected : category;
+        for (std::size_t r = 0; r < cat->defects.size(); ++r) {
+            const MockDefect& d = cat->defects[r];
+            const Eigen::Index row = faceToRow_[static_cast<std::size_t>(d.faceIndex)];
+            if (row >= 0 && rowVisible(*cat, r)) {
+                colors.row(row) = d.selected ? selected : category;
+            }
         }
     }
     polyscope::getSurfaceMesh(kMeshName)->addFaceColorQuantity(kHighlightName, colors)->setEnabled(true);
@@ -1642,8 +2084,21 @@ void UiMockup::flyToAxisView(const Eigen::Vector3d& direction) {
     polyscope::view::lookAt(toGlm(camera), toGlm(center), toGlm(up), true);
 }
 
+void UiMockup::flyToBox(const BoundingBox& box) {
+    const Eigen::Vector3d center = box.center();
+    const glm::vec3 eye = polyscope::view::getCameraWorldPosition();
+    Eigen::Vector3d dir = Eigen::Vector3d(eye.x, eye.y, eye.z) - center;
+    if (dir.squaredNorm() < 1.0e-30) {
+        dir = Eigen::Vector3d::UnitZ();
+    }
+    dir.normalize();
+    const double distance = std::max(box.diagonal(), bbox_.diagonal() * 1.0e-3) * 1.6;
+    const Eigen::Vector3d up = std::abs(dir.y()) > 0.95 ? Eigen::Vector3d::UnitZ() : Eigen::Vector3d::UnitY();
+    polyscope::view::lookAt(toGlm(center + distance * dir), toGlm(center), toGlm(up), true);
+}
+
 void UiMockup::resetLayout() {
-    showDisplay_ = showNavigation_ = showStructures_ = showHealth_ = showTool_ = true;
+    showDisplay_ = showNavigation_ = showStructures_ = showHealth_ = showTool_ = showShells_ = true;
     rightColumnWidth_ = kDefaultRightColumnWidth;
     ImGui::GetIO().FontGlobalScale = 1.0f;
     setStatusMessage("Layout reset.");
@@ -1674,6 +2129,857 @@ bool UiMockup::watertightKnown() const {
 
 bool UiMockup::isWatertight() const {
     return categories_[kOpenEdges].defects.empty() && categories_[kNonManifoldEdges].defects.empty();
+}
+
+
+// -----------------------------------------------------------------------------
+// Shells: queries
+// -----------------------------------------------------------------------------
+
+int UiMockup::rootShell(int shell) const {
+    while (shell >= 0 && shellFlags_[static_cast<std::size_t>(shell)].mergedInto >= 0) {
+        shell = shellFlags_[static_cast<std::size_t>(shell)].mergedInto;
+    }
+    return shell;
+}
+
+bool UiMockup::shellLive(int shell) const {
+    const ShellFlags& flags = shellFlags_[static_cast<std::size_t>(shell)];
+    return !flags.deleted && flags.mergedInto < 0;
+}
+
+bool UiMockup::faceShown(Eigen::Index face) const {
+    const int shell = faceShell_[static_cast<std::size_t>(face)];
+    if (shell < 0) {
+        return true;
+    }
+    const ShellFlags& flags = shellFlags_[static_cast<std::size_t>(rootShell(shell))];
+    return !flags.deleted && flags.visible;
+}
+
+bool UiMockup::shellInScope(int root) const {
+    const ShellFlags& flags = shellFlags_[static_cast<std::size_t>(root)];
+    switch (scopeModel_) {
+    case ScopeModel::WholeMesh:
+        return true;
+    case ScopeModel::SelectedShells:
+        return selectedShellCount_ > 0 ? flags.selected : flags.visible;
+    case ScopeModel::VisibleShells:
+        return flags.visible;
+    }
+    return true;
+}
+
+bool UiMockup::defectInScope(const MockDefect& defect) const {
+    return defect.shell < 0 || shellInScope(rootShell(defect.shell));
+}
+
+bool UiMockup::rowVisible(const HealthCategory& category, std::size_t row) const {
+    const MockDefect& d = category.defects[row];
+    return defectInScope(d) && (subtypeFilter_ < 0 || d.subtype == subtypeFilter_);
+}
+
+bool UiMockup::fixableByFixAll(std::size_t categoryIndex, const MockDefect& defect) const {
+    // Crossings between two shells are resolved by Merge Shells (a union), not by a per-shell repair
+    return !(categoryIndex == kIntersections && defect.partnerShell >= 0 &&
+             rootShell(defect.partnerShell) != rootShell(defect.shell));
+}
+
+std::size_t UiMockup::scopedCount(const HealthCategory& category) const {
+    return static_cast<std::size_t>(std::count_if(category.defects.begin(), category.defects.end(),
+                                                  [this](const MockDefect& d) { return defectInScope(d); }));
+}
+
+std::size_t UiMockup::fixAllCount(std::size_t categoryIndex) const {
+    const auto& defects = categories_[categoryIndex].defects;
+    return static_cast<std::size_t>(std::count_if(defects.begin(), defects.end(), [&](const MockDefect& d) {
+        return defectInScope(d) && fixableByFixAll(categoryIndex, d);
+    }));
+}
+
+bool UiMockup::hasShellPanel() const {
+    // Stays once the file had several shells, so a merge or delete down to one keeps the panel
+    return shells_.size() > 1;
+}
+
+std::size_t UiMockup::liveShellCount() const {
+    return liveShells().size();
+}
+
+std::vector<int> UiMockup::liveShells() const {
+    std::vector<int> live;
+    live.reserve(shells_.size());
+    for (std::size_t s = 0; s < shells_.size(); ++s) {
+        if (shellLive(static_cast<int>(s))) {
+            live.push_back(static_cast<int>(s));
+        }
+    }
+    return live;
+}
+
+std::vector<int> UiMockup::selectedShells() const {
+    std::vector<int> selected;
+    for (std::size_t s = 0; s < shells_.size(); ++s) {
+        if (shellLive(static_cast<int>(s)) && shellFlags_[s].selected) {
+            selected.push_back(static_cast<int>(s));
+        }
+    }
+    return selected;
+}
+
+std::vector<std::size_t> UiMockup::shellFaceCounts() const {
+    std::vector<std::size_t> counts(shells_.size(), 0);
+    for (std::size_t s = 0; s < shells_.size(); ++s) {
+        counts[static_cast<std::size_t>(rootShell(static_cast<int>(s)))] += shells_[s].faces.size();
+    }
+    return counts;
+}
+
+BoundingBox UiMockup::shellBox(int root) const {
+    std::optional<BoundingBox> box;
+    for (std::size_t s = 0; s < shells_.size(); ++s) {
+        if (rootShell(static_cast<int>(s)) == root) {
+            box = box ? mergeBoxes(*box, shells_[s].bbox) : shells_[s].bbox;
+        }
+    }
+    return box.value_or(bbox_);
+}
+
+std::vector<ShellHealth> UiMockup::shellHealth() const {
+    std::vector<ShellHealth> health(shells_.size());
+    for (std::size_t i = 0; i < categories_.size(); ++i) {
+        if (categories_[i].infoOnly) {
+            continue;
+        }
+        for (const MockDefect& d : categories_[i].defects) {
+            if (d.shell < 0) {
+                continue;
+            }
+            ShellHealth& h = health[static_cast<std::size_t>(rootShell(d.shell))];
+            if (fixableByFixAll(i, d)) {
+                ++h.counts[i];
+                ++h.total;
+            } else {
+                ++h.between;
+            }
+        }
+    }
+    return health;
+}
+
+bool UiMockup::healthKnown() const {
+    return std::any_of(categories_.begin(), categories_.end(), [](const HealthCategory& c) {
+        return !c.infoOnly && (c.status == HealthStatus::Ok || c.status == HealthStatus::Defects ||
+                               c.status == HealthStatus::Stale);
+    });
+}
+
+std::string UiMockup::shellLabel(int shell) const {
+    return "#" + std::to_string(shell + 1);
+}
+
+Eigen::RowVector3d UiMockup::shellColour(int root) const {
+    // Golden-ratio hue steps inside green..purple: no red, orange or yellow, which mean defects
+    const float t = std::fmod(static_cast<float>(root) * 0.618034f, 1.0f);
+    const float hue = 0.28f + 0.55f * t;
+    const float value = root % 2 == 0 ? 0.82f : 0.70f;
+    float r = 0.0f;
+    float g = 0.0f;
+    float b = 0.0f;
+    ImGui::ColorConvertHSVtoRGB(hue, 0.38f, value, r, g, b);
+    return {r, g, b};
+}
+
+Mesh UiMockup::extractShells(const std::vector<int>& roots) const {
+    std::vector<Eigen::Index> faces;
+    for (Eigen::Index f = 0; f < mesh_.numFaces(); ++f) {
+        const int shell = faceShell_[static_cast<std::size_t>(f)];
+        if (shell >= 0 && std::find(roots.begin(), roots.end(), rootShell(shell)) != roots.end()) {
+            faces.push_back(f);
+        }
+    }
+    std::vector<Eigen::Index> remap(static_cast<std::size_t>(mesh_.numVertices()), -1);
+    Mesh out;
+    out.fileUnit = mesh_.fileUnit;
+    out.F.resize(static_cast<Eigen::Index>(faces.size()), 3);
+    std::vector<Eigen::Index> usedVertices;
+    for (std::size_t row = 0; row < faces.size(); ++row) {
+        for (int corner = 0; corner < 3; ++corner) {
+            const auto v = static_cast<std::size_t>(mesh_.F(faces[row], corner));
+            if (remap[v] < 0) {
+                remap[v] = static_cast<Eigen::Index>(usedVertices.size());
+                usedVertices.push_back(static_cast<Eigen::Index>(v));
+            }
+            out.F(static_cast<Eigen::Index>(row), corner) = static_cast<int>(remap[v]);
+        }
+    }
+    out.V.resize(static_cast<Eigen::Index>(usedVertices.size()), 3);
+    for (std::size_t i = 0; i < usedVertices.size(); ++i) {
+        out.V.row(static_cast<Eigen::Index>(i)) = mesh_.V.row(usedVertices[i]);
+    }
+    out.recomputeNormals();
+    return out;
+}
+
+// -----------------------------------------------------------------------------
+// Shells: selection, visibility and edits
+// -----------------------------------------------------------------------------
+
+void UiMockup::recountSelection() {
+    selectedShellCount_ = selectedShells().size();
+}
+
+void UiMockup::clickShell(int shell, bool toggle, bool range, const std::vector<int>& order) {
+    if (range && shellAnchor_ >= 0) {
+        const auto a = std::find(order.begin(), order.end(), shellAnchor_);
+        const auto b = std::find(order.begin(), order.end(), shell);
+        if (a != order.end() && b != order.end()) {
+            if (!toggle) {
+                for (ShellFlags& f : shellFlags_) f.selected = false;
+            }
+            for (auto it = std::min(a, b); it <= std::max(a, b); ++it) {
+                shellFlags_[static_cast<std::size_t>(*it)].selected = true;
+            }
+            onShellSelectionChanged();
+            return;
+        }
+    }
+    ShellFlags& flags = shellFlags_[static_cast<std::size_t>(shell)];
+    if (toggle) {
+        flags.selected = !flags.selected;
+    } else {
+        for (ShellFlags& f : shellFlags_) f.selected = false;
+        flags.selected = true;
+    }
+    shellAnchor_ = shell;
+    onShellSelectionChanged();
+}
+
+void UiMockup::selectShellsWhere(const std::function<bool(int)>& predicate) {
+    for (std::size_t s = 0; s < shells_.size(); ++s) {
+        shellFlags_[s].selected = shellLive(static_cast<int>(s)) && predicate(static_cast<int>(s));
+    }
+    onShellSelectionChanged();
+}
+
+void UiMockup::toggleIsolate() {
+    const std::vector<int> selected = selectedShells();
+    // Un-isolate when nothing new is selected; a different selection re-isolates onto it
+    if (isolateRestore_ && (selected.empty() || selectionMatchesVisible())) {
+        for (std::size_t s = 0; s < shells_.size(); ++s) {
+            shellFlags_[s].visible = (*isolateRestore_)[s];
+        }
+        isolateRestore_.reset();
+        onShellVisibilityChanged();
+        setStatusMessage("Isolate off: the other shells are back.");
+        return;
+    }
+    if (selected.empty()) {
+        setStatusMessage("Select one or more shells to isolate (click a row, or Alt+click in 3D).");
+        return;
+    }
+    // Keep the view from before the first Isolate, so Un-isolate always returns there
+    if (!isolateRestore_) {
+        std::vector<bool> restore(shells_.size());
+        for (std::size_t s = 0; s < shells_.size(); ++s) {
+            restore[s] = shellFlags_[s].visible;
+        }
+        isolateRestore_ = std::move(restore);
+    }
+    for (ShellFlags& f : shellFlags_) {
+        f.visible = f.selected;
+    }
+    onShellVisibilityChanged();
+    setStatusMessage("Isolated " + withThousands(selected.size()) + " shell(s): Mesh Health now covers only them. Press I to go back.");
+}
+
+bool UiMockup::selectionMatchesVisible() const {
+    for (const int s : liveShells()) {
+        const ShellFlags& f = shellFlags_[static_cast<std::size_t>(s)];
+        if (f.selected != f.visible) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void UiMockup::hideAllShells() {
+    for (ShellFlags& f : shellFlags_) {
+        f.visible = false;
+        f.selected = false;
+    }
+    isolateRestore_.reset();
+    onShellVisibilityChanged();
+    setStatusMessage("All shells hidden. Tick Vis to show the ones you want to work on.");
+}
+
+void UiMockup::frameSelectedShells() {
+    const std::vector<int> selected = selectedShells();
+    if (selected.empty()) {
+        return;
+    }
+    BoundingBox box = shellBox(selected.front());
+    for (const int s : selected) box = mergeBoxes(box, shellBox(s));
+    flyToBox(box);
+}
+
+void UiMockup::hideSelectedShells() {
+    for (const int s : selectedShells()) {
+        shellFlags_[static_cast<std::size_t>(s)].visible = false;
+        shellFlags_[static_cast<std::size_t>(s)].selected = false;
+    }
+    onShellVisibilityChanged();
+}
+
+void UiMockup::showAllShells() {
+    for (ShellFlags& f : shellFlags_) f.visible = true;
+    isolateRestore_.reset();
+    onShellVisibilityChanged();
+}
+
+void UiMockup::deleteSelectedShells() {
+    const std::vector<int> selected = selectedShells();
+    if (selected.empty()) {
+        return;
+    }
+    const std::vector<std::size_t> faces = shellFaceCounts();
+    std::size_t faceCount = 0;
+    for (const int s : selected) faceCount += faces[static_cast<std::size_t>(s)];
+
+    pushUndo("Delete " + withThousands(selected.size()) + " shell(s)");
+    for (const int s : selected) {
+        shellFlags_[static_cast<std::size_t>(s)].deleted = true;
+        shellFlags_[static_cast<std::size_t>(s)].selected = false;
+    }
+    const auto gone = [this](const MockDefect& d) {
+        const auto deleted = [this](int shell) {
+            return shell >= 0 && shellFlags_[static_cast<std::size_t>(rootShell(shell))].deleted;
+        };
+        return deleted(d.shell) || deleted(d.partnerShell);
+    };
+    for (HealthCategory& c : categories_) {
+        std::erase_if(c.defects, gone);
+        std::erase_if(c.pending, gone);
+        if (c.status == HealthStatus::Defects && c.defects.empty()) {
+            c.status = HealthStatus::Ok;
+        }
+    }
+    focusedRow_ = -1;
+    modified_ = true;
+    onShellVisibilityChanged();
+    setStatusMessage("Deleted " + withThousands(selected.size()) + " shell(s), " + withThousands(faceCount) +
+                     " faces (mockup). Undo: " + kMod + "+Z.");
+}
+
+void UiMockup::saveSelectedShells(bool eachOwnFile) {
+    const std::vector<int> selected = selectedShells();
+    if (selected.empty()) {
+        return;
+    }
+    const std::string stem = std::filesystem::path(sourceLabel_).stem().string();
+    const std::filesystem::path dir = std::filesystem::current_path();
+    std::string error;
+    if (!eachOwnFile) {
+        const std::filesystem::path path = dir / (stem + "_selected_shells.stl");
+        if (saveStl(path, extractShells(selected), StlFormat::Binary, &error)) {
+            setStatusMessage("Saved " + withThousands(selected.size()) + " shell(s) to " + path.string());
+        } else {
+            setStatusMessage("Save failed: " + error);
+        }
+        return;
+    }
+    std::size_t saved = 0;
+    for (const int s : selected) {
+        char name[32];
+        std::snprintf(name, sizeof(name), "_shell_%02d.stl", s + 1);
+        if (saveStl(dir / (stem + name), extractShells({s}), StlFormat::Binary, &error)) {
+            ++saved;
+        }
+    }
+    setStatusMessage(saved == selected.size()
+                         ? "Saved " + withThousands(saved) + " file(s) " + stem + "_shell_NN.stl in " + dir.string()
+                         : "Saved " + withThousands(saved) + " of " + withThousands(selected.size()) + " files: " + error);
+}
+
+void UiMockup::applyMerge(const std::vector<int>& roots) {
+    if (roots.size() < 2) {
+        return;
+    }
+    const int target = *std::min_element(roots.begin(), roots.end());
+    pushUndo("Merge " + withThousands(roots.size()) + " shells");
+    for (const int s : roots) {
+        if (s != target) {
+            shellFlags_[static_cast<std::size_t>(s)].mergedInto = target;
+            shellFlags_[static_cast<std::size_t>(s)].selected = false;
+        }
+    }
+    shellFlags_[static_cast<std::size_t>(target)].selected = true;
+    // The union removes the crossings between the merged shells
+    HealthCategory& crossings = categories_[kIntersections];
+    const std::size_t before = crossings.defects.size();
+    std::erase_if(crossings.defects, [this](const MockDefect& d) {
+        return d.partnerShell >= 0 && d.shell >= 0 && rootShell(d.partnerShell) == rootShell(d.shell);
+    });
+    if (crossings.status == HealthStatus::Defects && crossings.defects.empty()) {
+        crossings.status = HealthStatus::Ok;
+    }
+    focusedRow_ = -1;
+    modified_ = true;
+    toolSlot_ = ToolSlot::None;
+    onShellVisibilityChanged();
+    setStatusMessage("Merged " + withThousands(roots.size()) + " shells into " + shellLabel(target) + "; " +
+                     withThousands(before - crossings.defects.size()) + " crossing faces removed (mockup).");
+}
+
+void UiMockup::onShellVisibilityChanged() {
+    registerMesh();
+    pruneOutOfScope();
+}
+
+void UiMockup::onShellSelectionChanged() {
+    if (scopeModel_ == ScopeModel::SelectedShells) {
+        pruneOutOfScope();
+    } else {
+        recountSelection();
+        refreshFaceColors();
+    }
+}
+
+void UiMockup::pruneOutOfScope() {
+    // FB-13: a defect that leaves the scope also loses its selection and focus
+    recountSelection();
+    for (HealthCategory& c : categories_) {
+        for (MockDefect& d : c.defects) {
+            d.selected = d.selected && defectInScope(d);
+        }
+    }
+    if (const HealthCategory* cat = selectedCategory();
+        cat != nullptr && focusedRow_ >= 0 &&
+        (static_cast<std::size_t>(focusedRow_) >= cat->defects.size() ||
+         !defectInScope(cat->defects[static_cast<std::size_t>(focusedRow_)]))) {
+        focusedRow_ = -1;
+    }
+    refreshFaceColors();
+}
+
+// -----------------------------------------------------------------------------
+// Shells panel
+// -----------------------------------------------------------------------------
+
+void UiMockup::drawShellsPanelContents() {
+    const std::vector<ShellHealth> health = shellHealth();
+    if (ImGui::Checkbox("Colour by shell", &colourByShell_)) {
+        refreshFaceColors();
+    }
+    tooltip("Give each shell its own muted colour (no reds or oranges, so defect tints stay clear).");
+    const float selectWidth = ImGui::CalcTextSize("Select...").x + 2.0f * ImGui::GetStyle().FramePadding.x;
+    ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - selectWidth);
+    if (ImGui::Button("Select...")) {
+        ImGui::OpenPopup("ShellSelect");
+    }
+    tooltip("Select all, none, invert, unhealthy, nested, or small shells.");
+    drawShellSelectPopup(health);
+
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float footer = ImGui::GetTextLineHeightWithSpacing() + 2.0f * ImGui::GetFrameHeightWithSpacing() + style.ItemSpacing.y;
+    drawShellTable(health, std::max(80.0f, ImGui::GetContentRegionAvail().y - footer));
+
+    // Footer: every action works on the selected shells
+    const std::vector<int> selected = selectedShells();
+    const std::vector<std::size_t> faces = shellFaceCounts();
+    if (selected.empty()) {
+        ImGui::TextDisabled("Click a shell, or Alt+click it in 3D.");
+    } else {
+        std::size_t faceCount = 0;
+        for (const int s : selected) faceCount += faces[static_cast<std::size_t>(s)];
+        ImGui::Text("%s selected - %s faces", withThousands(selected.size()).c_str(), withThousands(faceCount).c_str());
+    }
+    const float w = (ImGui::GetContentRegionAvail().x - 2.0f * style.ItemSpacing.x) / 3.0f;
+    const ImVec2 size(w, 0.0f);
+    const bool none = selected.empty();
+
+    // While isolated, a different selection re-targets Isolate instead of offering Un-isolate
+    const bool unisolate = isolateRestore_ && (none || selectionMatchesVisible());
+    ImGui::BeginDisabled(none && !isolateRestore_);
+    if (ImGui::Button(unisolate ? "Un-isolate" : "Isolate", size)) toggleIsolate();
+    ImGui::EndDisabled();
+    tooltip(unisolate ? "Bring back the shells hidden by Isolate.  Key: I"
+            : isolateRestore_ ? "Isolate the selected shells instead (Un-isolate later restores the original view).  Key: I"
+                              : "Show only the selected shells, so Mesh Health covers just them.  Key: I (again to go back)");
+    ImGui::SameLine();
+    ImGui::BeginDisabled(none);
+    if (ImGui::Button("Hide", size)) hideSelectedShells();
+    ImGui::EndDisabled();
+    tooltip("Hide the selected shells. Hidden shells are not checked or fixed, but they are still saved.");
+    ImGui::SameLine();
+    const std::vector<int> live = liveShells();
+    const bool allShown = std::all_of(live.begin(), live.end(), [this](int s) { return shellFlags_[static_cast<std::size_t>(s)].visible; });
+    if (ImGui::Button(allShown ? "Hide all" : "Show all", size)) {
+        allShown ? hideAllShells() : showAllShells();
+    }
+    tooltip(allShown ? "Hide every shell; then tick Vis to show just the ones you want."
+                     : "Show every shell again.");
+
+    ImGui::BeginDisabled(none);
+    if (ImGui::Button("Delete", size)) deleteSelectedShells();
+    tooltip("Delete the selected shells (one undo step).  Key: Delete / Backspace");
+    ImGui::SameLine();
+    if (ImGui::Button("Save As...", size)) ImGui::OpenPopup("ShellSave");
+    tooltip("Write the selected shells to STL. The mesh is not changed.");
+    ImGui::EndDisabled();
+    if (ImGui::BeginPopup("ShellSave")) {
+        drawShellSavePopup();
+        ImGui::EndPopup();
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(selected.size() < 2);
+    if (ImGui::Button("Merge...", size)) openOperator(ToolSlot::MergeShells);
+    ImGui::EndDisabled();
+    tooltip(selected.size() < 2
+                ? "Select two or more shells to merge: Cmd/Ctrl+click or Shift+click rows, or Select... > Visible shells. "
+                  "Ticking Vis only shows a shell; it does not select it."
+                : "Merge the selected shells into one (a boolean union; checks that each is clean first).");
+}
+
+void UiMockup::drawShellTable(const std::vector<ShellHealth>& health, float height) {
+    const ImGuiIO& io = ImGui::GetIO();
+    const ImGuiTableFlags flags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter |
+                                  ImGuiTableFlags_Sortable | ImGuiTableFlags_SizingFixedFit;
+    if (!ImGui::BeginTable("ShellTable", 4, flags, ImVec2(0.0f, height))) {
+        return;
+    }
+    ImGui::TableSetupScrollFreeze(0, 1);
+    ImGui::TableSetupColumn("Vis", ImGuiTableColumnFlags_NoSort, 0.0f, 0);
+    ImGui::TableSetupColumn("Shell", ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_WidthStretch, 0.0f, 1);
+    ImGui::TableSetupColumn("Faces", ImGuiTableColumnFlags_None, 0.0f, 2);
+    ImGui::TableSetupColumn("Health", ImGuiTableColumnFlags_None, 0.0f, 3);
+    ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
+    ImGui::TableSetColumnIndex(0);
+    {
+        const std::vector<int> live = liveShells();
+        bool allVisible = std::all_of(live.begin(), live.end(), [this](int s) { return shellFlags_[static_cast<std::size_t>(s)].visible; });
+        if (ImGui::Checkbox("##AllVisible", &allVisible)) {
+            allVisible ? showAllShells() : hideAllShells();
+        }
+        tooltip("Show or hide every shell.");
+    }
+    for (int column = 1; column < 4; ++column) {
+        ImGui::TableSetColumnIndex(column);
+        ImGui::TableHeader(ImGui::TableGetColumnName(column));
+    }
+
+    const std::vector<std::size_t> faces = shellFaceCounts();
+    std::vector<int> order = liveShells();
+    if (const ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs(); specs && specs->SpecsCount > 0) {
+        const ImGuiTableColumnSortSpecs& s = specs->Specs[0];
+        const bool asc = s.SortDirection == ImGuiSortDirection_Ascending;
+        const auto key = [&](int shell) -> double {
+            switch (s.ColumnUserID) {
+            case 2: return static_cast<double>(faces[static_cast<std::size_t>(shell)]);
+            case 3: return static_cast<double>(health[static_cast<std::size_t>(shell)].total);
+            default: return static_cast<double>(shell);
+            }
+        };
+        std::stable_sort(order.begin(), order.end(), [&](int a, int b) { return asc ? key(a) < key(b) : key(a) > key(b); });
+    }
+
+    const bool known = healthKnown();
+    ImGuiListClipper clipper;
+    clipper.Begin(static_cast<int>(order.size()));
+    while (clipper.Step()) {
+        for (int pos = clipper.DisplayStart; pos < clipper.DisplayEnd; ++pos) {
+            const int s = order[static_cast<std::size_t>(pos)];
+            ShellFlags& shellFlags = shellFlags_[static_cast<std::size_t>(s)];
+            ImGui::TableNextRow();
+            ImGui::PushID(s);
+
+            // The name cell is submitted first so the visibility checkbox (column 0) stays clickable
+            ImGui::TableSetColumnIndex(1);
+            ImGui::AlignTextToFramePadding();
+            if (colourByShell_) {
+                const Eigen::RowVector3d c = shellColour(s);
+                const float side = ImGui::GetTextLineHeight() * 0.8f;
+                const ImVec2 p = ImGui::GetCursorScreenPos();
+                const float pad = (ImGui::GetTextLineHeight() - side) * 0.5f + ImGui::GetStyle().FramePadding.y;
+                ImGui::GetWindowDrawList()->AddRectFilled(
+                    ImVec2(p.x, p.y + pad), ImVec2(p.x + side, p.y + pad + side),
+                    ImGui::GetColorU32(ImVec4(static_cast<float>(c[0]), static_cast<float>(c[1]), static_cast<float>(c[2]), 1.0f)));
+                ImGui::Dummy(ImVec2(side, ImGui::GetTextLineHeight()));
+                ImGui::SameLine();
+            }
+            // Hidden shells are dimmed rather than labelled, so the narrow column never truncates
+            if (!shellFlags.visible) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            }
+            const std::string label = shellLabel(s);
+            const bool clicked = ImGui::Selectable(label.c_str(), shellFlags.selected,
+                                                   ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap |
+                                                       ImGuiSelectableFlags_AllowDoubleClick);
+            if (!shellFlags.visible) {
+                ImGui::PopStyleColor();
+            }
+            if (clicked) {
+                clickShell(s, io.KeyCtrl || io.KeySuper, io.KeyShift, order);
+                if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                    flyToBox(shellBox(s));
+                }
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && ImGui::BeginTooltip()) {
+                drawShellRowTooltip(s, health[static_cast<std::size_t>(s)]);
+                ImGui::EndTooltip();
+            }
+            if (ImGui::BeginPopupContextItem("ShellContext")) {
+                if (!shellFlags.selected) {
+                    clickShell(s, false, false, order);
+                }
+                drawShellActionItems();
+                ImGui::EndPopup();
+            }
+
+            ImGui::TableSetColumnIndex(0);
+            bool visible = shellFlags.visible;
+            if (ImGui::Checkbox("##vis", &visible)) {
+                shellFlags.visible = visible;
+                onShellVisibilityChanged();
+            }
+
+            ImGui::TableSetColumnIndex(2);
+            ImGui::AlignTextToFramePadding();
+            const std::string count = withThousands(faces[static_cast<std::size_t>(s)]);
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetColumnWidth() - ImGui::CalcTextSize(count.c_str()).x);
+            if (shellFlags.visible) {
+                ImGui::TextUnformatted(count.c_str());
+            } else {
+                ImGui::TextDisabled("%s", count.c_str());
+            }
+
+            ImGui::TableSetColumnIndex(3);
+            ImGui::AlignTextToFramePadding();
+            const ShellHealth& h = health[static_cast<std::size_t>(s)];
+            if (!known) {
+                ImGui::TextDisabled("-");
+            } else {
+                dot(h.total == 0 ? kOkColor : kDefectColor, ImGui::GetStyle().FramePadding.y);
+                ImGui::SameLine(0.0f, 2.0f);
+                ImGui::TextColored(h.total == 0 ? kOkColor : kDefectColor, "%s", withThousands(h.total).c_str());
+            }
+            const int nestedIn = shells_[static_cast<std::size_t>(s)].nestedIn;
+            if (nestedIn >= 0 && shellLive(rootShell(nestedIn)) && rootShell(nestedIn) != s) {
+                ImGui::SameLine();
+                ImGui::TextColored(kRunningColor, "inside %s", shellLabel(rootShell(nestedIn)).c_str());
+            }
+            ImGui::PopID();
+        }
+    }
+    ImGui::EndTable();
+}
+
+void UiMockup::drawShellRowTooltip(int shell, const ShellHealth& health) {
+    const std::vector<std::size_t> faces = shellFaceCounts();
+    std::size_t parts = 0;
+    for (std::size_t s = 0; s < shells_.size(); ++s) {
+        parts += rootShell(static_cast<int>(s)) == shell ? 1 : 0;
+    }
+    ImGui::Text("Shell %s: %s faces%s", shellLabel(shell).c_str(), withThousands(faces[static_cast<std::size_t>(shell)]).c_str(),
+                parts > 1 ? (" (merged from " + std::to_string(parts) + " shells)").c_str() : "");
+    if (!healthKnown()) {
+        ImGui::TextDisabled("Not checked yet.");
+    } else if (health.total == 0) {
+        ImGui::TextColored(kOkColor, "Clean: nothing to fix inside this shell.");
+    } else {
+        for (std::size_t i = 0; i < categories_.size(); ++i) {
+            if (health.counts[i] > 0) {
+                ImGui::TextColored(kDefectColor, "%s: %s", categories_[i].name, withThousands(health.counts[i]).c_str());
+            }
+        }
+    }
+
+    std::set<int> partners;
+    for (const auto& [a, b] : crossingPairs_) {
+        const int ra = rootShell(a);
+        const int rb = rootShell(b);
+        if (ra != rb && (ra == shell || rb == shell)) {
+            const int other = ra == shell ? rb : ra;
+            if (shellLive(other)) partners.insert(other);
+        }
+    }
+    if (health.between > 0 || !partners.empty()) {
+        std::string list;
+        for (const int p : partners) list += (list.empty() ? "" : ", ") + shellLabel(p);
+        ImGui::TextDisabled("Crosses shell%s %s (%s faces): Merge Shells removes these.", partners.size() == 1 ? "" : "s",
+                            list.c_str(), withThousands(health.between).c_str());
+    }
+    const int nestedIn = shells_[static_cast<std::size_t>(shell)].nestedIn;
+    if (nestedIn >= 0 && shellLive(rootShell(nestedIn)) && rootShell(nestedIn) != shell) {
+        ImGui::TextColored(kRunningColor, "Lies inside shell %s without touching it: often a hidden internal part.",
+                           shellLabel(rootShell(nestedIn)).c_str());
+    }
+    ImGui::TextDisabled("Double-click to frame. Right-click for actions.");
+}
+
+void UiMockup::drawShellActionItems() {
+    const std::vector<int> selected = selectedShells();
+    const bool none = selected.empty();
+    if (ImGui::MenuItem("Frame", ".", false, !none)) frameSelectedShells();
+    const bool unisolate = isolateRestore_ && (none || selectionMatchesVisible());
+    if (ImGui::MenuItem(unisolate ? "Un-isolate" : "Isolate", "I", false, isolateRestore_ || !none)) toggleIsolate();
+    if (ImGui::MenuItem("Hide", nullptr, false, !none)) hideSelectedShells();
+    if (ImGui::MenuItem("Hide All")) hideAllShells();
+    if (ImGui::MenuItem("Show All")) showAllShells();
+    ImGui::Separator();
+    if (ImGui::MenuItem("Delete", "Delete", false, !none)) deleteSelectedShells();
+    if (ImGui::BeginMenu("Save As", !none)) {
+        drawShellSavePopup();
+        ImGui::EndMenu();
+    }
+    if (ImGui::MenuItem("Merge...", nullptr, false, selected.size() >= 2)) openOperator(ToolSlot::MergeShells);
+    ImGui::MenuItem("Flip Normals (future)", nullptr, false, false);
+}
+
+void UiMockup::drawShellSelectPopup(const std::vector<ShellHealth>& health) {
+    if (!ImGui::BeginPopup("ShellSelect")) {
+        return;
+    }
+    if (ImGui::MenuItem("All")) selectShellsWhere([](int) { return true; });
+    if (ImGui::MenuItem("None", "Esc")) selectShellsWhere([](int) { return false; });
+    if (ImGui::MenuItem("Invert")) {
+        selectShellsWhere([this](int s) { return !shellFlags_[static_cast<std::size_t>(s)].selected; });
+    }
+    if (ImGui::MenuItem("Visible shells")) {
+        selectShellsWhere([this](int s) { return shellFlags_[static_cast<std::size_t>(s)].visible; });
+    }
+    ImGui::Separator();
+    if (ImGui::MenuItem("Unhealthy (orange)", nullptr, false, healthKnown())) {
+        selectShellsWhere([&](int s) { return health[static_cast<std::size_t>(s)].total > 0; });
+    }
+    if (ImGui::MenuItem("Nested inside another shell")) {
+        selectShellsWhere([this](int s) {
+            const int in = shells_[static_cast<std::size_t>(s)].nestedIn;
+            return in >= 0 && shellLive(rootShell(in)) && rootShell(in) != s;
+        });
+    }
+    ImGui::Separator();
+    const std::string small = "Smaller than " + withThousands(static_cast<std::size_t>(smallShellFaces_)) + " faces";
+    if (ImGui::MenuItem(small.c_str())) {
+        const std::vector<std::size_t> faces = shellFaceCounts();
+        selectShellsWhere([&](int s) { return faces[static_cast<std::size_t>(s)] < static_cast<std::size_t>(smallShellFaces_); });
+    }
+    ImGui::SetNextItemWidth(100.0f);
+    ImGui::InputInt("N faces", &smallShellFaces_, 0);
+    smallShellFaces_ = std::max(smallShellFaces_, 1);
+    ImGui::EndPopup();
+}
+
+void UiMockup::drawShellSavePopup() {
+    if (ImGui::MenuItem("Selected shells to one STL...")) saveSelectedShells(false);
+    if (ImGui::MenuItem("Each selected shell to its own STL...")) saveSelectedShells(true);
+    ImGui::TextDisabled("Mockup: binary STL in the working directory.");
+}
+
+// -----------------------------------------------------------------------------
+// Operation: Merge Shells
+// -----------------------------------------------------------------------------
+
+void UiMockup::drawMergeTool() {
+    const std::vector<int> roots = selectedShells();
+    ImGui::TextWrapped("Boolean union of the selected shells into one shell. Faces where they cross are removed, "
+                       "and gaps smaller than the gap tolerance are closed first.");
+    if (roots.size() < 2) {
+        ImGui::TextDisabled("Select two or more shells in the Shells panel (Select... > All for everything).");
+        if (ImGui::Button("Cancel")) toolSlot_ = ToolSlot::None;
+        return;
+    }
+    const std::vector<ShellHealth> health = shellHealth();
+    const std::vector<std::size_t> faces = shellFaceCounts();
+    std::size_t faceCount = 0;
+    for (const int s : roots) faceCount += faces[static_cast<std::size_t>(s)];
+    ImGui::Text("%s shells selected (%s faces).", withThousands(roots.size()).c_str(), withThousands(faceCount).c_str());
+    const bool known = healthKnown();
+    if (!known) {
+        ImGui::TextColored(kDefectColor, "Run Check All (F5) first: the checklist comes from Mesh Health.");
+    }
+
+    struct Rule {
+        const char* label;
+        std::array<std::size_t, 2> rows;
+    };
+    const std::array<Rule, 4> rules = {{
+        {"closed (no open edges)", {kOpenEdges, kOpenEdges}},
+        {"manifold edges and vertices", {kNonManifoldEdges, kNonManifoldVertices}},
+        {"consistently oriented", {kFlippedNormals, kFlippedNormals}},
+        {"free of self-crossings", {kIntersections, kIntersections}},
+    }};
+    ImGui::Separator();
+    ImGui::TextUnformatted("Before merging, every shell must be:");
+    bool allPass = known;
+    if (ImGui::BeginTable("MergeRules", 3, ImGuiTableFlags_SizingFixedFit)) {
+        ImGui::TableSetupColumn("##dot", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("##rule", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("##count", ImGuiTableColumnFlags_WidthFixed);
+        for (std::size_t r = 0; r < rules.size(); ++r) {
+            const Rule& rule = rules[r];
+            std::vector<int> failing;
+            for (const int s : roots) {
+                const ShellHealth& h = health[static_cast<std::size_t>(s)];
+                const std::size_t n = h.counts[rule.rows[0]] + (rule.rows[1] != rule.rows[0] ? h.counts[rule.rows[1]] : 0);
+                if (n > 0) failing.push_back(s);
+            }
+            allPass = allPass && failing.empty();
+            ImGui::TableNextRow();
+            ImGui::PushID(static_cast<int>(r));
+            ImGui::TableSetColumnIndex(0);
+            if (known) {
+                dot(failing.empty() ? kOkColor : kDefectColor);
+            } else {
+                statusDot(HealthStatus::NotRun);
+            }
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextUnformatted(rule.label);
+            ImGui::TableSetColumnIndex(2);
+            ImGui::Text("%s/%s", withThousands(roots.size() - failing.size()).c_str(), withThousands(roots.size()).c_str());
+            if (known && !failing.empty()) {
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Show")) {
+                    selectShellsWhere([&](int s) { return std::find(failing.begin(), failing.end(), s) != failing.end(); });
+                    setStatusMessage("Selected the " + withThousands(failing.size()) + " shell(s) that are not " + rule.label +
+                                     ". Isolate (I) and fix them, then select all again.");
+                }
+                tooltip("Select only the shells that fail this check.");
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+
+    std::size_t between = 0;
+    for (const MockDefect& d : categories_[kIntersections].defects) {
+        if (d.shell >= 0 && d.partnerShell >= 0) {
+            const int a = rootShell(d.shell);
+            const int b = rootShell(d.partnerShell);
+            const auto inGroup = [&](int s) { return std::find(roots.begin(), roots.end(), s) != roots.end(); };
+            between += a != b && inGroup(a) && inGroup(b) ? 1 : 0;
+        }
+    }
+    ImGui::TextDisabled("%s faces cross between these shells; the union removes them.", withThousands(between).c_str());
+    ImGui::TextDisabled("Thin, degenerate and duplicate faces do not block a merge.");
+    ImGui::PushItemWidth(110.0f);
+    ImGui::InputDouble("Gap tolerance (x size)", &mergeGapTolerance_, 0.0, 0.0, "%.0e");
+    ImGui::PopItemWidth();
+    helpMarker("Gaps between shells smaller than this fraction of the model size are closed before the union. "
+               "Larger gaps stay open (PLAN.md Milestone 4).");
+
+    ImGui::Separator();
+    ImGui::BeginDisabled(!allPass);
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.45f, 0.25f, 1.0f));
+    if (ImGui::Button("Apply Merge")) applyMerge(roots);
+    ImGui::PopStyleColor();
+    ImGui::EndDisabled();
+    if (!allPass && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("Every selected shell must pass the checklist above. Use Show to find the ones that fail.");
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) toolSlot_ = ToolSlot::None;
+    ImGui::TextDisabled("Apply is one undo step (%s+Z). Mockup: simulated.", kMod);
 }
 
 } // namespace ogun::mockup

@@ -17,6 +17,7 @@ target_compile_definitions(ogun_ui_mockup
 target_link_libraries(ogun_ui_mockup
     PRIVATE
         ogun::io
+        ogun::diagnostics
         polyscope
         ogun::warnings
 )
