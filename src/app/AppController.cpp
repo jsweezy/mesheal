@@ -1677,6 +1677,11 @@ void AppController::setOverlayAppearance(const OverlayAppearance& appearance) no
         out.edgeWidthPx = clampWidth(in.edgeWidthPx, out.edgeWidthPx);
         out.showEdges = in.showEdges;
     };
+    clampStyle(appearance.baseMesh, overlayAppearance_.baseMesh);
+    overlayAppearance_.backFaceMode = appearance.backFaceMode;
+    overlayAppearance_.backFaceColor = clampColor(appearance.backFaceColor, overlayAppearance_.backFaceColor);
+    overlayAppearance_.smoothShade = appearance.smoothShade;
+    overlayAppearance_.categoryTintColor = clampColor(appearance.categoryTintColor, overlayAppearance_.categoryTintColor);
     clampStyle(appearance.selectedFaces, overlayAppearance_.selectedFaces);
     clampStyle(appearance.previewPatch, overlayAppearance_.previewPatch);
     overlayAppearance_.originalEdgeColor = clampColor(appearance.originalEdgeColor, overlayAppearance_.originalEdgeColor);

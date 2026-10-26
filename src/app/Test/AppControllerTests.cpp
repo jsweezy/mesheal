@@ -667,6 +667,35 @@ TEST_CASE("AppController overlay styles default to 1 px edges and drive the sele
     REQUIRE(controller.overlayAppearance().selectedFaces.edgeWidthPx == Catch::Approx(1.0));
 }
 
+TEST_CASE("Display panel base-mesh styles are kept: back faces, color, edges, shading, tint", "[app][overlay]") {
+    ogun::AppController controller;
+    ogun::OverlayAppearance custom = controller.overlayAppearance();
+    REQUIRE(custom.backFaceMode == ogun::BackFaceMode::Darker);
+    for (const ogun::BackFaceMode mode : {ogun::BackFaceMode::Identical, ogun::BackFaceMode::Custom, ogun::BackFaceMode::Cull,
+                                          ogun::BackFaceMode::Darker}) {
+        custom.backFaceMode = mode;
+        controller.setOverlayAppearance(custom);
+        REQUIRE(controller.overlayAppearance().backFaceMode == mode);
+    }
+    custom.backFaceMode = ogun::BackFaceMode::Custom;
+    custom.backFaceColor = Eigen::Vector3d(1.0, 0.0, 2.0); // clamped
+    custom.baseMesh.color = Eigen::Vector3d(0.2, 0.3, 0.4);
+    custom.baseMesh.showEdges = false;
+    custom.smoothShade = true;
+    custom.categoryTintColor = Eigen::Vector3d(0.9, 0.1, 0.1);
+    controller.setOverlayAppearance(custom);
+    const ogun::OverlayAppearance& kept = controller.overlayAppearance();
+    REQUIRE(kept.backFaceMode == ogun::BackFaceMode::Custom);
+    REQUIRE(kept.backFaceColor.isApprox(Eigen::Vector3d(1.0, 0.0, 1.0)));
+    REQUIRE(kept.baseMesh.color.isApprox(custom.baseMesh.color));
+    REQUIRE_FALSE(kept.baseMesh.showEdges);
+    REQUIRE(kept.smoothShade);
+    REQUIRE(kept.categoryTintColor.isApprox(custom.categoryTintColor));
+
+    controller.resetOverlayAppearanceToDefaults();
+    REQUIRE(controller.overlayAppearance().backFaceMode == ogun::BackFaceMode::Darker);
+}
+
 TEST_CASE("SurfaceStyle remembers its edge width across Polyscope's Edges checkbox toggle",
           "[app][controller][appearance]") {
     ogun::SurfaceStyle style;
