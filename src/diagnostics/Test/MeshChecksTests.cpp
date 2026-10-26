@@ -55,17 +55,18 @@ TEST_CASE("Mesh checks report a closed cube as clean with one shell", "[diagnost
     REQUIRE(topo.numEdges() == 18);
 }
 
-TEST_CASE("Open edges are counted per edge and grouped into boundary loops", "[diagnostics][mesh-checks]") {
+TEST_CASE("Open edges are listed as one row per hole with its rim", "[diagnostics][mesh-checks]") {
     ogun::Mesh mesh = cube();
     mesh.F.conservativeResize(11, 3);
     const ogun::CategoryResult open = ogun::checkOpenEdges(mesh);
-    REQUIRE(open.size() == 3);
-    REQUIRE(open.infoCount == 1);
-    for (std::size_t i = 0; i < open.size(); ++i) {
-        REQUIRE(open.facesOf(i).size() == 1);
-        REQUIRE(open.elements[i].edge[0] < open.elements[i].edge[1]);
-        REQUIRE(open.elements[i].metric == 3.0);
-    }
+    REQUIRE(open.size() == 1);
+    REQUIRE(open.infoCount == 3); // open edges
+    REQUIRE(open.elements[0].index == 0);
+    REQUIRE(open.elements[0].metric == 3.0);
+    REQUIRE(open.elements[0].edge[0] < open.elements[0].edge[1]);
+    REQUIRE(open.facesOf(0).size() == 3);
+    REQUIRE(open.edgesOf(0).size() == 3);
+    REQUIRE(ogun::checkNonManifoldEdges(mesh).edgesOf(0).empty());
     REQUIRE(count(ogun::DefectCategory::NonManifoldEdges, mesh) == 0);
 }
 
@@ -82,7 +83,7 @@ TEST_CASE("A fin on a cube edge is one non-manifold edge", "[diagnostics][mesh-c
     REQUIRE(nm.elements[0].metric == 3.0);
     REQUIRE(nm.facesOf(0).size() == 3);
     REQUIRE(nm.elements[0].subtype == 1); // Fin / other: copying vertices cannot fix it
-    REQUIRE(count(ogun::DefectCategory::OpenEdges, mesh) == 2);
+    REQUIRE(ogun::checkOpenEdges(mesh).infoCount == 2);
 }
 
 TEST_CASE("Solids touching along an edge are Touching edges, not non-manifold vertices", "[diagnostics][mesh-checks]") {
@@ -144,7 +145,7 @@ TEST_CASE("Two triangles sharing only a vertex form a non-manifold vertex", "[di
     REQUIRE(nmv.elements[0].metric == 2.0);
     REQUIRE(nmv.facesOf(0).size() == 2);
     REQUIRE(ogun::checkShells(mesh).infoCount == 2);
-    REQUIRE(count(ogun::DefectCategory::OpenEdges, mesh) == 6);
+    REQUIRE(ogun::checkOpenEdges(mesh).infoCount == 6);
 }
 
 TEST_CASE("A reversed cube face is reported as the one flipped normal", "[diagnostics][mesh-checks]") {

@@ -46,6 +46,8 @@ Whenever you add, modify, or remove features, workflows, UI controls, diagnostic
   - **`build_release/`**: Release build (`CMAKE_BUILD_TYPE=Release`), for running the app on big meshes and timing performance.
 - `build_release/` reuses the dependency sources already downloaded into `build/_deps/` (`FETCHCONTENT_SOURCE_DIR_<NAME>` for Catch2, Eigen, libigl, Manifold, Polyscope and portable-file-dialogs), so it needs no network access. `build/` must therefore stay in place.
 
+- **Driving the GUI**: `cliclick` (Homebrew, `/opt/homebrew/bin/cliclick`) clicks and types in the running app, e.g. `cliclick c:400,300` (click), `dc:` (double-click), `t:"text"` (type), `kp:return` (key). Take screenshots with `screencapture -x <file>.png` and look at them. Screen points, not pixels: on a Retina display divide screenshot pixel coordinates by 2. cliclick needs Accessibility permission for the terminal running the agent (System Settings > Privacy & Security > Accessibility); without it, it warns "Accessibility privileges not enabled".
+
 ## 6. Constants and Default Settings Management
 
 - **Do not hardcode magic decimal values or re-declare mathematical constants in individual files**:

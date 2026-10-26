@@ -210,8 +210,7 @@ void PolyscopeGui::drawRepairAllOperator() {
     if (target == DefectCategory::OpenEdges) {
         if (row.status == HealthStatus::Defects || row.status == HealthStatus::Ok) {
             const std::size_t holes = controller_.holeCountInScope();
-            ImGui::TextWrapped("%s open edges around %s %s%s.", withThousands(controller_.rowCount(DefectCategory::OpenEdges)).c_str(),
-                               withThousands(holes).c_str(), holes == 1 ? "hole" : "holes",
+            ImGui::TextWrapped("%s %s%s.", withThousands(holes).c_str(), holes == 1 ? "hole" : "holes",
                                controller_.shells().scoped() ? " (shells in scope)" : "");
         } else {
             ImGui::TextDisabled("Open edges not checked yet. The preview measures them anyway.");

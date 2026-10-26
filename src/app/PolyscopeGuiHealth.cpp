@@ -40,6 +40,8 @@ const char* elementColumnName(ElementKind kind) {
         return "Vertex";
     case ElementKind::Shell:
         return "Shell";
+    case ElementKind::Hole:
+        return "Hole";
     }
     return "#";
 }
@@ -48,7 +50,7 @@ std::string elementLabel(const CategoryInfo& info, const DefectElement& element)
     char buffer[64];
     if (info.kind == ElementKind::Edge) {
         std::snprintf(buffer, sizeof(buffer), "%d-%d", element.edge[0], element.edge[1]);
-    } else if (info.kind == ElementKind::Shell) {
+    } else if (info.kind == ElementKind::Shell || info.kind == ElementKind::Hole) {
         std::snprintf(buffer, sizeof(buffer), "#%lld", static_cast<long long>(element.index + 1));
     } else {
         std::snprintf(buffer, sizeof(buffer), "#%lld", static_cast<long long>(element.index));
@@ -57,7 +59,7 @@ std::string elementLabel(const CategoryInfo& info, const DefectElement& element)
 }
 
 /// Widest possible element label for this mesh ("#258831", "129429-129430"), so the column fits every row.
-std::string widestElementLabel(const CategoryInfo& info, const Mesh& mesh, std::size_t shellCount) {
+std::string widestElementLabel(const CategoryInfo& info, const Mesh& mesh, std::size_t shellCount, std::size_t holeCount) {
     const auto widestDigits = [](Eigen::Index count) {
         return std::string(std::to_string(std::max<Eigen::Index>(count, 1)).size(), '8');
     };
@@ -68,6 +70,8 @@ std::string widestElementLabel(const CategoryInfo& info, const Mesh& mesh, std::
         return "#" + widestDigits(mesh.numVertices());
     case ElementKind::Shell:
         return "#" + widestDigits(static_cast<Eigen::Index>(shellCount));
+    case ElementKind::Hole:
+        return "#" + widestDigits(static_cast<Eigen::Index>(holeCount));
     case ElementKind::Face:
         break;
     }
@@ -369,8 +373,8 @@ void PolyscopeGui::drawCategoryTool(DefectCategory category) {
         return;
     }
     if (category == DefectCategory::OpenEdges && !controller_.shells().scoped()) {
-        ImGui::Text("%s open edges around %s hole%s.", withThousands(result->size()).c_str(),
-                    withThousands(result->infoCount).c_str(), result->infoCount == 1 ? "" : "s");
+        ImGui::Text("%s hole%s, %s open edges.", withThousands(result->size()).c_str(), result->size() == 1 ? "" : "s",
+                    withThousands(result->infoCount).c_str());
     }
 
     // Histogram: whenever the metric exists and the rows would not fit the list, or a bin is active
@@ -456,7 +460,7 @@ void PolyscopeGui::drawCategorySettings(DefectCategory category) {
         break;
     }
     case DefectCategory::OpenEdges:
-        ImGui::TextDisabled("Open edges are grouped into holes; the sub-type is the hole's shape.");
+        ImGui::TextDisabled("One row per hole (a loop of open edges); the sub-type is the hole's shape.");
         drawHoleFillSettings();
         break;
     case DefectCategory::FlippedNormals:
@@ -554,7 +558,7 @@ void PolyscopeGui::drawCategoryActions(DefectCategory category) {
                     ? "Repair the islands of the selected faces with their recommended method (falling back to the "
                       "others), as one undoable step. Crossings between shells are skipped."
                 : category == DefectCategory::OpenEdges
-                    ? "Fill the holes of the selected edges, each with its recommended method, as one undoable step. "
+                    ? "Fill the selected holes, each with its recommended method, as one undoable step. "
                       "Holes over the Max hole edges setting and open chains are skipped."
                 : category == DefectCategory::NonManifoldEdges
                     ? "Split the selected Touching edges, as one undoable step. Fin / other edges are skipped."
@@ -589,7 +593,7 @@ void PolyscopeGui::drawDefectTable(float height) {
                                   ImGuiTableFlags_Sortable | ImGuiTableFlags_SortTristate | ImGuiTableFlags_Resizable;
     // Fixed width for the longest label: auto-fit only measures the rows on screen, and a width saved for
     // shorter labels would clip "#184666" to "#18466". Keying the table on the label length drops old widths.
-    const std::string widest = widestElementLabel(info, controller_.mesh(), controller_.shells().size());
+    const std::string widest = widestElementLabel(info, controller_.mesh(), controller_.shells().size(), result.size());
     const float labelWidth = ImGui::CalcTextSize(widest.c_str()).x + ImGui::GetStyle().ItemSpacing.x;
     ImGui::PushID(static_cast<int>(widest.size()));
     if (!ImGui::BeginTable("DefectTable", columns, flags, ImVec2(0.0f, height))) {

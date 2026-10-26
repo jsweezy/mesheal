@@ -48,7 +48,7 @@ inline constexpr std::array<DefectCategory, kDefectCategoryCount> kAllDefectCate
 }
 
 /// What one defect element of a category refers to.
-enum class ElementKind { Face, Edge, Vertex, Shell };
+enum class ElementKind { Face, Edge, Vertex, Shell, Hole };
 
 enum class CategoryGroup { Topology, Geometry };
 
@@ -62,8 +62,8 @@ struct CategoryColumn {
 
 /// Static description of a Mesh Health row: labels, tooltips, list columns and histogram metric.
 struct CategoryInfo {
-    const char* name;           ///< Row label, e.g. "Open edges (holes)"
-    const char* menuName;       ///< Repair menu label, e.g. "Open Edges (holes)"
+    const char* name;           ///< Row label, e.g. "Holes (open edges)"
+    const char* menuName;       ///< Repair menu label, e.g. "Holes (open edges)"
     CategoryGroup group;
     const char* description;    ///< One-line explanation (tooltip and Tool panel description)
     ElementKind kind;
@@ -86,8 +86,8 @@ struct CategoryInfo {
 
 /// One defect found by a check (a face, edge, vertex or shell).
 struct DefectElement {
-    Eigen::Index index = -1;           ///< Face, vertex or shell index (edges: the first vertex)
-    std::array<int, 2> edge{-1, -1};   ///< Edge kinds: the two vertex indices (sorted)
+    Eigen::Index index = -1;           ///< Face, vertex, shell or hole index (edges: the first vertex)
+    std::array<int, 2> edge{-1, -1};   ///< Edge kinds: the two vertex indices (sorted); holes: a rim edge
     double metric = 0.0;               ///< Sort / histogram value
     std::array<double, 3> columns{};   ///< Values of `CategoryInfo::columns`
     int subtype = -1;                  ///< Index into `CategoryInfo::subtypes` (-1: none)
@@ -105,7 +105,10 @@ struct CategoryResult {
     /// categories without related faces.
     std::vector<std::uint32_t> relatedOffsets;
     std::vector<Eigen::Index> related;
-    std::size_t infoCount = 0; ///< Hole loops (open edges) or shell count (shells)
+    /// Edges of each element in CSR form (holes: the rim edges). Empty for other categories.
+    std::vector<std::uint32_t> edgeOffsets;
+    std::vector<std::array<int, 2>> edges;
+    std::size_t infoCount = 0; ///< Open edges (holes) or shell count (shells)
     double elapsedMs = 0.0;
     bool cancelled = false;
 
@@ -126,6 +129,13 @@ struct CategoryResult {
             return {};
         }
         return {related.data() + relatedOffsets[element], related.data() + relatedOffsets[element + 1]};
+    }
+
+    [[nodiscard]] std::span<const std::array<int, 2>> edgesOf(std::size_t element) const noexcept {
+        if (element + 1 >= edgeOffsets.size()) {
+            return {};
+        }
+        return {edges.data() + edgeOffsets[element], edges.data() + edgeOffsets[element + 1]};
     }
 
     /// Element count per sub-type (index matches `CategoryInfo::subtypes`).

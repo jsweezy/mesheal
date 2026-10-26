@@ -1,4 +1,4 @@
-// Open edges: the per-hole Inspector and the hole-filling settings of the Open edges tool.
+// Holes (open edges): the per-hole Inspector and the hole-filling settings of the Holes tool.
 
 #include "app/GuiWidgets.hpp"
 #include "app/PolyscopeGui.hpp"

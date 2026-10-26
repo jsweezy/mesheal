@@ -373,8 +373,8 @@ TEST_CASE("A T-junction crack loads as a zero-width hole that only snapping clos
     const ogun::Mesh cracked = ogun::separateTouchingContacts(ogun::SampleMeshes::createCrackedBoxMesh());
     REQUIRE(ogun::checkNonManifoldVertices(cracked).empty()); // the pinch at (2, 2, 4) was split on "load"
     const ogun::CategoryResult open = ogun::checkOpenEdges(cracked);
-    REQUIRE(open.size() == 6);
-    REQUIRE(open.infoCount == 1); // one slit loop: 4 edges on the left, 2 on the right
+    REQUIRE(open.size() == 1);     // one slit loop
+    REQUIRE(open.infoCount == 6);  // 4 edges on the left, 2 on the right
 
     // Every triangle on the slit's collinear rim is degenerate: CGAL finds no fill and changes nothing
     for (const bool cdt : {false, true}) {
@@ -679,7 +679,7 @@ TEST_CASE("Repair All Holes: Fill each hole in the shells in scope", "[repair][h
     const ogun::RepairCandidate scoped = ogun::runGlobalRepair(sample, inScope, ogun::GlobalRepairMethod::FillHoles, flat);
     REQUIRE(scoped.success);
     REQUIRE(scoped.metrics.watertight());                              // measured on the scope only
-    REQUIRE(ogun::checkOpenEdges(scoped.mesh).size() == 6 + 8 + 24);  // the other three holes are untouched
+    REQUIRE(ogun::checkOpenEdges(scoped.mesh).infoCount == 6 + 8 + 24); // the other three holes are untouched
     REQUIRE(scoped.metrics.facesAfter == sphereOnly.numFaces() + 22); // a flat 24-gon
     REQUIRE_FALSE(flat == ogun::GlobalRepairParams{});
 }

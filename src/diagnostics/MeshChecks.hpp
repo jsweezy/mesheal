@@ -58,7 +58,8 @@ struct EdgeTopology {
 /// its own edge.
 [[nodiscard]] std::vector<std::uint8_t> touchingEdges(const Mesh& mesh, const EdgeTopology& topo);
 
-/// Edges used by exactly one triangle. `infoCount` = number of boundary loops.
+/// Holes: one element per loop of edges used by exactly one triangle (`findHoleLoops` order), with
+/// its rim faces and rim edges (`edgesOf`). `infoCount` = number of open edges.
 [[nodiscard]] CategoryResult checkOpenEdges(const Mesh& mesh, std::stop_token stopToken = {});
 
 /// Edges shared by three or more triangles. Sub-type 0 (Touching) for `touchingEdges`, which copying

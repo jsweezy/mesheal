@@ -1540,7 +1540,7 @@ HighlightOverlayGeometry AppController::buildHighlightOverlay() const {
         if (kind == ElementKind::Face && underCap) {
             appendFaceGeometry(visibleFaces, overlay, false, &nodeOf);
         }
-        if (kind == ElementKind::Edge || kind == ElementKind::Vertex) {
+        if (kind == ElementKind::Edge || kind == ElementKind::Vertex || kind == ElementKind::Hole) {
             const auto node = [&](int v) {
                 const auto [it, inserted] = nodeOf.try_emplace(v, overlay.overlayPoints.size());
                 if (inserted) {
@@ -1557,6 +1557,10 @@ HighlightOverlayGeometry AppController::buildHighlightOverlay() const {
                 const DefectElement& e = result->elements[element];
                 if (kind == ElementKind::Edge) {
                     overlay.overlayEdges.push_back({node(e.edge[0]), node(e.edge[1])});
+                } else if (kind == ElementKind::Hole) {
+                    for (const auto& [a, b] : result->edgesOf(element)) {
+                        overlay.overlayEdges.push_back({node(a), node(b)});
+                    }
                 } else {
                     node(static_cast<int>(e.index));
                 }

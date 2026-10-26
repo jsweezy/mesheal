@@ -6,6 +6,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <filesystem>
 #include <vector>
 
 using ogun::DefectCategory;
@@ -18,11 +19,15 @@ namespace {
 /// Loads File > Load Sample > "Holes" (four shells, one hole each) and opens the Open edges row.
 void loadHolesSample(ogun::AppController& controller) {
     controller.setMesh(ogun::separateTouchingContacts(ogun::SampleMeshes::createHolesSampleMesh()), "holes");
-    REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 6 + 8 + 24 + 24);
+    REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 4); // one row per hole
     controller.selectCategory(DefectCategory::OpenEdges);
 }
 
-/// Focuses the first open edge whose hole has `shape`. Returns false if none.
+std::filesystem::path examplePath(const char* name) {
+    return std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / name;
+}
+
+/// Focuses the first hole with `shape`. Returns false if none.
 bool focusHole(ogun::AppController& controller, HoleShape shape) {
     const ogun::CategoryResult& result = *controller.browser().result();
     for (std::size_t e = 0; e < result.size(); ++e) {
@@ -82,7 +87,7 @@ TEST_CASE("Hole Inspector: recommended fill per shape, live preview, commit and 
     REQUIRE(controller.commitHoleFill());
     REQUIRE(controller.lastUndoActionLabel() == "Hole Fill (Fill Smooth, hole " + std::to_string(number) + ")");
     REQUIRE(controller.isModified());
-    REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 6 + 8 + 24);
+    REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 3);
     REQUIRE(controller.mesh().F.topRows(before.numFaces()) == before.F); // the fill is appended
 
     REQUIRE(controller.undoLastModification());
@@ -140,18 +145,18 @@ TEST_CASE("Committing a fill that crosses other faces is refused", "[app][holes]
     REQUIRE(controller.lastRepairStatusMessage().find("Try another method") != std::string::npos);
 }
 
-TEST_CASE("Fix Selected fills the holes of the selected edges in one undo step", "[app][holes][repair][undo]") {
+TEST_CASE("Fix Selected fills the selected holes in one undo step", "[app][holes][repair][undo]") {
     ogun::AppController controller;
     loadHolesSample(controller);
     const ogun::Mesh before = controller.mesh();
 
-    // One selected edge fills its whole hole, and only that hole
+    // One selected row fills its hole, and only that hole
     controller.setSubtypeFilter(static_cast<int>(HoleShape::Curved));
     controller.clickDefectRow(0, false, false);
     REQUIRE(controller.browser().selectedCount() == 1);
     REQUIRE(controller.fixSelectedHoles());
     REQUIRE(controller.lastUndoActionLabel() == "Fix Selected Holes (1 hole)");
-    REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 6 + 8 + 24);
+    REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 3);
     REQUIRE(controller.undoLastModification());
 
     controller.setSubtypeFilter(-1);
@@ -164,7 +169,38 @@ TEST_CASE("Fix Selected fills the holes of the selected edges in one undo step",
 
     REQUIRE(controller.undoLastModification());
     REQUIRE(controller.mesh().F == before.F);
-    REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 62);
+    REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 4);
+}
+
+TEST_CASE("Each of the bunny's holes is a row: step through them or click a rim face", "[app][holes]") {
+    ogun::AppController controller;
+    controller.setMesh(ogun::loadStl(examplePath("stanford_bunny.stl")), "bunny");
+    REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 5);
+    controller.selectCategory(DefectCategory::OpenEdges);
+    const ogun::CategoryResult& result = *controller.browser().result();
+    REQUIRE(result.infoCount == 39 + 22 + 42 + 80 + 40);
+
+    // Next / previous visit every hole once, each opening the Inspector on that hole
+    controller.focusDefect(0);
+    std::vector<std::size_t> visited;
+    for (int step = 0; step < 5; ++step) {
+        REQUIRE(controller.holeInspectorActive());
+        const std::size_t element = controller.browser().focusedElement();
+        REQUIRE(controller.focusedHoleNumber() == static_cast<std::size_t>(result.elements[element].index) + 1);
+        REQUIRE(controller.focusedHole()->edgeCount() == result.edgesOf(element).size());
+        REQUIRE(controller.selectedHoleMethod() == HoleFillMethod::Smooth);
+        REQUIRE(controller.holePreview().valid);
+        visited.push_back(element);
+        REQUIRE(controller.focusNextDefect(1));
+    }
+    std::sort(visited.begin(), visited.end());
+    REQUIRE(std::adjacent_find(visited.begin(), visited.end()) == visited.end());
+
+    // Clicking any rim face of a hole focuses that hole's row
+    const std::size_t last = result.size() - 1;
+    REQUIRE(controller.pickFace(result.facesOf(last).back()) == ogun::PickOutcome::FocusedDefect);
+    REQUIRE(controller.browser().focusedElement() == last);
+    REQUIRE(controller.focusedHoleNumber() == 5);
 }
 
 TEST_CASE("Repair All Holes: compare fills and rebuilds, apply and undo", "[app][holes][repair][undo][global]") {
@@ -236,10 +272,10 @@ TEST_CASE("Hole counts and Fill each hole follow the shell scope", "[app][holes]
     }
     controller.clickShell(sphere, false, false, {});
     REQUIRE(controller.holeCountInScope() == 1);
-    REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 24);
+    REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 1);
 
     controller.openRepairAllHoles();
     controller.previewGlobalRepair();
     REQUIRE(controller.applyGlobalRepair());
-    REQUIRE(ogun::checkOpenEdges(controller.mesh()).size() == 6 + 8 + 24);
+    REQUIRE(ogun::checkOpenEdges(controller.mesh()).size() == 3); // the other holes stay open
 }

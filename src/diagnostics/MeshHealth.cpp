@@ -11,10 +11,10 @@ namespace {
 constexpr CategoryColumn kNoColumn{};
 
 constexpr std::array<CategoryInfo, kDefectCategoryCount> kCategoryInfos = {{
-    {"Open edges (holes)", "Open Edges (holes)", CategoryGroup::Topology,
-     "Edges used by only one triangle: the rims of holes, so the mesh is not watertight.",
-     ElementKind::Edge, "edges", true, false, true,
-     {{{"Hole", ValueDimension::None}, {"Hole edges", ValueDimension::None}, {"Length", ValueDimension::Length}}},
+    {"Holes (open edges)", "Holes (open edges)", CategoryGroup::Topology,
+     "Holes: loops of edges used by only one triangle, so the mesh is not watertight.",
+     ElementKind::Hole, "holes", true, false, true,
+     {{{"Edges", ValueDimension::None}, {"Size", ValueDimension::Length}, {"Gap width", ValueDimension::Length}}},
      nullptr, ValueDimension::None, false, false,
      {"Flat", "Curved", "Crack", "Open chain"}},
     {"Non-manifold edges", "Non-manifold Edges", CategoryGroup::Topology,

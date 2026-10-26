@@ -359,23 +359,34 @@ CategoryResult checkOpenEdges(const Mesh& mesh, std::stop_token stopToken) {
         return cancelledResult(DefectCategory::OpenEdges);
     }
 
-    // One element per open edge; the sub-type is the shape of its hole
+    // One element per hole (its rim faces and edges); the sub-type is its shape
     const std::vector<HoleLoop> holes = findHoleLoops(mesh, topo);
     ResultBuilder builder(DefectCategory::OpenEdges);
+    std::size_t openEdges = 0;
     for (std::size_t h = 0; h < holes.size(); ++h) {
         const HoleLoop& hole = holes[h];
-        for (std::size_t i = 0; i < hole.edges.size(); ++i) {
-            const std::array<int, 2> edge{std::min(hole.edges[i][0], hole.edges[i][1]), std::max(hole.edges[i][0], hole.edges[i][1])};
-            DefectElement element;
-            element.index = edge[0];
-            element.edge = edge;
-            element.metric = static_cast<double>(hole.edgeCount());
-            element.columns = {static_cast<double>(h + 1), element.metric, edgeLength(mesh, edge)};
-            element.subtype = static_cast<int>(hole.shape);
-            builder.add(element, hole.faces[i]);
-        }
+        DefectElement element;
+        element.index = static_cast<Eigen::Index>(h);
+        element.edge = {std::min(hole.edges[0][0], hole.edges[0][1]), std::max(hole.edges[0][0], hole.edges[0][1])};
+        element.metric = static_cast<double>(hole.edgeCount());
+        element.columns = {element.metric, hole.size, hole.width};
+        element.subtype = static_cast<int>(hole.shape);
+        std::vector<Eigen::Index> faces = hole.faces;
+        std::sort(faces.begin(), faces.end());
+        faces.erase(std::unique(faces.begin(), faces.end()), faces.end());
+        builder.add(element, faces);
+        openEdges += hole.edgeCount();
     }
-    return builder.finish(SortOrder::HighMetricFirst, holes.size());
+    CategoryResult result = builder.finish(SortOrder::ByIndex, openEdges);
+    // ByIndex keeps the holes in order, so element h is hole h
+    result.edgeOffsets.reserve(holes.size() + 1);
+    result.edgeOffsets.push_back(0);
+    result.edges.reserve(openEdges);
+    for (const HoleLoop& hole : holes) {
+        result.edges.insert(result.edges.end(), hole.edges.begin(), hole.edges.end());
+        result.edgeOffsets.push_back(static_cast<std::uint32_t>(result.edges.size()));
+    }
+    return result;
 }
 
 CategoryResult checkNonManifoldEdges(const Mesh& mesh, std::stop_token stopToken) {

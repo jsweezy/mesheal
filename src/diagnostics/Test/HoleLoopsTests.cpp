@@ -91,14 +91,21 @@ TEST_CASE("Hole shapes: cylinder cap, sphere cap, crack and fin", "[diagnostics]
     REQUIRE(holes.front().shape == ogun::HoleShape::OpenChain);
 }
 
-TEST_CASE("Open edges carry their hole's shape as the sub-type", "[diagnostics][holes]") {
+TEST_CASE("Each hole is one Open edges row with its shape as the sub-type", "[diagnostics][holes]") {
     const ogun::Mesh sample = ogun::separateTouchingContacts(ogun::SampleMeshes::createHolesSampleMesh());
     const ogun::CategoryResult open = ogun::checkOpenEdges(sample);
-    REQUIRE(open.infoCount == 4);
+    REQUIRE(open.size() == 4);
+    REQUIRE(open.infoCount == 6 + 8 + 24 + 24);
+    const std::vector<ogun::HoleLoop> holes = ogun::findHoleLoops(sample);
+    for (std::size_t h = 0; h < open.size(); ++h) {
+        REQUIRE(open.elements[h].index == static_cast<Eigen::Index>(h)); // row h is hole h
+        REQUIRE(open.edgesOf(h).size() == holes[h].edgeCount());
+        REQUIRE(ogun::findHoleOfEdge(holes, open.elements[h].edge[0], open.elements[h].edge[1]) == static_cast<int>(h));
+    }
     const std::array<std::size_t, 4> counts = open.subtypeCounts();
-    REQUIRE(counts[static_cast<std::size_t>(ogun::HoleShape::Crack)] == 6);
-    REQUIRE(counts[static_cast<std::size_t>(ogun::HoleShape::Flat)] == 8 + 24);
-    REQUIRE(counts[static_cast<std::size_t>(ogun::HoleShape::Curved)] == 24);
+    REQUIRE(counts[static_cast<std::size_t>(ogun::HoleShape::Crack)] == 1);
+    REQUIRE(counts[static_cast<std::size_t>(ogun::HoleShape::Flat)] == 2);
+    REQUIRE(counts[static_cast<std::size_t>(ogun::HoleShape::Curved)] == 1);
     REQUIRE(counts[static_cast<std::size_t>(ogun::HoleShape::OpenChain)] == 0);
     REQUIRE(ogun::checkNonManifoldEdges(sample).empty());
     REQUIRE(ogun::checkShells(sample).infoCount == 4);
@@ -115,5 +122,7 @@ TEST_CASE("The bunny's five holes are curved loops", "[diagnostics][holes]") {
         edges += hole.edgeCount();
     }
     REQUIRE(edges == 39 + 22 + 42 + 80 + 40);
-    REQUIRE(ogun::checkOpenEdges(bunny).size() == edges);
+    const ogun::CategoryResult open = ogun::checkOpenEdges(bunny);
+    REQUIRE(open.size() == 5);
+    REQUIRE(open.infoCount == edges);
 }

@@ -402,7 +402,7 @@ TEST_CASE("Loading an STL keeps solids that only touch apart", "[io][stl][non-ma
     const ogun::CategoryResult edges = ogun::checkNonManifoldEdges(loaded);
     REQUIRE(edges.size() == 1); // the fin is a real defect and stays
     REQUIRE(edges.elements[0].subtype == 1);
-    REQUIRE(defectCount(ogun::DefectCategory::OpenEdges, loaded) == 2);
+    REQUIRE(ogun::checkOpenEdges(loaded).infoCount == 2);
     REQUIRE(ogun::checkShells(loaded).infoCount == 3);
 
     SECTION("a saved and reopened STL comes back the same") {

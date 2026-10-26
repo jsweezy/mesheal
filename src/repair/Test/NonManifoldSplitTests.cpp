@@ -127,7 +127,7 @@ TEST_CASE("The touching-cubes sample has Touching and Fin edges and one bow-tie"
     REQUIRE(nonManifoldEdges(mesh, 0).size() == 2);
     REQUIRE(nonManifoldEdges(mesh, 1).size() == 1);
     REQUIRE(count(ogun::DefectCategory::NonManifoldVertices, mesh) == 1);
-    REQUIRE(count(ogun::DefectCategory::OpenEdges, mesh) == 2);
+    REQUIRE(ogun::checkOpenEdges(mesh).infoCount == 2); // the fin's two open edges
     REQUIRE(shellCount(mesh) == 2);
 }
 
@@ -147,7 +147,7 @@ TEST_CASE("Splitting Touching edges separates the solids without moving any vert
     REQUIRE(left.size() == 1);
     REQUIRE(nonManifoldEdges(r.mesh, 1).size() == 1);
     REQUIRE(count(ogun::DefectCategory::NonManifoldVertices, r.mesh) == 1);
-    REQUIRE(count(ogun::DefectCategory::OpenEdges, r.mesh) == 2);
+    REQUIRE(ogun::checkOpenEdges(r.mesh).infoCount == 2);
     REQUIRE(count(ogun::DefectCategory::FlippedNormals, r.mesh) == 0);
     REQUIRE(shellCount(r.mesh) == 3); // A (with the fin), B and C
 
