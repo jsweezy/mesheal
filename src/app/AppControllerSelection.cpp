@@ -42,29 +42,27 @@ bool AppController::clearFaceSelection() {
     return had;
 }
 
+const FaceVisibility& AppController::faceVisibility() const {
+    if (!faceVisibility_.built() || faceVisibilityGeneration_ != meshGeneration_) {
+        faceVisibility_.build(mesh_);
+        faceVisibilityGeneration_ = meshGeneration_;
+    }
+    return faceVisibility_;
+}
+
 std::size_t AppController::selectFacesInRectangle(const ScreenView& view, const Eigen::Vector2d& a, const Eigen::Vector2d& b,
                                                   bool select) {
-    const FaceVisibility* visibility = nullptr;
-    if (!selectThrough_) {
-        if (!faceVisibility_.built() || faceVisibilityGeneration_ != meshGeneration_) {
-            faceVisibility_.build(mesh_);
-            faceVisibilityGeneration_ = meshGeneration_;
-        }
-        visibility = &faceVisibility_;
-    }
+    const FaceVisibility* visibility = selectThrough_ ? nullptr : &faceVisibility();
     return selectFaces(facesInRectangle(mesh_, view, a, b, visibility), select);
 }
 
 std::size_t AppController::selectFacesInCircle(const ScreenView& view, const Eigen::Vector2d& center, double radius, bool select) {
-    const FaceVisibility* visibility = nullptr;
-    if (!selectThrough_) {
-        if (!faceVisibility_.built() || faceVisibilityGeneration_ != meshGeneration_) {
-            faceVisibility_.build(mesh_);
-            faceVisibilityGeneration_ = meshGeneration_;
-        }
-        visibility = &faceVisibility_;
-    }
+    const FaceVisibility* visibility = selectThrough_ ? nullptr : &faceVisibility();
     return selectFaces(facesInCircle(mesh_, view, center, radius, visibility), select);
+}
+
+std::optional<Eigen::Index> AppController::faceAtScreenPoint(const ScreenView& view, const Eigen::Vector2d& point) const {
+    return mesh_.empty() ? std::nullopt : faceVisibility().faceAt(mesh_, view, point);
 }
 
 std::vector<std::uint8_t> AppController::operatorScopeMask() const {

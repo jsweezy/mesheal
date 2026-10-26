@@ -439,7 +439,16 @@ void PolyscopeGui::handleViewportMouseNavigation() {
 
     // 3. Click picks on release when not dragging
     if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-        if (dragDistSinceLastRelease_ < settings::kDragIgnoreThreshold) {
+        if (dragDistSinceLastRelease_ < settings::kDragIgnoreThreshold && io.KeyShift && !io.KeyAlt && !io.KeyCtrl &&
+            controller_.hasMesh()) {
+            // Shift+click toggles the face in the face selection (Blender)
+            const ImVec2 p = ImGui::GetMousePos();
+            if (const std::optional<Eigen::Index> face = controller_.faceAtScreenPoint(currentScreenView(), Eigen::Vector2d(p.x, p.y))) {
+                controller_.toggleFaceSelected(*face);
+                controller_.postStatusMessage(gui::withThousands(controller_.selectedFaceCount()) + " faces selected.");
+                requestSync();
+            }
+        } else if (dragDistSinceLastRelease_ < settings::kDragIgnoreThreshold) {
             const ImVec2 p = ImGui::GetMousePos();
             const polyscope::PickResult pickResult = polyscope::pickAtScreenCoords(glm::vec2{p.x, p.y});
             polyscope::setSelection(pickResult);
@@ -488,13 +497,6 @@ void PolyscopeGui::handleViewportFacePick(const polyscope::PickResult& pickResul
     const Eigen::Index face = faceMap ? (*faceMap)[localFace] : static_cast<Eigen::Index>(localFace);
     // Alt+click selects the shell (Cmd/Ctrl too: toggles it); a plain click never changes the shell selection
     const ImGuiIO& io = ImGui::GetIO();
-    // Shift+click toggles the face in the face selection (Blender)
-    if (io.KeyShift && !io.KeyAlt) {
-        controller_.toggleFaceSelected(face);
-        controller_.postStatusMessage(gui::withThousands(controller_.selectedFaceCount()) + " faces selected.");
-        requestSync();
-        return;
-    }
     if (io.KeyAlt && controller_.shells().multiShell()) {
         if (controller_.pickShell(face, io.KeyCtrl || io.KeySuper)) {
             showShells_ = true;

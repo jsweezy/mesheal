@@ -110,6 +110,51 @@ TEST_CASE("Box select picks only the faces you can see unless selecting through"
     REQUIRE(allOnTop(mesh, half));
 }
 
+TEST_CASE("Box select sees the faces of a tiny mesh (the 0.15 mm bunny)", "[app][selection]") {
+    // libigl's ray-triangle epsilon is absolute: at this size every ray used to miss
+    const double s = 1e-4;
+    ogun::Mesh mesh = gridCube();
+    mesh.V *= s;
+    mesh.recomputeNormals();
+    ogun::FaceVisibility visibility;
+    visibility.build(mesh);
+    const ogun::ScreenView view = makeView(Eigen::Vector3d(4.0, 4.0, 30.0) * s, Eigen::Vector3d(4.0, 4.0, 4.0) * s);
+    const std::vector<Eigen::Index> seen = ogun::facesInRectangle(mesh, view, kScreenMin, kScreenMax, &visibility);
+    REQUIRE(seen.size() == 32);
+    REQUIRE(allOnTop(mesh, seen));
+}
+
+TEST_CASE("Shift+click finds the face under the mouse with a ray, at any scale", "[app][selection]") {
+    for (const double s : {1.0, 1e-4}) {
+        CAPTURE(s);
+        ogun::Mesh mesh = gridCube();
+        mesh.V *= s;
+        mesh.recomputeNormals();
+        ogun::FaceVisibility visibility;
+        visibility.build(mesh);
+        const ogun::ScreenView view = makeView(Eigen::Vector3d(4.0, 4.0, 30.0) * s, Eigen::Vector3d(4.0, 4.0, 4.0) * s);
+        for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+            if (mesh.N(f, 2) < 0.99) {
+                continue;
+            }
+            const Eigen::Vector3d c = (mesh.V.row(mesh.F(f, 0)) + mesh.V.row(mesh.F(f, 1)) + mesh.V.row(mesh.F(f, 2))).transpose() / 3.0;
+            const std::optional<Eigen::Index> hit = visibility.faceAt(mesh, view, *view.project(c));
+            REQUIRE(hit);
+            REQUIRE(*hit == f);
+        }
+        REQUIRE_FALSE(visibility.faceAt(mesh, view, Eigen::Vector2d(1.0, 1.0))); // the background
+    }
+
+    ogun::AppController controller;
+    controller.setMesh(gridCube(), "grid cube");
+    for (const bool ortho : {false, true}) {
+        CAPTURE(ortho);
+        const auto face = controller.faceAtScreenPoint(topView(ortho), Eigen::Vector2d(400.0, 290.0));
+        REQUIRE(face);
+        REQUIRE(controller.mesh().N(*face, 2) > 0.99);
+    }
+}
+
 TEST_CASE("Circle select takes the visible faces under the brush", "[app][selection]") {
     const ogun::Mesh mesh = gridCube();
     ogun::FaceVisibility visibility;

@@ -986,6 +986,9 @@ public:
     /// seen there unless `selectThrough()` (Blender's X-ray). Returns how many changed.
     std::size_t selectFacesInRectangle(const ScreenView& view, const Eigen::Vector2d& a, const Eigen::Vector2d& b, bool select);
     std::size_t selectFacesInCircle(const ScreenView& view, const Eigen::Vector2d& center, double radius, bool select);
+    /// The first face under a screen point (Shift+click), by a ray cast: dense meshes leave no room
+    /// for polyscope's pick, which takes a vertex when the click is near one.
+    [[nodiscard]] std::optional<Eigen::Index> faceAtScreenPoint(const ScreenView& view, const Eigen::Vector2d& point) const;
 
     [[nodiscard]] bool selectThrough() const noexcept {
         return selectThrough_;
@@ -1241,6 +1244,8 @@ private:
     bool selectThrough_ = false;
     mutable FaceVisibility faceVisibility_;
     mutable std::uint64_t faceVisibilityGeneration_ = 0;
+    /// The ray-cast tree of the current mesh, rebuilt after an edit.
+    const FaceVisibility& faceVisibility() const;
     std::size_t listCap_ = settings::kDefaultListCap;
     std::size_t overlayCap_ = settings::kDefaultOverlayCap;
     Eigen::Index pickedFaceIndex_ = -1;   ///< Face clicked with no row containing it

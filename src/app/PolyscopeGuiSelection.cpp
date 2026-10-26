@@ -62,6 +62,9 @@ void PolyscopeGui::startFaceSelectMode(FaceSelectMode mode) {
 }
 
 void PolyscopeGui::exitFaceSelectMode() {
+    if (faceSelectMode_ == FaceSelectMode::Circle) {
+        controller_.postStatusMessage("Circle select done: " + withThousands(controller_.selectedFaceCount()) + " faces selected.");
+    }
     faceSelectMode_ = FaceSelectMode::None;
     boxDragging_ = false;
 }

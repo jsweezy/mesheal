@@ -137,6 +137,7 @@ inline constexpr std::array<double, 3> kDefaultFaceSelectionColor = {0.60, 0.40,
 inline constexpr float kDefaultCircleSelectRadiusPx = 30.0f;  // Circle select (C) brush radius in screen points
 inline constexpr float kMinCircleSelectRadiusPx     = 4.0f;   // Smallest circle-select radius (mouse wheel)
 inline constexpr float kMaxCircleSelectRadiusPx     = 300.0f; // Largest circle-select radius (mouse wheel)
+inline constexpr double kFaceVisibilityWorkingSize   = 1000.0; // Bounding-box diagonal the visibility rays work at (libigl ray epsilon is absolute)
 inline constexpr double kShellSelectedTintWeight = 0.65;          // Blend weight of the selected-shell tint over the shell color
 inline constexpr double kShellHueMin             = 0.28;          // Shell colors use hues [min, min + span]: green..purple, no red/orange/yellow
 inline constexpr double kShellHueSpan            = 0.55;          // Width of the shell hue band (HSV hue in [0, 1])

@@ -25,7 +25,8 @@ struct ScreenView {
 };
 
 /// Answers "is this face the first thing the eye sees through its centre?" with a ray cast against an
-/// AABB tree of the mesh (Blender's selection without X-ray).
+/// AABB tree of the mesh (Blender's selection without X-ray). The tree holds a copy of the mesh scaled
+/// to a fixed size, because libigl's ray-triangle test misses tiny triangles (its epsilon is absolute).
 class FaceVisibility {
 public:
     void build(const Mesh& mesh);
@@ -33,9 +34,18 @@ public:
         return built_;
     }
     [[nodiscard]] bool visible(const Mesh& mesh, Eigen::Index face, const ScreenView& view) const;
+    /// The first face under the screen point `screen`, if any.
+    [[nodiscard]] std::optional<Eigen::Index> faceAt(const Mesh& mesh, const ScreenView& view, const Eigen::Vector2d& screen) const;
 
 private:
+    [[nodiscard]] Eigen::Vector3d toWork(const Eigen::Vector3d& p) const {
+        return scale_ * (p - origin_);
+    }
+
     igl::AABB<Eigen::MatrixXd, 3> tree_;
+    Eigen::MatrixXd V_; ///< The mesh vertices at the working size
+    Eigen::Vector3d origin_ = Eigen::Vector3d::Zero();
+    double scale_ = 1.0;
     bool built_ = false;
 };
 

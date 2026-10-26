@@ -68,7 +68,7 @@ constexpr std::array<GlobalMethodOption, 7> kGlobalMethodOptions = {{
      "Garland-Heckbert edge collapse (CGAL) down to the chosen fraction of the faces. Collapses that would flip a "
      "face are skipped; hole rims and the edge of a face selection never move, so the rest of the mesh is kept "
      "exactly."},
-    {GlobalRepairMethod::MergeVertices, "welds vertices closer than the distance",
+    {GlobalRepairMethod::MergeVertices, "welds close vertices",
      "Merges every vertex within the distance of an earlier one (no vertex moves farther than the distance). "
      "Faces that collapse are removed, as are faces that become copies of another. Closes small gaps between "
      "unwelded patches and removes tiny faces; between shells that only touch it creates non-manifold edges."},
@@ -222,8 +222,9 @@ void PolyscopeGui::drawRepairAllOperator() {
                            "self-intersections. Every face is new: detail smaller than alpha is lost.",
                            controller_.shells().scoped() ? "the shells in scope" : "the whole mesh");
     } else if (slot == ToolSlot::Decimate || slot == ToolSlot::MergeVertices) {
-        ImGui::TextWrapped("%s %s.", slot == ToolSlot::Decimate ? "Reduces the faces of" : "Merges close vertices of",
-                           controller_.operatorScopeText().c_str());
+        const std::size_t selected = controller_.selectedFaceCount();
+        const std::string scope = selected > 0 ? "the " + withThousands(selected) + " selected faces" : controller_.operatorScopeText();
+        ImGui::TextWrapped("%s %s.", slot == ToolSlot::Decimate ? "Decimates" : "Merges close vertices in", scope.c_str());
     } else if (target == DefectCategory::OpenEdges) {
         if (row.status == HealthStatus::Defects || row.status == HealthStatus::Ok) {
             const std::size_t holes = controller_.holeCountInScope();
@@ -411,8 +412,15 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
         tooltip("Vertices closer than this are merged (default 0.05 mm). Press Enter to apply.");
         const double meanEdge = controller_.meanEdgeLength();
         if (meanEdge > 0.0) {
-            ImGui::TextDisabled("mean edge %s: the distance is %.2g of it", lengthText(meanEdge, unit).c_str(),
-                                distance / meanEdge);
+            const double ratio = distance / meanEdge;
+            if (ratio < 1.0) {
+                ImGui::TextDisabled("mean edge %s (the distance is %.0f%% of it)", lengthText(meanEdge, unit).c_str(), 100.0 * ratio);
+            } else {
+                ImGui::PushStyleColor(ImGuiCol_Text, gui::kDefectColor);
+                ImGui::TextWrapped("mean edge %s: the distance is %.3gx that, so whole areas will collapse",
+                                   lengthText(meanEdge, unit).c_str(), ratio);
+                ImGui::PopStyleColor();
+            }
         }
         break;
     }
