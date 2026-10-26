@@ -1,6 +1,8 @@
 #include "diagnostics/ShellNesting.hpp"
 #include "core/Constants.hpp"
 
+#include <Eigen/Geometry>
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>

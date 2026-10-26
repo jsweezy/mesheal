@@ -4,6 +4,8 @@
 #include "diagnostics/SelfIntersections.hpp"
 #include "diagnostics/ThinFaceChecker.hpp"
 
+#include <Eigen/Geometry>
+
 #include <igl/point_mesh_squared_distance.h>
 
 #include <algorithm>

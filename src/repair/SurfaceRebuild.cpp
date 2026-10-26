@@ -3,6 +3,8 @@
 #include "mesh/CgalMesh.hpp"
 #include "repair/RepairMetrics.hpp"
 
+#include <Eigen/Geometry>
+
 #include <CGAL/Polygon_mesh_processing/autorefinement.h>
 #include <CGAL/Polygon_mesh_processing/repair_polygon_soup.h>
 #include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/Bounded_normal_change_filter.h>

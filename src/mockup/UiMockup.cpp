@@ -4,6 +4,8 @@
 #include "diagnostics/MeshChecks.hpp"
 #include "io/StlWriter.hpp"
 
+#include <Eigen/Geometry>
+
 #include <imgui.h>
 #include <polyscope/pick.h>
 #include <polyscope/polyscope.h>
