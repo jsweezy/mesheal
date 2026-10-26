@@ -83,7 +83,7 @@ struct ShellHealth {
 enum class WatertightState { Unknown, Watertight, NotWatertight };
 
 /// What the right-column Tool slot shows (one tool at a time).
-enum class ToolSlot { None, DefectCategory, UnitsAndScale, RepairAllIntersections, RepairAllHoles, MergeShells };
+enum class ToolSlot { None, DefectCategory, UnitsAndScale, RepairAllIntersections, RepairAllHoles, AlphaWrap, MergeShells };
 
 /// One line of the Merge Shells checklist (UI_DESIGN.md §16.3), built from Mesh Health.
 struct MergeCheck {
@@ -947,13 +947,23 @@ public:
     /// Opens "Operation: Repair All Holes" in the Tool slot (deselects any row).
     void openRepairAllHoles();
 
-    /// Row the open Repair All operator repairs: Intersections or OpenEdges.
+    /// Opens "Operation: Alpha Wrap" (Mesh > Clean Up): the same operator with only the wrap.
+    void openAlphaWrap();
+
+    /// Row the open Repair All operator repairs: Intersections or OpenEdges (Alpha Wrap: Intersections).
     [[nodiscard]] DefectCategory globalRepairTarget() const noexcept {
         return activeTool_ == ToolSlot::RepairAllHoles ? DefectCategory::OpenEdges : DefectCategory::Intersections;
     }
 
+    /// Methods the open operator offers.
+    [[nodiscard]] std::span<const GlobalRepairMethod> globalRepairMethods() const noexcept {
+        return activeTool_ == ToolSlot::AlphaWrap ? std::span<const GlobalRepairMethod>(kWrapMethods)
+                                                  : globalRepairMethodsFor(globalRepairTarget());
+    }
+
     [[nodiscard]] bool repairAllOpen() const noexcept {
-        return activeTool_ == ToolSlot::RepairAllIntersections || activeTool_ == ToolSlot::RepairAllHoles;
+        return activeTool_ == ToolSlot::RepairAllIntersections || activeTool_ == ToolSlot::RepairAllHoles ||
+               activeTool_ == ToolSlot::AlphaWrap;
     }
 
     [[nodiscard]] GlobalRepairMethod globalRepairMethod() const noexcept {

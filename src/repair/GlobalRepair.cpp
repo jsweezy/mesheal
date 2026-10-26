@@ -84,9 +84,17 @@ std::span<const GlobalRepairMethod> globalRepairMethodsFor(DefectCategory target
     return kGlobalRepairMethods;
 }
 
+double alphaWrapAlpha(const GlobalRepairParams& params, double diag) noexcept {
+    return diag / params.alphaWrapDetail;
+}
+
+double alphaWrapOffset(const GlobalRepairParams& params, double alpha) noexcept {
+    return params.alphaWrapOffset > 0.0 ? params.alphaWrapOffset : alpha / settings::kDefaultAlphaWrapOffsetRatio;
+}
+
 bool GlobalRepairParams::operator==(const GlobalRepairParams& other) const noexcept {
     return unionCrossingShells == other.unionCrossingShells && alphaWrapDetail == other.alphaWrapDetail &&
-           alphaWrapOffsetRatio == other.alphaWrapOffsetRatio && windingResolution == other.windingResolution &&
+           alphaWrapOffset == other.alphaWrapOffset && windingResolution == other.windingResolution &&
            simplifyRebuild == other.simplifyRebuild && islandSettings.dilationRings == other.islandSettings.dilationRings &&
            islandSettings.cgalMaxSteps == other.islandSettings.cgalMaxSteps &&
            holeMethod == other.holeMethod && holeSettings == other.holeSettings &&
@@ -150,8 +158,8 @@ RepairCandidate runGlobalRepair(
         repaired = windingNumberRebuild(scoped, params.windingResolution, &status);
         break;
     case GlobalRepairMethod::AlphaWrap: {
-        const double alpha = diag / params.alphaWrapDetail;
-        repaired = alphaWrap(scoped, alpha, alpha / params.alphaWrapOffsetRatio, &status);
+        const double alpha = alphaWrapAlpha(params, diag);
+        repaired = alphaWrap(scoped, alpha, alphaWrapOffset(params, alpha), &status);
         break;
     }
     }

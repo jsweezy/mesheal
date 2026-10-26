@@ -70,7 +70,9 @@ inline constexpr int    kMaxIslandRepairRounds            = 4;    // Repair All 
 inline constexpr double kDefaultAlphaWrapDetail           = 100.0;  // Alpha wrap: alpha = bbox diagonal / detail (larger = tighter, slower)
 inline constexpr double kMinAlphaWrapDetail               = 10.0;   // Lowest alpha-wrap detail offered
 inline constexpr double kMaxAlphaWrapDetail               = 1000.0; // Highest alpha-wrap detail offered (very slow on big meshes)
-inline constexpr double kDefaultAlphaWrapOffsetRatio      = 30.0;   // Alpha wrap: offset = alpha / ratio (distance of the wrap from the input)
+inline constexpr double kDefaultAlphaWrapOffsetRatio      = 30.0;   // Alpha wrap: automatic offset = alpha / ratio (CGAL's suggestion)
+inline constexpr double kMinAlphaWrapOffsetDiag           = 1.0e-5; // Smallest offset offered, as a fraction of the bbox diagonal
+inline constexpr double kMaxAlphaWrapOffsetDiag           = 0.05;   // Largest offset offered, as a fraction of the bbox diagonal
 inline constexpr int    kDefaultWindingGridResolution     = 128;    // Winding-number rebuild: grid cells along the longest bbox side
 inline constexpr int    kMinWindingGridResolution         = 16;     // Lowest winding-number grid resolution offered
 inline constexpr int    kMaxWindingGridResolution         = 512;    // Highest winding-number grid resolution offered

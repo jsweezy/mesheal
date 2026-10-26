@@ -221,6 +221,36 @@ TEST_CASE("Global repairs merge overlapping cubes into one clean shell", "[repai
     }
 }
 
+TEST_CASE("The alpha wrap lies the chosen offset outside the input", "[repair][global][wrap]") {
+    const ogun::Mesh cube = ogun::SampleMeshes::createCubeMesh(10.0);
+    ogun::GlobalRepairParams params;
+    params.alphaWrapDetail = 20.0; // coarse: keeps the test fast
+    const double alpha = ogun::alphaWrapAlpha(params, cube.boundingBox().diagonal());
+    REQUIRE(ogun::alphaWrapOffset(params, alpha) == Catch::Approx(alpha / 30.0)); // 0 = automatic
+
+    const ogun::RepairCandidate automatic = ogun::runGlobalRepair(cube, {}, ogun::GlobalRepairMethod::AlphaWrap, params);
+    params.alphaWrapOffset = alpha / 30.0;
+    const ogun::RepairCandidate same = ogun::runGlobalRepair(cube, {}, ogun::GlobalRepairMethod::AlphaWrap, params);
+    params.alphaWrapOffset = 0.5;
+    const ogun::RepairCandidate wide = ogun::runGlobalRepair(cube, {}, ogun::GlobalRepairMethod::AlphaWrap, params);
+    REQUIRE(automatic.success);
+    REQUIRE(same.success);
+    REQUIRE(wide.success);
+    REQUIRE(same.mesh.F == automatic.mesh.F);
+    REQUIRE(wide.metrics.watertight());
+
+    // The wrap stays about `offset` outside the cube: never closer, and the volume grows with it
+    for (const auto* c : {&automatic, &wide}) {
+        const double offset = ogun::alphaWrapOffset(c->params, alpha);
+        CAPTURE(offset);
+        REQUIRE(c->metrics.maxDeviation >= 0.9 * offset);
+        REQUIRE(c->metrics.maxDeviation <= 2.0 * offset);
+        REQUIRE(c->metrics.volumeAfter > 1000.0);
+    }
+    REQUIRE(wide.metrics.volumeAfter > automatic.metrics.volumeAfter + 100.0); // 10.5^3 - 10^3 is 157 before rounding
+    REQUIRE(wide.statusMessage.find("offset 0.5") != std::string::npos);
+}
+
 TEST_CASE("Winding-number rebuild of an axis-aligned cube has no degenerate faces", "[repair][intersections][global]") {
     // The cube's sides lie on grid planes unless the samples are shifted: w = 0.5 exactly there
     const ogun::Mesh cube = ogun::SampleMeshes::createCubeMesh(10.0);

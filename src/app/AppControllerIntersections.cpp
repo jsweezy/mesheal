@@ -186,6 +186,10 @@ void AppController::openRepairAllHoles() {
     openRepairAll(ToolSlot::RepairAllHoles, GlobalRepairMethod::FillHoles);
 }
 
+void AppController::openAlphaWrap() {
+    openRepairAll(ToolSlot::AlphaWrap, GlobalRepairMethod::AlphaWrap);
+}
+
 void AppController::setGlobalRepairMethod(GlobalRepairMethod method) {
     globalMethod_ = method;
     const auto it = std::find_if(globalCandidates_.begin(), globalCandidates_.end(),
@@ -199,6 +203,7 @@ void AppController::setGlobalRepairParams(const GlobalRepairParams& params) {
     globalParams_ = params;
     globalParams_.alphaWrapDetail =
         std::clamp(globalParams_.alphaWrapDetail, settings::kMinAlphaWrapDetail, settings::kMaxAlphaWrapDetail);
+    globalParams_.alphaWrapOffset = std::max(globalParams_.alphaWrapOffset, 0.0);
     globalParams_.windingResolution = std::clamp(globalParams_.windingResolution, settings::kMinWindingGridResolution,
                                                  settings::kMaxWindingGridResolution);
 }
@@ -208,7 +213,7 @@ void AppController::previewGlobalRepair() {
 }
 
 void AppController::compareAllGlobalRepairs() {
-    const std::span<const GlobalRepairMethod> methods = globalRepairMethodsFor(globalRepairTarget());
+    const std::span<const GlobalRepairMethod> methods = globalRepairMethods();
     queueGlobalRepairs(std::vector<GlobalRepairMethod>(methods.begin(), methods.end()));
 }
 
@@ -306,9 +311,10 @@ bool AppController::applyGlobalRepair() {
         return false;
     }
     const std::string label = globalRepairMethodLabel(candidate->method);
-    const DefectCategory target = globalRepairTarget();
     Mesh repaired = candidate->mesh;
-    pushUndoEntry(std::string(target == DefectCategory::OpenEdges ? "Repair All Holes (" : "Repair All Intersections (") + label + ")");
+    pushUndoEntry(activeTool_ == ToolSlot::AlphaWrap      ? std::string("Alpha Wrap")
+                  : activeTool_ == ToolSlot::RepairAllHoles ? "Repair All Holes (" + label + ")"
+                                                            : "Repair All Intersections (" + label + ")");
     finishMeshEdit(std::move(repaired));
     recheckCategory(DefectCategory::Intersections);
     lastRepairStatusMessage_ = "Applied " + label + ".";

@@ -199,3 +199,54 @@ TEST_CASE("Repair All runs in the background and respects the shell scope", "[ap
     REQUIRE(c->metrics.intersectingFacesAfter == 0);
     REQUIRE(crossings(c->mesh) > 0); // the second cube was left alone
 }
+
+TEST_CASE("Mesh > Clean Up > Alpha Wrap: one method, offset, apply and undo", "[app][global][wrap][undo][shells]") {
+    ogun::AppController controller;
+    ogun::Mesh mesh = ogun::SampleMeshes::createFoldedCubeMesh();
+    ogun::Mesh second = ogun::SampleMeshes::createFoldedCubeMesh();
+    second.V.rowwise() += Eigen::RowVector3d(20.0, 0.0, 0.0);
+    ogun::appendMesh(mesh, second);
+    controller.setMesh(std::move(mesh), "two folded cubes");
+    const ogun::Mesh before = controller.mesh();
+
+    controller.openAlphaWrap();
+    REQUIRE(controller.activeTool() == ogun::ToolSlot::AlphaWrap);
+    REQUIRE(controller.repairAllOpen());
+    REQUIRE(controller.globalRepairMethod() == GlobalRepairMethod::AlphaWrap);
+    REQUIRE(controller.globalRepairMethods().size() == 1);
+
+    ogun::GlobalRepairParams params = controller.globalRepairParams();
+    params.alphaWrapDetail = 20.0;
+    params.alphaWrapOffset = -1.0; // clamped to 0: automatic
+    controller.setGlobalRepairParams(params);
+    REQUIRE(controller.globalRepairParams().alphaWrapOffset == 0.0);
+    params.alphaWrapOffset = 0.4;
+    controller.setGlobalRepairParams(params);
+
+    // Only the shell in scope is wrapped
+    std::size_t first = 0;
+    for (std::size_t s = 0; s < controller.shells().size(); ++s) {
+        if (controller.shells().shell(s).bbox.max.x() < 10.0) {
+            first = s;
+        }
+    }
+    controller.clickShell(first, false, false, {});
+    controller.compareAllGlobalRepairs(); // the wrap only
+    REQUIRE(controller.globalCandidates().size() == 1);
+    const ogun::RepairCandidate* c = controller.shownGlobalCandidate();
+    REQUIRE(c != nullptr);
+    REQUIRE(c->success);
+    REQUIRE(c->params.alphaWrapOffset == 0.4);
+    REQUIRE(c->metrics.watertight());
+    REQUIRE(c->metrics.intersectingFacesAfter == 0);
+    REQUIRE(static_cast<std::size_t>(c->metrics.facesBefore) == controller.shells().shell(first).faces.size());
+    REQUIRE(controller.globalPreviewShown());
+
+    REQUIRE(controller.applyGlobalRepair());
+    REQUIRE(controller.lastUndoActionLabel() == "Alpha Wrap");
+    REQUIRE(controller.shells().size() == 2);
+    REQUIRE(crossings(controller.mesh()) > 0); // the second cube was left alone
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().F == before.F);
+    REQUIRE(controller.mesh().V == before.V);
+}

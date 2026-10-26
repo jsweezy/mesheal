@@ -142,6 +142,7 @@ void PolyscopeGui::drawRightColumn(float top, float bottom) {
     std::string title = slot == ToolSlot::UnitsAndScale            ? std::string("Operation: Units & Scale")
                         : slot == ToolSlot::RepairAllIntersections ? std::string("Operation: Repair All Intersections")
                         : slot == ToolSlot::RepairAllHoles         ? std::string("Operation: Repair All Holes")
+                        : slot == ToolSlot::AlphaWrap              ? std::string("Operation: Alpha Wrap")
                         : slot == ToolSlot::MergeShells            ? std::string("Operation: Merge Shells")
                         : std::string("Tool: ") + categoryInfo(*controller_.selectedCategory()).name;
     title += "###ToolSlot";
@@ -157,7 +158,7 @@ void PolyscopeGui::drawRightColumn(float top, float bottom) {
     if (ImGui::Begin(title.c_str(), &open, kDockedFlags | ImGuiWindowFlags_NoCollapse)) {
         if (slot == ToolSlot::UnitsAndScale) {
             drawUnitsAndScaleOperator();
-        } else if (slot == ToolSlot::RepairAllIntersections || slot == ToolSlot::RepairAllHoles) {
+        } else if (controller_.repairAllOpen()) {
             drawRepairAllOperator();
         } else if (slot == ToolSlot::MergeShells) {
             drawMergeShellsOperator();
@@ -407,6 +408,14 @@ void PolyscopeGui::drawMeshMenu() {
             requestSync();
         }
         tooltip("Selects the shells smaller than N faces in the Shells panel (Select... sets N).");
+        ImGui::Separator();
+        if (ImGui::MenuItem("Alpha Wrap...", nullptr, false, controller_.hasMesh())) {
+            controller_.openAlphaWrap();
+            showTool_ = true;
+            requestSync();
+        }
+        tooltip("Shrink-wrap the mesh (or the shells in scope) into a new watertight, manifold surface without "
+                "self-intersections (CGAL 3D Alpha Wrapping). Set alpha and offset, preview, then apply.");
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Shells", controller_.shells().multiShell())) {

@@ -207,7 +207,12 @@ void PolyscopeGui::drawRepairAllOperator() {
     }
     const DefectCategory target = controller_.globalRepairTarget();
     const CategoryHealth& row = controller_.categoryHealth(target);
-    if (target == DefectCategory::OpenEdges) {
+    const bool wrapOnly = controller_.activeTool() == ToolSlot::AlphaWrap;
+    if (wrapOnly) {
+        ImGui::TextWrapped("Wraps %s in a new surface that is always watertight, manifold and free of "
+                           "self-intersections. Every face is new: detail smaller than alpha is lost.",
+                           controller_.shells().scoped() ? "the shells in scope" : "the whole mesh");
+    } else if (target == DefectCategory::OpenEdges) {
         if (row.status == HealthStatus::Defects || row.status == HealthStatus::Ok) {
             const std::size_t holes = controller_.holeCountInScope();
             ImGui::TextWrapped("%s %s%s.", withThousands(holes).c_str(), holes == 1 ? "hole" : "holes",
@@ -226,12 +231,13 @@ void PolyscopeGui::drawRepairAllOperator() {
                             "The preview measures them anyway.");
     }
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-    ImGui::TextWrapped("Compare surgical and coarse repairs, then apply the one that suits this model. Every "
-                       "method shows its changes before anything is applied.");
+    ImGui::TextWrapped(wrapOnly ? "Preview shows the wrap and its numbers before anything is applied."
+                                : "Compare surgical and coarse repairs, then apply the one that suits this model. Every "
+                                  "method shows its changes before anything is applied.");
     ImGui::PopStyleColor();
 
     ImGui::SeparatorText("Method");
-    const std::span<const GlobalRepairMethod> methods = globalRepairMethodsFor(target);
+    const std::span<const GlobalRepairMethod> methods = controller_.globalRepairMethods();
     for (const GlobalMethodOption& option : kGlobalMethodOptions) {
         if (std::find(methods.begin(), methods.end(), option.method) == methods.end()) {
             continue;
@@ -258,12 +264,14 @@ void PolyscopeGui::drawRepairAllOperator() {
         requestSync();
     }
     tooltip("Compute the selected method on a copy of the mesh (in the background).");
-    ImGui::SameLine();
-    if (ImGui::Button("Compare all")) {
-        controller_.compareAllGlobalRepairs();
-        requestSync();
+    if (methods.size() > 1) {
+        ImGui::SameLine();
+        if (ImGui::Button("Compare all")) {
+            controller_.compareAllGlobalRepairs();
+            requestSync();
+        }
+        tooltip("Compute every method, one after another, and list them below.");
     }
-    tooltip("Compute every method, one after another, and list them below.");
     ImGui::EndDisabled();
     if (running) {
         ImGui::SameLine();
@@ -372,9 +380,30 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
         changed |= ImGui::SliderScalar("Detail (diagonal / alpha)", ImGuiDataType_Double, &params.alphaWrapDetail,
                                        &settings::kMinAlphaWrapDetail, &settings::kMaxAlphaWrapDetail, "%.0f",
                                        ImGuiSliderFlags_Logarithmic);
-        const double alpha = controller_.mesh().boundingBox().diagonal() / params.alphaWrapDetail;
-        tooltip("Higher detail = smaller alpha = a tighter wrap, but much slower on big meshes.");
+        const double diag = controller_.mesh().boundingBox().diagonal();
+        const double alpha = alphaWrapAlpha(params, diag);
+        tooltip("Higher detail = smaller alpha = a tighter wrap, but much slower on big meshes. Gaps and holes "
+                "narrower than about alpha are closed; wider ones are followed inside.");
         ImGui::TextDisabled("alpha = %s", lengthText(alpha, controller_.fileUnit()).c_str());
+
+        bool autoOffset = params.alphaWrapOffset <= 0.0;
+        if (ImGui::Checkbox("Automatic offset (alpha / 30)", &autoOffset)) {
+            params.alphaWrapOffset = autoOffset ? 0.0 : alphaWrapOffset(GlobalRepairParams{}, alpha);
+            changed = true;
+        }
+        tooltip("The offset is how far outside the input the wrap lies. CGAL suggests alpha / 30.");
+        if (!autoOffset) {
+            const double minOffset = diag * settings::kMinAlphaWrapOffsetDiag;
+            const double maxOffset = diag * settings::kMaxAlphaWrapOffsetDiag;
+            const std::string label = "Offset (" + std::string(unitSymbol(controller_.fileUnit())) + ")";
+            changed |= ImGui::SliderScalar(label.c_str(), ImGuiDataType_Double, &params.alphaWrapOffset, &minOffset,
+                                           &maxOffset, "%.3g", ImGuiSliderFlags_Logarithmic);
+            tooltip("Distance of the wrap outside the input surface. Smaller follows the input more closely (the "
+                    "volume grows less) but makes more faces and takes longer; larger rounds edges off. Ctrl/Cmd+click "
+                    "to type a value.");
+        }
+        ImGui::TextDisabled("offset = %s (alpha / %.3g)", lengthText(alphaWrapOffset(params, alpha), controller_.fileUnit()).c_str(),
+                            alpha / alphaWrapOffset(params, alpha));
         changed |= ImGui::Checkbox("Simplify to the original face count##wrap", &params.simplifyRebuild);
         break;
     }

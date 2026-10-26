@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <exception>
 #include <numeric>
 #include <unordered_map>
@@ -222,7 +223,9 @@ Mesh alphaWrap(const Mesh& mesh, double alpha, double offset, std::string* statu
         setStatus(statusOut, std::string("Alpha wrap failed: ") + e.what());
         return {};
     }
-    setStatus(statusOut, "Wrapped with alpha " + std::to_string(alpha) + ".");
+    std::array<char, 96> text{};
+    std::snprintf(text.data(), text.size(), "Wrapped with alpha %.3g and offset %.3g.", alpha, offset);
+    setStatus(statusOut, text.data());
     return fromCgalSurfaceMesh(wrap, mesh.fileUnit);
 }
 
