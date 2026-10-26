@@ -1,4 +1,5 @@
 #include "app/PolyscopeGui.hpp"
+#include "app/GuiWidgets.hpp"
 #include "core/Constants.hpp"
 #include "core/Settings.hpp"
 
@@ -325,6 +326,7 @@ void PolyscopeGui::drawUiFrame() {
         drawNavigationHelpWindow();
     }
     drawModalPopups();
+    drawFaceSelectOverlay();
     layoutResetPending_ = false;
 
     // Deferred: deleting rebuilds the shell list the Shells table may still be iterating
@@ -378,6 +380,11 @@ void PolyscopeGui::handleViewportMouseNavigation() {
         }
     }
 
+    // Select modes own the mouse (a box drag keeps it even over a panel)
+    if (faceSelectMode_ != FaceSelectMode::None && (boxDragging_ || !(io.WantCaptureMouse || widgetCapturedMouse))) {
+        handleFaceSelectTool();
+        return;
+    }
     if (io.WantCaptureMouse || widgetCapturedMouse) {
         return;
     }
@@ -481,6 +488,13 @@ void PolyscopeGui::handleViewportFacePick(const polyscope::PickResult& pickResul
     const Eigen::Index face = faceMap ? (*faceMap)[localFace] : static_cast<Eigen::Index>(localFace);
     // Alt+click selects the shell (Cmd/Ctrl too: toggles it); a plain click never changes the shell selection
     const ImGuiIO& io = ImGui::GetIO();
+    // Shift+click toggles the face in the face selection (Blender)
+    if (io.KeyShift && !io.KeyAlt) {
+        controller_.toggleFaceSelected(face);
+        controller_.postStatusMessage(gui::withThousands(controller_.selectedFaceCount()) + " faces selected.");
+        requestSync();
+        return;
+    }
     if (io.KeyAlt && controller_.shells().multiShell()) {
         if (controller_.pickShell(face, io.KeyCtrl || io.KeySuper)) {
             showShells_ = true;
@@ -642,9 +656,15 @@ void PolyscopeGui::handleKeyboardShortcuts() {
         return;
     }
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
-        if (controller_.escape()) {
+        if (faceSelectMode_ != FaceSelectMode::None) {
+            exitFaceSelectMode(); // first Esc only leaves box / circle select
+        } else if (controller_.escape()) {
             requestSync();
         }
+    }
+    if (faceSelectMode_ == FaceSelectMode::Circle &&
+        (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false))) {
+        exitFaceSelectMode();
     }
     if (!controller_.hasMesh() || mod) {
         return;
@@ -657,6 +677,22 @@ void PolyscopeGui::handleKeyboardShortcuts() {
     }
     if (ImGui::IsKeyPressed(ImGuiKey_G, false)) {
         toggleGhost();
+    }
+    // Face selection, with Blender's keys
+    if (ImGui::IsKeyPressed(ImGuiKey_B, false)) {
+        startFaceSelectMode(FaceSelectMode::Box);
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_C, false)) {
+        startFaceSelectMode(FaceSelectMode::Circle);
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_A, false)) {
+        if (io.KeyAlt) {
+            controller_.clearFaceSelection();
+        } else {
+            controller_.selectAllFaces();
+        }
+        controller_.postStatusMessage(gui::withThousands(controller_.selectedFaceCount()) + " faces selected.");
+        requestSync();
     }
     if (controller_.shells().multiShell()) {
         if (ImGui::IsKeyPressed(ImGuiKey_I, false)) {

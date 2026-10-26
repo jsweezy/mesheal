@@ -1,6 +1,7 @@
 add_executable(ogun_app_tests
     AppControllerTests.cpp
     DefectBrowserTests.cpp
+    FaceSelectionTests.cpp
     HealthModelTests.cpp
     HoleRepairTests.cpp
     IntersectionRepairTests.cpp

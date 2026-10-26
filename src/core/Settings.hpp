@@ -71,6 +71,10 @@ inline constexpr double kDefaultAlphaWrapDetail           = 100.0;  // Alpha wra
 inline constexpr double kMinAlphaWrapDetail               = 10.0;   // Lowest alpha-wrap detail offered
 inline constexpr double kMaxAlphaWrapDetail               = 1000.0; // Highest alpha-wrap detail offered (very slow on big meshes)
 inline constexpr double kDefaultAlphaWrapOffsetRatio      = 30.0;   // Alpha wrap: automatic offset = alpha / ratio (CGAL's suggestion)
+inline constexpr double kDefaultDecimateRatio             = 0.5;    // Mesh > Simplify > Decimate: keep this fraction of the faces
+inline constexpr double kMinDecimateRatio                 = 0.01;   // Smallest decimation ratio offered
+inline constexpr double kMaxDecimateRatio                 = 1.0;    // Largest decimation ratio offered (no change)
+inline constexpr double kDefaultMergeDistanceMm           = 0.05;   // Mesh > Clean Up > Weld / Merge Vertices: merge distance in mm
 inline constexpr double kMinAlphaWrapOffsetDiag           = 1.0e-5; // Smallest offset offered, as a fraction of the bbox diagonal
 inline constexpr double kMaxAlphaWrapOffsetDiag           = 0.05;   // Largest offset offered, as a fraction of the bbox diagonal
 inline constexpr int    kDefaultWindingGridResolution     = 128;    // Winding-number rebuild: grid cells along the longest bbox side
@@ -129,6 +133,10 @@ inline constexpr float kMaxUiScale             = 2.5f;            // Maximum Pre
 // -----------------------------------------------------------------------------
 inline constexpr bool   kDefaultColorByShell     = true;          // Shells panel "Color by shell" starts on for multi-shell meshes
 inline constexpr std::array<double, 3> kDefaultShellSelectedColor = {0.40, 0.70, 1.00}; // RGB tint of selected shells (not a defect color)
+inline constexpr std::array<double, 3> kDefaultFaceSelectionColor = {0.60, 0.40, 1.00}; // RGB of faces selected with B / C / Shift+click
+inline constexpr float kDefaultCircleSelectRadiusPx = 30.0f;  // Circle select (C) brush radius in screen points
+inline constexpr float kMinCircleSelectRadiusPx     = 4.0f;   // Smallest circle-select radius (mouse wheel)
+inline constexpr float kMaxCircleSelectRadiusPx     = 300.0f; // Largest circle-select radius (mouse wheel)
 inline constexpr double kShellSelectedTintWeight = 0.65;          // Blend weight of the selected-shell tint over the shell color
 inline constexpr double kShellHueMin             = 0.28;          // Shell colors use hues [min, min + span]: green..purple, no red/orange/yellow
 inline constexpr double kShellHueSpan            = 0.55;          // Width of the shell hue band (HSV hue in [0, 1])

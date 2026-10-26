@@ -177,6 +177,7 @@ void AppController::setMesh(Mesh mesh, std::string sourceLabel) {
 void AppController::replaceMeshPreservingHistory(Mesh mesh, std::optional<ShellBrowser> shells) {
     mesh_ = std::move(mesh);
     ++meshGeneration_;
+    clearFaceSelection(); // face numbers change
     rebuildCgalMesh();
     if (shells) {
         shells_ = std::move(*shells);
@@ -795,6 +796,9 @@ bool AppController::escape() {
     }
     if (pickedFaceIndex_ >= 0 || selectedCategory_ || activeTool_ != ToolSlot::None) {
         clearSelection();
+        return true;
+    }
+    if (clearFaceSelection()) {
         return true;
     }
     if (shells_.selectedCount() > 0) {
@@ -1514,6 +1518,15 @@ HighlightOverlayGeometry AppController::buildHighlightOverlay() const {
             }
             for (const Eigen::Index f : shell.faces) {
                 overlay.faceColors[static_cast<std::size_t>(f)] = color;
+            }
+        }
+    }
+    // Then the face selection (B / C / Shift+click)
+    if (faceSelectedCount_ > 0) {
+        const Eigen::Vector3d selected = rgbFromArray(settings::kDefaultFaceSelectionColor);
+        for (std::size_t f = 0; f < faceSelected_.size() && f < numFaces; ++f) {
+            if (faceSelected_[f] != 0) {
+                overlay.faceColors[f] = selected;
             }
         }
     }

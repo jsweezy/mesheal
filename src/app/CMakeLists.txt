@@ -5,7 +5,9 @@ add_library(ogun_app_controller STATIC
     AppControllerHoles.cpp
     AppControllerIntersections.cpp
     AppControllerMerge.cpp
+    AppControllerSelection.cpp
     DefectBrowser.cpp
+    FaceSelection.cpp
     HealthCheckRunner.cpp
     MergeJobRunner.cpp
     RepairJobRunner.cpp
@@ -46,6 +48,7 @@ if(OGUN_BUILD_GUI)
         PolyscopeGuiHealth.cpp
         PolyscopeGuiHoles.cpp
         PolyscopeGuiIntersections.cpp
+        PolyscopeGuiSelection.cpp
         PolyscopeGuiShells.cpp
         GuiWidgets.cpp
         MacAppIcon.cpp

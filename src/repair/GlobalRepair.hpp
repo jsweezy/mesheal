@@ -24,7 +24,9 @@ enum class GlobalRepairMethod {
     PatchIslands,    ///< Every within-shell island gets its recommended local repair (+ fallbacks)
     SelfUnion,       ///< Cut along every crossing and keep the outer surface; keeps other faces exactly
     WindingRebuild,  ///< New surface: marching cubes of the winding number on a grid
-    AlphaWrap        ///< New surface: CGAL alpha wrap (always watertight and manifold)
+    AlphaWrap,       ///< New surface: CGAL alpha wrap (always watertight and manifold)
+    Decimate,        ///< Mesh > Simplify > Decimate: edge collapse of the faces in scope
+    MergeVertices    ///< Mesh > Clean Up > Weld / Merge Vertices: merge by distance in scope
 };
 
 inline constexpr std::array<GlobalRepairMethod, 4> kGlobalRepairMethods = {
@@ -53,6 +55,10 @@ struct GlobalRepairParams {
     /// (a length; 0 = automatic, alpha / kDefaultAlphaWrapOffsetRatio).
     double alphaWrapDetail = settings::kDefaultAlphaWrapDetail;
     double alphaWrapOffset = 0.0;
+    /// Decimate: fraction of the faces in scope to keep.
+    double decimateRatio = settings::kDefaultDecimateRatio;
+    /// Merge vertices: distance in millimetres (converted to the mesh's unit).
+    double mergeDistanceMm = settings::kDefaultMergeDistanceMm;
     /// Winding-number rebuild: grid cells along the longest side.
     int windingResolution = settings::kDefaultWindingGridResolution;
     /// Rebuilds (winding / wrap): simplify back to the in-scope face count when larger.
@@ -70,8 +76,16 @@ struct GlobalRepairParams {
 [[nodiscard]] double alphaWrapAlpha(const GlobalRepairParams& params, double diag) noexcept;
 [[nodiscard]] double alphaWrapOffset(const GlobalRepairParams& params, double alpha) noexcept;
 
-/// The Mesh > Clean Up > Alpha Wrap operator offers only the wrap.
+/// The Mesh-menu operators built on the same panel offer one method each.
 inline constexpr std::array<GlobalRepairMethod, 1> kWrapMethods = {GlobalRepairMethod::AlphaWrap};
+inline constexpr std::array<GlobalRepairMethod, 1> kDecimateMethods = {GlobalRepairMethod::Decimate};
+inline constexpr std::array<GlobalRepairMethod, 1> kMergeMethods = {GlobalRepairMethod::MergeVertices};
+
+/// Methods that edit the faces in scope in place (the rest of the mesh keeps its vertices), so the
+/// scope may be any set of faces, not just whole shells.
+[[nodiscard]] constexpr bool editsInPlace(GlobalRepairMethod method) noexcept {
+    return method == GlobalRepairMethod::Decimate || method == GlobalRepairMethod::MergeVertices;
+}
 
 /// One computed "Repair All" result, ready to preview and apply.
 struct RepairCandidate {

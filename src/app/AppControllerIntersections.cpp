@@ -190,6 +190,14 @@ void AppController::openAlphaWrap() {
     openRepairAll(ToolSlot::AlphaWrap, GlobalRepairMethod::AlphaWrap);
 }
 
+void AppController::openDecimate() {
+    openRepairAll(ToolSlot::Decimate, GlobalRepairMethod::Decimate);
+}
+
+void AppController::openMergeVertices() {
+    openRepairAll(ToolSlot::MergeVertices, GlobalRepairMethod::MergeVertices);
+}
+
 void AppController::setGlobalRepairMethod(GlobalRepairMethod method) {
     globalMethod_ = method;
     const auto it = std::find_if(globalCandidates_.begin(), globalCandidates_.end(),
@@ -204,6 +212,8 @@ void AppController::setGlobalRepairParams(const GlobalRepairParams& params) {
     globalParams_.alphaWrapDetail =
         std::clamp(globalParams_.alphaWrapDetail, settings::kMinAlphaWrapDetail, settings::kMaxAlphaWrapDetail);
     globalParams_.alphaWrapOffset = std::max(globalParams_.alphaWrapOffset, 0.0);
+    globalParams_.decimateRatio = std::clamp(globalParams_.decimateRatio, settings::kMinDecimateRatio, settings::kMaxDecimateRatio);
+    globalParams_.mergeDistanceMm = std::max(globalParams_.mergeDistanceMm, 0.0);
     globalParams_.windingResolution = std::clamp(globalParams_.windingResolution, settings::kMinWindingGridResolution,
                                                  settings::kMaxWindingGridResolution);
 }
@@ -224,7 +234,7 @@ void AppController::queueGlobalRepairs(std::vector<GlobalRepairMethod> methods) 
     globalParams_.checkParams = checkParams();
     globalParams_.islandSettings = islandSettings_;
     globalParams_.holeSettings = holeSettings_;
-    RepairRequest request{meshGeneration_, std::make_shared<const Mesh>(mesh_), repairScopeMask(), std::move(methods), globalParams_};
+    RepairRequest request{meshGeneration_, std::make_shared<const Mesh>(mesh_), operatorScopeMask(), std::move(methods), globalParams_};
     if (backgroundChecks_) {
         repairRunner_.start(std::move(request));
         postStatusMessage("Computing Repair All preview...");
@@ -312,7 +322,9 @@ bool AppController::applyGlobalRepair() {
     }
     const std::string label = globalRepairMethodLabel(candidate->method);
     Mesh repaired = candidate->mesh;
-    pushUndoEntry(activeTool_ == ToolSlot::AlphaWrap      ? std::string("Alpha Wrap")
+    pushUndoEntry(activeTool_ == ToolSlot::AlphaWrap       ? std::string("Alpha Wrap")
+                  : activeTool_ == ToolSlot::Decimate      ? std::string("Decimate")
+                  : activeTool_ == ToolSlot::MergeVertices ? std::string("Merge Vertices")
                   : activeTool_ == ToolSlot::RepairAllHoles ? "Repair All Holes (" + label + ")"
                                                             : "Repair All Intersections (" + label + ")");
     finishMeshEdit(std::move(repaired));

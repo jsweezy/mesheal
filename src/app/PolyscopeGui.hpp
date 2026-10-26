@@ -118,6 +118,16 @@ private:
     void fixAll(DefectCategory category);
     void checkMesh();
 
+    // ---- Face selection tools: box (B), circle (C), Shift+click (PolyscopeGuiSelection.cpp) ----
+    enum class FaceSelectMode { None, Box, Circle };
+    [[nodiscard]] ScreenView currentScreenView() const;
+    void startFaceSelectMode(FaceSelectMode mode);
+    void exitFaceSelectMode();
+    /// Mouse input while a select mode is on (instead of the camera).
+    void handleFaceSelectTool();
+    void drawFaceSelectOverlay();
+    void drawSelectFacesMenu();
+
     // ---- Viewport input & Polyscope sync (PolyscopeGui.cpp) ----
     void handleViewportMouseNavigation();
     void handleKeyboardShortcuts();
@@ -197,6 +207,14 @@ private:
 
     // Tool panel
     bool scrollListToFocus_ = false;
+
+    // Face selection tools
+    FaceSelectMode faceSelectMode_ = FaceSelectMode::None;
+    float circleRadiusPx_ = settings::kDefaultCircleSelectRadiusPx;
+    bool boxDragging_ = false;
+    bool boxRemoves_ = false;
+    Eigen::Vector2d boxStart_ = Eigen::Vector2d::Zero();
+    Eigen::Vector2d lastPaint_ = Eigen::Vector2d::Constant(-1.0e9);
 
     // Shells panel
     int smallShellFaces_ = settings::kDefaultSmallShellFaces;

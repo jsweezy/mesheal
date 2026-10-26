@@ -2,6 +2,7 @@ add_library(ogun_repair STATIC
     GlobalRepair.cpp
     HoleFiller.cpp
     IntersectionHealer.cpp
+    MeshCleanup.cpp
     NonManifoldSplit.cpp
     RepairMetrics.cpp
     ShellMerge.cpp

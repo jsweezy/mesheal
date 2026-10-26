@@ -1,6 +1,7 @@
 add_executable(ogun_repair_tests
     HoleFillingTests.cpp
     IntersectionHealerTests.cpp
+    MeshCleanupTests.cpp
     NonManifoldSplitTests.cpp
     ShellMergeTests.cpp
     SliverHealerTests.cpp

@@ -46,7 +46,7 @@ struct GlobalMethodOption {
     const char* help;
 };
 
-constexpr std::array<GlobalMethodOption, 5> kGlobalMethodOptions = {{
+constexpr std::array<GlobalMethodOption, 7> kGlobalMethodOptions = {{
     {GlobalRepairMethod::FillHoles, "keeps every other face exactly",
      "Surgical: each hole gets its recommended fill (Flat holes Fill Flat, Curved holes Fill Smooth, cracks "
      "Close Crack), or the method chosen below. Every existing face is kept; holes over the size limit and open "
@@ -64,6 +64,14 @@ constexpr std::array<GlobalMethodOption, 5> kGlobalMethodOptions = {{
      "CGAL alpha wrap: guaranteed watertight, 2-manifold and free of crossings. Every face is new; cavities "
      "smaller than alpha and shells nested inside others are lost. Holes narrower than about alpha are spanned; "
      "through bigger ones the wrap follows the inside, and an open sheet becomes a thin closed shell."},
+    {GlobalRepairMethod::Decimate, "fewer faces, same shape",
+     "Garland-Heckbert edge collapse (CGAL) down to the chosen fraction of the faces. Collapses that would flip a "
+     "face are skipped; hole rims and the edge of a face selection never move, so the rest of the mesh is kept "
+     "exactly."},
+    {GlobalRepairMethod::MergeVertices, "welds vertices closer than the distance",
+     "Merges every vertex within the distance of an earlier one (no vertex moves farther than the distance). "
+     "Faces that collapse are removed, as are faces that become copies of another. Closes small gaps between "
+     "unwelded patches and removes tiny faces; between shells that only touch it creates non-manifold edges."},
 }};
 
 /// Length with the current unit ("0.012 mm").
@@ -207,11 +215,15 @@ void PolyscopeGui::drawRepairAllOperator() {
     }
     const DefectCategory target = controller_.globalRepairTarget();
     const CategoryHealth& row = controller_.categoryHealth(target);
-    const bool wrapOnly = controller_.activeTool() == ToolSlot::AlphaWrap;
-    if (wrapOnly) {
+    const ToolSlot slot = controller_.activeTool();
+    const bool wrapOnly = slot == ToolSlot::AlphaWrap || slot == ToolSlot::Decimate || slot == ToolSlot::MergeVertices;
+    if (slot == ToolSlot::AlphaWrap) {
         ImGui::TextWrapped("Wraps %s in a new surface that is always watertight, manifold and free of "
                            "self-intersections. Every face is new: detail smaller than alpha is lost.",
                            controller_.shells().scoped() ? "the shells in scope" : "the whole mesh");
+    } else if (slot == ToolSlot::Decimate || slot == ToolSlot::MergeVertices) {
+        ImGui::TextWrapped("%s %s.", slot == ToolSlot::Decimate ? "Reduces the faces of" : "Merges close vertices of",
+                           controller_.operatorScopeText().c_str());
     } else if (target == DefectCategory::OpenEdges) {
         if (row.status == HealthStatus::Defects || row.status == HealthStatus::Ok) {
             const std::size_t holes = controller_.holeCountInScope();
@@ -231,7 +243,7 @@ void PolyscopeGui::drawRepairAllOperator() {
                             "The preview measures them anyway.");
     }
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-    ImGui::TextWrapped(wrapOnly ? "Preview shows the wrap and its numbers before anything is applied."
+    ImGui::TextWrapped(wrapOnly ? "Preview shows the result and its numbers before anything is applied."
                                 : "Compare surgical and coarse repairs, then apply the one that suits this model. Every "
                                   "method shows its changes before anything is applied.");
     ImGui::PopStyleColor();
@@ -376,6 +388,34 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
         tooltip("More cells keep more detail but take longer and give more faces.");
         changed |= ImGui::Checkbox("Simplify to the original face count##winding", &params.simplifyRebuild);
         break;
+    case GlobalRepairMethod::Decimate: {
+        changed |= ImGui::SliderScalar("Ratio (faces kept)", ImGuiDataType_Double, &params.decimateRatio,
+                                       &settings::kMinDecimateRatio, &settings::kMaxDecimateRatio, "%.2f",
+                                       ImGuiSliderFlags_Logarithmic);
+        tooltip("Fraction of the faces to keep: 0.5 halves them. Ctrl/Cmd+click to type a value.");
+        const std::size_t faces = controller_.operatorScopeFaceCount();
+        ImGui::TextDisabled("%s faces -> about %s", withThousands(faces).c_str(),
+                            withThousands(static_cast<std::size_t>(std::lround(params.decimateRatio * static_cast<double>(faces)))).c_str());
+        break;
+    }
+    case GlobalRepairMethod::MergeVertices: {
+        // Edited in the file's unit, stored in millimetres
+        const Unit unit = controller_.fileUnit();
+        const double toFile = unitConversionFactor(Unit::Millimeter, unit);
+        double distance = params.mergeDistanceMm * toFile;
+        const std::string label = "Distance (" + std::string(unitSymbol(unit)) + ")";
+        if (ImGui::InputDouble(label.c_str(), &distance, 0.0, 0.0, "%.4g", ImGuiInputTextFlags_EnterReturnsTrue)) {
+            params.mergeDistanceMm = std::max(distance, 0.0) / toFile;
+            changed = true;
+        }
+        tooltip("Vertices closer than this are merged (default 0.05 mm). Press Enter to apply.");
+        const double meanEdge = controller_.meanEdgeLength();
+        if (meanEdge > 0.0) {
+            ImGui::TextDisabled("mean edge %s: the distance is %.2g of it", lengthText(meanEdge, unit).c_str(),
+                                distance / meanEdge);
+        }
+        break;
+    }
     case GlobalRepairMethod::AlphaWrap: {
         changed |= ImGui::SliderScalar("Detail (diagonal / alpha)", ImGuiDataType_Double, &params.alphaWrapDetail,
                                        &settings::kMinAlphaWrapDetail, &settings::kMaxAlphaWrapDetail, "%.0f",

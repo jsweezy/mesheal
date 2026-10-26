@@ -1,6 +1,8 @@
 #include "repair/GlobalRepair.hpp"
 
 #include "diagnostics/SelfIntersections.hpp"
+#include "mesh/Units.hpp"
+#include "repair/MeshCleanup.hpp"
 #include "repair/SurfaceRebuild.hpp"
 
 #include <chrono>
@@ -14,6 +16,46 @@ void report(std::atomic<float>* progress, float value) {
     if (progress != nullptr) {
         progress->store(value);
     }
+}
+
+/// Decimate / merge: edit the faces in scope inside the whole mesh, so the scope may be any faces.
+RepairCandidate runInPlace(const Mesh& mesh, std::span<const std::uint8_t> faceInScope, RepairCandidate candidate,
+                           std::stop_token stopToken, std::atomic<float>* progress) {
+    const GlobalRepairParams& params = candidate.params;
+    const auto start = std::chrono::steady_clock::now();
+    Mesh result;
+    if (candidate.method == GlobalRepairMethod::Decimate) {
+        DecimateResult r = decimate(mesh, params.decimateRatio, faceInScope);
+        candidate.statusMessage = r.statusMessage;
+        result = std::move(r.mesh);
+    } else {
+        const double distance = params.mergeDistanceMm * unitConversionFactor(Unit::Millimeter, mesh.fileUnit);
+        MergeByDistanceResult r = mergeByDistance(mesh, distance, faceInScope);
+        candidate.statusMessage = r.statusMessage;
+        result = std::move(r.mesh);
+    }
+    const double elapsedMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    if (stopToken.stop_requested()) {
+        candidate.cancelled = true;
+        candidate.statusMessage = "Cancelled.";
+        return candidate;
+    }
+    if (result.empty()) {
+        return candidate;
+    }
+    report(progress, 0.7f);
+    const FaceDiff diff = faceDiff(mesh, result);
+    candidate.changedFaces = diff.added;
+    candidate.removedFaces = diff.removed;
+    candidate.vertexDeviation = vertexDeviation(result, mesh);
+    report(progress, 0.8f);
+    candidate.metrics = computeRepairMetrics(mesh, result, params.checkParams, stopToken);
+    candidate.metrics.elapsedMs = elapsedMs;
+    candidate.mesh = std::move(result);
+    candidate.cancelled = stopToken.stop_requested();
+    candidate.success = !candidate.cancelled;
+    report(progress, 1.0f);
+    return candidate;
 }
 
 /// Self-union of each shell that crosses itself; the others are copied as they are.
@@ -73,6 +115,10 @@ const char* globalRepairMethodLabel(GlobalRepairMethod method) noexcept {
         return "Winding-number rebuild";
     case GlobalRepairMethod::AlphaWrap:
         return "Alpha wrap";
+    case GlobalRepairMethod::Decimate:
+        return "Decimate";
+    case GlobalRepairMethod::MergeVertices:
+        return "Merge by distance";
     }
     return "?";
 }
@@ -94,7 +140,8 @@ double alphaWrapOffset(const GlobalRepairParams& params, double alpha) noexcept 
 
 bool GlobalRepairParams::operator==(const GlobalRepairParams& other) const noexcept {
     return unionCrossingShells == other.unionCrossingShells && alphaWrapDetail == other.alphaWrapDetail &&
-           alphaWrapOffset == other.alphaWrapOffset && windingResolution == other.windingResolution &&
+           alphaWrapOffset == other.alphaWrapOffset && decimateRatio == other.decimateRatio &&
+           mergeDistanceMm == other.mergeDistanceMm && windingResolution == other.windingResolution &&
            simplifyRebuild == other.simplifyRebuild && islandSettings.dilationRings == other.islandSettings.dilationRings &&
            islandSettings.cgalMaxSteps == other.islandSettings.cgalMaxSteps &&
            holeMethod == other.holeMethod && holeSettings == other.holeSettings &&
@@ -124,6 +171,9 @@ RepairCandidate runGlobalRepair(
         return candidate;
     }
     report(progress, 0.05f);
+    if (editsInPlace(method)) {
+        return runInPlace(mesh, faceInScope, std::move(candidate), stopToken, progress);
+    }
 
     const auto start = std::chrono::steady_clock::now();
     Mesh repaired;
@@ -162,6 +212,9 @@ RepairCandidate runGlobalRepair(
         repaired = alphaWrap(scoped, alpha, alphaWrapOffset(params, alpha), &status);
         break;
     }
+    case GlobalRepairMethod::Decimate:
+    case GlobalRepairMethod::MergeVertices:
+        break; // runInPlace
     }
     if (params.simplifyRebuild && !repaired.empty() &&
         (method == GlobalRepairMethod::WindingRebuild || method == GlobalRepairMethod::AlphaWrap)) {

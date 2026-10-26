@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/DefectBrowser.hpp"
+#include "app/FaceSelection.hpp"
 #include "app/HealthCheckRunner.hpp"
 #include "app/MergeJobRunner.hpp"
 #include "app/RepairJobRunner.hpp"
@@ -83,7 +84,17 @@ struct ShellHealth {
 enum class WatertightState { Unknown, Watertight, NotWatertight };
 
 /// What the right-column Tool slot shows (one tool at a time).
-enum class ToolSlot { None, DefectCategory, UnitsAndScale, RepairAllIntersections, RepairAllHoles, AlphaWrap, MergeShells };
+enum class ToolSlot {
+    None,
+    DefectCategory,
+    UnitsAndScale,
+    RepairAllIntersections,
+    RepairAllHoles,
+    AlphaWrap,
+    Decimate,
+    MergeVertices,
+    MergeShells
+};
 
 /// One line of the Merge Shells checklist (UI_DESIGN.md §16.3), built from Mesh Health.
 struct MergeCheck {
@@ -950,6 +961,52 @@ public:
     /// Opens "Operation: Alpha Wrap" (Mesh > Clean Up): the same operator with only the wrap.
     void openAlphaWrap();
 
+    // -------------------------------------------------------------------------
+    // Face selection: Shift+click, box (B) and circle (C) in the viewport (AppControllerSelection.cpp).
+    // Decimate and Merge Vertices work on the selected faces when there are any.
+    // -------------------------------------------------------------------------
+
+    [[nodiscard]] std::size_t selectedFaceCount() const noexcept {
+        return faceSelectedCount_;
+    }
+
+    [[nodiscard]] bool faceSelected(Eigen::Index face) const noexcept {
+        return face >= 0 && static_cast<std::size_t>(face) < faceSelected_.size() &&
+               faceSelected_[static_cast<std::size_t>(face)] != 0;
+    }
+
+    /// Adds (`select`) or removes the faces; returns how many changed.
+    std::size_t selectFaces(std::span<const Eigen::Index> faces, bool select);
+    void toggleFaceSelected(Eigen::Index face);
+    void selectAllFaces();
+    /// Returns false when nothing was selected.
+    bool clearFaceSelection();
+
+    /// Box / circle selection of the faces whose centre is inside the shape on screen; only the faces
+    /// seen there unless `selectThrough()` (Blender's X-ray). Returns how many changed.
+    std::size_t selectFacesInRectangle(const ScreenView& view, const Eigen::Vector2d& a, const Eigen::Vector2d& b, bool select);
+    std::size_t selectFacesInCircle(const ScreenView& view, const Eigen::Vector2d& center, double radius, bool select);
+
+    [[nodiscard]] bool selectThrough() const noexcept {
+        return selectThrough_;
+    }
+    void setSelectThrough(bool through) noexcept {
+        selectThrough_ = through;
+    }
+
+    /// Faces Decimate / Merge Vertices work on: the selected faces, else the shells in scope (empty = all).
+    [[nodiscard]] std::vector<std::uint8_t> operatorScopeMask() const;
+    [[nodiscard]] std::size_t operatorScopeFaceCount() const;
+    /// "the 1,204 selected faces", "the shells in scope" or "the whole mesh".
+    [[nodiscard]] std::string operatorScopeText() const;
+    [[nodiscard]] double meanEdgeLength() const;
+
+    /// Opens "Operation: Decimate" (Mesh > Simplify) on the same operator.
+    void openDecimate();
+
+    /// Opens "Operation: Merge Vertices" (Mesh > Clean Up > Weld / Merge Vertices) on the same operator.
+    void openMergeVertices();
+
     /// Row the open Repair All operator repairs: Intersections or OpenEdges (Alpha Wrap: Intersections).
     [[nodiscard]] DefectCategory globalRepairTarget() const noexcept {
         return activeTool_ == ToolSlot::RepairAllHoles ? DefectCategory::OpenEdges : DefectCategory::Intersections;
@@ -957,13 +1014,23 @@ public:
 
     /// Methods the open operator offers.
     [[nodiscard]] std::span<const GlobalRepairMethod> globalRepairMethods() const noexcept {
-        return activeTool_ == ToolSlot::AlphaWrap ? std::span<const GlobalRepairMethod>(kWrapMethods)
-                                                  : globalRepairMethodsFor(globalRepairTarget());
+        switch (activeTool_) {
+        case ToolSlot::AlphaWrap:
+            return kWrapMethods;
+        case ToolSlot::Decimate:
+            return kDecimateMethods;
+        case ToolSlot::MergeVertices:
+            return kMergeMethods;
+        default:
+            return globalRepairMethodsFor(globalRepairTarget());
+        }
     }
 
+    /// True for the Repair All operators and the Mesh-menu operators built on them.
     [[nodiscard]] bool repairAllOpen() const noexcept {
         return activeTool_ == ToolSlot::RepairAllIntersections || activeTool_ == ToolSlot::RepairAllHoles ||
-               activeTool_ == ToolSlot::AlphaWrap;
+               activeTool_ == ToolSlot::AlphaWrap || activeTool_ == ToolSlot::Decimate ||
+               activeTool_ == ToolSlot::MergeVertices;
     }
 
     [[nodiscard]] GlobalRepairMethod globalRepairMethod() const noexcept {
@@ -1169,6 +1236,11 @@ private:
     std::optional<DefectCategory> selectedCategory_;
     DefectBrowser browser_;
     ToolSlot activeTool_ = ToolSlot::None;
+    std::vector<std::uint8_t> faceSelected_;
+    std::size_t faceSelectedCount_ = 0;
+    bool selectThrough_ = false;
+    mutable FaceVisibility faceVisibility_;
+    mutable std::uint64_t faceVisibilityGeneration_ = 0;
     std::size_t listCap_ = settings::kDefaultListCap;
     std::size_t overlayCap_ = settings::kDefaultOverlayCap;
     Eigen::Index pickedFaceIndex_ = -1;   ///< Face clicked with no row containing it

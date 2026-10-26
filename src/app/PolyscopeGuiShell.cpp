@@ -143,6 +143,8 @@ void PolyscopeGui::drawRightColumn(float top, float bottom) {
                         : slot == ToolSlot::RepairAllIntersections ? std::string("Operation: Repair All Intersections")
                         : slot == ToolSlot::RepairAllHoles         ? std::string("Operation: Repair All Holes")
                         : slot == ToolSlot::AlphaWrap              ? std::string("Operation: Alpha Wrap")
+                        : slot == ToolSlot::Decimate               ? std::string("Operation: Decimate")
+                        : slot == ToolSlot::MergeVertices          ? std::string("Operation: Merge Vertices")
                         : slot == ToolSlot::MergeShells            ? std::string("Operation: Merge Shells")
                         : std::string("Tool: ") + categoryInfo(*controller_.selectedCategory()).name;
     title += "###ToolSlot";
@@ -294,7 +296,7 @@ void PolyscopeGui::drawEditMenu() {
     plannedMenuItem("Redo", "Planned.");
     plannedMenuItem("Undo History...", "Planned.");
     ImGui::Separator();
-    if (ImGui::BeginMenu("Select", controller_.browsableResult())) {
+    if (ImGui::BeginMenu("Select Defects", controller_.browsableResult())) {
         if (ImGui::MenuItem("All of this type")) {
             controller_.selectAllVisibleDefects();
             requestSync();
@@ -316,6 +318,7 @@ void PolyscopeGui::drawEditMenu() {
         }
         ImGui::EndMenu();
     }
+    drawSelectFacesMenu();
     ImGui::Separator();
     if (ImGui::MenuItem("Preferences...", modShortcut(",").c_str())) {
         showPreferences_ = true;
@@ -395,7 +398,13 @@ void PolyscopeGui::drawMeshMenu() {
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Clean Up")) {
-        plannedMenuItem("Weld / Merge Vertices...", "Planned (P5).");
+        if (ImGui::MenuItem("Weld / Merge Vertices...", nullptr, false, controller_.hasMesh())) {
+            controller_.openMergeVertices();
+            showTool_ = true;
+            requestSync();
+        }
+        tooltip("Merge vertices closer than a distance (default 0.05 mm) in the whole mesh or the selected faces, "
+                "removing the faces that collapse. Preview, then apply.");
         plannedMenuItem("Remove Degenerate Faces...", "Planned (P5).");
         plannedMenuItem("Remove Duplicate Faces", "Planned (P5).");
         if (ImGui::MenuItem("Remove Small Shells...", nullptr, false, controller_.shells().multiShell())) {
@@ -423,7 +432,13 @@ void PolyscopeGui::drawMeshMenu() {
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Simplify")) {
-        plannedMenuItem("Decimate...", "Planned (P5).");
+        if (ImGui::MenuItem("Decimate...", nullptr, false, controller_.hasMesh())) {
+            controller_.openDecimate();
+            showTool_ = true;
+            requestSync();
+        }
+        tooltip("Reduce the face count of the whole mesh or the selected faces (ratio 0.01 to 1, default 0.5). "
+                "Preview, then apply.");
         plannedMenuItem("Remesh...", "Planned.");
         ImGui::EndMenu();
     }
@@ -638,6 +653,12 @@ void PolyscopeGui::drawStatusBar(float top, float height) {
             ImGui::TextColored(gui::kDefectColor, "Not watertight");
             tooltip("Holes (open edges) or non-manifold edges were found. See Mesh Health.");
             break;
+        }
+        if (controller_.selectedFaceCount() > 0) {
+            divider();
+            ImGui::Text("%s faces selected", withThousands(controller_.selectedFaceCount()).c_str());
+            tooltip("Faces selected with B (box), C (circle) or Shift+click. Decimate and Weld / Merge Vertices work "
+                    "on them. Alt+A deselects.");
         }
     }
     divider();
@@ -856,6 +877,7 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"Zoom (Dolly)", "Scroll Wheel or Ctrl + Shift + Left-Click Drag (speed scales with distance to the Orbit Pivot)"},
         {"Select Face", "Left-Click a face: if it is a defect of the selected Mesh Health row it becomes the focus (Inspector, Orbit Pivot at its centroid); with no row selected, the row containing it opens; a clean face only moves the Orbit Pivot. Right-Click clears the Polyscope pick."},
         {"Select Shell", "Alt + Left-Click a face selects its whole shell in the Shells panel (multi-shell meshes); Alt + Ctrl/Cmd + Click adds or removes it. A plain click never changes the shell selection."},
+        {"Toggle Face", "Shift + Left-Click a face adds it to or removes it from the face selection (Decimate and Weld / Merge Vertices then work on the selected faces)"},
     });
 
     ImGui::Spacing();
@@ -868,7 +890,10 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"Shift + .", "Frames the focused facet (or hole) from the -Normal (back / inside) side"},
         {"Home  or  H", "Frames the entire mesh and resets the Orbit Pivot to the mesh center"},
         {"G", "Toggles Ghost (base-mesh transparency)"},
-        {"Esc", "Clears the defect selection; press again to close the Tool and deselect the row, then again to clear the shell selection"},
+        {"B", "Box select faces: drag a rectangle (Shift+drag deselects); one box per B. Esc or right-click cancels"},
+        {"C", "Circle select faces: paint with the brush (Shift or middle drag deselects, wheel resizes); Esc, Enter or right-click finishes"},
+        {"A  /  Alt+A", "Select all faces / deselect all faces"},
+        {"Esc", "Leaves box / circle select; clears the defect selection; then closes the Tool and deselects the row, then clears the face selection, then the shell selection"},
         {"I", "Shells: isolate the selected shells (Mesh Health then covers only them); press again to bring the others back. With another shell selected, switches the isolation to it"},
         {"Delete  /  Backspace", "Shells: deletes the selected shells (undoable)"},
         {"F5", "Check Mesh: runs every Mesh Health row in the background"},
