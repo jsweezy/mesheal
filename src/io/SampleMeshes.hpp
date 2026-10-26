@@ -46,6 +46,13 @@ struct SampleMeshes {
     /// File > Load Sample > "Folded cube" (try the intersection repairs on it).
     [[nodiscard]] static Mesh createFoldedCubeMesh(Unit unit = Unit::Millimeter);
 
+    /// Generates three welded 2 x 2 grid cubes (side 2) and a fin, for the non-manifold repairs:
+    ///   - cube A [0, 2]^3 and cube B [2, 4] x [2, 4] x [0, 2] touch along x = y = 2 (two Touching edges);
+    ///   - cube C [-2, 0]^3 touches A only at the origin (one non-manifold vertex);
+    ///   - a fin triangle on A's top edge (0, 2, 2)-(1, 2, 2) (one Fin edge and two open edges).
+    /// File > Load Sample > "Touching cubes".
+    [[nodiscard]] static Mesh createTouchingCubesMesh(Unit unit = Unit::Millimeter);
+
     /// Generates an ASCII STL string representing the 12-triangle cube (36 raw soup vertices).
     [[nodiscard]] static std::string createCubeAsciiStl(double sideLength = 10.0);
 

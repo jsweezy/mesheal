@@ -3,6 +3,7 @@
 #include <Eigen/Geometry>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <numeric>
 #include <unordered_map>
@@ -38,6 +39,16 @@ constexpr Eigen::Index kStopPollMask = 4095;
         }
     }
     return !faceHasRepeatedVertex(mesh, f);
+}
+
+/// Corner index (`3 * f + c`) of vertex `v` in face `f`.
+[[nodiscard]] std::uint32_t cornerOf(const Mesh& mesh, std::uint32_t f, int v) noexcept {
+    const auto fi = static_cast<Eigen::Index>(f);
+    int c = 0;
+    while (c < 2 && mesh.F(fi, c) != v) {
+        ++c;
+    }
+    return f * 3u + static_cast<std::uint32_t>(c);
 }
 
 [[nodiscard]] double edgeLength(const Mesh& mesh, const std::array<int, 2>& edge) {
@@ -203,6 +214,143 @@ EdgeTopology buildEdgeTopology(const Mesh& mesh) {
     return topo;
 }
 
+std::optional<std::vector<std::array<std::uint32_t, 2>>> pairTouchingFaces(
+    const Mesh& mesh,
+    const EdgeTopology& topo,
+    std::size_t e) {
+    const std::uint32_t count = topo.faceCount(e);
+    if (count < 4 || count % 2 != 0) {
+        return std::nullopt;
+    }
+    const auto [a, b] = topo.edges[e];
+    const Eigen::Vector3d origin = mesh.V.row(a).transpose();
+    const Eigen::Vector3d axis = (mesh.V.row(b).transpose() - origin).normalized();
+    if (!axis.allFinite()) {
+        return std::nullopt;
+    }
+
+    // Angle of each face around the edge, measured from the first face
+    struct Spoke {
+        double angle;
+        std::uint32_t face;
+        bool forward;
+    };
+    std::vector<Spoke> spokes;
+    spokes.reserve(count);
+    Eigen::Vector3d u = Eigen::Vector3d::Zero();
+    Eigen::Vector3d v = Eigen::Vector3d::Zero();
+    for (std::uint32_t i = topo.faceOffsets[e]; i < topo.faceOffsets[e + 1]; ++i) {
+        const std::uint32_t f = topo.incidentFaces[i];
+        int c = 0;
+        while (mesh.F(f, c) == a || mesh.F(f, c) == b) {
+            ++c;
+        }
+        Eigen::Vector3d r = mesh.V.row(mesh.F(f, c)).transpose() - origin;
+        r -= axis.dot(r) * axis;
+        if (!(r.norm() > 0.0)) {
+            return std::nullopt;
+        }
+        if (spokes.empty()) {
+            u = r.normalized();
+            v = axis.cross(u);
+        }
+        spokes.push_back({std::atan2(r.dot(v), r.dot(u)), f, topo.incidentForward[i] != 0});
+    }
+    std::sort(spokes.begin(), spokes.end(), [](const Spoke& x, const Spoke& y) { return x.angle < y.angle; });
+
+    // A forward face's solid lies clockwise of it, a backward face's counter-clockwise: each
+    // backward face closes a wedge with the next face, which must be forward
+    std::vector<std::array<std::uint32_t, 2>> pairs;
+    pairs.reserve(count / 2);
+    for (std::size_t i = 0; i < spokes.size(); ++i) {
+        const Spoke& next = spokes[(i + 1) % spokes.size()];
+        if (next.angle == spokes[i].angle) {
+            return std::nullopt;
+        }
+        if (!spokes[i].forward) {
+            if (!next.forward) {
+                return std::nullopt;
+            }
+            pairs.push_back({spokes[i].face, next.face});
+        }
+    }
+    if (pairs.size() != count / 2) {
+        return std::nullopt;
+    }
+    return pairs;
+}
+
+std::vector<std::uint32_t> cornerFans(const Mesh& mesh, const EdgeTopology& topo, std::span<const std::uint8_t> pairEdges) {
+    const std::size_t nf = toSize(mesh.numFaces());
+    std::vector<std::uint32_t> fans(nf * 3, kNoFan);
+    if (topo.numEdges() == 0) {
+        return fans;
+    }
+
+    UnionFind sets(nf * 3);
+    const auto join = [&](const std::array<int, 2>& edge, std::uint32_t f, std::uint32_t g) {
+        for (const int v : edge) {
+            sets.unite(cornerOf(mesh, f, v), cornerOf(mesh, g, v));
+        }
+    };
+    for (std::size_t e = 0; e < topo.numEdges(); ++e) {
+        if (topo.faceCount(e) > 2 && !pairEdges.empty() && pairEdges[e] != 0) {
+            if (const auto pairs = pairTouchingFaces(mesh, topo, e)) {
+                for (const auto& [f, g] : *pairs) {
+                    join(topo.edges[e], f, g);
+                }
+                continue;
+            }
+        }
+        const std::uint32_t first = topo.incidentFaces[topo.faceOffsets[e]];
+        for (std::uint32_t i = topo.faceOffsets[e] + 1; i < topo.faceOffsets[e + 1]; ++i) {
+            join(topo.edges[e], first, topo.incidentFaces[i]);
+        }
+    }
+
+    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+        if (faceIsUsable(mesh, f)) {
+            for (std::uint32_t c = 0; c < 3; ++c) {
+                const std::uint32_t corner = static_cast<std::uint32_t>(f) * 3u + c;
+                fans[corner] = sets.find(corner);
+            }
+        }
+    }
+    return fans;
+}
+
+std::vector<std::uint8_t> touchingEdges(const Mesh& mesh, const EdgeTopology& topo) {
+    std::vector<std::uint8_t> touching(topo.numEdges(), 0);
+    std::vector<std::pair<std::size_t, std::vector<std::array<std::uint32_t, 2>>>> paired;
+    for (std::size_t e = 0; e < topo.numEdges(); ++e) {
+        if (topo.faceCount(e) > 2) {
+            if (auto pairs = pairTouchingFaces(mesh, topo, e)) {
+                touching[e] = 1;
+                paired.emplace_back(e, std::move(*pairs));
+            }
+        }
+    }
+    if (paired.empty()) {
+        return touching;
+    }
+
+    // Copies by fan give the pairs distinct edges only if no two pairs share a fan at both ends
+    // (they do when the pairs bridge the gaps between inside-out solids or touching cavities)
+    const std::vector<std::uint32_t> fans = cornerFans(mesh, topo, touching);
+    std::vector<std::array<std::uint32_t, 2>> ends;
+    for (const auto& [e, pairs] : paired) {
+        ends.clear();
+        for (const auto& pair : pairs) {
+            ends.push_back({fans[cornerOf(mesh, pair[0], topo.edges[e][0])], fans[cornerOf(mesh, pair[0], topo.edges[e][1])]});
+        }
+        std::sort(ends.begin(), ends.end());
+        if (std::adjacent_find(ends.begin(), ends.end()) != ends.end()) {
+            touching[e] = 0;
+        }
+    }
+    return touching;
+}
+
 CategoryResult checkOpenEdges(const Mesh& mesh, std::stop_token stopToken) {
     const EdgeTopology topo = buildEdgeTopology(mesh);
     if (stopToken.stop_requested()) {
@@ -252,6 +400,7 @@ CategoryResult checkNonManifoldEdges(const Mesh& mesh, std::stop_token stopToken
         return cancelledResult(DefectCategory::NonManifoldEdges);
     }
 
+    const std::vector<std::uint8_t> touching = touchingEdges(mesh, topo);
     ResultBuilder builder(DefectCategory::NonManifoldEdges);
     for (std::size_t e = 0; e < topo.numEdges(); ++e) {
         const std::uint32_t count = topo.faceCount(e);
@@ -263,6 +412,7 @@ CategoryResult checkNonManifoldEdges(const Mesh& mesh, std::stop_token stopToken
         element.edge = topo.edges[e];
         element.metric = static_cast<double>(count);
         element.columns = {element.metric, edgeLength(mesh, topo.edges[e]), 0.0};
+        element.subtype = touching[e] != 0 ? 0 : 1;
         builder.add(element, edgeFaces(topo, e));
     }
     return builder.finish(SortOrder::HighMetricFirst);
@@ -275,26 +425,7 @@ CategoryResult checkNonManifoldVertices(const Mesh& mesh, std::stop_token stopTo
                                           : ResultBuilder(DefectCategory::NonManifoldVertices).finish(SortOrder::ByIndex);
     }
 
-    const auto cornerOf = [&mesh](std::uint32_t f, int v) {
-        const auto fi = static_cast<Eigen::Index>(f);
-        int c = 0;
-        while (c < 2 && mesh.F(fi, c) != v) {
-            ++c;
-        }
-        return f * 3u + static_cast<std::uint32_t>(c);
-    };
-
-    // Corners (face, vertex) around a vertex are joined when their faces share an edge through it
-    UnionFind fans(toSize(mesh.numFaces()) * 3);
-    for (std::size_t e = 0; e < topo.numEdges(); ++e) {
-        const std::uint32_t first = topo.incidentFaces[topo.faceOffsets[e]];
-        for (std::uint32_t i = topo.faceOffsets[e] + 1; i < topo.faceOffsets[e + 1]; ++i) {
-            const std::uint32_t other = topo.incidentFaces[i];
-            for (const int v : topo.edges[e]) {
-                fans.unite(cornerOf(first, v), cornerOf(other, v));
-            }
-        }
-    }
+    const std::vector<std::uint32_t> fans = cornerFans(mesh, topo);
 
     // Vertex -> corners (CSR)
     const std::size_t nv = toSize(mesh.numVertices());
@@ -330,7 +461,7 @@ CategoryResult checkNonManifoldVertices(const Mesh& mesh, std::stop_token stopTo
         }
         roots.clear();
         for (std::uint32_t i = offsets[v]; i < offsets[v + 1]; ++i) {
-            roots.push_back(fans.find(corners[i]));
+            roots.push_back(fans[corners[i]]);
         }
         std::sort(roots.begin(), roots.end());
         const auto fanCount = static_cast<std::size_t>(std::unique(roots.begin(), roots.end()) - roots.begin());

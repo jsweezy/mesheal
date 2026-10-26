@@ -4,7 +4,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <cstdint>
 #include <stop_token>
+#include <vector>
 
 namespace {
 
@@ -77,7 +80,48 @@ TEST_CASE("A fin on a cube edge is one non-manifold edge", "[diagnostics][mesh-c
     REQUIRE(nm.size() == 1);
     REQUIRE(nm.elements[0].metric == 3.0);
     REQUIRE(nm.facesOf(0).size() == 3);
+    REQUIRE(nm.elements[0].subtype == 1); // Fin / other: copying vertices cannot fix it
     REQUIRE(count(ogun::DefectCategory::OpenEdges, mesh) == 2);
+}
+
+TEST_CASE("Solids touching along an edge are Touching edges, not non-manifold vertices", "[diagnostics][mesh-checks]") {
+    const ogun::Mesh mesh = ogun::SampleMeshes::createTouchingCubesMesh();
+    const ogun::CategoryResult nm = ogun::checkNonManifoldEdges(mesh);
+    REQUIRE(nm.size() == 3);
+    REQUIRE(nm.subtypeCounts()[0] == 2);
+    REQUIRE(nm.subtypeCounts()[1] == 1);
+    for (std::size_t i = 0; i < nm.size(); ++i) {
+        REQUIRE(nm.facesOf(i).size() == (nm.elements[i].subtype == 0 ? 4u : 3u));
+    }
+
+    // The seam's vertices have one fan (joined through the seam); only the corner-touching cube's vertex is reported
+    const ogun::CategoryResult nmv = ogun::checkNonManifoldVertices(mesh);
+    REQUIRE(nmv.size() == 1);
+    REQUIRE(mesh.V.row(nmv.elements[0].index).isZero());
+    REQUIRE(nmv.elements[0].metric == 2.0);
+}
+
+TEST_CASE("Corner fans split at paired edges only", "[diagnostics][mesh-checks]") {
+    const ogun::Mesh mesh = ogun::SampleMeshes::createTouchingCubesMesh();
+    const ogun::EdgeTopology topo = ogun::buildEdgeTopology(mesh);
+    const std::vector<std::uint8_t> touching = ogun::touchingEdges(mesh, topo);
+    REQUIRE(std::count(touching.begin(), touching.end(), std::uint8_t{1}) == 2);
+
+    const auto fansAt = [&](const std::vector<std::uint32_t>& fans, int vertex) {
+        std::vector<std::uint32_t> ids;
+        for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+            for (int c = 0; c < 3; ++c) {
+                if (mesh.F(f, c) == vertex) {
+                    ids.push_back(fans[static_cast<std::size_t>(f) * 3 + static_cast<std::size_t>(c)]);
+                }
+            }
+        }
+        std::sort(ids.begin(), ids.end());
+        return static_cast<std::size_t>(std::unique(ids.begin(), ids.end()) - ids.begin());
+    };
+    const auto& seamEdge = topo.edges[static_cast<std::size_t>(std::find(touching.begin(), touching.end(), 1) - touching.begin())];
+    REQUIRE(fansAt(ogun::cornerFans(mesh, topo), seamEdge[0]) == 1);
+    REQUIRE(fansAt(ogun::cornerFans(mesh, topo, touching), seamEdge[0]) == 2);
 }
 
 TEST_CASE("Two triangles sharing only a vertex form a non-manifold vertex", "[diagnostics][mesh-checks]") {

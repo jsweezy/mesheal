@@ -774,6 +774,19 @@ public:
     /// Applies each selected thin face's recommended repair as one undoable step.
     bool fixSelectedThinFaces();
 
+    /// Splits every Touching non-manifold edge in the shell scope (one undo step): the solids that touch
+    /// get their own copies of the edge's vertices at the same positions. Fin / other edges are skipped.
+    bool fixAllNonManifoldEdges();
+
+    /// Splits the selected non-manifold edges (one undo step); Fin / other edges are skipped.
+    bool fixSelectedNonManifoldEdges();
+
+    /// Gives each extra fan of every non-manifold vertex in the shell scope its own copy (one undo step).
+    bool fixAllNonManifoldVertices();
+
+    /// Splits the selected non-manifold vertices (one undo step).
+    bool fixSelectedNonManifoldVertices();
+
     /// Outcome of the most recent single-face commit or batch repair.
     [[nodiscard]] const std::string& lastRepairStatusMessage() const noexcept {
         return lastRepairStatusMessage_;
@@ -927,6 +940,8 @@ private:
     void replaceMeshPreservingHistory(Mesh mesh, std::optional<ShellBrowser> shells = std::nullopt);
     /// Second half of every mesh edit (after `pushUndoEntry`): swap the mesh and re-check.
     void finishMeshEdit(Mesh mesh);
+    /// Shared by the four non-manifold Fix All / Fix Selected actions.
+    bool splitNonManifold(DefectCategory category, bool selectedOnly);
     /// Auto rows are queued, other checked rows turn Stale.
     void onMeshEdited();
     /// The given row's parameters changed: re-run (Auto) or mark Stale.

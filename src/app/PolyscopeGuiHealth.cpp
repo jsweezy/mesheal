@@ -94,7 +94,9 @@ void PolyscopeGui::checkMesh() {
 }
 
 void PolyscopeGui::fixAll(DefectCategory category) {
-    if (category == DefectCategory::ThinFaces && controller_.fixAllThinFaces()) {
+    if ((category == DefectCategory::ThinFaces && controller_.fixAllThinFaces()) ||
+        (category == DefectCategory::NonManifoldEdges && controller_.fixAllNonManifoldEdges()) ||
+        (category == DefectCategory::NonManifoldVertices && controller_.fixAllNonManifoldVertices())) {
         requestSync(true);
     } else if (category == DefectCategory::Intersections) {
         // Several methods with very different trade-offs: open the operator to compare them first
@@ -453,11 +455,31 @@ void PolyscopeGui::drawCategorySettings(DefectCategory category) {
     case DefectCategory::FlippedNormals:
         ImGui::TextDisabled("Faces wound against the majority of their shell are listed.");
         break;
+    case DefectCategory::NonManifoldEdges:
+    case DefectCategory::NonManifoldVertices:
+        drawSplitRepairNote(category);
+        break;
     default:
         ImGui::TextDisabled("No settings.");
         break;
     }
     ImGui::PopItemWidth();
+}
+
+void PolyscopeGui::drawSplitRepairNote(DefectCategory category) {
+    ImGui::PushTextWrapPos(0.0f);
+    if (category == DefectCategory::NonManifoldEdges) {
+        ImGui::TextDisabled("Fix splits Touching edges: the faces around the edge are paired into closed solids "
+                            "and each solid gets its own copies of the edge's vertices. Fin / other edges are skipped.");
+    } else {
+        ImGui::TextDisabled("Fix gives each fan of triangles its own copy of the vertex.");
+    }
+    ImGui::TextDisabled("Nothing moves: copies sit at the same position, so volume and shape are unchanged. "
+                        "Solids that only touched become separate shells.");
+    ImGui::PopTextWrapPos();
+    gui::helpMarker("STL files store no vertex sharing. Reopening a saved STL welds the copies back together "
+                    "and these defects return. The split matters for the mesh in memory, e.g. before Manifold "
+                    "booleans. Manifold itself accepts touching solids and bow-ties, but not fins.");
 }
 
 void PolyscopeGui::drawCategoryActions(DefectCategory category) {
@@ -483,13 +505,30 @@ void PolyscopeGui::drawCategoryActions(DefectCategory category) {
                                                 : "Repair every defect of this type in one undoable step.");
         ImGui::SameLine();
 
-        const bool perDefect = category == DefectCategory::ThinFaces || category == DefectCategory::Intersections;
+        const bool perDefect = category == DefectCategory::ThinFaces || category == DefectCategory::Intersections ||
+                               category == DefectCategory::NonManifoldEdges ||
+                               category == DefectCategory::NonManifoldVertices;
         const bool canFixSelected = perDefect && browser.selectedCount() > 0;
         ImGui::BeginDisabled(!canFixSelected);
         const std::string fixSelLabel = "Fix Selected (" + withThousands(browser.selectedCount()) + ")";
         if (ImGui::Button(fixSelLabel.c_str())) {
-            const bool fixed = category == DefectCategory::ThinFaces ? controller_.fixSelectedThinFaces()
-                                                                     : controller_.fixSelectedIntersections();
+            bool fixed = false;
+            switch (category) {
+            case DefectCategory::ThinFaces:
+                fixed = controller_.fixSelectedThinFaces();
+                break;
+            case DefectCategory::Intersections:
+                fixed = controller_.fixSelectedIntersections();
+                break;
+            case DefectCategory::NonManifoldEdges:
+                fixed = controller_.fixSelectedNonManifoldEdges();
+                break;
+            case DefectCategory::NonManifoldVertices:
+                fixed = controller_.fixSelectedNonManifoldVertices();
+                break;
+            default:
+                break;
+            }
             if (fixed) {
                 requestSync(true);
             }
@@ -500,6 +539,10 @@ void PolyscopeGui::drawCategoryActions(DefectCategory category) {
                 : category == DefectCategory::Intersections
                     ? "Repair the islands of the selected faces with their recommended method (falling back to the "
                       "others), as one undoable step. Crossings between shells are skipped."
+                : category == DefectCategory::NonManifoldEdges
+                    ? "Split the selected Touching edges, as one undoable step. Fin / other edges are skipped."
+                : category == DefectCategory::NonManifoldVertices
+                    ? "Give each fan of the selected vertices its own copy, as one undoable step."
                     : "Per-defect repairs for this row are planned (P4).");
         ImGui::SameLine();
     }
@@ -753,7 +796,16 @@ void PolyscopeGui::drawInspector() {
     if (result.category == DefectCategory::Intersections) {
         drawIntersectionPartners();
     }
-    ImGui::TextDisabled("Per-defect repairs for this row are planned (P4).");
+    if (result.category == DefectCategory::NonManifoldEdges) {
+        ImGui::TextWrapped("%s", element.subtype == 0
+                                     ? "Touching: solids meet along this edge. Fix Selected splits it without moving anything."
+                                     : "Fin / other: a fin, internal wall, odd face count or mixed winding. Splitting "
+                                       "vertices cannot fix it; it needs faces removed or re-oriented (planned).");
+    } else if (result.category == DefectCategory::NonManifoldVertices) {
+        ImGui::TextWrapped("Fix Selected gives each fan its own copy of this vertex, at the same position.");
+    } else {
+        ImGui::TextDisabled("Per-defect repairs for this row are planned (P4).");
+    }
     if (ImGui::Button("Frame (.)")) {
         focusCameraOnSelection(FocusNormalSide::AutoToggleNormal);
     }

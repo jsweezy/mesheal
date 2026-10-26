@@ -94,6 +94,7 @@ private:
     void drawToolPanel();
     void drawCategoryTool(DefectCategory category);
     void drawCategorySettings(DefectCategory category);
+    void drawSplitRepairNote(DefectCategory category);
     void drawCategoryActions(DefectCategory category);
     void drawDefectTable(float height);
     void drawDefectSummary();

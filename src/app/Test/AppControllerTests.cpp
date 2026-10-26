@@ -1047,3 +1047,97 @@ TEST_CASE("AppController tags a shell lying inside another without crossing it a
     REQUIRE(controller.categoryHealth(ogun::DefectCategory::Intersections).status == ogun::HealthStatus::Stale);
     REQUIRE(controller.shells().shell(1).nestedIn == 0);
 }
+
+TEST_CASE("AppController Fix All splits touching edges and non-manifold vertices, each undoable",
+          "[app][controller][repair][non-manifold][undo]") {
+    using ogun::DefectCategory;
+    ogun::AppController controller;
+    controller.setMesh(ogun::SampleMeshes::createTouchingCubesMesh(), "Touching cubes");
+    const ogun::Mesh before = controller.mesh();
+    REQUIRE(controller.rowCount(DefectCategory::NonManifoldEdges) == 3);
+    REQUIRE(controller.rowCount(DefectCategory::NonManifoldVertices) == 1);
+    REQUIRE(controller.shells().size() == 2);
+
+    REQUIRE(controller.fixAllNonManifoldEdges());
+    REQUIRE(controller.lastUndoActionLabel() == "Fix All Non-manifold Edges");
+    REQUIRE(controller.rowCount(DefectCategory::NonManifoldEdges) == 1); // the fin
+    REQUIRE(controller.rowCount(DefectCategory::NonManifoldVertices) == 1);
+    REQUIRE(controller.mesh().numVertices() == before.numVertices() + 3);
+    REQUIRE(controller.mesh().V.topRows(before.numVertices()) == before.V);
+    REQUIRE(controller.shells().size() == 3);
+    REQUIRE(controller.isModified());
+    REQUIRE(controller.lastRepairStatusMessage().find("1 Fin / other edge") != std::string::npos);
+
+    // Only the fin is left, which splitting cannot fix: no change and no undo entry
+    REQUIRE_FALSE(controller.fixAllNonManifoldEdges());
+    REQUIRE(controller.lastUndoActionLabel() == "Fix All Non-manifold Edges");
+
+    REQUIRE(controller.fixAllNonManifoldVertices());
+    REQUIRE(controller.lastUndoActionLabel() == "Fix All Non-manifold Vertices");
+    REQUIRE(controller.rowCount(DefectCategory::NonManifoldVertices) == 0);
+    REQUIRE(controller.mesh().numVertices() == before.numVertices() + 4);
+    REQUIRE_FALSE(controller.fixAllNonManifoldVertices());
+
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.rowCount(DefectCategory::NonManifoldVertices) == 1);
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().V == before.V);
+    REQUIRE(controller.mesh().F == before.F);
+    REQUIRE(controller.rowCount(DefectCategory::NonManifoldEdges) == 3);
+    REQUIRE(controller.shells().size() == 2);
+    REQUIRE_FALSE(controller.canUndo());
+}
+
+TEST_CASE("AppController Fix Selected splits only the selected non-manifold elements and undoes",
+          "[app][controller][repair][non-manifold][undo]") {
+    using ogun::DefectCategory;
+    ogun::AppController controller;
+    controller.setMesh(ogun::SampleMeshes::createTouchingCubesMesh(), "Touching cubes");
+    const ogun::Mesh before = controller.mesh();
+
+    controller.selectCategory(DefectCategory::NonManifoldEdges);
+    REQUIRE_FALSE(controller.fixSelectedNonManifoldEdges()); // nothing selected
+    controller.setSubtypeFilter(1);                           // Fin / other
+    controller.selectAllVisibleDefects();
+    REQUIRE(controller.browser().selectedCount() == 1);
+    REQUIRE_FALSE(controller.fixSelectedNonManifoldEdges());
+    REQUIRE_FALSE(controller.canUndo());
+
+    controller.setSubtypeFilter(0); // Touching
+    controller.clickDefectRow(0, false, false);
+    REQUIRE(controller.browser().selectedCount() == 1);
+    REQUIRE(controller.fixSelectedNonManifoldEdges());
+    REQUIRE(controller.lastUndoActionLabel() == "Fix Selected Non-manifold Edges (1)");
+    REQUIRE(controller.rowCount(DefectCategory::NonManifoldEdges) < 3);
+    REQUIRE(controller.mesh().V.topRows(before.numVertices()) == before.V);
+
+    controller.selectCategory(DefectCategory::NonManifoldVertices);
+    controller.selectAllVisibleDefects();
+    REQUIRE(controller.fixSelectedNonManifoldVertices());
+    REQUIRE(controller.lastUndoActionLabel() == "Fix Selected Non-manifold Vertices (1)");
+    REQUIRE(controller.rowCount(DefectCategory::NonManifoldVertices) == 0);
+
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().F == before.F);
+    REQUIRE(controller.mesh().V == before.V);
+}
+
+TEST_CASE("AppController non-manifold Fix All respects the shell scope", "[app][controller][shells][non-manifold]") {
+    using ogun::DefectCategory;
+    ogun::AppController controller;
+    controller.setMesh(ogun::SampleMeshes::createTouchingCubesMesh(), "Touching cubes");
+    // Shell of the corner-touching cube C (bounding box in the negative octant) holds no non-manifold edge
+    std::size_t cubeC = controller.shells().size();
+    for (std::size_t s = 0; s < controller.shells().size(); ++s) {
+        if (controller.shells().shell(s).bbox.max.x() <= 0.0) {
+            cubeC = s;
+        }
+    }
+    REQUIRE(cubeC < controller.shells().size());
+    controller.clickShell(cubeC, false, false, {});
+    REQUIRE_FALSE(controller.fixAllNonManifoldEdges());
+    REQUIRE_FALSE(controller.canUndo());
+    REQUIRE(controller.fixAllNonManifoldVertices()); // the bow-tie touches cube C
+    REQUIRE(controller.lastUndoActionLabel() == "Fix All Non-manifold Vertices (1 shells)");
+}

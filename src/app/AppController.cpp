@@ -2,6 +2,7 @@
 #include "core/Constants.hpp"
 #include "core/Settings.hpp"
 #include "diagnostics/ShellNesting.hpp"
+#include "repair/NonManifoldSplit.hpp"
 
 #include <Eigen/Geometry>
 
@@ -1130,6 +1131,106 @@ bool AppController::fixSelectedThinFaces() {
     pushUndoEntry("Fix Selected Thin Faces (" + std::to_string(faces.size()) + ")");
     finishMeshEdit(std::move(results.mesh));
     lastRepairStatusMessage_ = std::move(results.statusMessage);
+    postStatusMessage(lastRepairStatusMessage_);
+    return true;
+}
+
+bool AppController::fixAllNonManifoldEdges() {
+    return splitNonManifold(DefectCategory::NonManifoldEdges, false);
+}
+
+bool AppController::fixSelectedNonManifoldEdges() {
+    return splitNonManifold(DefectCategory::NonManifoldEdges, true);
+}
+
+bool AppController::fixAllNonManifoldVertices() {
+    return splitNonManifold(DefectCategory::NonManifoldVertices, false);
+}
+
+bool AppController::fixSelectedNonManifoldVertices() {
+    return splitNonManifold(DefectCategory::NonManifoldVertices, true);
+}
+
+bool AppController::splitNonManifold(DefectCategory category, bool selectedOnly) {
+    const bool edgeRow = category == DefectCategory::NonManifoldEdges;
+    const std::string noun = edgeRow ? "non-manifold edges" : "non-manifold vertices";
+    if (mesh_.empty()) {
+        lastRepairStatusMessage_ = "No mesh loaded.";
+        return false;
+    }
+
+    CategoryResult checked;
+    const CategoryResult* result = nullptr;
+    std::vector<std::size_t> elements;
+    std::string label = std::string(selectedOnly ? "Fix Selected " : "Fix All ") + categoryInfo(category).menuName;
+    if (selectedOnly) {
+        result = browser_.result();
+        if (result == nullptr || result->category != category || browser_.selectedCount() == 0) {
+            lastRepairStatusMessage_ = "Select " + noun + " first.";
+            return false;
+        }
+        elements = browser_.selectedElements();
+        label += " (" + std::to_string(elements.size()) + ")";
+    } else {
+        result = currentResult(category);
+        if (result == nullptr) {
+            checked = runCategoryCheck(category, mesh_, checkParams());
+            result = &checked;
+        }
+        // Only the shells in scope are split; hidden or unselected shells are never edited
+        for (std::size_t e = 0; e < result->size(); ++e) {
+            const auto faces = result->facesOf(e);
+            if (!shells_.scoped() || std::any_of(faces.begin(), faces.end(), [this](Eigen::Index f) {
+                    return shells_.inScope(shells_.shellOfFace(f));
+                })) {
+                elements.push_back(e);
+            }
+        }
+        if (shells_.scoped()) {
+            label += " (" + std::to_string(shells_.scopeCount()) + " shells)";
+        }
+    }
+    if (elements.empty()) {
+        lastRepairStatusMessage_ = "No " + noun + (shells_.scoped() ? " in the shells in scope." : " to fix.");
+        postStatusMessage(lastRepairStatusMessage_);
+        return false;
+    }
+
+    NonManifoldSplitResult split;
+    if (edgeRow) {
+        std::vector<std::array<int, 2>> edges;
+        edges.reserve(elements.size());
+        for (const std::size_t e : elements) {
+            edges.push_back(result->elements[e].edge);
+        }
+        split = splitNonManifoldEdges(mesh_, edges);
+    } else {
+        std::vector<Eigen::Index> vertices;
+        vertices.reserve(elements.size());
+        for (const std::size_t e : elements) {
+            vertices.push_back(result->elements[e].index);
+        }
+        split = splitNonManifoldVertices(mesh_, vertices);
+    }
+
+    const std::string skipped = split.edgesSkipped == 0 ? std::string()
+        : " " + std::to_string(split.edgesSkipped) + " Fin / other edge" + (split.edgesSkipped == 1 ? "" : "s") +
+          " cannot be fixed by splitting and were left unchanged.";
+    if (split.verticesAdded == 0) {
+        lastRepairStatusMessage_ = "Nothing to split." + skipped;
+        postStatusMessage(lastRepairStatusMessage_, true);
+        return false;
+    }
+
+    const std::size_t shellsBefore = shells_.size();
+    pushUndoEntry(std::move(label));
+    finishMeshEdit(std::move(split.mesh));
+    lastRepairStatusMessage_ =
+        (edgeRow ? "Split " + std::to_string(split.edgesSplit) + " touching edge" + (split.edgesSplit == 1 ? "" : "s")
+                 : "Split " + std::to_string(split.verticesSplit) + " vertex" + (split.verticesSplit == 1 ? "" : "es")) +
+        ": " + std::to_string(split.verticesAdded) + " vertex cop" + (split.verticesAdded == 1 ? "y" : "ies") +
+        " added at the same positions (geometry unchanged). Shells: " + std::to_string(shellsBefore) + " -> " +
+        std::to_string(shells_.size()) + "." + skipped;
     postStatusMessage(lastRepairStatusMessage_);
     return true;
 }

@@ -1,6 +1,7 @@
 add_library(ogun_repair STATIC
     GlobalRepair.cpp
     IntersectionHealer.cpp
+    NonManifoldSplit.cpp
     RepairMetrics.cpp
     SliverHealer.cpp
     SurfaceRebuild.cpp

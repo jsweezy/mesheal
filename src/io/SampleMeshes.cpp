@@ -127,6 +127,44 @@ Mesh SampleMeshes::createFoldedCubeMesh(Unit unit) {
     return mesh;
 }
 
+Mesh SampleMeshes::createTouchingCubesMesh(Unit unit) {
+    const Mesh cube = createGridCubeMesh(2, 2.0, unit);
+    const std::array<Eigen::RowVector3d, 3> offsets = {
+        Eigen::RowVector3d(0.0, 0.0, 0.0), Eigen::RowVector3d(2.0, 2.0, 0.0), Eigen::RowVector3d(-2.0, -2.0, -2.0)};
+
+    // Weld the copies by exact position, as the STL reader would
+    std::map<std::array<double, 3>, int> index;
+    std::vector<Eigen::RowVector3d> positions;
+    const auto vertex = [&](const Eigen::RowVector3d& p) {
+        const auto [it, inserted] = index.try_emplace({p.x(), p.y(), p.z()}, static_cast<int>(positions.size()));
+        if (inserted) {
+            positions.push_back(p);
+        }
+        return it->second;
+    };
+    std::vector<std::array<int, 3>> faces;
+    for (const Eigen::RowVector3d& offset : offsets) {
+        for (Eigen::Index f = 0; f < cube.numFaces(); ++f) {
+            faces.push_back({vertex(cube.V.row(cube.F(f, 0)) + offset), vertex(cube.V.row(cube.F(f, 1)) + offset),
+                             vertex(cube.V.row(cube.F(f, 2)) + offset)});
+        }
+    }
+    faces.push_back({vertex({1.0, 2.0, 2.0}), vertex({0.0, 2.0, 2.0}), vertex({0.5, 2.5, 3.0})});
+
+    Mesh mesh;
+    mesh.fileUnit = unit;
+    mesh.V.resize(static_cast<Eigen::Index>(positions.size()), 3);
+    for (std::size_t i = 0; i < positions.size(); ++i) {
+        mesh.V.row(static_cast<Eigen::Index>(i)) = positions[i];
+    }
+    mesh.F.resize(static_cast<Eigen::Index>(faces.size()), 3);
+    for (std::size_t f = 0; f < faces.size(); ++f) {
+        mesh.F.row(static_cast<Eigen::Index>(f)) << faces[f][0], faces[f][1], faces[f][2];
+    }
+    mesh.recomputeNormals();
+    return mesh;
+}
+
 std::string SampleMeshes::createCubeAsciiStl(double sideLength) {
     const Mesh cube = createCubeMesh(sideLength, Unit::Millimeter);
 
