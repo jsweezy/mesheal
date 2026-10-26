@@ -101,6 +101,14 @@ private:
     void drawThinFaceInspector();
     void drawIntersectionPartners();
     void drawUnitsAndScaleOperator();
+
+    // ---- Intersecting faces: island Inspector & Repair All (PolyscopeGuiIntersections.cpp) ----
+    void drawIntersectionInspector();
+    void drawIslandScorecard();
+    void drawIntersectionRepairSettings();
+    void drawRepairAllIntersectionsOperator();
+    void drawGlobalMethodParams(GlobalRepairMethod method);
+    void drawGlobalCandidateTable();
     void fixAll(DefectCategory category);
     void checkMesh();
 
@@ -122,6 +130,7 @@ private:
     void applyBaseMeshStyleToPolyscope();
     void syncDefectOverlaysToPolyscope(const HighlightOverlayGeometry& overlay);
     void syncRepairPreviewToPolyscope();
+    void syncGlobalRepairPreviewToPolyscope();
     /// Sets Polyscope's transparency mode preferred by the active preview display mode.
     void applyTransparencyModeForPreview();
     /// Pushes overlay styles (colors, edge widths, point color) to the overlay structures.

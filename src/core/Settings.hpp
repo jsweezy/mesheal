@@ -60,6 +60,22 @@ inline constexpr int    kDefaultPreviewRings         = 2;         // Adjacent to
 inline constexpr int    kDefaultMaxBatchIterations   = 10;        // Max iterative flip/collapse sweeps before PMP cleanup
 
 // -----------------------------------------------------------------------------
+// Intersecting-Face Repair (per island and Repair All)
+// -----------------------------------------------------------------------------
+inline constexpr int    kDefaultIntersectionDilationRings = 1;    // Face rings cut away around an island before its hole is filled
+inline constexpr int    kMaxIntersectionDilationRings     = 4;    // Upper bound of the dilation-rings setting
+inline constexpr int    kDefaultCgalRepairMaxSteps        = 7;    // Region-growing steps of CGAL's local self-intersection repair (CGAL default)
+inline constexpr double kDefaultSmoothCollarMinAngleDeg   = 3.0;  // Mean collar dihedral (deg) above which an island sits on a curved surface (Fill Smooth)
+inline constexpr int    kMaxIslandRepairRounds            = 4;    // Repair All "Patch each island": rounds of recommended method + fallbacks
+inline constexpr double kDefaultAlphaWrapDetail           = 100.0;  // Alpha wrap: alpha = bbox diagonal / detail (larger = tighter, slower)
+inline constexpr double kMinAlphaWrapDetail               = 10.0;   // Lowest alpha-wrap detail offered
+inline constexpr double kMaxAlphaWrapDetail               = 1000.0; // Highest alpha-wrap detail offered (very slow on big meshes)
+inline constexpr double kDefaultAlphaWrapOffsetRatio      = 30.0;   // Alpha wrap: offset = alpha / ratio (distance of the wrap from the input)
+inline constexpr int    kDefaultWindingGridResolution     = 128;    // Winding-number rebuild: grid cells along the longest bbox side
+inline constexpr int    kMinWindingGridResolution         = 16;     // Lowest winding-number grid resolution offered
+inline constexpr int    kMaxWindingGridResolution         = 512;    // Highest winding-number grid resolution offered
+
+// -----------------------------------------------------------------------------
 // Mesh Health Checks & Large Defect Counts
 // -----------------------------------------------------------------------------
 inline constexpr double kDefaultDegenerateAreaEpsilon = 1.0e-14; // Face area <= eps * bbox_diag^2 counts as degenerate (relative, unitless)

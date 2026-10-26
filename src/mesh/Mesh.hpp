@@ -81,6 +81,9 @@ struct Mesh {
 /// Copies the listed faces (in order) into a new mesh and keeps only the vertices they use.
 [[nodiscard]] Mesh extractFaces(const Mesh& mesh, std::span<const Eigen::Index> faces);
 
+/// Appends `part`'s vertices and faces after `mesh`'s (no welding) and refreshes the normals.
+void appendMesh(Mesh& mesh, const Mesh& part);
+
 /// Free-function convenience wrapper around `Mesh::toMeshGL()`.
 [[nodiscard]] manifold::MeshGL toMeshGL(const Mesh& mesh);
 

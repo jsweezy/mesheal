@@ -193,6 +193,10 @@ void AppController::replaceMeshPreservingHistory(Mesh mesh, std::optional<ShellB
     lastFocusedFaceIndex_ = -1;
     lastFocusedNormalSign_ = 0;
     resetSingleFaceRepairState();
+    resetIslandRepairState();
+    islands_.clear();
+    islandsValid_ = false;
+    discardGlobalCandidates();
     orbitPivot_ = computeSelectionCentroid();
 }
 
@@ -408,6 +412,9 @@ void AppController::applyCheckResult(CategoryResult result) {
     }
     const DefectCategory category = result.category;
     const bool infoOnly = categoryInfo(category).infoOnly;
+    if (category == DefectCategory::Intersections) {
+        islandsValid_ = false;
+    }
     row.status = (infoOnly || result.empty()) ? HealthStatus::Ok : HealthStatus::Defects;
     row.result = std::move(result);
     computeScope(category);
@@ -436,7 +443,8 @@ void AppController::applyCheckResult(CategoryResult result) {
 bool AppController::pollBackgroundChecks() {
     const bool wasBusy = checkRunner_.busy();
     std::vector<CategoryResult> finished = checkRunner_.takeFinished();
-    const bool changed = !finished.empty();
+    const bool repairsFinished = pollRepairJobs();
+    const bool changed = !finished.empty() || repairsFinished;
     for (CategoryResult& result : finished) {
         applyCheckResult(std::move(result));
     }
@@ -534,10 +542,15 @@ void AppController::computeScope(DefectCategory category) {
 }
 
 void AppController::onShellsChanged() {
+    islandsValid_ = false;
     for (const DefectCategory category : kAllDefectCategories) {
         computeScope(category);
     }
     applyScopeToBrowser();
+    if (focusedIsland_) {
+        focusedIsland_.reset();
+        onFocusChanged(); // the island list follows the scope
+    }
     orbitPivot_ = computeSelectionCentroid();
 }
 
@@ -787,7 +800,10 @@ bool AppController::escape() {
     return false;
 }
 
-void AppController::clearSelection() noexcept {
+void AppController::clearSelection() {
+    if (activeTool_ == ToolSlot::RepairAllIntersections) {
+        discardGlobalCandidates();
+    }
     pickedFaceIndex_ = -1;
     selectedCategory_.reset();
     activeTool_ = ToolSlot::None;
@@ -836,6 +852,9 @@ void AppController::onFocusChanged() {
         selectedFaceIndex_ = -1;
         resetSingleFaceRepairState();
     }
+    const bool intersectionFocus = face >= 0 && pickedFaceIndex_ < 0 && browser_.result() != nullptr &&
+                                   browser_.result()->category == DefectCategory::Intersections;
+    refreshIslandFocus(intersectionFocus ? face : -1);
     orbitPivot_ = computeSelectionCentroid();
 }
 
@@ -931,20 +950,33 @@ void AppController::setPreviewPatchOpacity(double opacity) noexcept {
 
 bool AppController::previewUsesCutout() const noexcept {
     return repairPreviewShown() &&
-           !repairPreview_.sourceFaceIndices.empty() &&
+           !previewSourceFaces().empty() &&
            previewDisplayMode_ == PreviewDisplayMode::CutoutOriginalEdges;
 }
 
 HighlightOverlayGeometry AppController::buildRepairPreviewOriginalEdges() const {
     HighlightOverlayGeometry overlay;
     if (previewUsesCutout()) {
-        appendFaceGeometry(repairPreview_.sourceFaceIndices, overlay);
+        appendFaceGeometry(previewSourceFaces(), overlay);
     }
     return overlay;
 }
 
 BaseMeshDisplay AppController::buildBaseMeshDisplay() const {
     BaseMeshDisplay display;
+    if (globalPreviewShown()) {
+        // Result: the candidate replaces the whole mesh in 3D. Both: only the removed faces are ghosted
+        // behind it (the kept ones would z-fight with their identical copies in the result)
+        display.isCut = true;
+        if (globalPreviewShow_ == GlobalPreviewShow::Both) {
+            display.faceIndices = shownGlobalCandidate()->removedFaces;
+        }
+        display.F.resize(static_cast<Eigen::Index>(display.faceIndices.size()), 3);
+        for (Eigen::Index row = 0; row < display.F.rows(); ++row) {
+            display.F.row(row) = mesh_.F.row(display.faceIndices[static_cast<std::size_t>(row)]);
+        }
+        return display;
+    }
     const bool cutPreview = previewUsesCutout();
     const std::vector<Eigen::Index> highlighted = highlightedFaceIndices();
     const bool shellsHidden = shells_.visibleCount() < shells_.size();
@@ -962,7 +994,7 @@ BaseMeshDisplay AppController::buildBaseMeshDisplay() const {
     };
     hide(highlighted);
     if (cutPreview) {
-        hide(repairPreview_.sourceFaceIndices);
+        hide(previewSourceFaces());
     }
     for (const ShellInfo& shell : shells_.shells()) {
         if (!shell.visible) {
@@ -1108,8 +1140,9 @@ void AppController::pushUndoEntry(std::string actionLabel) {
         thresholds_,
         health_,
         selectedCategory_,
-        selectedFaceIndex_,
+        focusedSingleFace(),
         selectedHealAction_,
+        selectedIslandMethod_,
         modified_,
         shells_,
         std::move(actionLabel)});
@@ -1159,6 +1192,10 @@ bool AppController::undoLastModification() {
             focusDefect(element);
             if (entry.selectedHealAction != HealAction::None && entry.selectedHealAction != selectedHealAction_) {
                 setSelectedHealAction(entry.selectedHealAction);
+            }
+            if (entry.selectedIslandMethod != IntersectionRepairMethod::None &&
+                entry.selectedIslandMethod != selectedIslandMethod_) {
+                setSelectedIslandMethod(entry.selectedIslandMethod);
             }
         }
     }

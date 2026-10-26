@@ -2,6 +2,7 @@
 
 #include "app/DefectBrowser.hpp"
 #include "app/HealthCheckRunner.hpp"
+#include "app/RepairJobRunner.hpp"
 #include "app/ShellBrowser.hpp"
 #include "core/Settings.hpp"
 #include "diagnostics/MeshHealth.hpp"
@@ -13,6 +14,8 @@
 #include "mesh/Mesh.hpp"
 #include "mesh/ToleranceConfig.hpp"
 #include "mesh/Units.hpp"
+#include "repair/GlobalRepair.hpp"
+#include "repair/IntersectionHealer.hpp"
 #include "repair/SliverHealer.hpp"
 
 #include <Eigen/Core>
@@ -78,7 +81,10 @@ struct ShellHealth {
 enum class WatertightState { Unknown, Watertight, NotWatertight };
 
 /// What the right-column Tool slot shows (one tool at a time).
-enum class ToolSlot { None, DefectCategory, UnitsAndScale };
+enum class ToolSlot { None, DefectCategory, UnitsAndScale, RepairAllIntersections };
+
+/// What the Repair All preview draws: the candidate, the current mesh, or both (current ghosted).
+enum class GlobalPreviewShow { Result, Original, Both };
 
 /// Base-mesh back-face rendering (maps to Polyscope's `BackFacePolicy`).
 enum class BackFaceMode { Identical, Darker, Custom, Cull };
@@ -207,6 +213,7 @@ struct UndoEntry {
     std::optional<DefectCategory> selectedCategory;
     Eigen::Index focusedFaceIndex = -1;
     HealAction selectedHealAction = HealAction::None;
+    IntersectionRepairMethod selectedIslandMethod = IntersectionRepairMethod::None;
     bool modified = false;
     ShellBrowser shells;
     std::string actionLabel;
@@ -445,8 +452,8 @@ public:
     /// Staged Esc: clear the defect selection, then close the Tool (deselect the row). False if idle.
     bool escape();
 
-    /// Deselects the row, clears the picked face and closes the Tool.
-    void clearSelection() noexcept;
+    /// Deselects the row, clears the picked face and closes the Tool (dropping Repair All candidates).
+    void clearSelection();
 
     /// Face shown in the single-face Inspector / framed by '.' (-1 if none).
     [[nodiscard]] Eigen::Index focusedFaceIndex() const noexcept;
@@ -734,9 +741,20 @@ public:
 
     void setPreviewPatchOpacity(double opacity) noexcept;
 
-    /// True when a valid preview is visible (the GUI should draw the patch and apply the display mode).
+    /// True when a valid single-defect preview (sliver or island) is visible: the GUI draws
+    /// `previewPatchMesh()` and applies the display mode.
     [[nodiscard]] bool repairPreviewShown() const noexcept {
-        return repairPreviewVisible_ && repairPreview_.valid;
+        return repairPreviewVisible_ && (islandPreviewActive() ? islandPreview_.valid : repairPreview_.valid);
+    }
+
+    /// Patch of the active single-defect preview (island preview when an island is focused).
+    [[nodiscard]] const Mesh& previewPatchMesh() const noexcept {
+        return islandPreviewActive() ? islandPreview_.previewPatchMesh : repairPreview_.previewPatchMesh;
+    }
+
+    /// Base faces the active single-defect preview replaces.
+    [[nodiscard]] const std::vector<Eigen::Index>& previewSourceFaces() const noexcept {
+        return islandPreviewActive() ? islandPreview_.sourceFaceIndices : repairPreview_.sourceFaceIndices;
     }
 
     /// Base-mesh faces to draw, cutting out highlighted faces and (in cutout mode) preview-replaced faces.
@@ -760,6 +778,132 @@ public:
     [[nodiscard]] const std::string& lastRepairStatusMessage() const noexcept {
         return lastRepairStatusMessage_;
     }
+
+    // -------------------------------------------------------------------------
+    // Intersecting faces: per-island Inspector (AppControllerIntersections.cpp)
+    // -------------------------------------------------------------------------
+
+    /// True when the focused intersecting face belongs to a repairable island (crossings within its shell).
+    [[nodiscard]] bool islandInspectorActive() const noexcept {
+        return focusedIsland_.has_value();
+    }
+
+    /// Island of the focused face (nullptr when `islandInspectorActive()` is false).
+    [[nodiscard]] const IntersectionIsland* focusedIsland() const noexcept;
+
+    [[nodiscard]] const IslandAnalysis& focusedIslandAnalysis() const noexcept {
+        return focusedIslandAnalysis_;
+    }
+
+    [[nodiscard]] IntersectionRepairMethod selectedIslandMethod() const noexcept {
+        return selectedIslandMethod_;
+    }
+
+    /// Chooses the focused island's repair method and recomputes its preview.
+    void setSelectedIslandMethod(IntersectionRepairMethod method);
+
+    /// Live preview and scorecard of `selectedIslandMethod()` on the focused island.
+    [[nodiscard]] const IslandRepairPreview& islandPreview() const noexcept {
+        return islandPreview_;
+    }
+
+    /// Applies the selected method to the focused island (undoable). Refused when the repair would
+    /// create new crossings.
+    bool commitIslandRepair();
+
+    /// Repairs the islands of the selected intersecting faces with their recommended methods and
+    /// fallbacks (one undo step).
+    bool fixSelectedIntersections();
+
+    [[nodiscard]] const IntersectionRepairSettings& islandRepairSettings() const noexcept {
+        return islandSettings_;
+    }
+
+    /// Dilation rings and the CGAL step limit; refreshes the island preview.
+    void setIslandRepairSettings(const IntersectionRepairSettings& settings);
+
+    /// Islands of the current Intersections result (in the shell scope); 0 when it is not current.
+    [[nodiscard]] std::size_t intersectionIslandCount();
+
+    // -------------------------------------------------------------------------
+    // Intersecting faces: Repair All operator (AppControllerIntersections.cpp)
+    // -------------------------------------------------------------------------
+
+    /// Opens "Operation: Repair All Intersections" in the Tool slot (deselects any row).
+    void openRepairAllIntersections();
+
+    [[nodiscard]] GlobalRepairMethod globalRepairMethod() const noexcept {
+        return globalMethod_;
+    }
+
+    /// Picks the method; shows its candidate when one is already computed with the current parameters.
+    void setGlobalRepairMethod(GlobalRepairMethod method);
+
+    [[nodiscard]] const GlobalRepairParams& globalRepairParams() const noexcept {
+        return globalParams_;
+    }
+
+    void setGlobalRepairParams(const GlobalRepairParams& params);
+
+    /// Computes the selected method's candidate (background in the GUI, inline in tests).
+    void previewGlobalRepair();
+
+    /// Computes a candidate for every method, one after another.
+    void compareAllGlobalRepairs();
+
+    void cancelGlobalRepair();
+
+    /// Blocks until the background Repair All job is done and collects its candidates (tests).
+    void waitForGlobalRepair();
+
+    [[nodiscard]] bool globalRepairRunning() const noexcept {
+        return repairRunner_.busy();
+    }
+
+    [[nodiscard]] float globalRepairProgress() const noexcept {
+        return repairRunner_.progress();
+    }
+
+    [[nodiscard]] std::optional<GlobalRepairMethod> globalRepairCurrentMethod() const noexcept {
+        return repairRunner_.currentMethod();
+    }
+
+    /// Computed candidates for the current mesh, at most one per method (in method order).
+    [[nodiscard]] const std::vector<RepairCandidate>& globalCandidates() const noexcept {
+        return globalCandidates_;
+    }
+
+    /// True when `candidate` was computed with the current parameters.
+    [[nodiscard]] bool candidateIsCurrent(const RepairCandidate& candidate) const noexcept {
+        return candidate.params == globalParams_;
+    }
+
+    /// Candidate drawn in 3D (nullptr when none).
+    [[nodiscard]] const RepairCandidate* shownGlobalCandidate() const noexcept;
+
+    void showGlobalCandidate(GlobalRepairMethod method);
+
+    [[nodiscard]] GlobalPreviewShow globalPreviewShow() const noexcept {
+        return globalPreviewShow_;
+    }
+
+    void setGlobalPreviewShow(GlobalPreviewShow show) noexcept {
+        globalPreviewShow_ = show;
+    }
+
+    [[nodiscard]] bool colorByDeviation() const noexcept {
+        return colorByDeviation_;
+    }
+
+    void setColorByDeviation(bool enabled) noexcept {
+        colorByDeviation_ = enabled;
+    }
+
+    /// True when the GUI should draw the shown candidate (Repair All open, Show is not Original).
+    [[nodiscard]] bool globalPreviewShown() const noexcept;
+
+    /// Replaces the mesh with the shown candidate (one undo step) and re-runs the Auto checks.
+    bool applyGlobalRepair();
 
     // -------------------------------------------------------------------------
     // Universal Mesh Modification Undo (Ctrl+Z / Cmd+Z)
@@ -812,6 +956,25 @@ private:
     void rebuildCgalMesh();
     void resetSingleFaceRepairState() noexcept;
     void refreshRepairPreview();
+    [[nodiscard]] bool islandPreviewActive() const noexcept {
+        return focusedIsland_.has_value() && selectedIslandMethod_ != IntersectionRepairMethod::None;
+    }
+    /// Islands of the current Intersections result (computed lazily, cleared on every mesh change).
+    const std::vector<IntersectionIsland>& intersectionIslands();
+    /// Shell id of every face (ShellBrowser numbering).
+    [[nodiscard]] std::vector<int> faceShellIds() const;
+    /// Per-face scope mask for repairs (empty when the whole mesh is in scope).
+    [[nodiscard]] std::vector<std::uint8_t> repairScopeMask() const;
+    /// Updates the focused island after the focus changed (Intersections row only).
+    void refreshIslandFocus(Eigen::Index face);
+    void resetIslandRepairState() noexcept;
+    void refreshIslandPreview();
+    /// Stops the Repair All job and forgets its candidates (mesh edit, tool closed).
+    void discardGlobalCandidates();
+    /// Moves finished Repair All candidates into the table. Returns true if any arrived.
+    bool pollRepairJobs();
+    void queueGlobalRepairs(std::vector<GlobalRepairMethod> methods);
+    void storeCandidate(RepairCandidate candidate);
 
     [[nodiscard]] bool previewUsesCutout() const noexcept;
     /// Appends deduplicated vertices, undirected edges, and (optionally) triangles of `faces` to `overlay`.
@@ -870,6 +1033,22 @@ private:
     double previewBaseOpacity_ = settings::kDefaultPreviewBaseOpacity;
     double previewPatchOpacity_ = settings::kDefaultPreviewPatchOpacity;
     std::string lastRepairStatusMessage_;
+
+    // Intersecting faces: islands, Inspector and Repair All
+    std::vector<IntersectionIsland> islands_;
+    bool islandsValid_ = false;
+    std::optional<std::size_t> focusedIsland_;
+    IslandAnalysis focusedIslandAnalysis_{};
+    IntersectionRepairMethod selectedIslandMethod_ = IntersectionRepairMethod::None;
+    IslandRepairPreview islandPreview_{};
+    IntersectionRepairSettings islandSettings_{};
+    GlobalRepairMethod globalMethod_ = GlobalRepairMethod::PatchIslands;
+    GlobalRepairParams globalParams_{};
+    std::vector<RepairCandidate> globalCandidates_;
+    std::optional<GlobalRepairMethod> shownCandidate_;
+    GlobalPreviewShow globalPreviewShow_ = GlobalPreviewShow::Result;
+    bool colorByDeviation_ = false;
+    RepairJobRunner repairRunner_;
 
     std::vector<UndoEntry> undoStack_;
 

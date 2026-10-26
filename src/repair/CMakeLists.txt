@@ -1,5 +1,9 @@
 add_library(ogun_repair STATIC
+    GlobalRepair.cpp
+    IntersectionHealer.cpp
+    RepairMetrics.cpp
     SliverHealer.cpp
+    SurfaceRebuild.cpp
 )
 add_library(ogun::repair ALIAS ogun_repair)
 

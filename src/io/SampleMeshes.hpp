@@ -33,6 +33,19 @@ struct SampleMeshes {
         double sideLength = 10.0,
         Unit unit = Unit::Millimeter);
 
+    /// Generates a closed cube [0, sideLength]^3 whose six sides are `cells` x `cells` grids of
+    /// triangle pairs with shared vertices (outward winding).
+    [[nodiscard]] static Mesh createGridCubeMesh(
+        int cells = 8,
+        double sideLength = 8.0,
+        Unit unit = Unit::Millimeter);
+
+    /// Generates the 8 x 8 grid cube (side 8) with two intersection islands in one shell:
+    ///   - a local fold: top vertex (2, 2, 8) dragged in-plane to (3.5, 2.2, 8), folding its fan over its neighbours;
+    ///   - a pass-through: bottom vertex (6, 6, 0) pushed up to (6, 6, 9), through the top wall.
+    /// File > Load Sample > "Folded cube" (try the intersection repairs on it).
+    [[nodiscard]] static Mesh createFoldedCubeMesh(Unit unit = Unit::Millimeter);
+
     /// Generates an ASCII STL string representing the 12-triangle cube (36 raw soup vertices).
     [[nodiscard]] static std::string createCubeAsciiStl(double sideLength = 10.0);
 

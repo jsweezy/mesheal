@@ -142,6 +142,19 @@ Mesh extractFaces(const Mesh& mesh, std::span<const Eigen::Index> faces) {
     return out;
 }
 
+void appendMesh(Mesh& mesh, const Mesh& part) {
+    if (part.empty()) {
+        return;
+    }
+    const Eigen::Index v0 = mesh.numVertices();
+    const Eigen::Index f0 = mesh.numFaces();
+    mesh.V.conservativeResize(v0 + part.numVertices(), 3);
+    mesh.V.bottomRows(part.numVertices()) = part.V;
+    mesh.F.conservativeResize(f0 + part.numFaces(), 3);
+    mesh.F.bottomRows(part.numFaces()) = part.F.array() + static_cast<int>(v0);
+    mesh.recomputeNormals();
+}
+
 manifold::MeshGL toMeshGL(const Mesh& mesh) {
     return mesh.toMeshGL();
 }

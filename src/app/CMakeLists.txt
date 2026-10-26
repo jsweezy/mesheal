@@ -2,8 +2,10 @@ find_package(Threads REQUIRED)
 
 add_library(ogun_app_controller STATIC
     AppController.cpp
+    AppControllerIntersections.cpp
     DefectBrowser.cpp
     HealthCheckRunner.cpp
+    RepairJobRunner.cpp
     ShellBrowser.cpp
 )
 add_library(ogun::app_controller ALIAS ogun_app_controller)
@@ -39,6 +41,7 @@ if(OGUN_BUILD_GUI)
         PolyscopeGuiShell.cpp
         PolyscopeGuiPanels.cpp
         PolyscopeGuiHealth.cpp
+        PolyscopeGuiIntersections.cpp
         PolyscopeGuiShells.cpp
         GuiWidgets.cpp
         MacAppIcon.cpp

@@ -1,4 +1,5 @@
 add_executable(ogun_repair_tests
+    IntersectionHealerTests.cpp
     SliverHealerTests.cpp
 )
 

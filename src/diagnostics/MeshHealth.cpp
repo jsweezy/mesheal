@@ -43,7 +43,7 @@ constexpr std::array<CategoryInfo, kDefectCategoryCount> kCategoryInfos = {{
      {nullptr, nullptr, nullptr, nullptr}},
     {"Intersecting faces", "Intersecting Faces", CategoryGroup::Geometry,
      "Triangles that pass through other triangles (or overlap them while lying in the same plane).",
-     ElementKind::Face, "faces", false, false, false,
+     ElementKind::Face, "faces", false, false, true,
      {{{"Crosses", ValueDimension::None}, {"First partner", ValueDimension::None}, kNoColumn}},
      "Faces crossed", ValueDimension::None, false, false,
      {"Crossing", "Coplanar overlap", nullptr, nullptr}},

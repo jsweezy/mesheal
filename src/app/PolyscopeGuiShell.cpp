@@ -138,9 +138,9 @@ void PolyscopeGui::drawRightColumn(float top, float bottom) {
     if (!showTool_ || slot == ToolSlot::None || y >= bottom - 60.0f) {
         return;
     }
-    std::string title = slot == ToolSlot::UnitsAndScale
-        ? std::string("Operation: Units & Scale")
-        : std::string("Tool: ") + categoryInfo(*controller_.selectedCategory()).name;
+    std::string title = slot == ToolSlot::UnitsAndScale            ? std::string("Operation: Units & Scale")
+                        : slot == ToolSlot::RepairAllIntersections ? std::string("Operation: Repair All Intersections")
+                        : std::string("Tool: ") + categoryInfo(*controller_.selectedCategory()).name;
     title += "###ToolSlot";
 
     // Width is draggable from the left edge; height always fills the column
@@ -154,6 +154,8 @@ void PolyscopeGui::drawRightColumn(float top, float bottom) {
     if (ImGui::Begin(title.c_str(), &open, kDockedFlags | ImGuiWindowFlags_NoCollapse)) {
         if (slot == ToolSlot::UnitsAndScale) {
             drawUnitsAndScaleOperator();
+        } else if (slot == ToolSlot::RepairAllIntersections) {
+            drawRepairAllIntersectionsOperator();
         } else {
             drawToolPanel();
         }
@@ -198,6 +200,13 @@ void PolyscopeGui::drawFileMenu() {
         if (ImGui::MenuItem("Defective test cube")) {
             loadSample(nullptr);
         }
+        if (ImGui::MenuItem("Folded cube (intersection islands)")) {
+            controller_.setMesh(SampleMeshes::createFoldedCubeMesh(controller_.fileUnit()), "Folded cube sample");
+            controller_.postStatusMessage("Loaded the folded cube: one local fold and one pass-through in one shell.");
+            overwriteConfirmedFor_.clear();
+            syncMeshStructureToPolyscope(true);
+        }
+        tooltip("A gridded cube with a folded-over top vertex and a bottom vertex pushed through the top.");
         constexpr std::array<std::pair<const char*, const char*>, 3> kExampleFiles = {{
             {"Self-intersecting box", "self_intersecting_box.stl"},
             {"Stanford bunny", "stanford_bunny.stl"},
@@ -406,9 +415,12 @@ void PolyscopeGui::drawRepairMenu() {
         }
         const CategoryHealth& row = controller_.categoryHealth(category);
         const std::size_t count = row.status == HealthStatus::Defects ? controller_.rowCount(category) : 0;
-        const std::string label = std::string("Fix All ") + info.menuName +
-                                  (count > 0 ? " (" + withThousands(count) + ")" : std::string());
-        if (ImGui::MenuItem(label.c_str(), nullptr, false, info.hasFixAll && count > 0)) {
+        const bool repairAll = category == DefectCategory::Intersections;
+        const std::string label = std::string(repairAll ? "Repair All " : "Fix All ") + info.menuName +
+                                  (count > 0 ? " (" + withThousands(count) + ")" : std::string()) +
+                                  (repairAll ? "..." : "");
+        // Repair All opens a comparison panel, so it is offered even before the row is checked
+        if (ImGui::MenuItem(label.c_str(), nullptr, false, info.hasFixAll && (count > 0 || (repairAll && controller_.hasMesh())))) {
             fixAll(category);
         }
         if (!info.hasFixAll) {
@@ -610,7 +622,19 @@ void PolyscopeGui::drawStatusBar(float top, float height) {
         ImGui::TextDisabled("Ready");
     }
 
-    if (controller_.checksRunning()) {
+    if (controller_.globalRepairRunning()) {
+        const float barWidth = 200.0f;
+        const float cancelWidth = ImGui::CalcTextSize("Cancel").x + 2.0f * ImGui::GetStyle().FramePadding.x;
+        ImGui::SameLine(display.x - barWidth - cancelWidth - 3.0f * settings::kPanelMarginPx);
+        const std::optional<GlobalRepairMethod> current = controller_.globalRepairCurrentMethod();
+        const std::string overlay = current ? std::string(globalRepairMethodLabel(*current)) + "..." : std::string("Repairing...");
+        ImGui::ProgressBar(controller_.globalRepairProgress(), ImVec2(barWidth, 0.0f), overlay.c_str());
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Cancel##repair")) {
+            controller_.cancelGlobalRepair();
+            controller_.postStatusMessage("Repair All preview cancelled.");
+        }
+    } else if (controller_.checksRunning()) {
         const float barWidth = 200.0f;
         const float cancelWidth = ImGui::CalcTextSize("Cancel").x + 2.0f * ImGui::GetStyle().FramePadding.x;
         ImGui::SameLine(display.x - barWidth - cancelWidth - 3.0f * settings::kPanelMarginPx);

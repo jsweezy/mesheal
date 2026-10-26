@@ -1,7 +1,10 @@
 #include "io/SampleMeshes.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cstring>
 #include <iomanip>
+#include <map>
 #include <sstream>
 
 namespace ogun {
@@ -54,6 +57,72 @@ Mesh SampleMeshes::createSelfIntersectingBoxMesh(double sideLength, Unit unit) {
     Mesh mesh = createCubeMesh(sideLength, unit);
     constexpr Eigen::Index kTopCorner = 6;
     mesh.V.row(kTopCorner) << 0.5 * sideLength, 0.5 * sideLength, -0.5 * sideLength;
+    mesh.recomputeNormals();
+    return mesh;
+}
+
+Mesh SampleMeshes::createGridCubeMesh(int cells, double sideLength, Unit unit) {
+    const int n = std::max(cells, 1);
+    std::map<std::array<int, 3>, int> index;
+    std::vector<std::array<int, 3>> lattice;
+    std::vector<std::array<int, 3>> faces;
+    const auto vertex = [&](const std::array<int, 3>& p) {
+        const auto [it, inserted] = index.try_emplace(p, static_cast<int>(lattice.size()));
+        if (inserted) {
+            lattice.push_back(p);
+        }
+        return it->second;
+    };
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+        const std::size_t u = (axis + 1) % 3;
+        const std::size_t v = (axis + 2) % 3;
+        for (const int side : {0, n}) {
+            for (int i = 0; i < n; ++i) {
+                for (int j = 0; j < n; ++j) {
+                    std::array<std::array<int, 3>, 4> c{};
+                    for (std::size_t k = 0; k < 4; ++k) {
+                        c[k][axis] = side;
+                        c[k][u] = i + (k == 1 || k == 2 ? 1 : 0);
+                        c[k][v] = j + (k >= 2 ? 1 : 0);
+                    }
+                    // u x v points along +axis: keep this winding on the far side, flip it on the near side
+                    std::array<int, 3> t0{vertex(c[0]), vertex(c[1]), vertex(c[2])};
+                    std::array<int, 3> t1{vertex(c[0]), vertex(c[2]), vertex(c[3])};
+                    if (side == 0) {
+                        std::swap(t0[1], t0[2]);
+                        std::swap(t1[1], t1[2]);
+                    }
+                    faces.push_back(t0);
+                    faces.push_back(t1);
+                }
+            }
+        }
+    }
+
+    Mesh mesh;
+    mesh.fileUnit = unit;
+    const double step = sideLength / n;
+    mesh.V.resize(static_cast<Eigen::Index>(lattice.size()), 3);
+    for (std::size_t i = 0; i < lattice.size(); ++i) {
+        mesh.V.row(static_cast<Eigen::Index>(i)) << lattice[i][0] * step, lattice[i][1] * step, lattice[i][2] * step;
+    }
+    mesh.F.resize(static_cast<Eigen::Index>(faces.size()), 3);
+    for (std::size_t f = 0; f < faces.size(); ++f) {
+        mesh.F.row(static_cast<Eigen::Index>(f)) << faces[f][0], faces[f][1], faces[f][2];
+    }
+    mesh.recomputeNormals();
+    return mesh;
+}
+
+Mesh SampleMeshes::createFoldedCubeMesh(Unit unit) {
+    Mesh mesh = createGridCubeMesh(8, 8.0, unit);
+    const auto vertexAt = [&](const Eigen::RowVector3d& p) {
+        Eigen::Index nearest = 0;
+        (mesh.V.rowwise() - p).rowwise().squaredNorm().minCoeff(&nearest);
+        return nearest;
+    };
+    mesh.V.row(vertexAt({2.0, 2.0, 8.0})) << 3.5, 2.2, 8.0;
+    mesh.V.row(vertexAt({6.0, 6.0, 0.0})) << 6.0, 6.0, 9.0;
     mesh.recomputeNormals();
     return mesh;
 }

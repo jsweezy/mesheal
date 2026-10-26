@@ -78,6 +78,10 @@ void PolyscopeGui::checkMesh() {
 void PolyscopeGui::fixAll(DefectCategory category) {
     if (category == DefectCategory::ThinFaces && controller_.fixAllThinFaces()) {
         requestSync(true);
+    } else if (category == DefectCategory::Intersections) {
+        // Several methods with very different trade-offs: open the operator to compare them first
+        controller_.openRepairAllIntersections();
+        requestSync();
     }
 }
 
@@ -425,6 +429,7 @@ void PolyscopeGui::drawCategorySettings(DefectCategory category) {
         gui::helpMarker("Tolerance as a fraction of the bounding-box diagonal. Faces that only touch, or "
                         "cross by less than this length, are not reported. Neighbours sharing an edge are "
                         "reported only when folded flat onto each other.");
+        drawIntersectionRepairSettings();
         break;
     }
     case DefectCategory::FlippedNormals:
@@ -445,27 +450,38 @@ void PolyscopeGui::drawCategoryActions(DefectCategory category) {
 
     if (!info.infoOnly) {
         ImGui::BeginDisabled(!info.hasFixAll || count == 0 || !controller_.browsableResult());
-        const std::string fixAllLabel = "Fix All " + withThousands(count);
+        const bool repairAll = category == DefectCategory::Intersections;
+        const std::string fixAllLabel = (repairAll ? "Repair All " : "Fix All ") + withThousands(count) + (repairAll ? "..." : "");
         ImGui::PushStyleColor(ImGuiCol_Button, gui::kFixAllButtonColor);
         if (ImGui::Button(fixAllLabel.c_str())) {
             fixAll(category);
         }
         ImGui::PopStyleColor();
         ImGui::EndDisabled();
-        tooltip(!info.hasFixAll                  ? "Fix All for this row is planned (P4)."
+        tooltip(!info.hasFixAll  ? "Fix All for this row is planned (P4)."
+                : repairAll      ? "Compare whole-mesh repairs (patch each island, self-union, winding-number rebuild, "
+                                   "alpha wrap) with a preview and before / after numbers, then apply one."
                 : controller_.shells().scoped() ? "Repair every defect of this type in the shells in scope, in one undoable step."
                                                 : "Repair every defect of this type in one undoable step.");
         ImGui::SameLine();
 
-        const bool canFixSelected = category == DefectCategory::ThinFaces && browser.selectedCount() > 0;
+        const bool perDefect = category == DefectCategory::ThinFaces || category == DefectCategory::Intersections;
+        const bool canFixSelected = perDefect && browser.selectedCount() > 0;
         ImGui::BeginDisabled(!canFixSelected);
         const std::string fixSelLabel = "Fix Selected (" + withThousands(browser.selectedCount()) + ")";
-        if (ImGui::Button(fixSelLabel.c_str()) && controller_.fixSelectedThinFaces()) {
-            requestSync(true);
+        if (ImGui::Button(fixSelLabel.c_str())) {
+            const bool fixed = category == DefectCategory::ThinFaces ? controller_.fixSelectedThinFaces()
+                                                                     : controller_.fixSelectedIntersections();
+            if (fixed) {
+                requestSync(true);
+            }
         }
         ImGui::EndDisabled();
         tooltip(category == DefectCategory::ThinFaces
                     ? "Apply each selected face's recommended repair, as one undoable step."
+                : category == DefectCategory::Intersections
+                    ? "Repair the islands of the selected faces with their recommended method (falling back to the "
+                      "others), as one undoable step. Crossings between shells are skipped."
                     : "Per-defect repairs for this row are planned (P4).");
         ImGui::SameLine();
     }
@@ -696,6 +712,10 @@ void PolyscopeGui::drawInspector() {
     }
     if (controller_.inspectorActive()) {
         drawThinFaceInspector();
+        return;
+    }
+    if (result.category == DefectCategory::Intersections) {
+        drawIntersectionInspector();
         return;
     }
     const Unit unit = controller_.fileUnit();
