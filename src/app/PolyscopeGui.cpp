@@ -8,8 +8,10 @@
 
 #include <imgui.h>
 #include <polyscope/curve_network.h>
+#include <polyscope/curve_network_scalar_quantity.h>
 #include <polyscope/pick.h>
 #include <polyscope/point_cloud.h>
+#include <polyscope/point_cloud_scalar_quantity.h>
 #include <polyscope/polyscope.h>
 #include <polyscope/render/engine.h>
 #include <polyscope/surface_mesh.h>
@@ -157,6 +159,52 @@ bool adoptColor(const glm::vec3& polyscopeValue, Eigen::Vector3d& target) {
 bool radiusIsStale(double radius, double lastApplied, bool forceUpdate) {
     return radius > 0.0 &&
            (forceUpdate || lastApplied <= 0.0 || std::abs(radius - lastApplied) > 2.0e-3 * lastApplied);
+}
+
+constexpr const char* kScreenRadiusQuantityName = "On-screen size";
+
+/// World radius at each point's depth that draws as `pixels` on screen. One radius for the whole
+/// overlay made defects near the camera huge when the focused face was far away (and vice versa).
+std::vector<double> screenConstantRadii(const std::vector<Eigen::Vector3d>& points, double pixels, double fallbackRadius) {
+    std::vector<double> radii(points.size(), fallbackRadius);
+    if (polyscope::view::projectionMode != polyscope::ProjectionMode::Perspective) {
+        return radii; // orthographic: the same world size everywhere
+    }
+    glm::vec3 look(0.0f, 0.0f, -1.0f);
+    glm::vec3 up(0.0f, 1.0f, 0.0f);
+    glm::vec3 right(1.0f, 0.0f, 0.0f);
+    polyscope::view::getCameraFrame(look, up, right);
+    const glm::vec3 cam = polyscope::view::getCameraWorldPosition();
+    const Eigen::Vector3d camPos(cam.x, cam.y, cam.z);
+    const Eigen::Vector3d viewDir = Eigen::Vector3d(look.x, look.y, look.z).normalized();
+    const auto height = static_cast<double>(polyscope::view::windowHeight);
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        const double depth = (points[i] - camPos).dot(viewDir);
+        if (depth > 0.0) { // behind the camera: not drawn, keep the fallback
+            radii[i] = pixels * AppController::worldLengthPerPixel(depth, polyscope::view::fov, height);
+        }
+    }
+    return radii;
+}
+
+void setCurveNodeRadii(const char* name, const std::vector<double>& radii) {
+    auto* net = polyscope::getCurveNetwork(name);
+    auto* q = dynamic_cast<polyscope::CurveNetworkNodeScalarQuantity*>(net->getQuantity(kScreenRadiusQuantityName));
+    if (q != nullptr && q->values.size() == radii.size()) {
+        q->updateData(radii);
+        return;
+    }
+    net->setNodeRadiusQuantity(net->addNodeScalarQuantity(kScreenRadiusQuantityName, radii), false);
+}
+
+void setPointRadii(const char* name, const std::vector<double>& radii) {
+    auto* cloud = polyscope::getPointCloud(name);
+    auto* q = dynamic_cast<polyscope::PointCloudScalarQuantity*>(cloud->getQuantity(kScreenRadiusQuantityName));
+    if (q != nullptr && q->values.size() == radii.size()) {
+        q->updateData(radii);
+        return;
+    }
+    cloud->setPointRadiusQuantity(cloud->addScalarQuantity(kScreenRadiusQuantityName, radii), false);
 }
 
 void removeSurfaceMeshIfPresent(const char* name) {
@@ -744,6 +792,8 @@ void PolyscopeGui::applyBaseMeshStyleToPolyscope() {
 
 void PolyscopeGui::syncDefectOverlaysToPolyscope(const HighlightOverlayGeometry& overlay) {
     defectFaceIndices_ = overlay.overlayFaceIndices;
+    overlayNodes_ = overlay.overlayPoints;
+    nodeRadiiDirty_ = true;
     lastAppliedDefectEdgeRadius_ = -1.0;
     lastAppliedPointRadius_ = -1.0;
     // Polyscope aborts when drawing a structure without elements, so each one is registered only when
@@ -823,6 +873,8 @@ void PolyscopeGui::syncRepairPreviewToPolyscope() {
 
     lastAppliedOriginalEdgeRadius_ = -1.0;
     const HighlightOverlayGeometry originalEdges = controller_.buildRepairPreviewOriginalEdges();
+    originalEdgeNodes_ = originalEdges.overlayPoints;
+    nodeRadiiDirty_ = true;
     if (originalEdges.hasSelectionOverlay()) {
         polyscope::registerCurveNetwork(kOriginalEdgesName, originalEdges.overlayPoints, originalEdges.overlayEdges);
     } else {
@@ -1006,6 +1058,46 @@ void PolyscopeGui::applyEffectiveHighlightSizingToPolyscope(bool forceUpdate) {
         radiusIsStale(pointRadius, lastAppliedPointRadius_, forceUpdate)) {
         polyscope::getPointCloud(kOverlayPointName)->setPointRadius(pointRadius, false);
         lastAppliedPointRadius_ = pointRadius;
+    }
+    applyPerNodeOverlayRadii(defectEdgeRadius, originalEdgeRadius, pointRadius, forceUpdate);
+}
+
+void PolyscopeGui::applyPerNodeOverlayRadii(
+    double edgeRadius, double originalEdgeRadius, double pointRadius, bool forceUpdate) {
+    // Recomputed only when the camera, viewport or pixel sizes change (or the overlays were re-registered)
+    const OverlayAppearance& appearance = controller_.overlayAppearance();
+    std::array<double, 22> key{};
+    const glm::mat4 view = polyscope::view::getCameraViewMatrix();
+    for (int c = 0; c < 4; ++c) {
+        for (int r = 0; r < 4; ++r) {
+            key[static_cast<std::size_t>(4 * c + r)] = static_cast<double>(view[c][r]);
+        }
+    }
+    key[16] = polyscope::view::fov;
+    key[17] = static_cast<double>(polyscope::view::windowHeight);
+    key[18] = appearance.selectedFaces.edgeWidthPx;
+    key[19] = appearance.originalEdgeWidthPx;
+    key[20] = appearance.pointRadiusPx;
+    key[21] = polyscope::view::projectionMode == polyscope::ProjectionMode::Perspective ? 1.0 : 0.0;
+    if (!forceUpdate && !nodeRadiiDirty_ && key == lastNodeSizingKey_) {
+        return;
+    }
+    lastNodeSizingKey_ = key;
+    nodeRadiiDirty_ = false;
+
+    if (polyscope::hasCurveNetwork(kOverlayCurveName) &&
+        polyscope::getCurveNetwork(kOverlayCurveName)->nNodes() == overlayNodes_.size()) {
+        setCurveNodeRadii(kOverlayCurveName,
+                          screenConstantRadii(overlayNodes_, appearance.selectedFaces.edgeWidthPx, edgeRadius));
+    }
+    if (polyscope::hasCurveNetwork(kOriginalEdgesName) &&
+        polyscope::getCurveNetwork(kOriginalEdgesName)->nNodes() == originalEdgeNodes_.size()) {
+        setCurveNodeRadii(kOriginalEdgesName,
+                          screenConstantRadii(originalEdgeNodes_, appearance.originalEdgeWidthPx, originalEdgeRadius));
+    }
+    if (polyscope::hasPointCloud(kOverlayPointName) &&
+        polyscope::getPointCloud(kOverlayPointName)->nPoints() == overlayNodes_.size()) {
+        setPointRadii(kOverlayPointName, screenConstantRadii(overlayNodes_, appearance.pointRadiusPx, pointRadius));
     }
 }
 

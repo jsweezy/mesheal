@@ -56,6 +56,24 @@ std::string elementLabel(const CategoryInfo& info, const DefectElement& element)
     return buffer;
 }
 
+/// Widest possible element label for this mesh ("#258831", "129429-129430"), so the column fits every row.
+std::string widestElementLabel(const CategoryInfo& info, const Mesh& mesh, std::size_t shellCount) {
+    const auto widestDigits = [](Eigen::Index count) {
+        return std::string(std::to_string(std::max<Eigen::Index>(count, 1)).size(), '8');
+    };
+    switch (info.kind) {
+    case ElementKind::Edge:
+        return widestDigits(mesh.numVertices()) + "-" + widestDigits(mesh.numVertices());
+    case ElementKind::Vertex:
+        return "#" + widestDigits(mesh.numVertices());
+    case ElementKind::Shell:
+        return "#" + widestDigits(static_cast<Eigen::Index>(shellCount));
+    case ElementKind::Face:
+        break;
+    }
+    return "#" + widestDigits(mesh.numFaces());
+}
+
 std::string columnHeader(const CategoryColumn& column, Unit unit) {
     const std::string suffix = gui::dimensionSuffix(column.dimension, unit);
     return suffix.empty() ? std::string(column.name) : std::string(column.name) + " (" + suffix + ")";
@@ -509,11 +527,17 @@ void PolyscopeGui::drawDefectTable(float height) {
     const int columns = 1 + dataColumns + (showSubtype ? 1 : 0);
     const ImGuiTableFlags flags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter |
                                   ImGuiTableFlags_Sortable | ImGuiTableFlags_SortTristate | ImGuiTableFlags_Resizable;
+    // Fixed width for the longest label: auto-fit only measures the rows on screen, and a width saved for
+    // shorter labels would clip "#184666" to "#18466". Keying the table on the label length drops old widths.
+    const std::string widest = widestElementLabel(info, controller_.mesh(), controller_.shells().size());
+    const float labelWidth = ImGui::CalcTextSize(widest.c_str()).x + ImGui::GetStyle().ItemSpacing.x;
+    ImGui::PushID(static_cast<int>(widest.size()));
     if (!ImGui::BeginTable("DefectTable", columns, flags, ImVec2(0.0f, height))) {
+        ImGui::PopID();
         return;
     }
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn(elementColumnName(info.kind), ImGuiTableColumnFlags_WidthFixed, 0.0f, 3);
+    ImGui::TableSetupColumn(elementColumnName(info.kind), ImGuiTableColumnFlags_WidthFixed, labelWidth, 3);
     for (int c = 0; c < dataColumns; ++c) {
         const std::string header = columnHeader(info.columns[static_cast<std::size_t>(c)], unit);
         ImGui::TableSetupColumn(header.c_str(), ImGuiTableColumnFlags_None, 0.0f, static_cast<ImGuiID>(c));
@@ -579,6 +603,7 @@ void PolyscopeGui::drawDefectTable(float height) {
         }
     }
     ImGui::EndTable();
+    ImGui::PopID();
     scrollListToFocus_ = false;
 
     if (clicked) {

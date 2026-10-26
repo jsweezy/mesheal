@@ -2,6 +2,7 @@
 
 #include "app/AppController.hpp"
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <memory>
@@ -131,6 +132,8 @@ private:
     void syncDefectOverlaysToPolyscope(const HighlightOverlayGeometry& overlay);
     void syncRepairPreviewToPolyscope();
     void syncGlobalRepairPreviewToPolyscope();
+    /// Gives every overlay sphere / tube end the radius that draws it at the set pixel size at its own depth.
+    void applyPerNodeOverlayRadii(double edgeRadius, double originalEdgeRadius, double pointRadius, bool forceUpdate);
     /// Sets Polyscope's transparency mode preferred by the active preview display mode.
     void applyTransparencyModeForPreview();
     /// Pushes overlay styles (colors, edge widths, point color) to the overlay structures.
@@ -206,6 +209,10 @@ private:
     double lastAppliedDefectEdgeRadius_ = -1.0;
     double lastAppliedOriginalEdgeRadius_ = -1.0;
     double lastAppliedPointRadius_ = -1.0;
+    std::vector<Eigen::Vector3d> overlayNodes_;      ///< Points of the defect tubes / spheres (per-node sizing)
+    std::vector<Eigen::Vector3d> originalEdgeNodes_; ///< Points of the "Original Edges" tubes
+    std::array<double, 22> lastNodeSizingKey_{};     ///< View matrix, FOV, viewport and sizes the node radii fit
+    bool nodeRadiiDirty_ = true;
     float dragDistSinceLastRelease_ = 0.0f;
 };
 
