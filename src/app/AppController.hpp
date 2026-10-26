@@ -16,6 +16,7 @@
 #include "mesh/ToleranceConfig.hpp"
 #include "mesh/Units.hpp"
 #include "repair/GlobalRepair.hpp"
+#include "repair/HoleFiller.hpp"
 #include "repair/IntersectionHealer.hpp"
 #include "repair/SliverHealer.hpp"
 
@@ -82,7 +83,7 @@ struct ShellHealth {
 enum class WatertightState { Unknown, Watertight, NotWatertight };
 
 /// What the right-column Tool slot shows (one tool at a time).
-enum class ToolSlot { None, DefectCategory, UnitsAndScale, RepairAllIntersections, MergeShells };
+enum class ToolSlot { None, DefectCategory, UnitsAndScale, RepairAllIntersections, RepairAllHoles, MergeShells };
 
 /// One line of the Merge Shells checklist (UI_DESIGN.md §16.3), built from Mesh Health.
 struct MergeCheck {
@@ -236,6 +237,8 @@ struct UndoEntry {
     Eigen::Index focusedFaceIndex = -1;
     HealAction selectedHealAction = HealAction::None;
     IntersectionRepairMethod selectedIslandMethod = IntersectionRepairMethod::None;
+    Eigen::Index focusedElementFace = -1; ///< First face of the focused defect of any kind (e.g. an open edge's face)
+    HoleFillMethod selectedHoleMethod = HoleFillMethod::None;
     bool modified = false;
     ShellBrowser shells;
     std::string actionLabel;
@@ -785,20 +788,26 @@ public:
 
     void setPreviewPatchOpacity(double opacity) noexcept;
 
-    /// True when a valid single-defect preview (sliver or island) is visible: the GUI draws
+    /// True when a valid single-defect preview (sliver, island or hole) is visible: the GUI draws
     /// `previewPatchMesh()` and applies the display mode.
     [[nodiscard]] bool repairPreviewShown() const noexcept {
-        return repairPreviewVisible_ && (islandPreviewActive() ? islandPreview_.valid : repairPreview_.valid);
+        return repairPreviewVisible_ && (holePreviewActive()     ? holePreview_.valid
+                                         : islandPreviewActive() ? islandPreview_.valid
+                                                                 : repairPreview_.valid);
     }
 
-    /// Patch of the active single-defect preview (island preview when an island is focused).
+    /// Patch of the active single-defect preview (the hole or island preview when one is focused).
     [[nodiscard]] const Mesh& previewPatchMesh() const noexcept {
-        return islandPreviewActive() ? islandPreview_.previewPatchMesh : repairPreview_.previewPatchMesh;
+        return holePreviewActive()     ? holePreview_.previewPatchMesh
+               : islandPreviewActive() ? islandPreview_.previewPatchMesh
+                                       : repairPreview_.previewPatchMesh;
     }
 
     /// Base faces the active single-defect preview replaces.
     [[nodiscard]] const std::vector<Eigen::Index>& previewSourceFaces() const noexcept {
-        return islandPreviewActive() ? islandPreview_.sourceFaceIndices : repairPreview_.sourceFaceIndices;
+        return holePreviewActive()     ? holePreview_.sourceFaceIndices
+               : islandPreviewActive() ? islandPreview_.sourceFaceIndices
+                                       : repairPreview_.sourceFaceIndices;
     }
 
     /// Base-mesh faces to draw, cutting out highlighted faces and (in cutout mode) preview-replaced faces.
@@ -883,11 +892,69 @@ public:
     [[nodiscard]] std::size_t intersectionIslandCount();
 
     // -------------------------------------------------------------------------
-    // Intersecting faces: Repair All operator (AppControllerIntersections.cpp)
+    // Open edges: per-hole Inspector (AppControllerHoles.cpp)
+    // -------------------------------------------------------------------------
+
+    /// True when the focused open edge belongs to a hole (the Inspector shows its fills).
+    [[nodiscard]] bool holeInspectorActive() const noexcept {
+        return focusedHole_.has_value();
+    }
+
+    /// Hole of the focused open edge (nullptr when `holeInspectorActive()` is false).
+    [[nodiscard]] const HoleLoop* focusedHole() const noexcept;
+
+    /// 1-based number of the focused hole (the "Hole" column), 0 when none.
+    [[nodiscard]] std::size_t focusedHoleNumber() const noexcept {
+        return focusedHole_ ? *focusedHole_ + 1 : 0;
+    }
+
+    [[nodiscard]] HoleFillMethod selectedHoleMethod() const noexcept {
+        return selectedHoleMethod_;
+    }
+
+    /// Chooses the focused hole's fill method and recomputes its preview.
+    void setSelectedHoleMethod(HoleFillMethod method);
+
+    /// Live preview and scorecard of `selectedHoleMethod()` on the focused hole.
+    [[nodiscard]] const HoleFillPreview& holePreview() const noexcept {
+        return holePreview_;
+    }
+
+    /// Applies the selected method to the focused hole (one undo step). Refused when the fill would
+    /// cross other faces.
+    bool commitHoleFill();
+
+    /// Fills the holes of the selected open edges with their recommended methods (one undo step).
+    bool fixSelectedHoles();
+
+    [[nodiscard]] const HoleFillSettings& holeFillSettings() const noexcept {
+        return holeSettings_;
+    }
+
+    /// Patch rings, size limits and crack snapping; refreshes the hole preview.
+    void setHoleFillSettings(const HoleFillSettings& settings);
+
+    /// Holes of the current mesh with at least one rim face in the shell scope.
+    [[nodiscard]] std::size_t holeCountInScope();
+
+    // -------------------------------------------------------------------------
+    // Repair All operator for intersections and holes (AppControllerIntersections.cpp)
     // -------------------------------------------------------------------------
 
     /// Opens "Operation: Repair All Intersections" in the Tool slot (deselects any row).
     void openRepairAllIntersections();
+
+    /// Opens "Operation: Repair All Holes" in the Tool slot (deselects any row).
+    void openRepairAllHoles();
+
+    /// Row the open Repair All operator repairs: Intersections or OpenEdges.
+    [[nodiscard]] DefectCategory globalRepairTarget() const noexcept {
+        return activeTool_ == ToolSlot::RepairAllHoles ? DefectCategory::OpenEdges : DefectCategory::Intersections;
+    }
+
+    [[nodiscard]] bool repairAllOpen() const noexcept {
+        return activeTool_ == ToolSlot::RepairAllIntersections || activeTool_ == ToolSlot::RepairAllHoles;
+    }
 
     [[nodiscard]] GlobalRepairMethod globalRepairMethod() const noexcept {
         return globalMethod_;
@@ -905,7 +972,7 @@ public:
     /// Computes the selected method's candidate (background in the GUI, inline in tests).
     void previewGlobalRepair();
 
-    /// Computes a candidate for every method, one after another.
+    /// Computes a candidate for every method of the open operator, one after another.
     void compareAllGlobalRepairs();
 
     void cancelGlobalRepair();
@@ -1032,8 +1099,21 @@ private:
     void refreshIslandFocus(Eigen::Index face);
     void resetIslandRepairState() noexcept;
     void refreshIslandPreview();
+    [[nodiscard]] bool holePreviewActive() const noexcept {
+        return focusedHole_.has_value() && selectedHoleMethod_ != HoleFillMethod::None;
+    }
+    /// Holes of the current mesh (computed lazily, cleared on every mesh change).
+    const std::vector<HoleLoop>& holeLoops();
+    /// Updates the focused hole after the focus changed (Open edges row only).
+    void refreshHoleFocus(bool openEdgeFocus);
+    void resetHoleRepairState() noexcept;
+    void refreshHolePreview();
+    /// Rim faces of the focused hole (empty when none).
+    [[nodiscard]] std::span<const Eigen::Index> focusedHoleFaces() const noexcept;
     /// Stops the Repair All job and forgets its candidates (mesh edit, tool closed).
     void discardGlobalCandidates();
+    /// Opens the Repair All operator for `slot` with `method` selected.
+    void openRepairAll(ToolSlot slot, GlobalRepairMethod method);
     /// Moves finished Repair All candidates into the table. Returns true if any arrived.
     bool pollRepairJobs();
     void queueGlobalRepairs(std::vector<GlobalRepairMethod> methods);
@@ -1113,6 +1193,15 @@ private:
     bool colorByDeviation_ = false;
     RepairJobRunner repairRunner_;
     MergeJobRunner mergeRunner_;
+
+    // Open edges: holes and the hole Inspector
+    std::vector<HoleLoop> holes_;
+    bool holesValid_ = false;
+    std::optional<std::size_t> focusedHole_;
+    HoleFillMethod selectedHoleMethod_ = HoleFillMethod::None;
+    HoleFillPreview holePreview_{};
+    HoleFillSettings holeSettings_{};
+    std::optional<std::size_t> lastFramedHole_; ///< Hole the last `.` framed (for the +N / -N toggle)
 
     std::vector<UndoEntry> undoStack_;
 

@@ -1,4 +1,4 @@
-// Intersecting faces: the per-island Inspector and "Operation: Repair All Intersections".
+// Intersecting faces: the per-island Inspector, and the Repair All operator for intersections and holes.
 
 #include "app/GuiWidgets.hpp"
 #include "app/PolyscopeGui.hpp"
@@ -10,6 +10,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <span>
 #include <string>
 
 namespace ogun {
@@ -45,7 +46,11 @@ struct GlobalMethodOption {
     const char* help;
 };
 
-constexpr std::array<GlobalMethodOption, 4> kGlobalMethodOptions = {{
+constexpr std::array<GlobalMethodOption, 5> kGlobalMethodOptions = {{
+    {GlobalRepairMethod::FillHoles, "keeps every other face exactly",
+     "Surgical: each hole gets its recommended fill (Flat holes Fill Flat, Curved holes Fill Smooth, cracks "
+     "Close Crack), or the method chosen below. Every existing face is kept; holes over the size limit and open "
+     "chains stay open."},
     {GlobalRepairMethod::PatchIslands, "keeps every other face exactly",
      "Surgical: each island (crossings within a shell) gets its recommended per-island repair, falling back to "
      "the others. Crossings between shells are left alone."},
@@ -53,11 +58,12 @@ constexpr std::array<GlobalMethodOption, 4> kGlobalMethodOptions = {{
      "Exact cut along every crossing (CGAL autorefinement), then keeps only the outer surface by winding number. "
      "Uncrossed faces are kept exactly; internal walls and pockets are removed; new thin faces can appear along the cuts."},
     {GlobalRepairMethod::WindingRebuild, "new surface from a grid",
-     "Marching cubes of the winding number on a regular grid: always closed, merges overlaps and closes small "
-     "holes, but every face is new and detail below the grid size is lost."},
+     "Marching cubes of the winding number on a regular grid: always closed, merges overlaps and closes "
+     "holes (the winding number spans them), but every face is new and detail below the grid size is lost."},
     {GlobalRepairMethod::AlphaWrap, "new surface wrapped around the input",
      "CGAL alpha wrap: guaranteed watertight, 2-manifold and free of crossings. Every face is new; cavities "
-     "smaller than alpha and shells nested inside others are lost. An open sheet becomes a thin closed shell."},
+     "smaller than alpha and shells nested inside others are lost. Holes narrower than about alpha are spanned; "
+     "through bigger ones the wrap follows the inside, and an open sheet becomes a thin closed shell."},
 }};
 
 /// Length with the current unit ("0.012 mm").
@@ -194,13 +200,23 @@ void PolyscopeGui::drawIntersectionRepairSettings() {
 // Operation: Repair All Intersections (UI_DESIGN.md §7.2)
 // -----------------------------------------------------------------------------
 
-void PolyscopeGui::drawRepairAllIntersectionsOperator() {
+void PolyscopeGui::drawRepairAllOperator() {
     if (!controller_.hasMesh()) {
         ImGui::TextDisabled("No mesh loaded.");
         return;
     }
-    const CategoryHealth& row = controller_.categoryHealth(DefectCategory::Intersections);
-    if (row.status == HealthStatus::Defects || row.status == HealthStatus::Ok) {
+    const DefectCategory target = controller_.globalRepairTarget();
+    const CategoryHealth& row = controller_.categoryHealth(target);
+    if (target == DefectCategory::OpenEdges) {
+        if (row.status == HealthStatus::Defects || row.status == HealthStatus::Ok) {
+            const std::size_t holes = controller_.holeCountInScope();
+            ImGui::TextWrapped("%s open edges around %s %s%s.", withThousands(controller_.rowCount(DefectCategory::OpenEdges)).c_str(),
+                               withThousands(holes).c_str(), holes == 1 ? "hole" : "holes",
+                               controller_.shells().scoped() ? " (shells in scope)" : "");
+        } else {
+            ImGui::TextDisabled("Open edges not checked yet. The preview measures them anyway.");
+        }
+    } else if (row.status == HealthStatus::Defects || row.status == HealthStatus::Ok) {
         const std::size_t islands = controller_.intersectionIslandCount();
         ImGui::TextWrapped("%s intersecting faces, %s %s within shells%s.",
                            withThousands(controller_.rowCount(DefectCategory::Intersections)).c_str(),
@@ -216,7 +232,11 @@ void PolyscopeGui::drawRepairAllIntersectionsOperator() {
     ImGui::PopStyleColor();
 
     ImGui::SeparatorText("Method");
+    const std::span<const GlobalRepairMethod> methods = globalRepairMethodsFor(target);
     for (const GlobalMethodOption& option : kGlobalMethodOptions) {
+        if (std::find(methods.begin(), methods.end(), option.method) == methods.end()) {
+            continue;
+        }
         const std::string label = std::string(globalRepairMethodLabel(option.method)) + "##global";
         if (ImGui::RadioButton(label.c_str(), controller_.globalRepairMethod() == option.method)) {
             controller_.setGlobalRepairMethod(option.method);
@@ -300,7 +320,7 @@ void PolyscopeGui::drawRepairAllIntersectionsOperator() {
     }
     ImGui::PopStyleColor();
     ImGui::EndDisabled();
-    tooltip("Replace the mesh with the shown result (one undo step). Intersecting faces are re-checked.");
+    tooltip("Replace the mesh with the shown result (one undo step). The Auto rows and Intersecting faces are re-checked.");
     ImGui::SameLine();
     if (ImGui::Button("Close")) {
         controller_.closeTool();
@@ -314,6 +334,27 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
     bool changed = false;
     ImGui::PushItemWidth(140.0f);
     switch (method) {
+    case GlobalRepairMethod::FillHoles: {
+        constexpr std::array<HoleFillMethod, 5> kChoices = {HoleFillMethod::None, HoleFillMethod::Flat, HoleFillMethod::Refine,
+                                                            HoleFillMethod::Smooth, HoleFillMethod::CloseCrack};
+        const auto label = [](HoleFillMethod m) { return m == HoleFillMethod::None ? "Recommended per hole" : holeFillMethodLabel(m); };
+        if (ImGui::BeginCombo("Fill", label(params.holeMethod))) {
+            for (const HoleFillMethod choice : kChoices) {
+                if (ImGui::Selectable(label(choice), params.holeMethod == choice)) {
+                    params.holeMethod = choice;
+                    changed = true;
+                }
+            }
+            ImGui::EndCombo();
+        }
+        tooltip("Recommended: Flat holes get Fill Flat, Curved holes Fill Smooth, cracks Close Crack. A single method "
+                "applies to every hole (holes it cannot close stay open).");
+        const HoleFillSettings& holes = controller_.holeFillSettings();
+        ImGui::TextDisabled("Limits (Open edges tool settings): max hole edges %s, max refined faces %s",
+                            holes.maxHoleEdges > 0 ? withThousands(static_cast<std::size_t>(holes.maxHoleEdges)).c_str() : "none",
+                            withThousands(holes.maxPatchFaces).c_str());
+        break;
+    }
     case GlobalRepairMethod::PatchIslands:
         ImGui::TextDisabled("Island settings: rings %d, CGAL steps %d",
                             controller_.islandRepairSettings().dilationRings, controller_.islandRepairSettings().cgalMaxSteps);
@@ -361,8 +402,9 @@ void PolyscopeGui::drawGlobalCandidateTable() {
         return;
     }
     ImGui::TableSetupColumn("Method");
+    const bool holes = controller_.globalRepairTarget() == DefectCategory::OpenEdges;
     ImGui::TableSetupColumn("Closed");
-    ImGui::TableSetupColumn("Crossings");
+    ImGui::TableSetupColumn(holes ? "Open edges" : "Crossings");
     ImGui::TableSetupColumn("dV");
     ImGui::TableSetupColumn("dA");
     ImGui::TableSetupColumn("Max dev");
@@ -373,7 +415,7 @@ void PolyscopeGui::drawGlobalCandidateTable() {
     const char* headerHelp[] = {
         "Click a row to show that result.",
         "Watertight and manifold: no open and no non-manifold edges.",
-        "Intersecting faces after (before).",
+        holes ? "Open edges after (before)." : "Intersecting faces after (before).",
         "Volume change (sum of signed shell volumes: overlapping shells count twice before a union).",
         "Surface area change.",
         "Farthest point of the result from the original surface: how far new surface strays.",
@@ -417,7 +459,12 @@ void PolyscopeGui::drawGlobalCandidateTable() {
                          " non-manifold edges").c_str());
             }
             ImGui::TableSetColumnIndex(2);
-            if (m.intersectingFacesAfter == 0) {
+            if (holes) {
+                ImGui::TextColored(m.openEdgesAfter == 0 ? gui::kOkColor : gui::kDefectColor, "%s (%s)",
+                                   withThousands(m.openEdgesAfter).c_str(), withThousands(m.openEdgesBefore).c_str());
+                tooltip((withThousands(m.intersectingFacesAfter) + " intersecting faces after (" +
+                         withThousands(m.intersectingFacesBefore) + " before)").c_str());
+            } else if (m.intersectingFacesAfter == 0) {
                 ImGui::TextColored(gui::kOkColor, "0 (%s)", withThousands(m.intersectingFacesBefore).c_str());
             } else {
                 ImGui::TextColored(gui::kDefectColor, "%s (%s)", withThousands(m.intersectingFacesAfter).c_str(),

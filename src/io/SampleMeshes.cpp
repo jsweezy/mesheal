@@ -2,14 +2,69 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <iomanip>
 #include <map>
+#include <numbers>
 #include <sstream>
 
 namespace ogun {
 
 namespace {
+
+Mesh meshFromFaces(const std::vector<Eigen::Vector3d>& points, const std::vector<std::array<int, 3>>& faces, Unit unit) {
+    Mesh mesh;
+    mesh.fileUnit = unit;
+    mesh.V.resize(static_cast<Eigen::Index>(points.size()), 3);
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        mesh.V.row(static_cast<Eigen::Index>(i)) = points[i].transpose();
+    }
+    mesh.F.resize(static_cast<Eigen::Index>(faces.size()), 3);
+    for (std::size_t f = 0; f < faces.size(); ++f) {
+        mesh.F.row(static_cast<Eigen::Index>(f)) << faces[f][0], faces[f][1], faces[f][2];
+    }
+    mesh.recomputeNormals();
+    return mesh;
+}
+
+/// Welds the corners of a triangle soup by exact position (the STL reader's weld for exact copies).
+Mesh weldSoup(const std::vector<std::array<Eigen::Vector3d, 3>>& soup, Unit unit) {
+    std::map<std::array<double, 3>, int> index;
+    std::vector<Eigen::Vector3d> points;
+    std::vector<std::array<int, 3>> faces;
+    faces.reserve(soup.size());
+    for (const auto& tri : soup) {
+        std::array<int, 3> face{};
+        for (std::size_t c = 0; c < 3; ++c) {
+            const Eigen::Vector3d& p = tri[c];
+            const auto [it, inserted] = index.try_emplace({p.x(), p.y(), p.z()}, static_cast<int>(points.size()));
+            if (inserted) {
+                points.push_back(p);
+            }
+            face[c] = it->second;
+        }
+        faces.push_back(face);
+    }
+    return meshFromFaces(points, faces, unit);
+}
+
+/// Appends the faces of `mesh` whose centroid fails `drop`, moved by `offset`, to `soup`.
+template <typename Drop>
+void appendSoup(std::vector<std::array<Eigen::Vector3d, 3>>& soup, const Mesh& mesh, const Eigen::Vector3d& offset, Drop drop) {
+    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+        std::array<Eigen::Vector3d, 3> tri;
+        for (int c = 0; c < 3; ++c) {
+            tri[static_cast<std::size_t>(c)] = mesh.V.row(mesh.F(f, c)).transpose();
+        }
+        if (!drop((tri[0] + tri[1] + tri[2]) / 3.0)) {
+            for (Eigen::Vector3d& p : tri) {
+                p += offset;
+            }
+            soup.push_back(tri);
+        }
+    }
+}
 
 void appendFloatLE(std::vector<std::uint8_t>& buf, float val) {
     std::uint8_t bytes[sizeof(float)];
@@ -163,6 +218,111 @@ Mesh SampleMeshes::createTouchingCubesMesh(Unit unit) {
     }
     mesh.recomputeNormals();
     return mesh;
+}
+
+Mesh SampleMeshes::createSphereMesh(int rings, int segments, double radius, Unit unit) {
+    rings = std::max(rings, 2);
+    segments = std::max(segments, 3);
+    std::vector<Eigen::Vector3d> points;
+    points.reserve(static_cast<std::size_t>(2 + (rings - 1) * segments));
+    points.emplace_back(0.0, 0.0, radius);
+    for (int i = 1; i < rings; ++i) {
+        const double t = std::numbers::pi * i / rings;
+        for (int j = 0; j < segments; ++j) {
+            const double p = 2.0 * std::numbers::pi * j / segments;
+            points.emplace_back(radius * std::sin(t) * std::cos(p), radius * std::sin(t) * std::sin(p), radius * std::cos(t));
+        }
+    }
+    points.emplace_back(0.0, 0.0, -radius);
+    const int south = static_cast<int>(points.size()) - 1;
+    const auto ring = [&](int i, int j) { return 1 + (i - 1) * segments + (j % segments); };
+    std::vector<std::array<int, 3>> faces;
+    for (int j = 0; j < segments; ++j) {
+        faces.push_back({0, ring(1, j), ring(1, j + 1)});
+    }
+    for (int i = 1; i + 1 < rings; ++i) {
+        for (int j = 0; j < segments; ++j) {
+            faces.push_back({ring(i, j), ring(i + 1, j), ring(i + 1, j + 1)});
+            faces.push_back({ring(i, j), ring(i + 1, j + 1), ring(i, j + 1)});
+        }
+    }
+    for (int j = 0; j < segments; ++j) {
+        faces.push_back({south, ring(rings - 1, j + 1), ring(rings - 1, j)});
+    }
+    return meshFromFaces(points, faces, unit);
+}
+
+Mesh SampleMeshes::createCylinderMesh(int segments, int bands, double radius, double height, Unit unit) {
+    segments = std::max(segments, 3);
+    bands = std::max(bands, 1);
+    std::vector<Eigen::Vector3d> points;
+    for (int i = 0; i <= bands; ++i) {
+        for (int j = 0; j < segments; ++j) {
+            const double p = 2.0 * std::numbers::pi * j / segments;
+            points.emplace_back(radius * std::cos(p), radius * std::sin(p), height * i / bands);
+        }
+    }
+    const int bottom = static_cast<int>(points.size());
+    points.emplace_back(0.0, 0.0, 0.0);
+    const int top = static_cast<int>(points.size());
+    points.emplace_back(0.0, 0.0, height);
+    const auto at = [&](int i, int j) { return i * segments + (j % segments); };
+    std::vector<std::array<int, 3>> faces;
+    for (int i = 0; i < bands; ++i) {
+        for (int j = 0; j < segments; ++j) {
+            faces.push_back({at(i, j), at(i, j + 1), at(i + 1, j + 1)});
+            faces.push_back({at(i, j), at(i + 1, j + 1), at(i + 1, j)});
+        }
+    }
+    for (int j = 0; j < segments; ++j) {
+        faces.push_back({bottom, at(0, j + 1), at(0, j)});
+        faces.push_back({top, at(bands, j), at(bands, j + 1)});
+    }
+    return meshFromFaces(points, faces, unit);
+}
+
+Mesh SampleMeshes::createCrackedBoxMesh(Unit unit) {
+    const Mesh cube = createGridCubeMesh(4, 4.0, unit);
+    std::vector<std::array<Eigen::Vector3d, 3>> soup;
+    appendSoup(soup, cube, Eigen::Vector3d::Zero(), [](const Eigen::Vector3d& c) { return c.z() > 3.99; });
+    const auto add = [&](double ax, double ay, double bx, double by, double cx, double cy) {
+        soup.push_back({Eigen::Vector3d(ax, ay, 4.0), Eigen::Vector3d(bx, by, 4.0), Eigen::Vector3d(cx, cy, 4.0)});
+    };
+    // Unit grids on [0, 2] and [3, 4]; the strip [2, 3] uses only y = 0, 2, 4 on its x = 2 side
+    for (const double x : {0.0, 1.0, 3.0}) {
+        for (int yi = 0; yi < 4; ++yi) {
+            const auto y = static_cast<double>(yi);
+            add(x, y, x + 1.0, y, x + 1.0, y + 1.0);
+            add(x, y, x + 1.0, y + 1.0, x, y + 1.0);
+        }
+    }
+    const std::array<double, 3> seam{0.0, 2.0, 4.0};
+    std::size_t i = 0;
+    int j = 0;
+    while (i + 1 < seam.size() || j < 4) {
+        if (j < 4 && (i + 1 >= seam.size() || j + 1 <= seam[i + 1])) {
+            add(2.0, seam[i], 3.0, j, 3.0, j + 1);
+            ++j;
+        } else {
+            add(2.0, seam[i], 3.0, j, 2.0, seam[i + 1]);
+            ++i;
+        }
+    }
+    return weldSoup(soup, unit);
+}
+
+Mesh SampleMeshes::createHolesSampleMesh(Unit unit) {
+    std::vector<std::array<Eigen::Vector3d, 3>> soup;
+    const auto keepAll = [](const Eigen::Vector3d&) { return false; };
+    appendSoup(soup, createCrackedBoxMesh(unit), Eigen::Vector3d::Zero(), keepAll);
+    appendSoup(soup, createGridCubeMesh(4, 4.0, unit), Eigen::Vector3d(6.0, 0.0, 0.0), [](const Eigen::Vector3d& c) {
+        return c.z() > 3.99 && c.x() > 1.0 && c.x() < 3.0 && c.y() > 1.0 && c.y() < 3.0;
+    });
+    appendSoup(soup, createSphereMesh(12, 24, 2.0, unit), Eigen::Vector3d(14.0, 2.0, 2.0),
+               [](const Eigen::Vector3d& c) { return c.z() > 1.4; });
+    appendSoup(soup, createCylinderMesh(24, 4, 2.0, 4.0, unit), Eigen::Vector3d(20.0, 2.0, 0.0),
+               [](const Eigen::Vector3d& c) { return c.z() > 3.99; });
+    return weldSoup(soup, unit);
 }
 
 std::string SampleMeshes::createCubeAsciiStl(double sideLength) {

@@ -29,6 +29,7 @@ struct RepairMetrics {
     std::size_t intersectingFacesAfter = 0;
     std::size_t thinFacesBefore = 0;
     std::size_t thinFacesAfter = 0;
+    std::size_t openEdgesBefore = 0;
     std::size_t openEdgesAfter = 0;
     std::size_t nonManifoldEdgesAfter = 0;
     double unchangedFraction = 0.0;  ///< Share of original faces that survive bit-identical

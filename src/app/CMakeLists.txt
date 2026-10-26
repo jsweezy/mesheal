@@ -2,6 +2,7 @@ find_package(Threads REQUIRED)
 
 add_library(ogun_app_controller STATIC
     AppController.cpp
+    AppControllerHoles.cpp
     AppControllerIntersections.cpp
     AppControllerMerge.cpp
     DefectBrowser.cpp
@@ -43,6 +44,7 @@ if(OGUN_BUILD_GUI)
         PolyscopeGuiShell.cpp
         PolyscopeGuiPanels.cpp
         PolyscopeGuiHealth.cpp
+        PolyscopeGuiHoles.cpp
         PolyscopeGuiIntersections.cpp
         PolyscopeGuiShells.cpp
         GuiWidgets.cpp

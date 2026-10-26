@@ -197,6 +197,9 @@ void AppController::replaceMeshPreservingHistory(Mesh mesh, std::optional<ShellB
     resetIslandRepairState();
     islands_.clear();
     islandsValid_ = false;
+    resetHoleRepairState();
+    holes_.clear();
+    holesValid_ = false;
     discardGlobalCandidates();
     orbitPivot_ = computeSelectionCentroid();
 }
@@ -803,7 +806,7 @@ bool AppController::escape() {
 }
 
 void AppController::clearSelection() {
-    if (activeTool_ == ToolSlot::RepairAllIntersections) {
+    if (repairAllOpen()) {
         discardGlobalCandidates();
     }
     pickedFaceIndex_ = -1;
@@ -857,6 +860,8 @@ void AppController::onFocusChanged() {
     const bool intersectionFocus = face >= 0 && pickedFaceIndex_ < 0 && browser_.result() != nullptr &&
                                    browser_.result()->category == DefectCategory::Intersections;
     refreshIslandFocus(intersectionFocus ? face : -1);
+    refreshHoleFocus(pickedFaceIndex_ < 0 && browser_.hasFocus() && browser_.result() != nullptr &&
+                     browser_.result()->category == DefectCategory::OpenEdges);
     orbitPivot_ = computeSelectionCentroid();
 }
 
@@ -893,9 +898,11 @@ std::vector<Eigen::Index> AppController::highlightedFaceIndices() const {
         const auto ef = result->facesOf(browser_.focusedElement());
         faces.insert(faces.end(), ef.begin(), ef.end());
     }
-    // Intersections: also show the faces the focused face crosses
+    // Intersections: also show the faces the focused face crosses; holes: the whole rim
     const auto related = focusedRelatedFaces();
     faces.insert(faces.end(), related.begin(), related.end());
+    const auto rim = focusedHoleFaces();
+    faces.insert(faces.end(), rim.begin(), rim.end());
     std::sort(faces.begin(), faces.end());
     faces.erase(std::unique(faces.begin(), faces.end()), faces.end());
     return faces;
@@ -1245,6 +1252,10 @@ void AppController::pushUndoEntry(std::string actionLabel) {
         focusedSingleFace(),
         selectedHealAction_,
         selectedIslandMethod_,
+        browser_.result() != nullptr && browser_.hasFocus() && !browser_.result()->facesOf(browser_.focusedElement()).empty()
+            ? browser_.result()->facesOf(browser_.focusedElement()).front()
+            : Eigen::Index{-1},
+        selectedHoleMethod_,
         modified_,
         shells_,
         std::move(actionLabel)});
@@ -1288,8 +1299,9 @@ bool AppController::undoLastModification() {
     }
     syncBrowserResult();
 
-    if (entry.focusedFaceIndex >= 0 && browser_.result() != nullptr) {
-        const std::size_t element = browser_.findVisibleElementWithFace(entry.focusedFaceIndex);
+    const Eigen::Index focusFace = entry.focusedFaceIndex >= 0 ? entry.focusedFaceIndex : entry.focusedElementFace;
+    if (focusFace >= 0 && browser_.result() != nullptr) {
+        const std::size_t element = browser_.findVisibleElementWithFace(focusFace);
         if (element != DefectBrowser::kNone) {
             focusDefect(element);
             if (entry.selectedHealAction != HealAction::None && entry.selectedHealAction != selectedHealAction_) {
@@ -1298,6 +1310,9 @@ bool AppController::undoLastModification() {
             if (entry.selectedIslandMethod != IntersectionRepairMethod::None &&
                 entry.selectedIslandMethod != selectedIslandMethod_) {
                 setSelectedIslandMethod(entry.selectedIslandMethod);
+            }
+            if (entry.selectedHoleMethod != HoleFillMethod::None && entry.selectedHoleMethod != selectedHoleMethod_) {
+                setSelectedHoleMethod(entry.selectedHoleMethod);
             }
         }
     }
@@ -1965,6 +1980,14 @@ CameraFocusTarget AppController::computeCameraFocusTarget(
         const Eigen::Vector3d faceNormal = computeFaceInspectionNormal(focusedFace);
         // Looking at the face from the +N side means the camera sits at +N and looks along -N
         viewDir = -static_cast<double>(resolvedNormalSign) * faceNormal;
+    } else if (const HoleLoop* hole = focusedHole(); hole != nullptr && normalSide != FocusNormalSide::PreserveViewDirection) {
+        // A hole is framed like a face, looking into it along its outward normal
+        resolvedNormalSign = normalSide == FocusNormalSide::NegativeNormal ? -1
+                             : normalSide == FocusNormalSide::AutoToggleNormal && lastFramedHole_ == focusedHole_ &&
+                                       lastFocusedNormalSign_ == +1
+                                 ? -1
+                                 : +1;
+        viewDir = -static_cast<double>(resolvedNormalSign) * hole->normal;
     }
 
     if (viewDir.norm() <= 1.0e-12 || !viewDir.allFinite()) {
@@ -1999,6 +2022,7 @@ CameraFocusTarget AppController::focusOnSelection(
         lastFocusedFaceIndex_ = -1;
         lastFocusedNormalSign_ = 0;
     }
+    lastFramedHole_ = focus.normalSideSign != 0 ? focusedHole_ : std::nullopt;
     return focus;
 }
 

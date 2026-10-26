@@ -141,6 +141,7 @@ void PolyscopeGui::drawRightColumn(float top, float bottom) {
     }
     std::string title = slot == ToolSlot::UnitsAndScale            ? std::string("Operation: Units & Scale")
                         : slot == ToolSlot::RepairAllIntersections ? std::string("Operation: Repair All Intersections")
+                        : slot == ToolSlot::RepairAllHoles         ? std::string("Operation: Repair All Holes")
                         : slot == ToolSlot::MergeShells            ? std::string("Operation: Merge Shells")
                         : std::string("Tool: ") + categoryInfo(*controller_.selectedCategory()).name;
     title += "###ToolSlot";
@@ -156,8 +157,8 @@ void PolyscopeGui::drawRightColumn(float top, float bottom) {
     if (ImGui::Begin(title.c_str(), &open, kDockedFlags | ImGuiWindowFlags_NoCollapse)) {
         if (slot == ToolSlot::UnitsAndScale) {
             drawUnitsAndScaleOperator();
-        } else if (slot == ToolSlot::RepairAllIntersections) {
-            drawRepairAllIntersectionsOperator();
+        } else if (slot == ToolSlot::RepairAllIntersections || slot == ToolSlot::RepairAllHoles) {
+            drawRepairAllOperator();
         } else if (slot == ToolSlot::MergeShells) {
             drawMergeShellsOperator();
         } else {
@@ -221,6 +222,15 @@ void PolyscopeGui::drawFileMenu() {
         }
         tooltip("Three cubes: two touch along an edge and one at a corner, which loading keeps apart (three shells, "
                 "no non-manifold vertices), and a fin triangle on a top edge, which stays a non-manifold edge.");
+        if (ImGui::MenuItem("Holes (flat, curved, crack)")) {
+            controller_.setMesh(separateTouchingContacts(SampleMeshes::createHolesSampleMesh(controller_.fileUnit())),
+                                "Holes sample");
+            controller_.postStatusMessage("Loaded the holes sample: a crack, a square hole, a sphere cap and a cylinder end cap.");
+            overwriteConfirmedFor_.clear();
+            syncMeshStructureToPolyscope(true);
+        }
+        tooltip("Four shells with one hole each: a box with a T-junction crack in its top, a box missing a square "
+                "of its top, a sphere missing its cap and a cylinder missing an end cap. Try the hole fills on them.");
         constexpr std::array<std::pair<const char*, const char*>, 3> kExampleFiles = {{
             {"Self-intersecting box", "self_intersecting_box.stl"},
             {"Stanford bunny", "stanford_bunny.stl"},
@@ -429,7 +439,7 @@ void PolyscopeGui::drawRepairMenu() {
         }
         const CategoryHealth& row = controller_.categoryHealth(category);
         const std::size_t count = row.status == HealthStatus::Defects ? controller_.rowCount(category) : 0;
-        const bool repairAll = category == DefectCategory::Intersections;
+        const bool repairAll = category == DefectCategory::Intersections || category == DefectCategory::OpenEdges;
         const std::string label = std::string(repairAll ? "Repair All " : "Fix All ") + info.menuName +
                                   (count > 0 ? " (" + withThousands(count) + ")" : std::string()) +
                                   (repairAll ? "..." : "");
@@ -843,8 +853,8 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"Click defect in list", "Focuses it and sets the Orbit Pivot to its centroid; Ctrl/Cmd+click toggles, Shift+click selects a range, double-click flies to it"},
         {"Click shell in Shells panel", "Selects it (Ctrl/Cmd+click toggles, Shift+click selects a range, double-click frames it); right-click for Frame, Isolate, Hide, Delete, Save As"},
         {"N  /  Shift+N", "Next / previous defect of the selected row (worst first, within the active filter) and fly to it"},
-        {".  or  Numpad .", "Frames the focused facet looking down +Normal (press '.' again to toggle to -Normal); with no focused defect, frames the selected shells"},
-        {"Shift + .", "Frames the focused facet from the -Normal (back) side"},
+        {".  or  Numpad .", "Frames the focused facet looking down +Normal (press '.' again to toggle to -Normal); a focused open edge frames its whole hole, looking in along the hole's outward normal; with no focused defect, frames the selected shells"},
+        {"Shift + .", "Frames the focused facet (or hole) from the -Normal (back / inside) side"},
         {"Home  or  H", "Frames the entire mesh and resets the Orbit Pivot to the mesh center"},
         {"G", "Toggles Ghost (base-mesh transparency)"},
         {"Esc", "Clears the defect selection; press again to close the Tool and deselect the row, then again to clear the shell selection"},

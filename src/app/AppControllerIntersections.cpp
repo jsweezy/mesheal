@@ -1,4 +1,5 @@
-// AppController: intersecting-face repair, per island (Inspector) and for the whole mesh (Repair All).
+// AppController: intersecting-face repair, per island (Inspector) and for the whole mesh (Repair All),
+// and the Repair All operator it shares with holes.
 
 #include "app/AppController.hpp"
 
@@ -168,11 +169,21 @@ bool AppController::fixSelectedIntersections() {
 // Repair All operator
 // -----------------------------------------------------------------------------
 
-void AppController::openRepairAllIntersections() {
+void AppController::openRepairAll(ToolSlot slot, GlobalRepairMethod method) {
     clearSelection();
-    activeTool_ = ToolSlot::RepairAllIntersections;
+    activeTool_ = slot;
+    globalMethod_ = method;
     globalParams_.checkParams = checkParams();
     globalParams_.islandSettings = islandSettings_;
+    globalParams_.holeSettings = holeSettings_;
+}
+
+void AppController::openRepairAllIntersections() {
+    openRepairAll(ToolSlot::RepairAllIntersections, GlobalRepairMethod::PatchIslands);
+}
+
+void AppController::openRepairAllHoles() {
+    openRepairAll(ToolSlot::RepairAllHoles, GlobalRepairMethod::FillHoles);
 }
 
 void AppController::setGlobalRepairMethod(GlobalRepairMethod method) {
@@ -197,7 +208,8 @@ void AppController::previewGlobalRepair() {
 }
 
 void AppController::compareAllGlobalRepairs() {
-    queueGlobalRepairs(std::vector<GlobalRepairMethod>(kGlobalRepairMethods.begin(), kGlobalRepairMethods.end()));
+    const std::span<const GlobalRepairMethod> methods = globalRepairMethodsFor(globalRepairTarget());
+    queueGlobalRepairs(std::vector<GlobalRepairMethod>(methods.begin(), methods.end()));
 }
 
 void AppController::queueGlobalRepairs(std::vector<GlobalRepairMethod> methods) {
@@ -206,6 +218,7 @@ void AppController::queueGlobalRepairs(std::vector<GlobalRepairMethod> methods) 
     }
     globalParams_.checkParams = checkParams();
     globalParams_.islandSettings = islandSettings_;
+    globalParams_.holeSettings = holeSettings_;
     RepairRequest request{meshGeneration_, std::make_shared<const Mesh>(mesh_), repairScopeMask(), std::move(methods), globalParams_};
     if (backgroundChecks_) {
         repairRunner_.start(std::move(request));
@@ -251,7 +264,7 @@ bool AppController::pollRepairJobs() {
     std::vector<FinishedCandidate> finished = repairRunner_.takeFinished();
     bool changed = false;
     for (FinishedCandidate& f : finished) {
-        if (f.meshGeneration == meshGeneration_ && activeTool_ == ToolSlot::RepairAllIntersections) {
+        if (f.meshGeneration == meshGeneration_ && repairAllOpen()) {
             storeCandidate(std::move(f.candidate));
             changed = true;
         }
@@ -282,7 +295,7 @@ void AppController::showGlobalCandidate(GlobalRepairMethod method) {
 
 bool AppController::globalPreviewShown() const noexcept {
     const RepairCandidate* candidate = shownGlobalCandidate();
-    return activeTool_ == ToolSlot::RepairAllIntersections && repairPreviewVisible_ && candidate != nullptr &&
+    return repairAllOpen() && repairPreviewVisible_ && candidate != nullptr &&
            candidate->success && globalPreviewShow_ != GlobalPreviewShow::Original;
 }
 
@@ -293,8 +306,9 @@ bool AppController::applyGlobalRepair() {
         return false;
     }
     const std::string label = globalRepairMethodLabel(candidate->method);
+    const DefectCategory target = globalRepairTarget();
     Mesh repaired = candidate->mesh;
-    pushUndoEntry("Repair All Intersections (" + label + ")");
+    pushUndoEntry(std::string(target == DefectCategory::OpenEdges ? "Repair All Holes (" : "Repair All Intersections (") + label + ")");
     finishMeshEdit(std::move(repaired));
     recheckCategory(DefectCategory::Intersections);
     lastRepairStatusMessage_ = "Applied " + label + ".";

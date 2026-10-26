@@ -63,6 +63,8 @@ Mesh unitePerShell(const Mesh& mesh, const CheckParams& params, std::string& sta
 
 const char* globalRepairMethodLabel(GlobalRepairMethod method) noexcept {
     switch (method) {
+    case GlobalRepairMethod::FillHoles:
+        return "Fill each hole";
     case GlobalRepairMethod::PatchIslands:
         return "Patch each island";
     case GlobalRepairMethod::SelfUnion:
@@ -75,11 +77,19 @@ const char* globalRepairMethodLabel(GlobalRepairMethod method) noexcept {
     return "?";
 }
 
+std::span<const GlobalRepairMethod> globalRepairMethodsFor(DefectCategory target) noexcept {
+    if (target == DefectCategory::OpenEdges) {
+        return kHoleRepairMethods;
+    }
+    return kGlobalRepairMethods;
+}
+
 bool GlobalRepairParams::operator==(const GlobalRepairParams& other) const noexcept {
     return unionCrossingShells == other.unionCrossingShells && alphaWrapDetail == other.alphaWrapDetail &&
            alphaWrapOffsetRatio == other.alphaWrapOffsetRatio && windingResolution == other.windingResolution &&
            simplifyRebuild == other.simplifyRebuild && islandSettings.dilationRings == other.islandSettings.dilationRings &&
            islandSettings.cgalMaxSteps == other.islandSettings.cgalMaxSteps &&
+           holeMethod == other.holeMethod && holeSettings == other.holeSettings &&
            checkParams.intersectionTolerance == other.checkParams.intersectionTolerance;
 }
 
@@ -112,6 +122,19 @@ RepairCandidate runGlobalRepair(
     std::string status;
     const double diag = scoped.boundingBox().diagonal();
     switch (method) {
+    case GlobalRepairMethod::FillHoles: {
+        const std::vector<HoleLoop> holes = findHoleLoops(scoped, params.holeSettings.shape);
+        if (holes.empty()) {
+            status = "No holes to fill.";
+            break;
+        }
+        HoleBatchResult batch = fillHoles(scoped, holes, params.holeMethod, params.holeSettings, stopToken);
+        status = batch.statusMessage;
+        if (batch.success) {
+            repaired = std::move(batch.mesh);
+        }
+        break;
+    }
     case GlobalRepairMethod::PatchIslands: {
         IslandBatchResult batch = healIntersectionIslands(scoped, params.checkParams, {}, {}, params.islandSettings, stopToken);
         status = batch.statusMessage;

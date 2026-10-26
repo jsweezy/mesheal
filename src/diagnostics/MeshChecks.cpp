@@ -1,5 +1,7 @@
 #include "diagnostics/MeshChecks.hpp"
 
+#include "diagnostics/HoleLoops.hpp"
+
 #include <Eigen/Geometry>
 
 #include <algorithm>
@@ -357,41 +359,23 @@ CategoryResult checkOpenEdges(const Mesh& mesh, std::stop_token stopToken) {
         return cancelledResult(DefectCategory::OpenEdges);
     }
 
-    // Boundary loops: connected components of the open-edge graph
-    std::vector<std::size_t> openEdges;
-    UnionFind loops(toSize(mesh.numVertices()));
-    for (std::size_t e = 0; e < topo.numEdges(); ++e) {
-        if (topo.faceCount(e) == 1) {
-            openEdges.push_back(e);
-            loops.unite(static_cast<std::uint32_t>(topo.edges[e][0]), static_cast<std::uint32_t>(topo.edges[e][1]));
-        }
-    }
-
-    std::unordered_map<std::uint32_t, std::size_t> loopIdOfRoot;
-    std::vector<std::size_t> loopOfEdge;
-    std::vector<std::size_t> loopSizes;
-    loopOfEdge.reserve(openEdges.size());
-    for (const std::size_t e : openEdges) {
-        const std::uint32_t root = loops.find(static_cast<std::uint32_t>(topo.edges[e][0]));
-        const auto [it, inserted] = loopIdOfRoot.try_emplace(root, loopSizes.size());
-        if (inserted) {
-            loopSizes.push_back(0);
-        }
-        ++loopSizes[it->second];
-        loopOfEdge.push_back(it->second);
-    }
-
+    // One element per open edge; the sub-type is the shape of its hole
+    const std::vector<HoleLoop> holes = findHoleLoops(mesh, topo);
     ResultBuilder builder(DefectCategory::OpenEdges);
-    for (std::size_t i = 0; i < openEdges.size(); ++i) {
-        const std::size_t e = openEdges[i];
-        DefectElement element;
-        element.index = topo.edges[e][0];
-        element.edge = topo.edges[e];
-        element.metric = static_cast<double>(loopSizes[loopOfEdge[i]]);
-        element.columns = {static_cast<double>(loopOfEdge[i] + 1), element.metric, edgeLength(mesh, topo.edges[e])};
-        builder.add(element, static_cast<Eigen::Index>(topo.incidentFaces[topo.faceOffsets[e]]));
+    for (std::size_t h = 0; h < holes.size(); ++h) {
+        const HoleLoop& hole = holes[h];
+        for (std::size_t i = 0; i < hole.edges.size(); ++i) {
+            const std::array<int, 2> edge{std::min(hole.edges[i][0], hole.edges[i][1]), std::max(hole.edges[i][0], hole.edges[i][1])};
+            DefectElement element;
+            element.index = edge[0];
+            element.edge = edge;
+            element.metric = static_cast<double>(hole.edgeCount());
+            element.columns = {static_cast<double>(h + 1), element.metric, edgeLength(mesh, edge)};
+            element.subtype = static_cast<int>(hole.shape);
+            builder.add(element, hole.faces[i]);
+        }
     }
-    return builder.finish(SortOrder::HighMetricFirst, loopSizes.size());
+    return builder.finish(SortOrder::HighMetricFirst, holes.size());
 }
 
 CategoryResult checkNonManifoldEdges(const Mesh& mesh, std::stop_token stopToken) {

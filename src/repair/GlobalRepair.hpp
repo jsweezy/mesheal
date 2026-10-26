@@ -3,6 +3,7 @@
 #include "core/Settings.hpp"
 #include "diagnostics/MeshHealth.hpp"
 #include "mesh/Mesh.hpp"
+#include "repair/HoleFiller.hpp"
 #include "repair/IntersectionHealer.hpp"
 #include "repair/RepairMetrics.hpp"
 
@@ -17,8 +18,9 @@
 
 namespace ogun {
 
-/// Whole-mesh ("Repair All") strategies for intersecting faces, from surgical to coarse.
+/// Whole-mesh ("Repair All") strategies for intersecting faces and holes, from surgical to coarse.
 enum class GlobalRepairMethod {
+    FillHoles,       ///< Every hole gets its recommended fill (or the chosen one); other faces are kept exactly
     PatchIslands,    ///< Every within-shell island gets its recommended local repair (+ fallbacks)
     SelfUnion,       ///< Cut along every crossing and keep the outer surface; keeps other faces exactly
     WindingRebuild,  ///< New surface: marching cubes of the winding number on a grid
@@ -32,7 +34,17 @@ inline constexpr std::array<GlobalRepairMethod, 4> kGlobalRepairMethods = {
     GlobalRepairMethod::AlphaWrap,
 };
 
+/// Repair All Holes: the surgical fill and the two rebuilds, which also close holes.
+inline constexpr std::array<GlobalRepairMethod, 3> kHoleRepairMethods = {
+    GlobalRepairMethod::FillHoles,
+    GlobalRepairMethod::WindingRebuild,
+    GlobalRepairMethod::AlphaWrap,
+};
+
 [[nodiscard]] const char* globalRepairMethodLabel(GlobalRepairMethod method) noexcept;
+
+/// Methods offered by the Repair All operator of `target` (Intersections or OpenEdges).
+[[nodiscard]] std::span<const GlobalRepairMethod> globalRepairMethodsFor(DefectCategory target) noexcept;
 
 struct GlobalRepairParams {
     /// Self-union: also merge shells that cross each other (else each shell is united on its own).
@@ -45,6 +57,9 @@ struct GlobalRepairParams {
     /// Rebuilds (winding / wrap): simplify back to the in-scope face count when larger.
     bool simplifyRebuild = false;
     IntersectionRepairSettings islandSettings{};
+    /// Fill each hole: the method for every hole (None = each hole's recommended fill) and the limits.
+    HoleFillMethod holeMethod = HoleFillMethod::None;
+    HoleFillSettings holeSettings{};
     CheckParams checkParams{};
 
     [[nodiscard]] bool operator==(const GlobalRepairParams& other) const noexcept;

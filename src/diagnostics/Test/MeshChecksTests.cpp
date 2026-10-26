@@ -1,3 +1,4 @@
+#include "diagnostics/HoleLoops.hpp"
 #include "diagnostics/MeshChecks.hpp"
 #include "diagnostics/MeshHealth.hpp"
 #include "io/SampleMeshes.hpp"
@@ -234,7 +235,7 @@ TEST_CASE("Every category has a descriptor with a name and columns", "[diagnosti
         REQUIRE(info.columns[0].name != nullptr);
     }
     REQUIRE(ogun::categorySubtypeCount(ogun::DefectCategory::ThinFaces) == 4);
-    REQUIRE(ogun::categorySubtypeCount(ogun::DefectCategory::OpenEdges) == 0);
+    REQUIRE(ogun::categorySubtypeCount(ogun::DefectCategory::OpenEdges) == ogun::kHoleShapeCount);
     REQUIRE(ogun::categoryInfo(ogun::DefectCategory::Shells).infoOnly);
     REQUIRE(ogun::categoryInfo(ogun::DefectCategory::ThinFaces).hasFixAll);
 }

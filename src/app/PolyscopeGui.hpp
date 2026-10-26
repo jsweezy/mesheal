@@ -108,7 +108,10 @@ private:
     void drawIntersectionInspector();
     void drawIslandScorecard();
     void drawIntersectionRepairSettings();
-    void drawRepairAllIntersectionsOperator();
+    void drawHoleInspector();
+    void drawHoleScorecard();
+    void drawHoleFillSettings();
+    void drawRepairAllOperator();
     void drawMergeShellsOperator();
     void drawGlobalMethodParams(GlobalRepairMethod method);
     void drawGlobalCandidateTable();

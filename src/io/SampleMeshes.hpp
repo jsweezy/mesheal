@@ -53,6 +53,38 @@ struct SampleMeshes {
     /// File > Load Sample > "Touching cubes".
     [[nodiscard]] static Mesh createTouchingCubesMesh(Unit unit = Unit::Millimeter);
 
+    /// Generates a UV sphere of radius `radius` centred at the origin: `rings` latitude bands, `segments`
+    /// around, single-vertex poles, outward winding.
+    [[nodiscard]] static Mesh createSphereMesh(
+        int rings = 16,
+        int segments = 24,
+        double radius = 5.0,
+        Unit unit = Unit::Millimeter);
+
+    /// Generates a closed cylinder (axis z, base at z = 0) with `segments` around, `bands` rings of quads
+    /// along its side and fan end caps around a centre vertex.
+    [[nodiscard]] static Mesh createCylinderMesh(
+        int segments = 32,
+        int bands = 4,
+        double radius = 5.0,
+        double height = 10.0,
+        Unit unit = Unit::Millimeter);
+
+    /// Generates the 4 x 4 grid cube (side 4) with its top rebuilt from two halves that do not share
+    /// the seam vertices at (2, 1, 4) and (2, 3, 4): a T-junction crack along x = 2, welded by exact
+    /// position. Pass it through `separateTouchingContacts` like a file: the crack then becomes one
+    /// zero-width hole of 6 edges.
+    [[nodiscard]] static Mesh createCrackedBoxMesh(Unit unit = Unit::Millimeter);
+
+    /// Generates four shells with one hole each, for the hole repairs (File > Load Sample > "Holes"):
+    ///   - the cracked box (`createCrackedBoxMesh`): a Crack;
+    ///   - a 4 x 4 grid cube (side 4) at x = 6 missing a 2 x 2-cell square of its top: a Flat hole;
+    ///   - a sphere (radius 2) at x = 14 missing its top cap: a Curved hole with a planar rim;
+    ///   - a cylinder (radius 2, height 4) at x = 20 missing its top end cap: a Flat hole whose rim faces
+    ///     meet the cap at a right angle.
+    /// Pass it through `separateTouchingContacts` like a file.
+    [[nodiscard]] static Mesh createHolesSampleMesh(Unit unit = Unit::Millimeter);
+
     /// Generates an ASCII STL string representing the 12-triangle cube (36 raw soup vertices).
     [[nodiscard]] static std::string createCubeAsciiStl(double sideLength = 10.0);
 

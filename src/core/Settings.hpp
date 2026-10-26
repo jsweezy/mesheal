@@ -76,6 +76,21 @@ inline constexpr int    kMinWindingGridResolution         = 16;     // Lowest wi
 inline constexpr int    kMaxWindingGridResolution         = 512;    // Highest winding-number grid resolution offered
 
 // -----------------------------------------------------------------------------
+// Holes (open edges): shape classification and filling
+// -----------------------------------------------------------------------------
+inline constexpr double kDefaultHoleFlatTolerance     = 1.0e-3; // Flat hole: rim within this fraction of the hole size of its best-fit plane
+inline constexpr double kDefaultHoleFlatNeighbourDeg  = 5.0;    // Flat hole: faces on the rim within this angle of the plane (coplanar) or of its normal (a cap)
+inline constexpr double kDefaultHoleFlatNeighbourShare = 0.9;   // Flat hole: share of rim faces that must pass the angle test above
+inline constexpr double kDefaultHoleCrackWidthRatio   = 0.1;    // Crack: mean gap width (2 x area / perimeter) below this fraction of the mean rim edge
+inline constexpr int    kDefaultHolePatchRings        = 3;      // Face rings copied around a hole for its fill (CGAL looks at the rim faces, fairing at 2 rings)
+inline constexpr int    kMaxHolePatchRings            = 8;      // Upper bound of the patch-rings setting
+inline constexpr int    kDefaultMaxHoleEdges          = 0;      // Fill each hole / Fix Selected skip holes with more rim edges (0 = no limit)
+inline constexpr std::size_t kDefaultMaxHolePatchFaces = 50000; // Refine / Smooth refuse a hole whose refined patch has more faces (fairing gets slow)
+inline constexpr double kDefaultCrackSnapFactor       = 3.0;    // Close Crack: vertices move at most this many mean gap widths (a wedge is 2x its mean)
+inline constexpr double kMinCrackSnapEdgeShare        = 1.0e-3; // Close Crack: ... but at least this share of the mean rim edge (zero-width T-junctions)
+inline constexpr std::size_t kMaxCubicHoleFillEdges   = 400;    // Fill Flat / Refine / Smooth: bigger holes skip CGAL's O(n^3) fallback search (n = 600 takes ~1 s)
+
+// -----------------------------------------------------------------------------
 // Mesh Health Checks & Large Defect Counts
 // -----------------------------------------------------------------------------
 inline constexpr double kDefaultDegenerateAreaEpsilon = 1.0e-14; // Face area <= eps * bbox_diag^2 counts as degenerate (relative, unitless)

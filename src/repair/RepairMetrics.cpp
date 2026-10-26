@@ -163,6 +163,7 @@ RepairMetrics computeRepairMetrics(
     }
     m.shellsBefore = checkShells(before, stopToken).infoCount;
     m.shellsAfter = checkShells(after, stopToken).infoCount;
+    m.openEdgesBefore = checkOpenEdges(before, stopToken).size();
     m.openEdgesAfter = checkOpenEdges(after, stopToken).size();
     m.nonManifoldEdgesAfter = checkNonManifoldEdges(after, stopToken).size();
     m.thinFacesBefore = ThinFaceChecker::check(before, params.thinThresholds).numDefects();

@@ -102,6 +102,9 @@ void PolyscopeGui::fixAll(DefectCategory category) {
         // Several methods with very different trade-offs: open the operator to compare them first
         controller_.openRepairAllIntersections();
         requestSync();
+    } else if (category == DefectCategory::OpenEdges) {
+        controller_.openRepairAllHoles();
+        requestSync();
     }
 }
 
@@ -452,6 +455,10 @@ void PolyscopeGui::drawCategorySettings(DefectCategory category) {
         drawIntersectionRepairSettings();
         break;
     }
+    case DefectCategory::OpenEdges:
+        ImGui::TextDisabled("Open edges are grouped into holes; the sub-type is the hole's shape.");
+        drawHoleFillSettings();
+        break;
     case DefectCategory::FlippedNormals:
         ImGui::TextDisabled("Faces wound against the majority of their shell are listed.");
         break;
@@ -490,7 +497,7 @@ void PolyscopeGui::drawCategoryActions(DefectCategory category) {
 
     if (!info.infoOnly) {
         ImGui::BeginDisabled(!info.hasFixAll || count == 0 || !controller_.browsableResult());
-        const bool repairAll = category == DefectCategory::Intersections;
+        const bool repairAll = category == DefectCategory::Intersections || category == DefectCategory::OpenEdges;
         const std::string fixAllLabel = (repairAll ? "Repair All " : "Fix All ") + withThousands(count) + (repairAll ? "..." : "");
         ImGui::PushStyleColor(ImGuiCol_Button, gui::kFixAllButtonColor);
         if (ImGui::Button(fixAllLabel.c_str())) {
@@ -499,6 +506,9 @@ void PolyscopeGui::drawCategoryActions(DefectCategory category) {
         ImGui::PopStyleColor();
         ImGui::EndDisabled();
         tooltip(!info.hasFixAll  ? "Fix All for this row is planned (P4)."
+                : category == DefectCategory::OpenEdges
+                    ? "Compare whole-mesh repairs (fill each hole, winding-number rebuild, alpha wrap) with a preview "
+                      "and before / after numbers, then apply one."
                 : repairAll      ? "Compare whole-mesh repairs (patch each island, self-union, winding-number rebuild, "
                                    "alpha wrap) with a preview and before / after numbers, then apply one."
                 : controller_.shells().scoped() ? "Repair every defect of this type in the shells in scope, in one undoable step."
@@ -506,6 +516,7 @@ void PolyscopeGui::drawCategoryActions(DefectCategory category) {
         ImGui::SameLine();
 
         const bool perDefect = category == DefectCategory::ThinFaces || category == DefectCategory::Intersections ||
+                               category == DefectCategory::OpenEdges ||
                                category == DefectCategory::NonManifoldEdges ||
                                category == DefectCategory::NonManifoldVertices;
         const bool canFixSelected = perDefect && browser.selectedCount() > 0;
@@ -519,6 +530,9 @@ void PolyscopeGui::drawCategoryActions(DefectCategory category) {
                 break;
             case DefectCategory::Intersections:
                 fixed = controller_.fixSelectedIntersections();
+                break;
+            case DefectCategory::OpenEdges:
+                fixed = controller_.fixSelectedHoles();
                 break;
             case DefectCategory::NonManifoldEdges:
                 fixed = controller_.fixSelectedNonManifoldEdges();
@@ -539,6 +553,9 @@ void PolyscopeGui::drawCategoryActions(DefectCategory category) {
                 : category == DefectCategory::Intersections
                     ? "Repair the islands of the selected faces with their recommended method (falling back to the "
                       "others), as one undoable step. Crossings between shells are skipped."
+                : category == DefectCategory::OpenEdges
+                    ? "Fill the holes of the selected edges, each with its recommended method, as one undoable step. "
+                      "Holes over the Max hole edges setting and open chains are skipped."
                 : category == DefectCategory::NonManifoldEdges
                     ? "Split the selected Touching edges, as one undoable step. Fin / other edges are skipped."
                 : category == DefectCategory::NonManifoldVertices
@@ -784,6 +801,10 @@ void PolyscopeGui::drawInspector() {
     }
     if (result.category == DefectCategory::Intersections) {
         drawIntersectionInspector();
+        return;
+    }
+    if (result.category == DefectCategory::OpenEdges && controller_.holeInspectorActive()) {
+        drawHoleInspector();
         return;
     }
     const Unit unit = controller_.fileUnit();
