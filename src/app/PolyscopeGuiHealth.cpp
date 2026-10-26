@@ -329,7 +329,7 @@ void PolyscopeGui::drawCategoryTool(DefectCategory category) {
         break;
     }
 
-    if (ImGui::CollapsingHeader("Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (ImGui::CollapsingHeader("Settings")) {
         drawCategorySettings(category);
     }
 
@@ -347,8 +347,10 @@ void PolyscopeGui::drawCategoryTool(DefectCategory category) {
         }
         for (std::size_t t = 0; t < subtypeCount; ++t) {
             const std::string label = std::string(info.subtypes[t]) + " (" + withThousands(counts[t]) + ")";
-            const float labelWidth = ImGui::CalcTextSize(label.c_str()).x + ImGui::GetFrameHeight() * 1.5f;
-            if (ImGui::GetContentRegionAvail().x > labelWidth + ImGui::GetItemRectSize().x) {
+            // Same line while the button fits, else wrap
+            const float labelWidth = ImGui::CalcTextSize(label.c_str()).x + ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x;
+            const float right = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+            if (ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + labelWidth <= right) {
                 ImGui::SameLine();
             }
             if (ImGui::RadioButton(label.c_str(), browser.subtypeFilter() == static_cast<int>(t))) {
@@ -389,8 +391,10 @@ void PolyscopeGui::drawCategoryTool(DefectCategory category) {
     }
 
     if (showList) {
-        const float inspectorReserve = browser.hasFocus() ? 250.0f : 30.0f;
-        drawDefectTable(std::max(120.0f, ImGui::GetContentRegionAvail().y - inspectorReserve));
+        // Fit the rows (at most kDefectListMaxRows) so the Inspector and its Commit button sit right below
+        const float rowHeight = ImGui::GetTextLineHeight() + 2.0f * ImGui::GetStyle().CellPadding.y;
+        const std::size_t rows = std::min(browser.visibleRows().size(), settings::kDefectListMaxRows);
+        drawDefectTable(rowHeight * static_cast<float>(rows + 1) + 2.0f * ImGui::GetStyle().WindowBorderSize + 2.0f);
     } else {
         drawDefectSummary();
     }
@@ -600,6 +604,7 @@ void PolyscopeGui::drawDefectTable(float height) {
         ImGui::PopID();
         return;
     }
+    ImGui::PushTextWrapPos(-1.0f); // cells clip instead of wrapping (the clipper needs equal row heights)
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableSetupColumn(elementColumnName(info.kind), ImGuiTableColumnFlags_WidthFixed, labelWidth, 3);
     for (int c = 0; c < dataColumns; ++c) {
@@ -666,18 +671,22 @@ void PolyscopeGui::drawDefectTable(float height) {
             ImGui::PopID();
         }
     }
+    ImGui::PopTextWrapPos();
     ImGui::EndTable();
     ImGui::PopID();
     scrollListToFocus_ = false;
 
     if (clicked) {
+        const bool extend = io.KeyCtrl || io.KeySuper || io.KeyShift;
         controller_.clickDefectRow(clickedPos, io.KeyCtrl || io.KeySuper, io.KeyShift);
         requestSync();
-        if (doubleClicked) {
+        // A plain click flies to the defect (as '.'), so the hand stays on the mouse; extending the selection
+        // keeps the camera unless it is a double-click
+        if (!extend || doubleClicked) {
             focusCameraOnSelection(FocusNormalSide::PositiveNormal);
         }
     }
-    ImGui::TextDisabled("%s listed. Click, %s+click, Shift+click; double-click to fly.",
+    ImGui::TextDisabled("%s listed. Click to fly to one; %s+click, Shift+click to select more.",
                         withThousands(rows.size()).c_str(), gui::kModKey);
 }
 

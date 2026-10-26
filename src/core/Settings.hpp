@@ -98,6 +98,7 @@ inline constexpr double kDefaultIntersectionTolerance = 1.0e-6;  // Intersection
 inline constexpr unsigned kIntersectionMaxThreads     = 4;       // Max worker threads of the self-intersection BVH traversal (Blender uses 4)
 inline constexpr std::size_t kIntersectionSerialFaceCount = 1024; // Meshes with at most this many faces check intersections on one thread
 inline constexpr std::size_t kDefaultListCap      = 100;      // Above this many (filtered) defects the Tool panel shows a summary instead of a list
+inline constexpr std::size_t kDefectListMaxRows   = 12;       // Tool panel list height in rows; shorter lists shrink to fit, so the Inspector stays on screen
 inline constexpr std::size_t kDefaultOverlayCap   = 5000;     // Above this many highlighted faces only face tint is drawn (no edge tubes / vertex spheres)
 inline constexpr std::size_t kHistogramBins       = 24;       // Number of bins in the Tool panel metric histogram
 inline constexpr bool   kDefaultCheckMeshAfterLoad = true;    // Run "Check Mesh" automatically after a file or sample is loaded

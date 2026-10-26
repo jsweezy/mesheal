@@ -162,7 +162,9 @@ void PolyscopeGui::drawRightColumn(float top, float bottom) {
         } else if (slot == ToolSlot::MergeShells) {
             drawMergeShellsOperator();
         } else {
+            ImGui::PushTextWrapPos(0.0f); // long lines wrap at the panel edge
             drawToolPanel();
+            ImGui::PopTextWrapPos();
         }
     }
     rightColumnWidth_ = ImGui::GetWindowWidth();
@@ -850,7 +852,7 @@ void PolyscopeGui::drawNavigationHelpWindow() {
     ImGui::Spacing();
     ImGui::TextUnformatted("Keyboard Shortcuts");
     table("KeyNavTable", "Shortcut", {
-        {"Click defect in list", "Focuses it and sets the Orbit Pivot to its centroid; Ctrl/Cmd+click toggles, Shift+click selects a range, double-click flies to it"},
+        {"Click defect in list", "Focuses it, flies the camera to it (as '.') and sets the Orbit Pivot to its centroid; Ctrl/Cmd+click toggles, Shift+click selects a range (the camera stays)"},
         {"Click shell in Shells panel", "Selects it (Ctrl/Cmd+click toggles, Shift+click selects a range, double-click frames it); right-click for Frame, Isolate, Hide, Delete, Save As"},
         {"N  /  Shift+N", "Next / previous defect of the selected row (worst first, within the active filter) and fly to it"},
         {".  or  Numpad .", "Frames the focused facet looking down +Normal (press '.' again to toggle to -Normal); a focused hole frames the whole hole, looking in along the hole's outward normal; with no focused defect, frames the selected shells"},

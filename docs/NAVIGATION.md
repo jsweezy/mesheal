@@ -44,10 +44,10 @@ Ogun uses **Blender-inspired, selection-centric 3D camera navigation** tailored 
 
 | Input | Behavior |
 | :--- | :--- |
-| `Click` | Selects only that defect and focuses it. |
-| `Ctrl/Cmd + Click` | Adds or removes a defect from the selection. |
-| `Shift + Click` | Selects the range from the last clicked row. |
-| `Double-Click` | Focuses the defect and flies the camera to it. |
+| `Click` | Selects only that defect, focuses it and flies the camera to it (as **`.`**, so a repair needs no keyboard). |
+| `Ctrl/Cmd + Click` | Adds or removes a defect from the selection (the camera stays). |
+| `Shift + Click` | Selects the range from the last clicked row (the camera stays). |
+| `Double-Click` | Flies to the defect, also after a Ctrl/Cmd or Shift click. |
 | Click a column header | Sorts by that column (third click restores worst-first order). |
 | Click a histogram bar (`Shift` for a range) or the `<` `>` arrows | Filters to that bin and selects its defects; its list opens once it holds no more than the list cap. |
 
@@ -68,7 +68,7 @@ The **Shells** panel (left column, between Navigate and Structures) appears only
 ## 2. Core Navigation Concepts (Blender Conventions)
 
 ### Auto-Orbit Around Selection Centroid
-When you focus a defect (click its row in the Tool panel's list, click it in 3D, or press `N`):
+When you focus a defect (click its row in the Tool panel's list, click it in 3D, or press `N`; a row click and `N` also fly the camera to it):
 - Ogun highlights the triangle's surface, edges, and vertices in 3D.
 - The 3D **Orbit Pivot** (center of rotation) immediately moves to the triangle's true geometric vertex centroid:
   $$\mathbf{c} = \frac{\mathbf{v}_0 + \mathbf{v}_1 + \mathbf{v}_2}{3}$$
