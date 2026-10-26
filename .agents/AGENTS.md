@@ -41,6 +41,10 @@ Whenever you add, modify, or remove features, workflows, UI controls, diagnostic
 ## 5. Building
 
 - Limit CPU usage when building on this Mac Neo with "-j 2".   Testing can use "-j 4".  
+- There are two build trees:
+  - **`build/`**: Debug build (`CMAKE_BUILD_TYPE=Debug`), for day-to-day development and tests.
+  - **`build_release/`**: Release build (`CMAKE_BUILD_TYPE=Release`), for running the app on big meshes and timing performance.
+- `build_release/` reuses the dependency sources already downloaded into `build/_deps/` (`FETCHCONTENT_SOURCE_DIR_<NAME>` for Catch2, Eigen, libigl, Manifold, Polyscope and portable-file-dialogs), so it needs no network access. `build/` must therefore stay in place.
 
 ## 6. Constants and Default Settings Management
 
