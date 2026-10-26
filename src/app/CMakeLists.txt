@@ -3,8 +3,10 @@ find_package(Threads REQUIRED)
 add_library(ogun_app_controller STATIC
     AppController.cpp
     AppControllerIntersections.cpp
+    AppControllerMerge.cpp
     DefectBrowser.cpp
     HealthCheckRunner.cpp
+    MergeJobRunner.cpp
     RepairJobRunner.cpp
     ShellBrowser.cpp
 )

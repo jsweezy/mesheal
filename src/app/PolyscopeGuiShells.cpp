@@ -236,7 +236,7 @@ void PolyscopeGui::drawShellRowTooltip(std::size_t shell) {
                 list += (list.empty() ? "" : ", ") + shellLabel(static_cast<std::size_t>(other));
             }
             ImGui::PushTextWrapPos(ImGui::GetFontSize() * 26.0f);
-            ImGui::TextDisabled("Crosses shell%s %s (%s faces). A future Merge Shells (union) removes these.",
+            ImGui::TextDisabled("Crosses shell%s %s (%s faces). Merge Shells (a union) removes these.",
                                 h.crosses.size() == 1 ? "" : "s", list.c_str(), withThousands(h.between).c_str());
             ImGui::PopTextWrapPos();
         }
@@ -286,8 +286,120 @@ void PolyscopeGui::drawShellActionItems() {
         ImGui::EndMenu();
     }
     tooltip("Write the selected shells to new STL files. The open mesh is not changed.");
-    ImGui::MenuItem("Merge...", nullptr, false, false);
-    tooltip("Boolean union of the selected shells: planned (Milestone 4).");
+    if (ImGui::MenuItem("Merge...", nullptr, false, shells.selectedCount() >= 2)) {
+        controller_.openMergeShells();
+        showTool_ = true;
+        requestSync();
+    }
+    tooltip(shells.selectedCount() >= 2
+                ? "Boolean union of the selected shells with Manifold: a checklist first, then Merge (undoable)."
+                : "Select two or more shells to merge: Cmd/Ctrl+click or Shift+click rows, or Select... > All.");
+}
+
+// -----------------------------------------------------------------------------
+// Operation: Merge Shells (UI_DESIGN.md §16.3)
+// -----------------------------------------------------------------------------
+
+void PolyscopeGui::drawMergeShellsOperator() {
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("Boolean union of the selected shells with Manifold. Faces where they cross are removed, and "
+                        "shells that overlap or touch become one. Shells that do not touch stay separate.");
+    ImGui::PopTextWrapPos();
+    const MergeChecklist list = controller_.mergeChecklist();
+    if (list.shells.size() < 2) {
+        ImGui::TextWrapped("Select two or more shells in the Shells panel (Select... > All for everything).");
+        if (ImGui::Button("Close")) {
+            controller_.closeTool();
+            requestSync();
+        }
+        return;
+    }
+    ImGui::Text("%s shells selected (%s faces).", withThousands(list.shells.size()).c_str(), withThousands(list.faces).c_str());
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("Every shell must be:");
+    if (ImGui::BeginTable("MergeChecks", 3, ImGuiTableFlags_SizingFixedFit)) {
+        ImGui::TableSetupColumn("##dot", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("##check", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("##count", ImGuiTableColumnFlags_WidthFixed);
+        for (std::size_t c = 0; c < list.checks.size(); ++c) {
+            const MergeCheck& check = list.checks[c];
+            ImGui::TableNextRow();
+            ImGui::PushID(static_cast<int>(c));
+            ImGui::TableSetColumnIndex(0);
+            if (!check.known) {
+                gui::statusDot(HealthStatus::NotRun, false);
+            } else {
+                gui::statusDot(check.failing.empty() ? HealthStatus::Ok : HealthStatus::Defects, false);
+            }
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextUnformatted(check.label);
+            if (!check.blocking) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("(warning)");
+            }
+            ImGui::TableSetColumnIndex(2);
+            if (!check.known) {
+                ImGui::TextDisabled("not checked");
+            } else {
+                ImGui::Text("%s/%s", withThousands(list.shells.size() - check.failing.size()).c_str(),
+                            withThousands(list.shells.size()).c_str());
+                if (!check.failing.empty()) {
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Show")) {
+                        controller_.selectShellsWhere([&](std::size_t s) {
+                            return std::binary_search(check.failing.begin(), check.failing.end(), s);
+                        });
+                        controller_.postStatusMessage("Selected the " + withThousands(check.failing.size()) +
+                                                      " shell(s) that are not " + check.label +
+                                                      ". Isolate (I) and fix them, then select the shells to merge again.");
+                        requestSync();
+                    }
+                    tooltip("Select only the shells that fail this check.");
+                }
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+    if (!list.checks[3].failing.empty()) {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored(gui::kDefectColor, "Shells that cross themselves can still be merged, but the union may "
+                                               "be wrong where they do (Repair All Intersections fixes them first).");
+        ImGui::PopTextWrapPos();
+    }
+    if (!list.checks[3].known) {
+        ImGui::TextDisabled("Self-crossings are not checked: run Intersecting faces to see them.");
+    }
+    if (list.checks[3].known) {
+        ImGui::TextDisabled("%s faces cross between these shells; the union removes them.",
+                            withThousands(list.crossingsBetween).c_str());
+    }
+    ImGui::TextDisabled("Thin, degenerate and duplicate faces do not block a merge.");
+    ImGui::TextDisabled("Gaps between shells are not closed yet: shells that almost touch stay apart.");
+
+    ImGui::Separator();
+    const bool running = controller_.mergeRunning();
+    ImGui::BeginDisabled(!list.canApply() || running);
+    ImGui::PushStyleColor(ImGuiCol_Button, gui::kFixAllButtonColor);
+    const std::string label = "Merge " + withThousands(list.shells.size()) + " Shells";
+    if (ImGui::Button(label.c_str()) && controller_.mergeSelectedShells()) {
+        requestSync(true);
+    }
+    ImGui::PopStyleColor();
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("%s", running ? "A merge is running (see the status bar)."
+                                : list.canApply() ? "Union the selected shells as one undoable step."
+                                                  : "Every selected shell must pass the checks above except the warning, "
+                                                    "and Mesh Health must have checked them. Use Show to find the ones that fail.");
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Close")) {
+        controller_.closeTool();
+        requestSync();
+    }
+    ImGui::TextDisabled("Merge is one undo step (%s+Z).", gui::kModKey);
 }
 
 void PolyscopeGui::drawShellSelectPopup() {

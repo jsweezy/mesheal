@@ -445,7 +445,8 @@ bool AppController::pollBackgroundChecks() {
     const bool wasBusy = checkRunner_.busy();
     std::vector<CategoryResult> finished = checkRunner_.takeFinished();
     const bool repairsFinished = pollRepairJobs();
-    const bool changed = !finished.empty() || repairsFinished;
+    const bool mergeFinished = pollMergeJob();
+    const bool changed = !finished.empty() || repairsFinished || mergeFinished;
     for (CategoryResult& result : finished) {
         applyCheckResult(std::move(result));
     }

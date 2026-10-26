@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <filesystem>
 #include <initializer_list>
 #include <string>
@@ -140,6 +141,7 @@ void PolyscopeGui::drawRightColumn(float top, float bottom) {
     }
     std::string title = slot == ToolSlot::UnitsAndScale            ? std::string("Operation: Units & Scale")
                         : slot == ToolSlot::RepairAllIntersections ? std::string("Operation: Repair All Intersections")
+                        : slot == ToolSlot::MergeShells            ? std::string("Operation: Merge Shells")
                         : std::string("Tool: ") + categoryInfo(*controller_.selectedCategory()).name;
     title += "###ToolSlot";
 
@@ -156,6 +158,8 @@ void PolyscopeGui::drawRightColumn(float top, float bottom) {
             drawUnitsAndScaleOperator();
         } else if (slot == ToolSlot::RepairAllIntersections) {
             drawRepairAllIntersectionsOperator();
+        } else if (slot == ToolSlot::MergeShells) {
+            drawMergeShellsOperator();
         } else {
             drawToolPanel();
         }
@@ -632,7 +636,18 @@ void PolyscopeGui::drawStatusBar(float top, float height) {
         ImGui::TextDisabled("Ready");
     }
 
-    if (controller_.globalRepairRunning()) {
+    if (controller_.mergeRunning()) {
+        // Manifold reports no progress: the bar only shows that the merge is running
+        const float barWidth = 200.0f;
+        const float cancelWidth = ImGui::CalcTextSize("Cancel").x + 2.0f * ImGui::GetStyle().FramePadding.x;
+        ImGui::SameLine(display.x - barWidth - cancelWidth - 3.0f * settings::kPanelMarginPx);
+        const auto loop = static_cast<float>(std::fmod(ImGui::GetTime() * 0.5, 1.0));
+        ImGui::ProgressBar(loop, ImVec2(barWidth, 0.0f), "Merging shells...");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Cancel##merge")) {
+            controller_.cancelMerge();
+        }
+    } else if (controller_.globalRepairRunning()) {
         const float barWidth = 200.0f;
         const float cancelWidth = ImGui::CalcTextSize("Cancel").x + 2.0f * ImGui::GetStyle().FramePadding.x;
         ImGui::SameLine(display.x - barWidth - cancelWidth - 3.0f * settings::kPanelMarginPx);

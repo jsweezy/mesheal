@@ -88,7 +88,7 @@ void PolyscopeGui::drawIntersectionInspector() {
     if (island == nullptr) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
         ImGui::TextWrapped("This face only crosses other shells (or is out of scope). Repair All > Self-union with "
-                           "\"Also union shells that cross\" merges those shells; Merge Shells is planned.");
+                           "\"Also union shells that cross\" merges those shells, and so does Shells > Merge... (a Manifold union).");
         ImGui::PopStyleColor();
     } else {
         const IslandAnalysis& analysis = controller_.focusedIslandAnalysis();

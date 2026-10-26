@@ -1162,3 +1162,116 @@ TEST_CASE("AppController opening an STL never shows touching contacts as defects
     REQUIRE_FALSE(controller.fixAllNonManifoldEdges());
     REQUIRE_FALSE(controller.canUndo());
 }
+
+namespace {
+
+/// Cube A [0, 2]^3, cube B overlapping it ([1, 3]^3) and cube C far away; `openB` removes one face of B.
+ogun::Mesh mergeFixture(bool openB = false) {
+    ogun::Mesh mesh = ogun::SampleMeshes::createCubeMesh(2.0);
+    ogun::Mesh b = ogun::SampleMeshes::createCubeMesh(2.0);
+    if (openB) {
+        b.F.conservativeResize(11, 3);
+    }
+    appendShell(mesh, b, {1.0, 1.0, 1.0});
+    appendShell(mesh, ogun::SampleMeshes::createCubeMesh(2.0), {10.0, 0.0, 0.0});
+    return mesh;
+}
+
+/// Selects the two overlapping cubes (everything left of x = 5).
+void selectOverlappingCubes(ogun::AppController& controller) {
+    controller.selectShellsWhere([&](std::size_t s) { return controller.shells().shell(s).bbox.max.x() < 5.0; });
+}
+
+} // namespace
+
+TEST_CASE("AppController merges the selected shells with Manifold as one undo step",
+          "[app][controller][shells][merge][undo]") {
+    using ogun::DefectCategory;
+    ogun::AppController controller;
+    controller.setMesh(mergeFixture(), "three_cubes.stl");
+    const ogun::Mesh before = controller.mesh();
+    REQUIRE(controller.shells().size() == 3);
+    REQUIRE(controller.rowCount(DefectCategory::Intersections) > 0);
+
+    controller.openMergeShells();
+    REQUIRE(controller.activeTool() == ogun::ToolSlot::MergeShells);
+    REQUIRE_FALSE(controller.mergeChecklist().canApply()); // nothing selected
+    REQUIRE_FALSE(controller.mergeSelectedShells());
+
+    selectOverlappingCubes(controller);
+    const ogun::MergeChecklist list = controller.mergeChecklist();
+    REQUIRE(list.shells.size() == 2);
+    REQUIRE(list.faces == 24);
+    for (const ogun::MergeCheck& check : list.checks) {
+        REQUIRE(check.known);
+        REQUIRE(check.failing.empty());
+    }
+    REQUIRE(list.crossingsBetween > 0);
+    REQUIRE(list.canApply());
+
+    REQUIRE(controller.mergeSelectedShells());
+    REQUIRE(controller.lastUndoActionLabel() == "Merge 2 Shells");
+    REQUIRE(controller.shells().size() == 2);
+    REQUIRE(controller.rowStatus(DefectCategory::Intersections) == ogun::HealthStatus::Stale); // Auto off
+    controller.recheckCategory(DefectCategory::Intersections);
+    REQUIRE(controller.rowCount(DefectCategory::Intersections) == 0);
+    REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 0);
+    REQUIRE(controller.watertightState() == ogun::WatertightState::Watertight);
+    REQUIRE(controller.shells().selectedCount() == 1); // the merged shell
+    const std::vector<std::size_t> merged = controller.shells().selectedShells();
+    REQUIRE(controller.shells().shell(merged.front()).bbox.max.isApprox(Eigen::Vector3d(3.0, 3.0, 3.0)));
+    REQUIRE(controller.lastRepairStatusMessage().find("Merged 2 shells into 1") != std::string::npos);
+
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().F == before.F);
+    REQUIRE(controller.mesh().V == before.V);
+    REQUIRE(controller.shells().size() == 3);
+    REQUIRE(controller.shells().selectedCount() == 2);
+}
+
+TEST_CASE("AppController Merge Shells is blocked by a shell Manifold rejects", "[app][controller][shells][merge]") {
+    ogun::AppController controller;
+    controller.setMesh(mergeFixture(true), "open_cube.stl");
+    selectOverlappingCubes(controller);
+
+    const ogun::MergeChecklist list = controller.mergeChecklist();
+    REQUIRE(list.shells.size() == 2);
+    REQUIRE(list.checks[0].failing.size() == 1); // not closed
+    REQUIRE(list.checks[0].blocking);
+    REQUIRE_FALSE(list.canApply());
+    REQUIRE_FALSE(controller.mergeSelectedShells());
+    REQUIRE_FALSE(controller.canUndo());
+    REQUIRE(controller.shells().size() == 3);
+}
+
+TEST_CASE("AppController merges in the background, can cancel, and drops a stale merge",
+          "[app][controller][shells][merge]") {
+    ogun::AppController controller;
+    controller.setBackgroundChecks(true);
+    controller.setMesh(mergeFixture(), "three_cubes.stl");
+    controller.waitForChecks();
+    selectOverlappingCubes(controller);
+
+    SECTION("finishes and applies") {
+        REQUIRE(controller.mergeSelectedShells());
+        controller.waitForMerge();
+        REQUIRE_FALSE(controller.mergeRunning());
+        REQUIRE(controller.lastUndoActionLabel() == "Merge 2 Shells");
+        REQUIRE(controller.shells().size() == 2);
+    }
+    SECTION("cancel drops the result") {
+        REQUIRE(controller.mergeSelectedShells());
+        controller.cancelMerge();
+        REQUIRE_FALSE(controller.mergeRunning());
+        controller.waitForMerge();
+        REQUIRE_FALSE(controller.canUndo());
+        REQUIRE(controller.shells().size() == 3);
+    }
+    SECTION("a mesh edit while merging drops the result") {
+        REQUIRE(controller.mergeSelectedShells());
+        controller.scaleMeshCoordinatesToUnit(ogun::Unit::Centimeter);
+        controller.waitForMerge();
+        REQUIRE(controller.lastUndoActionLabel() != "Merge 2 Shells");
+        REQUIRE(controller.shells().size() == 3);
+    }
+}

@@ -2,6 +2,7 @@
 
 #include "app/DefectBrowser.hpp"
 #include "app/HealthCheckRunner.hpp"
+#include "app/MergeJobRunner.hpp"
 #include "app/RepairJobRunner.hpp"
 #include "app/ShellBrowser.hpp"
 #include "core/Settings.hpp"
@@ -81,7 +82,28 @@ struct ShellHealth {
 enum class WatertightState { Unknown, Watertight, NotWatertight };
 
 /// What the right-column Tool slot shows (one tool at a time).
-enum class ToolSlot { None, DefectCategory, UnitsAndScale, RepairAllIntersections };
+enum class ToolSlot { None, DefectCategory, UnitsAndScale, RepairAllIntersections, MergeShells };
+
+/// One line of the Merge Shells checklist (UI_DESIGN.md §16.3), built from Mesh Health.
+struct MergeCheck {
+    const char* label = "";
+    bool blocking = true;                ///< Manifold rejects such shells (false: a warning only)
+    bool known = false;                  ///< The Mesh Health row it needs is checked for this mesh
+    std::vector<std::size_t> failing;    ///< Selected shells that fail it
+};
+
+/// What Merge Shells would do with the selected shells.
+struct MergeChecklist {
+    std::vector<std::size_t> shells;     ///< Selected shells
+    std::size_t faces = 0;
+    /// Closed (open edges), oriented (flipped normals), no Fin / other edges: blocking.
+    /// No self-crossings (intersecting faces within a shell): a warning, the result may be wrong there.
+    std::array<MergeCheck, 4> checks{};
+    std::size_t crossingsBetween = 0;    ///< Faces crossing another selected shell (the union removes them)
+
+    /// Two or more shells and every blocking check known and passed.
+    [[nodiscard]] bool canApply() const noexcept;
+};
 
 /// What the Repair All preview draws: the candidate, the current mesh, or both (current ghosted).
 enum class GlobalPreviewShow { Result, Original, Both };
@@ -534,6 +556,28 @@ public:
     /// File name stem used by `saveEachSelectedShell` (the loaded file's stem, or "mesh").
     [[nodiscard]] std::string shellFileStem() const;
 
+    // ---- Merge Shells (AppControllerMerge.cpp) ----
+
+    /// Opens "Operation: Merge Shells" in the Tool slot (deselects any row; keeps the shell selection).
+    void openMergeShells();
+
+    /// Checklist for the selected shells, from the current Mesh Health results.
+    [[nodiscard]] MergeChecklist mergeChecklist() const;
+
+    /// Unions the selected shells with Manifold (one undo step), in the background when background
+    /// checks are on. Returns false (nothing started) when the checklist blocks it.
+    bool mergeSelectedShells();
+
+    [[nodiscard]] bool mergeRunning() const noexcept {
+        return mergeRunner_.busy();
+    }
+
+    /// Drops the running merge's result (Manifold cannot be interrupted, so it finishes unseen).
+    void cancelMerge();
+
+    /// Blocks until a background merge is done and applies it (tests).
+    void waitForMerge();
+
     [[nodiscard]] bool colorByShell() const noexcept {
         return colorByShell_;
     }
@@ -940,6 +984,10 @@ private:
     void replaceMeshPreservingHistory(Mesh mesh, std::optional<ShellBrowser> shells = std::nullopt);
     /// Second half of every mesh edit (after `pushUndoEntry`): swap the mesh and re-check.
     void finishMeshEdit(Mesh mesh);
+    /// Applies a finished merge (one undo step), selects the merged shells and reports the numbers.
+    bool applyMergeResult(FinishedMerge finished);
+    /// Applies a finished background merge. Returns true if one arrived.
+    bool pollMergeJob();
     /// Shared by the four non-manifold Fix All / Fix Selected actions.
     bool splitNonManifold(DefectCategory category, bool selectedOnly);
     /// Auto rows are queued, other checked rows turn Stale.
@@ -1064,6 +1112,7 @@ private:
     GlobalPreviewShow globalPreviewShow_ = GlobalPreviewShow::Result;
     bool colorByDeviation_ = false;
     RepairJobRunner repairRunner_;
+    MergeJobRunner mergeRunner_;
 
     std::vector<UndoEntry> undoStack_;
 

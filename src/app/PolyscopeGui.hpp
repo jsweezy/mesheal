@@ -109,6 +109,7 @@ private:
     void drawIslandScorecard();
     void drawIntersectionRepairSettings();
     void drawRepairAllIntersectionsOperator();
+    void drawMergeShellsOperator();
     void drawGlobalMethodParams(GlobalRepairMethod method);
     void drawGlobalCandidateTable();
     void fixAll(DefectCategory category);
