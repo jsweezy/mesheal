@@ -2,6 +2,7 @@
 
 #include <Eigen/Geometry>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -140,6 +141,46 @@ Mesh extractFaces(const Mesh& mesh, std::span<const Eigen::Index> faces) {
     }
     out.recomputeNormals();
     return out;
+}
+
+VertexSplit splitVerticesByFan(const Mesh& mesh, std::span<const std::uint32_t> fans, std::span<const std::uint8_t> target) {
+    VertexSplit result;
+    result.mesh = mesh;
+    const auto nv = static_cast<std::size_t>(mesh.numVertices());
+    std::vector<std::uint8_t> claimed(nv, 0);
+    std::vector<std::uint8_t> split(nv, 0);
+    std::vector<int> copiedFrom;
+    std::vector<int> vertexOfFan(fans.size(), -1); // fan ids are corner indices
+    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+        for (int c = 0; c < 3; ++c) {
+            const std::uint32_t fan = fans[static_cast<std::size_t>(f) * 3 + static_cast<std::size_t>(c)];
+            const int v = mesh.F(f, c);
+            const auto vi = static_cast<std::size_t>(v);
+            if (fan == kNoFan || (!target.empty() && target[vi] == 0)) {
+                continue;
+            }
+            int& vertex = vertexOfFan[fan];
+            if (vertex < 0) {
+                if (claimed[vi] == 0) {
+                    claimed[vi] = 1;
+                    vertex = v;
+                } else {
+                    vertex = static_cast<int>(nv + copiedFrom.size());
+                    copiedFrom.push_back(v);
+                    split[vi] = 1;
+                }
+            }
+            result.mesh.F(f, c) = vertex;
+        }
+    }
+
+    result.mesh.V.conservativeResize(static_cast<Eigen::Index>(nv + copiedFrom.size()), 3);
+    for (std::size_t i = 0; i < copiedFrom.size(); ++i) {
+        result.mesh.V.row(static_cast<Eigen::Index>(nv + i)) = mesh.V.row(copiedFrom[i]);
+    }
+    result.verticesAdded = copiedFrom.size();
+    result.verticesSplit = static_cast<std::size_t>(std::count(split.begin(), split.end(), std::uint8_t{1}));
+    return result;
 }
 
 void appendMesh(Mesh& mesh, const Mesh& part) {

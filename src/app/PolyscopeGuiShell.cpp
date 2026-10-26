@@ -207,14 +207,16 @@ void PolyscopeGui::drawFileMenu() {
             syncMeshStructureToPolyscope(true);
         }
         tooltip("A gridded cube with a folded-over top vertex and a bottom vertex pushed through the top.");
-        if (ImGui::MenuItem("Touching cubes (non-manifold)")) {
-            controller_.setMesh(SampleMeshes::createTouchingCubesMesh(controller_.fileUnit()), "Touching cubes sample");
+        if (ImGui::MenuItem("Touching cubes and a fin")) {
+            // Loaded the way an STL file is, so the touching contacts are kept apart
+            controller_.setMesh(separateTouchingContacts(SampleMeshes::createTouchingCubesMesh(controller_.fileUnit())),
+                                "Touching cubes sample");
             controller_.postStatusMessage("Loaded the touching cubes: two touch along an edge, one at a corner, plus a fin.");
             overwriteConfirmedFor_.clear();
             syncMeshStructureToPolyscope(true);
         }
-        tooltip("Three cubes: two touch along an edge (Touching edges), one touches at a corner (a non-manifold "
-                "vertex), and a fin triangle sits on a top edge (a Fin edge).");
+        tooltip("Three cubes: two touch along an edge and one at a corner, which loading keeps apart (three shells, "
+                "no non-manifold vertices), and a fin triangle on a top edge, which stays a non-manifold edge.");
         constexpr std::array<std::pair<const char*, const char*>, 3> kExampleFiles = {{
             {"Self-intersecting box", "self_intersecting_box.stl"},
             {"Stanford bunny", "stanford_bunny.stl"},

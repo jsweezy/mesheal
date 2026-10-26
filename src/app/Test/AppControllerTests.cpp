@@ -1141,3 +1141,24 @@ TEST_CASE("AppController non-manifold Fix All respects the shell scope", "[app][
     REQUIRE(controller.fixAllNonManifoldVertices()); // the bow-tie touches cube C
     REQUIRE(controller.lastUndoActionLabel() == "Fix All Non-manifold Vertices (1 shells)");
 }
+
+TEST_CASE("AppController opening an STL never shows touching contacts as defects",
+          "[app][controller][non-manifold][io]") {
+    using ogun::DefectCategory;
+    const std::filesystem::path path = std::filesystem::temp_directory_path() / "ogun_touching_cubes_test.stl";
+    {
+        std::ofstream file(path, std::ios::binary);
+        ogun::writeStlBinary(file, ogun::SampleMeshes::createTouchingCubesMesh());
+    }
+    ogun::AppController controller;
+    REQUIRE(controller.loadStlFile(path));
+    std::filesystem::remove(path);
+
+    REQUIRE(controller.rowStatus(DefectCategory::NonManifoldVertices) == ogun::HealthStatus::Ok);
+    REQUIRE(controller.rowCount(DefectCategory::NonManifoldVertices) == 0);
+    REQUIRE(controller.rowCount(DefectCategory::NonManifoldEdges) == 1); // only the fin
+    REQUIRE(controller.shells().size() == 3);
+    REQUIRE_FALSE(controller.fixAllNonManifoldVertices());
+    REQUIRE_FALSE(controller.fixAllNonManifoldEdges());
+    REQUIRE_FALSE(controller.canUndo());
+}

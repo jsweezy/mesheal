@@ -1,3 +1,5 @@
+#include "diagnostics/MeshChecks.hpp"
+#include "diagnostics/MeshHealth.hpp"
 #include "io/SampleMeshes.hpp"
 #include "io/StlReader.hpp"
 #include "io/StlWriter.hpp"
@@ -355,4 +357,83 @@ TEST_CASE("saveStl reports errors for empty meshes and invalid paths", "[io][stl
     const ogun::Mesh mesh = ogun::SampleMeshes::createSampleDefectiveMesh();
     CHECK_FALSE(ogun::saveStl("/nonexistent_ogun_dir/x/out.stl", mesh, ogun::StlFormat::Ascii, &error));
     CHECK_FALSE(error.empty());
+}
+
+namespace {
+
+std::size_t defectCount(ogun::DefectCategory category, const ogun::Mesh& mesh) {
+    return ogun::runCategoryCheck(category, mesh, ogun::CheckParams{}).size();
+}
+
+/// Each face's corners sit at the same positions in both meshes (same face order).
+bool sameCornerPositions(const ogun::Mesh& a, const ogun::Mesh& b) {
+    if (a.numFaces() != b.numFaces()) {
+        return false;
+    }
+    for (Eigen::Index f = 0; f < a.numFaces(); ++f) {
+        for (int c = 0; c < 3; ++c) {
+            if (!a.V.row(a.F(f, c)).isApprox(b.V.row(b.F(f, c)), 1e-12) &&
+                !(a.V.row(a.F(f, c)).isZero() && b.V.row(b.F(f, c)).isZero())) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+ogun::Mesh loadFromAsciiStl(const ogun::Mesh& mesh) {
+    std::stringstream stl;
+    ogun::writeStlAscii(stl, mesh);
+    return ogun::loadStl(stl);
+}
+
+} // namespace
+
+TEST_CASE("Loading an STL keeps solids that only touch apart", "[io][stl][non-manifold]") {
+    // Two cubes touching along an edge, one touching at a corner, and a fin
+    const ogun::Mesh welded = ogun::SampleMeshes::createTouchingCubesMesh();
+    REQUIRE(defectCount(ogun::DefectCategory::NonManifoldEdges, welded) == 3);
+    REQUIRE(defectCount(ogun::DefectCategory::NonManifoldVertices, welded) == 1);
+
+    const ogun::Mesh loaded = loadFromAsciiStl(welded);
+    REQUIRE(sameCornerPositions(welded, loaded));
+    REQUIRE(loaded.numVertices() == welded.numVertices() + 4); // three seam vertices and the corner
+    REQUIRE(defectCount(ogun::DefectCategory::NonManifoldVertices, loaded) == 0);
+    const ogun::CategoryResult edges = ogun::checkNonManifoldEdges(loaded);
+    REQUIRE(edges.size() == 1); // the fin is a real defect and stays
+    REQUIRE(edges.elements[0].subtype == 1);
+    REQUIRE(defectCount(ogun::DefectCategory::OpenEdges, loaded) == 2);
+    REQUIRE(ogun::checkShells(loaded).infoCount == 3);
+
+    SECTION("a saved and reopened STL comes back the same") {
+        std::stringstream binary;
+        ogun::writeStlBinary(binary, loaded);
+        const ogun::Mesh reloaded = ogun::loadStl(binary);
+        REQUIRE(reloaded.F == loaded.F);
+        REQUIRE(reloaded.numVertices() == loaded.numVertices());
+        REQUIRE(defectCount(ogun::DefectCategory::NonManifoldVertices, reloaded) == 0);
+        REQUIRE(defectCount(ogun::DefectCategory::NonManifoldEdges, reloaded) == 1);
+    }
+}
+
+TEST_CASE("Separating touching contacts leaves a clean mesh unchanged", "[io][stl][non-manifold]") {
+    const ogun::Mesh cube = ogun::SampleMeshes::createGridCubeMesh(4, 4.0);
+    const ogun::Mesh separated = ogun::separateTouchingContacts(cube);
+    REQUIRE(separated.V == cube.V);
+    REQUIRE(separated.F == cube.F);
+
+    const ogun::Mesh sample = ogun::SampleMeshes::createSampleDefectiveMesh();
+    REQUIRE(ogun::separateTouchingContacts(sample).F == sample.F);
+}
+
+TEST_CASE("The Turkey example loads with no non-manifold edges or vertices", "[io][stl][non-manifold][turkey]") {
+    const std::filesystem::path turkey =
+        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / "Turkey.stl";
+    REQUIRE(std::filesystem::exists(turkey));
+    // Welded by position alone it has a 4-edge seam where the surface touches itself and 13 bow-ties
+    const ogun::Mesh mesh = ogun::loadStl(turkey);
+    REQUIRE(defectCount(ogun::DefectCategory::NonManifoldEdges, mesh) == 0);
+    REQUIRE(defectCount(ogun::DefectCategory::NonManifoldVertices, mesh) == 0);
+    REQUIRE(defectCount(ogun::DefectCategory::OpenEdges, mesh) == 0);
+    REQUIRE(ogun::checkShells(mesh).infoCount == 28);
 }

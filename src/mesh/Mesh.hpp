@@ -6,6 +6,8 @@
 #include <Eigen/Core>
 #include <manifold/manifold.h>
 
+#include <cstddef>
+#include <cstdint>
 #include <span>
 
 namespace ogun {
@@ -83,6 +85,24 @@ struct Mesh {
 
 /// Appends `part`'s vertices and faces after `mesh`'s (no welding) and refreshes the normals.
 void appendMesh(Mesh& mesh, const Mesh& part);
+
+/// Fan id of a corner that belongs to no fan (its face is skipped); such corners keep their vertex.
+inline constexpr std::uint32_t kNoFan = 0xffffffffu;
+
+/// Mesh with split vertices; coordinates never move.
+struct VertexSplit {
+    Mesh mesh;
+    std::size_t verticesSplit = 0; ///< Original vertices that got copies
+    std::size_t verticesAdded = 0; ///< Copies appended to `mesh.V`
+};
+
+/// Gives every fan after the first (in face order) of each target vertex its own copy of the vertex,
+/// at the same position. `fans` holds a fan id per corner (`3 * f + c`, e.g. from `cornerFans`),
+/// `target` one flag per vertex (empty: every vertex).
+[[nodiscard]] VertexSplit splitVerticesByFan(
+    const Mesh& mesh,
+    std::span<const std::uint32_t> fans,
+    std::span<const std::uint8_t> target = {});
 
 /// Free-function convenience wrapper around `Mesh::toMeshGL()`.
 [[nodiscard]] manifold::MeshGL toMeshGL(const Mesh& mesh);

@@ -1,5 +1,6 @@
 #include "io/StlReader.hpp"
 #include "core/Constants.hpp"
+#include "diagnostics/MeshChecks.hpp"
 
 #include <igl/readSTL.h>
 
@@ -7,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <fstream>
 #include <limits>
 #include <stdexcept>
@@ -282,7 +284,14 @@ Mesh loadStl(
         throw std::runtime_error("loadStl: failed to parse STL data from stream.");
     }
 
-    return weldVerticesLocal(rawV, rawF, unit, tolConfig);
+    return separateTouchingContacts(weldVerticesLocal(rawV, rawF, unit, tolConfig));
+}
+
+Mesh separateTouchingContacts(const Mesh& mesh) {
+    // With every touching edge paired, each vertex is split into its fans
+    const EdgeTopology topo = buildEdgeTopology(mesh);
+    const std::vector<std::uint8_t> touching = touchingEdges(mesh, topo);
+    return splitVerticesByFan(mesh, cornerFans(mesh, topo, touching)).mesh;
 }
 
 Mesh loadStl(

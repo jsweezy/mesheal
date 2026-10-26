@@ -477,9 +477,9 @@ void PolyscopeGui::drawSplitRepairNote(DefectCategory category) {
     ImGui::TextDisabled("Nothing moves: copies sit at the same position, so volume and shape are unchanged. "
                         "Solids that only touched become separate shells.");
     ImGui::PopTextWrapPos();
-    gui::helpMarker("STL files store no vertex sharing. Reopening a saved STL welds the copies back together "
-                    "and these defects return. The split matters for the mesh in memory, e.g. before Manifold "
-                    "booleans. Manifold itself accepts touching solids and bow-ties, but not fins.");
+    gui::helpMarker("Opening an STL already keeps solids that only touch apart, so Touching edges and "
+                    "non-manifold vertices show up here only after an edit creates them. Fins and internal walls "
+                    "are real defects and are always listed.");
 }
 
 void PolyscopeGui::drawCategoryActions(DefectCategory category) {

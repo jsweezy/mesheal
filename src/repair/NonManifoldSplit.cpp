@@ -5,48 +5,18 @@
 #include <algorithm>
 #include <cstdint>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace ogun {
 
 namespace {
 
-/// Keeps each target vertex on the fan seen first (in face order) and gives every other fan a copy.
-NonManifoldSplitResult splitFans(const Mesh& mesh, std::span<const std::uint32_t> fans, const std::vector<std::uint8_t>& target) {
+NonManifoldSplitResult fromVertexSplit(VertexSplit split) {
     NonManifoldSplitResult result;
-    result.mesh = mesh;
-    const std::size_t nv = static_cast<std::size_t>(mesh.numVertices());
-    std::vector<std::uint8_t> claimed(nv, 0);
-    std::vector<std::uint8_t> split(nv, 0);
-    std::vector<int> copiedFrom;
-    std::unordered_map<std::uint32_t, int> vertexOfFan;
-    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
-        for (int c = 0; c < 3; ++c) {
-            const std::uint32_t fan = fans[static_cast<std::size_t>(f) * 3 + static_cast<std::size_t>(c)];
-            const int v = mesh.F(f, c);
-            if (fan == kNoFan || target[static_cast<std::size_t>(v)] == 0) {
-                continue;
-            }
-            const auto [it, inserted] = vertexOfFan.try_emplace(fan, v);
-            if (inserted) {
-                if (claimed[static_cast<std::size_t>(v)] == 0) {
-                    claimed[static_cast<std::size_t>(v)] = 1;
-                } else {
-                    it->second = static_cast<int>(nv + copiedFrom.size());
-                    copiedFrom.push_back(v);
-                    split[static_cast<std::size_t>(v)] = 1;
-                }
-            }
-            result.mesh.F(f, c) = it->second;
-        }
-    }
-
-    result.mesh.V.conservativeResize(static_cast<Eigen::Index>(nv + copiedFrom.size()), 3);
-    for (std::size_t i = 0; i < copiedFrom.size(); ++i) {
-        result.mesh.V.row(static_cast<Eigen::Index>(nv + i)) = mesh.V.row(copiedFrom[i]);
-    }
-    result.verticesAdded = copiedFrom.size();
-    result.verticesSplit = static_cast<std::size_t>(std::count(split.begin(), split.end(), std::uint8_t{1}));
+    result.mesh = std::move(split.mesh);
+    result.verticesSplit = split.verticesSplit;
+    result.verticesAdded = split.verticesAdded;
     return result;
 }
 
@@ -60,7 +30,7 @@ NonManifoldSplitResult splitNonManifoldVertices(const Mesh& mesh, std::span<cons
             target[static_cast<std::size_t>(v)] = 1;
         }
     }
-    return splitFans(mesh, cornerFans(mesh, topo), target);
+    return fromVertexSplit(splitVerticesByFan(mesh, cornerFans(mesh, topo), target));
 }
 
 NonManifoldSplitResult splitNonManifoldEdges(const Mesh& mesh, std::span<const std::array<int, 2>> edges) {
@@ -114,7 +84,7 @@ NonManifoldSplitResult splitNonManifoldEdges(const Mesh& mesh, std::span<const s
         }
     }
 
-    NonManifoldSplitResult result = splitFans(mesh, cornerFans(mesh, topo, touching), target);
+    NonManifoldSplitResult result = fromVertexSplit(splitVerticesByFan(mesh, cornerFans(mesh, topo, touching), target));
     result.edgesSplit = edgesSplit;
     result.edgesSkipped = edgesSkipped;
     return result;

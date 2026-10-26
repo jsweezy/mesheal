@@ -28,16 +28,21 @@ namespace ogun {
     Unit unit = Unit::Millimeter,
     const ToleranceConfig& tolConfig = ToleranceConfig{});
 
-/// Reads an ASCII or binary STL stream via `igl::readSTL` and welds duplicate vertices
-/// across triangles using `weldVerticesLocal`.
+/// Topology-aware follow-up to welding: solids that only touch along an edge (Touching edges, see
+/// `touchingEdges`) or at a vertex (bow-ties) get their own copies of the shared vertices, at the same
+/// positions. A position weld cannot tell such contacts from real connections, so without this they
+/// would read as non-manifold edges and vertices. Fins and other edges stay unchanged.
+[[nodiscard]] Mesh separateTouchingContacts(const Mesh& mesh);
+
+/// Reads an ASCII or binary STL stream via `igl::readSTL`, welds duplicate vertices across
+/// triangles using `weldVerticesLocal`, then keeps touching solids apart (`separateTouchingContacts`).
 /// Throws `std::runtime_error` if the stream cannot be parsed as a valid STL.
 [[nodiscard]] Mesh loadStl(
     std::istream& input,
     Unit unit = Unit::Millimeter,
     const ToleranceConfig& tolConfig = ToleranceConfig{});
 
-/// Reads an ASCII or binary STL file from disk via `igl::readSTL` and welds duplicate
-/// vertices across triangles using `weldVerticesLocal`.
+/// Reads an ASCII or binary STL file from disk like the stream overload.
 /// Throws `std::runtime_error` if the file cannot be opened or parsed.
 [[nodiscard]] Mesh loadStl(
     const std::filesystem::path& filepath,

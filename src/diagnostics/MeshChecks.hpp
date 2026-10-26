@@ -35,9 +35,6 @@ struct EdgeTopology {
 /// Builds the undirected edge table by sorting packed vertex pairs: O(F log F).
 [[nodiscard]] EdgeTopology buildEdgeTopology(const Mesh& mesh);
 
-/// Fan id of a corner whose face is not in the edge table (repeated vertex index).
-inline constexpr std::uint32_t kNoFan = 0xffffffffu;
-
 /// Pairs the faces around non-manifold edge `e` into closed wedges when the edge is where solids
 /// touch: faces sorted radially around the edge, each face paired with the neighbour across the
 /// solid it bounds (decided by winding), every pair one forward and one backward face. Returns the
@@ -47,9 +44,9 @@ inline constexpr std::uint32_t kNoFan = 0xffffffffu;
     const EdgeTopology& topo,
     std::size_t e);
 
-/// Fan id of every corner (`3 * face + c`; `kNoFan` for faces not in the edge table). Corners of a
-/// vertex share a fan when their faces are joined across edges through it. Non-manifold edges join
-/// all their faces, except edges flagged in `pairEdges` (one flag per edge, or empty) that
+/// Fan id of every corner (`3 * face + c`; `kNoFan` for faces with a repeated vertex index). Corners
+/// of a vertex share a fan when their faces are joined across edges through it. Non-manifold edges
+/// join all their faces, except edges flagged in `pairEdges` (one flag per edge, or empty) that
 /// `pairTouchingFaces` can pair: those join only the faces of each pair.
 [[nodiscard]] std::vector<std::uint32_t> cornerFans(
     const Mesh& mesh,

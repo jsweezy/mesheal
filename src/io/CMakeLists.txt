@@ -16,6 +16,7 @@ target_link_libraries(ogun_io
         ogun::mesh
         igl::core
     PRIVATE
+        ogun::diagnostics
         ogun::warnings
 )
 

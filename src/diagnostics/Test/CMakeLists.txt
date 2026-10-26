@@ -9,8 +9,8 @@ add_executable(ogun_diagnostics_tests
 
 target_link_libraries(ogun_diagnostics_tests
     PRIVATE
-        ogun::diagnostics
         ogun::io
+        ogun::diagnostics
         Catch2::Catch2WithMain
         ogun::warnings
 )
