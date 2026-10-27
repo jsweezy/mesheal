@@ -454,6 +454,17 @@ TEST_CASE("AppController switching HealAction re-evaluates the preview and flags
     REQUIRE(controller.selectedHealAction() == ogun::HealAction::None);
 }
 
+TEST_CASE("R commits the focused thin face's repair", "[app][controller][repair]") {
+    ogun::AppController controller;
+    controller.loadSampleDefectiveMesh();
+    REQUIRE_FALSE(controller.commitFocusedRepair()); // no defect focused
+    REQUIRE(controller.mesh().numFaces() == 15);
+    controller.pickFace(ogun::SampleMeshes::kMicroscopicFaceIndex);
+    REQUIRE(controller.commitFocusedRepair());
+    REQUIRE(controller.mesh().numFaces() == 14);
+    REQUIRE(controller.lastUndoActionLabel().rfind("Single-Face Repair", 0) == 0);
+}
+
 TEST_CASE("AppController commits a single-face repair, refreshes diagnostics, and undoes it",
           "[app][controller][repair][undo]") {
     ogun::AppController controller;

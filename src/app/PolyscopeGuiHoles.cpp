@@ -102,7 +102,7 @@ void PolyscopeGui::drawHoleInspector() {
     const HoleFillPreview& preview = controller_.holePreview();
     const bool canCommit = preview.valid && preview.newCrossings == 0;
     ImGui::BeginDisabled(!canCommit);
-    if (ImGui::Button("Commit Repair") && controller_.commitHoleFill()) {
+    if (ImGui::Button("Commit Repair (R)") && controller_.commitHoleFill()) {
         requestSync(true);
     }
     ImGui::EndDisabled();

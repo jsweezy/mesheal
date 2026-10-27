@@ -686,6 +686,9 @@ void PolyscopeGui::handleKeyboardShortcuts() {
     if (ImGui::IsKeyPressed(ImGuiKey_G, false)) {
         toggleGhost();
     }
+    if (ImGui::IsKeyPressed(ImGuiKey_R, false) && controller_.commitFocusedRepair()) {
+        requestSync(true);
+    }
     // Face selection, with Blender's keys
     if (ImGui::IsKeyPressed(ImGuiKey_B, false)) {
         startFaceSelectMode(FaceSelectMode::Box);

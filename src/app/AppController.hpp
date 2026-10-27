@@ -837,6 +837,10 @@ public:
     /// diagnostics. Returns false (mesh unchanged) if nothing is selected or the repair is unsafe.
     bool commitSelectedFaceRepair();
 
+    /// Commit Repair of the Inspector on screen (`R`): the focused thin face, island or hole. Posts why
+    /// when nothing is committed.
+    bool commitFocusedRepair();
+
     /// Batch heals every thin / sliver face in the shell scope (undoable) and re-runs diagnostics.
     /// Returns false (mesh unchanged) if there is nothing to heal or no face could be healed.
     bool fixAllThinFaces();

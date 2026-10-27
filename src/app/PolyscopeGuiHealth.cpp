@@ -895,7 +895,7 @@ void PolyscopeGui::drawThinFaceInspector() {
     ImGui::TextDisabled("Preview display options: Display > Repair preview.");
 
     ImGui::BeginDisabled(controller_.selectedHealAction() == HealAction::None);
-    if (ImGui::Button("Commit Repair") && controller_.commitSelectedFaceRepair()) {
+    if (ImGui::Button("Commit Repair (R)") && controller_.commitSelectedFaceRepair()) {
         requestSync(true);
     }
     ImGui::EndDisabled();

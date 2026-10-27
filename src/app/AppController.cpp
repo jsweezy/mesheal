@@ -1081,6 +1081,27 @@ bool AppController::commitSelectedFaceRepair() {
     return true;
 }
 
+bool AppController::commitFocusedRepair() {
+    // The same Inspector the Mesh Health panel shows for the focused defect
+    const CategoryResult* result = browser_.result();
+    const bool shown = result != nullptr && browser_.hasFocus() && browser_.isVisible(browser_.focusedElement());
+    bool committed = false;
+    if (shown && inspectorActive()) {
+        committed = commitSelectedFaceRepair();
+    } else if (shown && result->category == DefectCategory::Intersections) {
+        committed = commitIslandRepair();
+    } else if (shown && result->category == DefectCategory::OpenEdges && holeInspectorActive()) {
+        committed = commitHoleFill();
+    } else {
+        postStatusMessage("R commits the Inspector's repair: focus a thin face, intersecting face or hole first.");
+        return false;
+    }
+    if (!committed) {
+        postStatusMessage(lastRepairStatusMessage_, true);
+    }
+    return committed;
+}
+
 bool AppController::fixAllThinFaces() {
     if (mesh_.empty()) {
         lastRepairStatusMessage_ = "No mesh loaded.";

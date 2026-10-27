@@ -75,6 +75,14 @@ TEST_CASE("Island Inspector: recommended method, live preview, commit and undo",
     REQUIRE(controller.selectedIslandMethod() == IntersectionRepairMethod::FillSmooth);
 }
 
+TEST_CASE("R commits the focused island's repair", "[app][intersections][repair]") {
+    ogun::AppController controller;
+    loadFoldedCube(controller);
+    REQUIRE(focusIsland(controller, true));
+    REQUIRE(controller.commitFocusedRepair());
+    REQUIRE(controller.lastUndoActionLabel().rfind("Island Repair (", 0) == 0);
+}
+
 TEST_CASE("Island Inspector recommends Cut & Merge Walls for a pass-through", "[app][intersections][repair]") {
     ogun::AppController controller;
     loadFoldedCube(controller);

@@ -41,6 +41,27 @@ bool focusHole(ogun::AppController& controller, HoleShape shape) {
 
 } // namespace
 
+TEST_CASE("R commits the focused hole's fill, and refuses an unsafe one", "[app][holes][repair][undo]") {
+    ogun::AppController controller;
+    loadHolesSample(controller);
+    const ogun::Mesh before = controller.mesh();
+    REQUIRE_FALSE(controller.commitFocusedRepair()); // row open, nothing focused
+    REQUIRE(controller.statusMessage().find("focus a thin face") != std::string::npos);
+
+    REQUIRE(focusHole(controller, HoleShape::Crack));
+    controller.setSelectedHoleMethod(HoleFillMethod::Flat); // no triangle fits a zero-width gap
+    REQUIRE_FALSE(controller.commitFocusedRepair());
+    REQUIRE(controller.statusMessageIsError());
+    REQUIRE(controller.mesh().F == before.F);
+
+    REQUIRE(focusHole(controller, HoleShape::Flat));
+    REQUIRE(controller.commitFocusedRepair());
+    REQUIRE(controller.lastUndoActionLabel().rfind("Hole Fill (", 0) == 0);
+    REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 3);
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().F == before.F);
+}
+
 TEST_CASE("Hole Inspector: recommended fill per shape, live preview, commit and undo", "[app][holes][repair][undo]") {
     ogun::AppController controller;
     loadHolesSample(controller);

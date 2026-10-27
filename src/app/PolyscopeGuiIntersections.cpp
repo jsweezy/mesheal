@@ -128,7 +128,7 @@ void PolyscopeGui::drawIntersectionInspector() {
     const IslandRepairPreview& preview = controller_.islandPreview();
     const bool canCommit = island != nullptr && preview.valid && preview.newCrossings == 0;
     ImGui::BeginDisabled(!canCommit);
-    if (ImGui::Button("Commit Repair") && controller_.commitIslandRepair()) {
+    if (ImGui::Button("Commit Repair (R)") && controller_.commitIslandRepair()) {
         requestSync(true);
     }
     ImGui::EndDisabled();

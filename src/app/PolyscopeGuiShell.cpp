@@ -890,6 +890,7 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"N  /  Shift+N", "Next / previous defect of the selected row (worst first, within the active filter) and fly to it"},
         {".  or  Numpad .", "Frames the focused facet looking down +Normal (press '.' again to toggle to -Normal); a focused hole frames the whole hole, looking in along the hole's outward normal; after Shift+click / B / C, frames the selected faces (square on when they face one way, '.' again flips); with no focused defect, frames the selected shells"},
         {"Shift + .", "Frames the focused facet (or hole) from the -Normal (back / inside) side"},
+        {"R", "Commit Repair: applies the Inspector's chosen repair to the focused defect (thin face, intersecting island or hole); one undo step. Refused, with the reason in the status bar, when the preview is not safe"},
         {"Home  or  H", "Frames the entire mesh and resets the Orbit Pivot to the mesh center"},
         {"G", "Toggles Ghost (base-mesh transparency)"},
         {"B", "Box select faces: drag a rectangle (Shift+drag deselects); one box per B. Esc or right-click cancels. Only the faces you see, unless Select Through or Ghost (G) is on; hidden shells never"},
