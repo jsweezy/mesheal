@@ -799,6 +799,7 @@ bool AppController::escape() {
         return true;
     }
     if (clearFaceSelection()) {
+        postStatusMessage("Face selection cleared.");
         return true;
     }
     if (shells_.selectedCount() > 0) {

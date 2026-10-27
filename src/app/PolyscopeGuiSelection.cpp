@@ -64,6 +64,8 @@ void PolyscopeGui::startFaceSelectMode(FaceSelectMode mode) {
 void PolyscopeGui::exitFaceSelectMode() {
     if (faceSelectMode_ == FaceSelectMode::Circle) {
         controller_.postStatusMessage("Circle select done: " + withThousands(controller_.selectedFaceCount()) + " faces selected.");
+    } else if (faceSelectMode_ == FaceSelectMode::Box) {
+        controller_.postStatusMessage("Box select cancelled.");
     }
     faceSelectMode_ = FaceSelectMode::None;
     boxDragging_ = false;
@@ -87,7 +89,8 @@ void PolyscopeGui::handleFaceSelectTool() {
             const std::size_t changed = controller_.selectFacesInRectangle(currentScreenView(), boxStart_, mouse, !boxRemoves_);
             controller_.postStatusMessage(withThousands(changed) + (boxRemoves_ ? " faces deselected; " : " faces selected; ") +
                                           withThousands(controller_.selectedFaceCount()) + " selected.");
-            exitFaceSelectMode(); // one box per B, as in Blender
+            faceSelectMode_ = FaceSelectMode::None; // one box per B, as in Blender
+            boxDragging_ = false;
             requestSync();
         }
         return;
@@ -104,12 +107,15 @@ void PolyscopeGui::handleFaceSelectTool() {
         lastPaint_ = Eigen::Vector2d::Constant(-1.0e9);
         return;
     }
-    // Only where the brush moved on (a quarter radius), so a held click does not repeat the work
-    if ((mouse - lastPaint_).norm() < 0.25 * circleRadiusPx_) {
+    // Only where the brush moved on (a quarter radius), so a held click does not repeat the work; the
+    // whole stroke since the last paint, so a fast drag leaves no gaps
+    const bool strokeStarted = lastPaint_.x() > -1.0e8;
+    if (strokeStarted && (mouse - lastPaint_).norm() < 0.25 * circleRadiusPx_) {
         return;
     }
+    const Eigen::Vector2d from = strokeStarted ? lastPaint_ : mouse;
     lastPaint_ = mouse;
-    if (controller_.selectFacesInCircle(currentScreenView(), mouse, circleRadiusPx_, paint && !removeModifier) > 0) {
+    if (controller_.selectFacesInStroke(currentScreenView(), from, mouse, circleRadiusPx_, paint && !removeModifier) > 0) {
         requestSync();
     }
 }
@@ -157,11 +163,13 @@ void PolyscopeGui::drawSelectFacesMenu() {
         controller_.clearFaceSelection();
         requestSync();
     }
-    bool through = controller_.selectThrough();
-    if (ImGui::MenuItem("Select Through (X-ray)", nullptr, &through)) {
+    bool through = controller_.selectsThrough();
+    if (ImGui::MenuItem("Select Through (X-ray)", nullptr, &through, !controller_.ghostMeshEnabled())) {
         controller_.setSelectThrough(through);
     }
-    tooltip("Off: box and circle select only the faces you can see. On: also the hidden faces behind them.");
+    tooltip(controller_.ghostMeshEnabled()
+        ? "On while Ghost (G) shows the hidden faces: box and circle select them too."
+        : "Off: box and circle select only the faces you can see. On: also the hidden faces behind them.");
     ImGui::Separator();
     ImGui::TextDisabled("%s faces selected", withThousands(controller_.selectedFaceCount()).c_str());
     ImGui::TextDisabled("Use them: Mesh > Simplify > Decimate, Mesh > Clean Up > Weld / Merge Vertices");

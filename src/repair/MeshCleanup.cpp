@@ -85,7 +85,8 @@ bool sameWinding(const std::array<int, 3>& a, const std::array<int, 3>& b) noexc
 
 } // namespace
 
-MergeByDistanceResult mergeByDistance(const Mesh& mesh, double distance, std::span<const std::uint8_t> faceInScope) {
+MergeByDistanceResult mergeByDistance(const Mesh& mesh, double distance, std::span<const std::uint8_t> faceInScope,
+                                      bool keepSurfacesApart) {
     MergeByDistanceResult result;
     if (mesh.empty() || !(distance > 0.0) || !std::isfinite(distance)) {
         result.statusMessage = "Merge needs a mesh and a positive distance.";
@@ -114,6 +115,41 @@ MergeByDistanceResult mergeByDistance(const Mesh& mesh, double distance, std::sp
         }
     }
 
+    // Keeping surfaces apart: the edges (sorted vertex pairs) and the vertices on open edges
+    std::vector<std::pair<int, int>> edges;
+    std::vector<std::uint8_t> onOpenEdge;
+    if (keepSurfacesApart) {
+        edges.reserve(3 * static_cast<std::size_t>(mesh.numFaces()));
+        for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+            for (int c = 0; c < 3; ++c) {
+                const int a = mesh.F(f, c);
+                const int b = mesh.F(f, (c + 1) % 3);
+                edges.emplace_back(std::min(a, b), std::max(a, b));
+            }
+        }
+        std::sort(edges.begin(), edges.end());
+        onOpenEdge.assign(nv, 0);
+        for (std::size_t i = 0; i < edges.size();) {
+            std::size_t j = i;
+            while (j < edges.size() && edges[j] == edges[i]) {
+                ++j;
+            }
+            if (j - i == 1) {
+                onOpenEdge[static_cast<std::size_t>(edges[i].first)] = 1;
+                onOpenEdge[static_cast<std::size_t>(edges[i].second)] = 1;
+            }
+            i = j;
+        }
+    }
+    const auto mayMerge = [&](int a, int b) {
+        if (!keepSurfacesApart) {
+            return true;
+        }
+        const std::pair<int, int> edge(std::min(a, b), std::max(a, b));
+        return std::binary_search(edges.begin(), edges.end(), edge) ||
+               (onOpenEdge[static_cast<std::size_t>(a)] != 0 && onOpenEdge[static_cast<std::size_t>(b)] != 0);
+    };
+
     // Each unmerged vertex, in index order, absorbs the unmerged ones within `distance` of it
     std::vector<int> target(nv);
     for (std::size_t v = 0; v < nv; ++v) {
@@ -140,7 +176,7 @@ MergeByDistanceResult mergeByDistance(const Mesh& mesh, double distance, std::sp
                             continue;
                         }
                         const double dist2 = (mesh.V.row(n) - mesh.V.row(static_cast<Eigen::Index>(v))).squaredNorm();
-                        if (dist2 <= d2) {
+                        if (dist2 <= d2 && mayMerge(static_cast<int>(v), n)) {
                             assigned[un] = 1;
                             target[un] = static_cast<int>(v);
                             ++result.verticesMerged;
@@ -277,7 +313,7 @@ DecimateResult decimate(const Mesh& mesh, double ratio, std::span<const std::uin
         Policies policies(surface);
         const SMS::Constrained_placement<Policies::Get_placement, decltype(constrained)> placement(constrained,
                                                                                                 policies.get_placement());
-        const SMS::Face_count_stop_predicate<CgalSurfaceMesh> stop(targetFaces);
+        const SMS::Face_count_stop_predicate<CgalSurfaceMesh> stop(targetFaces + 1); // stops below the threshold
         const SMS::Bounded_normal_change_filter<> filter; // no collapse may flip a face
         SMS::edge_collapse(surface, stop,
                            CGAL::parameters::edge_is_constrained_map(constrained)

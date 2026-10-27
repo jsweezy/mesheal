@@ -985,7 +985,9 @@ public:
     /// Box / circle selection of the faces whose centre is inside the shape on screen; only the faces
     /// seen there unless `selectThrough()` (Blender's X-ray). Returns how many changed.
     std::size_t selectFacesInRectangle(const ScreenView& view, const Eigen::Vector2d& a, const Eigen::Vector2d& b, bool select);
-    std::size_t selectFacesInCircle(const ScreenView& view, const Eigen::Vector2d& center, double radius, bool select);
+    /// A brush stroke from `from` to `to` (a circle when they are equal).
+    std::size_t selectFacesInStroke(const ScreenView& view, const Eigen::Vector2d& from, const Eigen::Vector2d& to, double radius,
+                                    bool select);
     /// The first face under a screen point (Shift+click), by a ray cast: dense meshes leave no room
     /// for polyscope's pick, which takes a vertex when the click is near one.
     [[nodiscard]] std::optional<Eigen::Index> faceAtScreenPoint(const ScreenView& view, const Eigen::Vector2d& point) const;
@@ -995,6 +997,10 @@ public:
     }
     void setSelectThrough(bool through) noexcept {
         selectThrough_ = through;
+    }
+    /// Box / circle also take hidden faces: Select Through is on, or Ghost (G) shows them (Blender's X-ray).
+    [[nodiscard]] bool selectsThrough() const noexcept {
+        return selectThrough_ || ghostMeshEnabled_;
     }
 
     /// Faces Decimate / Merge Vertices work on: the selected faces, else the shells in scope (empty = all).
@@ -1244,8 +1250,13 @@ private:
     bool selectThrough_ = false;
     mutable FaceVisibility faceVisibility_;
     mutable std::uint64_t faceVisibilityGeneration_ = 0;
-    /// The ray-cast tree of the current mesh, rebuilt after an edit.
+    mutable std::vector<std::uint8_t> faceVisibilityShown_;
+    /// The ray-cast tree of the shown faces, rebuilt after an edit or a shell hide / show.
     const FaceVisibility& faceVisibility() const;
+    /// 1 for faces of visible shells (empty = all shown).
+    [[nodiscard]] std::vector<std::uint8_t> shownFaceMask() const;
+    /// Drops a Decimate / Merge preview made on the old selection.
+    void onFaceSelectionChanged();
     std::size_t listCap_ = settings::kDefaultListCap;
     std::size_t overlayCap_ = settings::kDefaultOverlayCap;
     Eigen::Index pickedFaceIndex_ = -1;   ///< Face clicked with no row containing it

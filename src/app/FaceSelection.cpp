@@ -4,10 +4,12 @@
 
 #include <Eigen/Geometry>
 #include <igl/Hit.h>
+#include <igl/parallel_for.h>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 
 namespace ogun {
@@ -19,11 +21,23 @@ Eigen::Vector3d centroid(const Mesh& mesh, Eigen::Index f) {
 }
 
 std::vector<Eigen::Index> facesWhere(const Mesh& mesh, const ScreenView& view, const FaceVisibility* visibility,
+                                     std::span<const std::uint8_t> shown,
                                      const std::function<bool(const Eigen::Vector2d&)>& inside) {
+    // In parallel: the visibility rays are most of the cost on a big mesh
+    std::vector<std::uint8_t> hit(static_cast<std::size_t>(mesh.numFaces()), 0);
+    igl::parallel_for(
+        mesh.numFaces(),
+        [&](Eigen::Index f) {
+            if (!shown.empty() && shown[static_cast<std::size_t>(f)] == 0) {
+                return;
+            }
+            const std::optional<Eigen::Vector2d> p = view.project(centroid(mesh, f));
+            hit[static_cast<std::size_t>(f)] = p && inside(*p) && (visibility == nullptr || visibility->visible(mesh, f, view)) ? 1 : 0;
+        },
+        1000);
     std::vector<Eigen::Index> faces;
     for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
-        const std::optional<Eigen::Vector2d> p = view.project(centroid(mesh, f));
-        if (p && inside(*p) && (visibility == nullptr || visibility->visible(mesh, f, view))) {
+        if (hit[static_cast<std::size_t>(f)] != 0) {
             faces.push_back(f);
         }
     }
@@ -42,16 +56,40 @@ std::optional<Eigen::Vector2d> ScreenView::project(const Eigen::Vector3d& p) con
     return Eigen::Vector2d((x + 1.0) * 0.5 * width, (1.0 - y) * 0.5 * height);
 }
 
-void FaceVisibility::build(const Mesh& mesh) {
+void FaceVisibility::build(const Mesh& mesh, std::span<const std::uint8_t> shown) {
     tree_ = igl::AABB<Eigen::MatrixXd, 3>();
-    built_ = !mesh.empty();
-    if (built_) {
-        const BoundingBox box = mesh.boundingBox();
-        origin_ = box.min;
-        scale_ = settings::kFaceVisibilityWorkingSize / std::max(box.diagonal(), 1e-300);
-        V_ = (mesh.V.rowwise() - origin_.transpose()) * scale_;
-        tree_.init(V_, mesh.F);
+    treeFace_.clear();
+    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+        if (shown.empty() || shown[static_cast<std::size_t>(f)] != 0) {
+            treeFace_.push_back(f);
+        }
     }
+    built_ = !mesh.empty();
+    if (!built_) {
+        return;
+    }
+    const BoundingBox box = mesh.boundingBox();
+    origin_ = box.min;
+    scale_ = settings::kFaceVisibilityWorkingSize / std::max(box.diagonal(), 1e-300);
+    V_ = (mesh.V.rowwise() - origin_.transpose()) * scale_;
+    F_.resize(static_cast<Eigen::Index>(treeFace_.size()), 3);
+    for (Eigen::Index row = 0; row < F_.rows(); ++row) {
+        F_.row(row) = mesh.F.row(treeFace_[static_cast<std::size_t>(row)]);
+    }
+    if (F_.rows() > 0) {
+        tree_.init(V_, F_);
+    }
+}
+
+std::optional<Eigen::Index> FaceVisibility::firstHit(const Eigen::Vector3d& origin, const Eigen::Vector3d& dir, double* t) const {
+    igl::Hit hit{};
+    if (F_.rows() == 0 || !tree_.intersect_ray(V_, F_, origin.transpose(), dir.transpose(), hit)) {
+        return std::nullopt;
+    }
+    if (t != nullptr) {
+        *t = hit.t;
+    }
+    return treeFace_[static_cast<std::size_t>(hit.id)];
 }
 
 bool FaceVisibility::visible(const Mesh& mesh, Eigen::Index face, const ScreenView& view) const {
@@ -70,16 +108,22 @@ bool FaceVisibility::visible(const Mesh& mesh, Eigen::Index face, const ScreenVi
     // face counts as seen when at least two of the three rays reach it.
     const std::array<Eigen::Vector3d, 3> targets = {(a + b + c) / 3.0, 0.6 * a + 0.2 * b + 0.2 * c, 0.2 * a + 0.6 * b + 0.2 * c};
     int seen = 0;
+    int missed = 0;
     for (const Eigen::Vector3d& target : targets) {
+        if (seen >= 2 || missed >= 2) {
+            break; // the vote is decided
+        }
         const Eigen::Vector3d origin = view.orthographic ? Eigen::Vector3d(target - reach * view.viewDirection) : eye;
         const Eigen::Vector3d dir = target - origin;
         if (std::abs(normal.dot(dir.normalized())) < 1e-3) {
             return false; // edge-on: the ray runs in the face's plane
         }
-        igl::Hit hit{};
-        if (tree_.intersect_ray(V_, mesh.F, origin.transpose(), dir.transpose(), hit) &&
-            (hit.id == static_cast<int>(face) || hit.t > 1.0 - 1e-6)) {
+        double t = 0.0;
+        const std::optional<Eigen::Index> first = firstHit(origin, dir, &t);
+        if (first && (*first == face || t > 1.0 - 1e-6)) {
             ++seen;
+        } else {
+            ++missed;
         }
     }
     return seen >= 2;
@@ -103,26 +147,29 @@ std::optional<Eigen::Index> FaceVisibility::faceAt(const Mesh& mesh, const Scree
     const Eigen::Vector3d origin = view.orthographic
         ? Eigen::Vector3d(nearPoint - (nearPoint.norm() + 2.0 * settings::kFaceVisibilityWorkingSize) * dir)
         : toWork(view.cameraPosition);
-    igl::Hit hit{};
-    if (!tree_.intersect_ray(V_, mesh.F, origin.transpose(), dir.transpose(), hit)) {
-        return std::nullopt;
-    }
-    return static_cast<Eigen::Index>(hit.id);
+    (void)mesh;
+    return firstHit(origin, dir, nullptr);
 }
 
 std::vector<Eigen::Index> facesInRectangle(const Mesh& mesh, const ScreenView& view, const Eigen::Vector2d& a,
-                                           const Eigen::Vector2d& b, const FaceVisibility* visibility) {
+                                           const Eigen::Vector2d& b, const FaceVisibility* visibility,
+                                           std::span<const std::uint8_t> shown) {
     const Eigen::Vector2d lo = a.cwiseMin(b);
     const Eigen::Vector2d hi = a.cwiseMax(b);
-    return facesWhere(mesh, view, visibility, [&](const Eigen::Vector2d& p) {
+    return facesWhere(mesh, view, visibility, shown, [&](const Eigen::Vector2d& p) {
         return p.x() >= lo.x() && p.x() <= hi.x() && p.y() >= lo.y() && p.y() <= hi.y();
     });
 }
 
-std::vector<Eigen::Index> facesInCircle(const Mesh& mesh, const ScreenView& view, const Eigen::Vector2d& center, double radius,
-                                        const FaceVisibility* visibility) {
+std::vector<Eigen::Index> facesInStroke(const Mesh& mesh, const ScreenView& view, const Eigen::Vector2d& a, const Eigen::Vector2d& b,
+                                        double radius, const FaceVisibility* visibility, std::span<const std::uint8_t> shown) {
     const double r2 = radius * radius;
-    return facesWhere(mesh, view, visibility, [&](const Eigen::Vector2d& p) { return (p - center).squaredNorm() <= r2; });
+    const Eigen::Vector2d ab = b - a;
+    const double len2 = ab.squaredNorm();
+    return facesWhere(mesh, view, visibility, shown, [&](const Eigen::Vector2d& p) {
+        const double t = len2 > 0.0 ? std::clamp((p - a).dot(ab) / len2, 0.0, 1.0) : 0.0;
+        return (p - (a + t * ab)).squaredNorm() <= r2;
+    });
 }
 
 } // namespace ogun

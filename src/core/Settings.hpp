@@ -75,6 +75,8 @@ inline constexpr double kDefaultDecimateRatio             = 0.5;    // Mesh > Si
 inline constexpr double kMinDecimateRatio                 = 0.01;   // Smallest decimation ratio offered
 inline constexpr double kMaxDecimateRatio                 = 1.0;    // Largest decimation ratio offered (no change)
 inline constexpr double kDefaultMergeDistanceMm           = 0.05;   // Mesh > Clean Up > Weld / Merge Vertices: merge distance in mm
+inline constexpr double kMergeCollapseWarnRatio           = 5.0;    // Merge distance / mean edge above which "whole areas will collapse"
+inline constexpr bool   kDefaultMergeKeepSurfacesApart    = true;   // Merge vertices only along an edge or between open-edge vertices
 inline constexpr double kMinAlphaWrapOffsetDiag           = 1.0e-5; // Smallest offset offered, as a fraction of the bbox diagonal
 inline constexpr double kMaxAlphaWrapOffsetDiag           = 0.05;   // Largest offset offered, as a fraction of the bbox diagonal
 inline constexpr int    kDefaultWindingGridResolution     = 128;    // Winding-number rebuild: grid cells along the longest bbox side
@@ -133,7 +135,7 @@ inline constexpr float kMaxUiScale             = 2.5f;            // Maximum Pre
 // -----------------------------------------------------------------------------
 inline constexpr bool   kDefaultColorByShell     = true;          // Shells panel "Color by shell" starts on for multi-shell meshes
 inline constexpr std::array<double, 3> kDefaultShellSelectedColor = {0.40, 0.70, 1.00}; // RGB tint of selected shells (not a defect color)
-inline constexpr std::array<double, 3> kDefaultFaceSelectionColor = {0.60, 0.40, 1.00}; // RGB of faces selected with B / C / Shift+click
+inline constexpr std::array<double, 3> kDefaultFaceSelectionColor = {1.00, 0.30, 0.85}; // RGB of faces selected with B / C / Shift+click (magenta: outside the shell hues and defect tints)
 inline constexpr float kDefaultCircleSelectRadiusPx = 30.0f;  // Circle select (C) brush radius in screen points
 inline constexpr float kMinCircleSelectRadiusPx     = 4.0f;   // Smallest circle-select radius (mouse wheel)
 inline constexpr float kMaxCircleSelectRadiusPx     = 300.0f; // Largest circle-select radius (mouse wheel)

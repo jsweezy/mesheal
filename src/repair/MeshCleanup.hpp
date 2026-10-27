@@ -26,8 +26,11 @@ struct MergeByDistanceResult {
 /// Merges every vertex of the faces in scope that lies within `distance` of an earlier one (in index
 /// order, so no vertex moves more than `distance`: chains are not followed). Faces that collapse are
 /// removed, as are faces that become copies of another (both, when the copies face opposite ways).
+/// With `keepSurfacesApart`, two vertices only merge when an edge joins them (a short edge collapses)
+/// or both lie on open edges (a crack is welded): surfaces and shells that touch are not pinched.
 [[nodiscard]] MergeByDistanceResult mergeByDistance(const Mesh& mesh, double distance,
-                                                    std::span<const std::uint8_t> faceInScope = {});
+                                                    std::span<const std::uint8_t> faceInScope = {},
+                                                    bool keepSurfacesApart = false);
 
 struct DecimateResult {
     bool success = false;

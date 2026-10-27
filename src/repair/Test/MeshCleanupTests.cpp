@@ -163,3 +163,54 @@ TEST_CASE("Decimate and merge run as one-method operators with the merge distanc
     REQUIRE(decimated.metrics.watertight());
     REQUIRE(decimated.vertexDeviation.size() == decimated.mesh.numVertices());
 }
+
+TEST_CASE("Merge keeps touching surfaces apart unless asked", "[repair][merge]") {
+    // Cube B's corner (0, 0, 0) sits 0.02 mm from cube A's corner (8, 8, 8): no edge joins them
+    ogun::Mesh mesh = ogun::SampleMeshes::createGridCubeMesh(2, 8.0);
+    ogun::Mesh other = mesh;
+    other.V.rowwise() += Eigen::RowVector3d(8.02, 8.0, 8.0);
+    ogun::appendMesh(mesh, other);
+    mesh.recomputeNormals();
+
+    ogun::GlobalRepairParams params;
+    REQUIRE(params.mergeKeepSurfacesApart);
+    const ogun::RepairCandidate apart = ogun::runGlobalRepair(mesh, {}, ogun::GlobalRepairMethod::MergeVertices, params);
+    REQUIRE(apart.success);
+    REQUIRE(apart.changedFaces.empty());
+    REQUIRE(apart.mesh.numVertices() == mesh.numVertices());
+
+    params.mergeKeepSurfacesApart = false;
+    const ogun::RepairCandidate glued = ogun::runGlobalRepair(mesh, {}, ogun::GlobalRepairMethod::MergeVertices, params);
+    REQUIRE(glued.success);
+    REQUIRE(glued.mesh.numVertices() == mesh.numVertices() - 1); // the two shells now share a vertex
+}
+
+TEST_CASE("Keeping surfaces apart still welds cracks and collapses short edges", "[repair][merge]") {
+    // Two open unit squares with a 0.02 crack between them: the crack's four vertices are on open edges
+    ogun::Mesh sheets;
+    sheets.V.resize(8, 3);
+    sheets.V << 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1.02, 0, 0, 2, 0, 0, 2, 1, 0, 1.02, 1, 0;
+    sheets.F.resize(4, 3);
+    sheets.F << 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7;
+    sheets.recomputeNormals();
+    const ogun::MergeByDistanceResult crack = ogun::mergeByDistance(sheets, 0.05, {}, true);
+    REQUIRE(crack.success);
+    REQUIRE(crack.verticesMerged == 2);
+    REQUIRE(crack.mesh.numVertices() == 6);
+
+    const ogun::Mesh shortEdge = cubeWithShortEdge(0.02);
+    const ogun::MergeByDistanceResult collapsed = ogun::mergeByDistance(shortEdge, 0.05, {}, true);
+    REQUIRE(collapsed.verticesMerged == 1);
+    REQUIRE(collapsed.degenerateRemoved == 2);
+}
+
+TEST_CASE("Decimate stops at the target face count, not one collapse below it", "[repair][decimate]") {
+    const ogun::Mesh box = ogun::SampleMeshes::createGridCubeMesh(1, 10.0); // 12 faces
+    REQUIRE(box.numFaces() == 12);
+    const ogun::DecimateResult r = ogun::decimate(box, 0.5);
+    REQUIRE(r.success);
+    REQUIRE(r.facesAfter >= 6);
+    const ogun::Mesh sphere = ogun::SampleMeshes::createSphereMesh(16, 24, 5.0);
+    const ogun::DecimateResult s = ogun::decimate(sphere, 0.3);
+    REQUIRE(s.facesAfter >= static_cast<std::size_t>(std::lround(0.3 * static_cast<double>(sphere.numFaces()))));
+}

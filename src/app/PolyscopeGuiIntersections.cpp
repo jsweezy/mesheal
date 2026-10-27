@@ -222,8 +222,10 @@ void PolyscopeGui::drawRepairAllOperator() {
                            "self-intersections. Every face is new: detail smaller than alpha is lost.",
                            controller_.shells().scoped() ? "the shells in scope" : "the whole mesh");
     } else if (slot == ToolSlot::Decimate || slot == ToolSlot::MergeVertices) {
-        const std::size_t selected = controller_.selectedFaceCount();
-        const std::string scope = selected > 0 ? "the " + withThousands(selected) + " selected faces" : controller_.operatorScopeText();
+        const std::size_t inScope = controller_.operatorScopeFaceCount();
+        const std::string scope = controller_.selectedFaceCount() > 0
+            ? "the " + withThousands(inScope) + (inScope == 1 ? " selected face" : " selected faces")
+            : controller_.operatorScopeText();
         ImGui::TextWrapped("%s %s.", slot == ToolSlot::Decimate ? "Decimates" : "Merges close vertices in", scope.c_str());
     } else if (target == DefectCategory::OpenEdges) {
         if (row.status == HealthStatus::Defects || row.status == HealthStatus::Ok) {
@@ -393,9 +395,9 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
         changed |= ImGui::SliderScalar("Ratio (faces kept)", ImGuiDataType_Double, &params.decimateRatio,
                                        &settings::kMinDecimateRatio, &settings::kMaxDecimateRatio, "%.2f",
                                        ImGuiSliderFlags_Logarithmic);
-        tooltip("Fraction of the faces to keep: 0.5 halves them. Ctrl/Cmd+click to type a value.");
+        tooltip("Fraction of the faces to keep: 0.5 halves them. Ctrl+click (Control, not Cmd) to type a value.");
         const std::size_t faces = controller_.operatorScopeFaceCount();
-        ImGui::TextDisabled("%s faces -> about %s", withThousands(faces).c_str(),
+        ImGui::TextDisabled("%s %s -> about %s", withThousands(faces).c_str(), faces == 1 ? "face" : "faces",
                             withThousands(static_cast<std::size_t>(std::lround(params.decimateRatio * static_cast<double>(faces)))).c_str());
         break;
     }
@@ -410,6 +412,11 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
             changed = true;
         }
         tooltip("Vertices closer than this are merged (default 0.05 mm). Press Enter to apply.");
+        changed |= ImGui::Checkbox("Keep surfaces apart", &params.mergeKeepSurfacesApart);
+        tooltip("On: two vertices merge only when an edge joins them (a short edge collapses) or both lie "
+                "on open edges (a crack is welded). Surfaces and shells that touch stay apart. Off: any "
+                "close vertices merge, like Blender's Merge by Distance, which pinches touching surfaces "
+                "into non-manifold edges.");
         const double meanEdge = controller_.meanEdgeLength();
         if (meanEdge > 0.0) {
             const double ratio = distance / meanEdge;
@@ -417,8 +424,8 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
                 ImGui::TextDisabled("mean edge %s (the distance is %.0f%% of it)", lengthText(meanEdge, unit).c_str(), 100.0 * ratio);
             } else {
                 ImGui::PushStyleColor(ImGuiCol_Text, gui::kDefectColor);
-                ImGui::TextWrapped("mean edge %s: the distance is %.3gx that, so whole areas will collapse",
-                                   lengthText(meanEdge, unit).c_str(), ratio);
+                ImGui::TextWrapped("mean edge %s: the distance is %.3gx that, so %s", lengthText(meanEdge, unit).c_str(), ratio,
+                                   ratio < settings::kMergeCollapseWarnRatio ? "many edges will collapse" : "whole areas will collapse");
                 ImGui::PopStyleColor();
             }
         }
@@ -447,8 +454,8 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
             changed |= ImGui::SliderScalar(label.c_str(), ImGuiDataType_Double, &params.alphaWrapOffset, &minOffset,
                                            &maxOffset, "%.3g", ImGuiSliderFlags_Logarithmic);
             tooltip("Distance of the wrap outside the input surface. Smaller follows the input more closely (the "
-                    "volume grows less) but makes more faces and takes longer; larger rounds edges off. Ctrl/Cmd+click "
-                    "to type a value.");
+                    "volume grows less) but makes more faces and takes longer; larger rounds edges off. Ctrl+click "
+                    "(Control, not Cmd) to type a value.");
         }
         ImGui::TextDisabled("offset = %s (alpha / %.3g)", lengthText(alphaWrapOffset(params, alpha), controller_.fileUnit()).c_str(),
                             alpha / alphaWrapOffset(params, alpha));

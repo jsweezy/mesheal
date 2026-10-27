@@ -5,7 +5,9 @@
 #include <Eigen/Core>
 #include <igl/AABB.h>
 
+#include <cstdint>
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace ogun {
@@ -29,7 +31,8 @@ struct ScreenView {
 /// to a fixed size, because libigl's ray-triangle test misses tiny triangles (its epsilon is absolute).
 class FaceVisibility {
 public:
-    void build(const Mesh& mesh);
+    /// Only the `shown` faces (empty = all) are in the tree: hidden shells neither block nor get hit.
+    void build(const Mesh& mesh, std::span<const std::uint8_t> shown = {});
     [[nodiscard]] bool built() const noexcept {
         return built_;
     }
@@ -41,21 +44,28 @@ private:
     [[nodiscard]] Eigen::Vector3d toWork(const Eigen::Vector3d& p) const {
         return scale_ * (p - origin_);
     }
+    /// The mesh face the ray (working space) hits first, and the ray parameter there.
+    [[nodiscard]] std::optional<Eigen::Index> firstHit(const Eigen::Vector3d& origin, const Eigen::Vector3d& dir, double* t) const;
 
     igl::AABB<Eigen::MatrixXd, 3> tree_;
     Eigen::MatrixXd V_; ///< The mesh vertices at the working size
+    Eigen::MatrixXi F_; ///< The shown faces
+    std::vector<Eigen::Index> treeFace_; ///< Mesh face of each row of F_
     Eigen::Vector3d origin_ = Eigen::Vector3d::Zero();
     double scale_ = 1.0;
     bool built_ = false;
 };
 
-/// Faces whose centre projects into the rectangle with corners `a` and `b` (any order). Without
-/// `visibility` (select through) hidden faces count too.
+/// The `shown` faces (empty = all) whose centre projects into the rectangle with corners `a` and `b`
+/// (any order). Without `visibility` (select through) faces behind others count too.
 [[nodiscard]] std::vector<Eigen::Index> facesInRectangle(const Mesh& mesh, const ScreenView& view, const Eigen::Vector2d& a,
-                                                         const Eigen::Vector2d& b, const FaceVisibility* visibility);
+                                                         const Eigen::Vector2d& b, const FaceVisibility* visibility,
+                                                         std::span<const std::uint8_t> shown = {});
 
-/// Faces whose centre projects within `radius` of `center`.
-[[nodiscard]] std::vector<Eigen::Index> facesInCircle(const Mesh& mesh, const ScreenView& view, const Eigen::Vector2d& center,
-                                                      double radius, const FaceVisibility* visibility);
+/// The `shown` faces whose centre projects within `radius` of the segment `a`-`b` (a brush stroke;
+/// a circle when a = b).
+[[nodiscard]] std::vector<Eigen::Index> facesInStroke(const Mesh& mesh, const ScreenView& view, const Eigen::Vector2d& a,
+                                                      const Eigen::Vector2d& b, double radius, const FaceVisibility* visibility,
+                                                      std::span<const std::uint8_t> shown = {});
 
 } // namespace ogun

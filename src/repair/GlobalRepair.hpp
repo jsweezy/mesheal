@@ -59,6 +59,8 @@ struct GlobalRepairParams {
     double decimateRatio = settings::kDefaultDecimateRatio;
     /// Merge vertices: distance in millimetres (converted to the mesh's unit).
     double mergeDistanceMm = settings::kDefaultMergeDistanceMm;
+    /// Merge vertices: only along edges and open edges, so touching surfaces / shells are not pinched.
+    bool mergeKeepSurfacesApart = settings::kDefaultMergeKeepSurfacesApart;
     /// Winding-number rebuild: grid cells along the longest side.
     int windingResolution = settings::kDefaultWindingGridResolution;
     /// Rebuilds (winding / wrap): simplify back to the in-scope face count when larger.

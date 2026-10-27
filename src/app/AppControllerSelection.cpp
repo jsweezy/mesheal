@@ -22,6 +22,9 @@ std::size_t AppController::selectFaces(std::span<const Eigen::Index> faces, bool
         }
     }
     faceSelectedCount_ = select ? faceSelectedCount_ + changed : faceSelectedCount_ - changed;
+    if (changed > 0) {
+        onFaceSelectionChanged();
+    }
     return changed;
 }
 
@@ -31,34 +34,67 @@ void AppController::toggleFaceSelected(Eigen::Index face) {
 }
 
 void AppController::selectAllFaces() {
-    faceSelected_.assign(static_cast<std::size_t>(mesh_.numFaces()), 1);
-    faceSelectedCount_ = faceSelected_.size();
+    // Only the shown faces, as in Blender (hidden shells stay out)
+    faceSelected_ = shownFaceMask();
+    if (faceSelected_.empty()) {
+        faceSelected_.assign(static_cast<std::size_t>(mesh_.numFaces()), 1);
+    }
+    faceSelectedCount_ = static_cast<std::size_t>(std::count(faceSelected_.begin(), faceSelected_.end(), std::uint8_t{1}));
+    onFaceSelectionChanged();
 }
 
 bool AppController::clearFaceSelection() {
     const bool had = faceSelectedCount_ > 0;
     faceSelected_.clear();
     faceSelectedCount_ = 0;
+    if (had) {
+        onFaceSelectionChanged();
+    }
     return had;
 }
 
+void AppController::onFaceSelectionChanged() {
+    // A Decimate / Merge preview was computed on the old selection
+    if (activeTool_ == ToolSlot::Decimate || activeTool_ == ToolSlot::MergeVertices) {
+        discardGlobalCandidates();
+    }
+}
+
+std::vector<std::uint8_t> AppController::shownFaceMask() const {
+    if (shells_.visibleCount() == shells_.size()) {
+        return {};
+    }
+    std::vector<std::uint8_t> shown(static_cast<std::size_t>(mesh_.numFaces()), 1);
+    for (const ShellInfo& shell : shells_.shells()) {
+        if (!shell.visible) {
+            for (const Eigen::Index f : shell.faces) {
+                shown[static_cast<std::size_t>(f)] = 0;
+            }
+        }
+    }
+    return shown;
+}
+
 const FaceVisibility& AppController::faceVisibility() const {
-    if (!faceVisibility_.built() || faceVisibilityGeneration_ != meshGeneration_) {
-        faceVisibility_.build(mesh_);
+    std::vector<std::uint8_t> shown = shownFaceMask();
+    if (!faceVisibility_.built() || faceVisibilityGeneration_ != meshGeneration_ || shown != faceVisibilityShown_) {
+        faceVisibility_.build(mesh_, shown);
         faceVisibilityGeneration_ = meshGeneration_;
+        faceVisibilityShown_ = std::move(shown);
     }
     return faceVisibility_;
 }
 
 std::size_t AppController::selectFacesInRectangle(const ScreenView& view, const Eigen::Vector2d& a, const Eigen::Vector2d& b,
                                                   bool select) {
-    const FaceVisibility* visibility = selectThrough_ ? nullptr : &faceVisibility();
-    return selectFaces(facesInRectangle(mesh_, view, a, b, visibility), select);
+    const FaceVisibility* visibility = selectsThrough() ? nullptr : &faceVisibility();
+    return selectFaces(facesInRectangle(mesh_, view, a, b, visibility, shownFaceMask()), select);
 }
 
-std::size_t AppController::selectFacesInCircle(const ScreenView& view, const Eigen::Vector2d& center, double radius, bool select) {
-    const FaceVisibility* visibility = selectThrough_ ? nullptr : &faceVisibility();
-    return selectFaces(facesInCircle(mesh_, view, center, radius, visibility), select);
+std::size_t AppController::selectFacesInStroke(const ScreenView& view, const Eigen::Vector2d& from, const Eigen::Vector2d& to,
+                                               double radius, bool select) {
+    const FaceVisibility* visibility = selectsThrough() ? nullptr : &faceVisibility();
+    return selectFaces(facesInStroke(mesh_, view, from, to, radius, visibility, shownFaceMask()), select);
 }
 
 std::optional<Eigen::Index> AppController::faceAtScreenPoint(const ScreenView& view, const Eigen::Vector2d& point) const {
@@ -68,7 +104,13 @@ std::optional<Eigen::Index> AppController::faceAtScreenPoint(const ScreenView& v
 std::vector<std::uint8_t> AppController::operatorScopeMask() const {
     const bool selectionScope = activeTool_ == ToolSlot::Decimate || activeTool_ == ToolSlot::MergeVertices;
     if (selectionScope && faceSelectedCount_ > 0) {
-        return faceSelected_;
+        // Faces in hidden shells are never edited, even when selected before the hide
+        std::vector<std::uint8_t> mask = faceSelected_;
+        const std::vector<std::uint8_t> shown = shownFaceMask();
+        for (std::size_t f = 0; f < shown.size(); ++f) {
+            mask[f] = static_cast<std::uint8_t>(mask[f] & shown[f]);
+        }
+        return mask;
     }
     return repairScopeMask();
 }
@@ -81,7 +123,8 @@ std::size_t AppController::operatorScopeFaceCount() const {
 
 std::string AppController::operatorScopeText() const {
     if (faceSelectedCount_ > 0) {
-        return "the " + std::to_string(faceSelectedCount_) + " selected faces";
+        const std::size_t count = operatorScopeFaceCount();
+        return "the " + std::to_string(count) + (count == 1 ? " selected face" : " selected faces");
     }
     return shells_.scoped() ? "the shells in scope" : "the whole mesh";
 }

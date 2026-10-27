@@ -155,6 +155,45 @@ TEST_CASE("Shift+click finds the face under the mouse with a ray, at any scale",
     }
 }
 
+TEST_CASE("Faces of hidden shells are neither selected, nor block, nor edited", "[app][selection]") {
+    // Cube A [0, 8]^3 and cube B above it (nearer the top view's eye)
+    ogun::Mesh mesh = gridCube();
+    ogun::Mesh above = gridCube();
+    above.V.col(2).array() += 10.0;
+    ogun::appendMesh(mesh, above);
+    mesh.recomputeNormals();
+    ogun::AppController controller;
+    controller.setMesh(mesh, "two cubes");
+    const auto isA = [](Eigen::Index f) { return f < 192; };
+    const std::size_t shellB = static_cast<std::size_t>(controller.shells().shellOfFace(192));
+
+    REQUIRE(controller.selectFacesInRectangle(topView(), kScreenMin, kScreenMax, true) == 32); // B's top hides A
+    controller.selectAllFaces();
+    REQUIRE(controller.selectedFaceCount() == 384);
+
+    controller.setShellVisible(shellB, false);
+    controller.openDecimate();
+    REQUIRE(controller.operatorScopeFaceCount() == 192); // B's selected faces are out of the scope
+    REQUIRE(controller.operatorScopeText() == "the 192 selected faces");
+    controller.clearFaceSelection();
+    controller.selectAllFaces();
+    REQUIRE(controller.selectedFaceCount() == 192);
+    controller.clearFaceSelection();
+
+    REQUIRE(controller.selectFacesInRectangle(topView(), kScreenMin, kScreenMax, true) == 32); // now A's top
+    for (Eigen::Index f = 0; f < 384; ++f) {
+        if (controller.faceSelected(f)) {
+            REQUIRE(isA(f));
+            REQUIRE(controller.mesh().N(f, 2) > 0.99);
+        }
+    }
+    const auto face = controller.faceAtScreenPoint(topView(), Eigen::Vector2d(400.0, 290.0));
+    REQUIRE(face);
+    REQUIRE(isA(*face));
+    controller.setSelectThrough(true);
+    REQUIRE(controller.selectFacesInRectangle(topView(), kScreenMin, kScreenMax, true) == 160); // the rest of A only
+}
+
 TEST_CASE("Circle select takes the visible faces under the brush", "[app][selection]") {
     const ogun::Mesh mesh = gridCube();
     ogun::FaceVisibility visibility;
@@ -163,11 +202,20 @@ TEST_CASE("Circle select takes the visible faces under the brush", "[app][select
     const Eigen::Vector2d centre = *view.project(Eigen::Vector3d(4.0, 4.0, 8.0));
     // One cell is 2 units: a brush the size of one cell catches the faces around the centre vertex only
     const double cell = (*view.project(Eigen::Vector3d(6.0, 4.0, 8.0)) - centre).norm();
-    const std::vector<Eigen::Index> small = ogun::facesInCircle(mesh, view, centre, 0.8 * cell, &visibility);
+    const std::vector<Eigen::Index> small = ogun::facesInStroke(mesh, view, centre, centre, 0.8 * cell, &visibility);
     REQUIRE(small.size() >= 4);
     REQUIRE(small.size() <= 8);
     REQUIRE(allOnTop(mesh, small));
-    REQUIRE(ogun::facesInCircle(mesh, view, centre, 0.8 * cell, nullptr).size() > small.size()); // the bottom too
+    REQUIRE(ogun::facesInStroke(mesh, view, centre, centre, 0.8 * cell, nullptr).size() > small.size()); // the bottom too
+
+    // A fast stroke covers the whole path between two brush positions, not just its ends
+    const Eigen::Vector2d left = *view.project(Eigen::Vector3d(1.0, 4.0, 8.0));
+    const Eigen::Vector2d right = *view.project(Eigen::Vector3d(7.0, 4.0, 8.0));
+    const std::vector<Eigen::Index> stroke = ogun::facesInStroke(mesh, view, left, right, 0.4 * cell, &visibility);
+    const std::size_t ends = ogun::facesInStroke(mesh, view, left, left, 0.4 * cell, &visibility).size() +
+                             ogun::facesInStroke(mesh, view, right, right, 0.4 * cell, &visibility).size();
+    REQUIRE(stroke.size() > ends);
+    REQUIRE(allOnTop(mesh, stroke));
 }
 
 TEST_CASE("Face selection: toggle, select all, Esc and mesh edits clear it", "[app][selection]") {
@@ -183,6 +231,13 @@ TEST_CASE("Face selection: toggle, select all, Esc and mesh edits clear it", "[a
     REQUIRE(controller.selectFacesInRectangle(topView(), kScreenMin, kScreenMax, true) == 32);
     REQUIRE(controller.selectedFaceCount() == 32);
     REQUIRE(controller.selectFacesInRectangle(topView(), kScreenMin, kScreenMax, true) == 0); // already selected
+    controller.setGhostMeshEnabled(true); // Ghost selects through, as Blender's X-ray
+    REQUIRE(controller.selectsThrough());
+    REQUIRE(controller.selectFacesInRectangle(topView(), kScreenMin, kScreenMax, true) == 160);
+    REQUIRE(controller.selectFacesInRectangle(topView(), kScreenMin, kScreenMax, false) == 192);
+    controller.setGhostMeshEnabled(false);
+    REQUIRE_FALSE(controller.selectsThrough());
+    REQUIRE(controller.selectFacesInRectangle(topView(), kScreenMin, kScreenMax, true) == 32);
     controller.setSelectThrough(true);
     REQUIRE(controller.selectFacesInRectangle(topView(), kScreenMin, kScreenMax, true) == 160);
     REQUIRE(controller.selectFacesInRectangle(topView(), kScreenMin, kScreenMax, false) == 192); // deselect
@@ -228,6 +283,15 @@ TEST_CASE("Decimate works on the selected faces only, applies and undoes", "[app
     for (const Eigen::Index f : c->removedFaces) {
         REQUIRE(before.N(f, 2) > 0.99); // only top faces were replaced
     }
+
+    // A preview made on another selection is dropped
+    controller.toggleFaceSelected(0);
+    REQUIRE(controller.shownGlobalCandidate() == nullptr);
+    REQUIRE(controller.globalCandidates().empty());
+    controller.toggleFaceSelected(0);
+    controller.previewGlobalRepair();
+    c = controller.shownGlobalCandidate();
+    REQUIRE(c != nullptr);
 
     REQUIRE(controller.applyGlobalRepair());
     REQUIRE(controller.lastUndoActionLabel() == "Decimate");
