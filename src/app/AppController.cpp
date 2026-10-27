@@ -1517,7 +1517,7 @@ HighlightOverlayGeometry AppController::buildHighlightOverlay() const {
 
     const auto numFaces = static_cast<std::size_t>(mesh_.numFaces());
     overlay.faceColors.assign(numFaces, overlayAppearance_.baseMesh.color);
-    // Layers: shell color, then the selected-shell tint, then the defect tints
+    // Layers: shell color, then the selected-shell tint, then the defect tints, then the face selection
     if (shells_.multiShell()) {
         const Eigen::Vector3d tint = rgbFromArray(settings::kDefaultShellSelectedColor);
         constexpr double w = settings::kShellSelectedTintWeight;
@@ -1535,22 +1535,13 @@ HighlightOverlayGeometry AppController::buildHighlightOverlay() const {
             }
         }
     }
-    // Then the face selection (B / C / Shift+click)
-    if (faceSelectedCount_ > 0) {
-        const Eigen::Vector3d& selected = overlayAppearance_.faceSelectionColor;
-        for (std::size_t f = 0; f < faceSelected_.size() && f < numFaces; ++f) {
-            if (faceSelected_[f] != 0) {
-                overlay.faceColors[f] = selected;
-            }
-        }
-    }
     const auto paint = [&](Eigen::Index f, const Eigen::Vector3d& color) {
         if (f >= 0 && f < mesh_.numFaces()) {
             overlay.faceColors[static_cast<std::size_t>(f)] = color;
         }
     };
 
-    const std::vector<Eigen::Index> highlighted = highlightedFaceIndices();
+    std::vector<Eigen::Index> highlighted = highlightedFaceIndices();
     const CategoryResult* result = browser_.result();
     std::unordered_map<int, std::size_t> nodeOf;
     if (result != nullptr) {
@@ -1598,7 +1589,26 @@ HighlightOverlayGeometry AppController::buildHighlightOverlay() const {
     for (const Eigen::Index f : highlighted) {
         paint(f, overlayAppearance_.selectedFaces.color);
     }
+    // The face selection (B / C / Shift+click) goes on top, so selected defect faces show it too. Their
+    // triangles leave the "Selected Defect Faces" surface, which would hide it; the outline stays.
+    std::vector<Eigen::Index> outlineOnly;
+    if (faceSelectedCount_ > 0) {
+        const Eigen::Vector3d& selected = overlayAppearance_.faceSelectionColor;
+        for (std::size_t f = 0; f < faceSelected_.size() && f < numFaces; ++f) {
+            if (faceSelected_[f] != 0) {
+                overlay.faceColors[f] = selected;
+            }
+        }
+        std::erase_if(highlighted, [&](Eigen::Index f) {
+            const bool chosen = faceSelected(f);
+            if (chosen) {
+                outlineOnly.push_back(f);
+            }
+            return chosen;
+        });
+    }
     appendFaceGeometry(highlighted, overlay, true, &nodeOf);
+    appendFaceGeometry(outlineOnly, overlay, false, &nodeOf);
     return overlay;
 }
 

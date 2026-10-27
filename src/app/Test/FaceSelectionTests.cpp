@@ -351,6 +351,35 @@ TEST_CASE("The face selection color can be changed and reset", "[app][selection]
         ogun::rgbFromArray(ogun::settings::kDefaultFaceSelectionColor)));
 }
 
+TEST_CASE("Selected faces show the selection color over defect tints", "[app][selection]") {
+    ogun::AppController controller;
+    controller.loadSampleDefectiveMesh();
+    controller.selectCategory(ogun::DefectCategory::ThinFaces);
+    const Eigen::Index tinted = ogun::SampleMeshes::kZeroAreaFaceIndex;
+    const Eigen::Index focused = ogun::SampleMeshes::kNeedleSliverFaceIndex;
+    const ogun::OverlayAppearance& appearance = controller.overlayAppearance();
+    const auto colorOf = [&](Eigen::Index f) { return controller.buildHighlightOverlay().faceColors[static_cast<std::size_t>(f)]; };
+
+    // A tinted defect face takes the selection color, and the tint again once deselected
+    REQUIRE(colorOf(tinted).isApprox(appearance.categoryTintColor));
+    controller.toggleFaceSelected(tinted);
+    REQUIRE(colorOf(tinted).isApprox(appearance.faceSelectionColor));
+    controller.toggleFaceSelected(tinted);
+    REQUIRE(colorOf(tinted).isApprox(appearance.categoryTintColor));
+
+    // The focused defect face too: its overlay triangle steps aside, the outline stays
+    REQUIRE(controller.pickFace(focused) == ogun::PickOutcome::FocusedDefect);
+    REQUIRE(controller.buildHighlightOverlay().overlayFaces.size() == 1);
+    controller.toggleFaceSelected(focused);
+    const ogun::HighlightOverlayGeometry selected = controller.buildHighlightOverlay();
+    REQUIRE(selected.faceColors[static_cast<std::size_t>(focused)].isApprox(appearance.faceSelectionColor));
+    REQUIRE(selected.overlayFaces.empty());
+    REQUIRE(selected.overlayEdges.size() == 9);
+    controller.toggleFaceSelected(focused);
+    REQUIRE(colorOf(focused).isApprox(appearance.selectedFaces.color));
+    REQUIRE(controller.buildHighlightOverlay().overlayFaces.size() == 1);
+}
+
 TEST_CASE("Delete Selected Faces removes them as one undo step", "[app][selection][undo]") {
     ogun::AppController controller;
     controller.setMesh(gridCube(), "grid cube");
