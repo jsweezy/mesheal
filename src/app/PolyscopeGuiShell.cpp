@@ -888,7 +888,7 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"Click defect in list", "Focuses it, flies the camera to it (as '.') and sets the Orbit Pivot to its centroid; Ctrl/Cmd+click toggles, Shift+click selects a range (the camera stays)"},
         {"Click shell in Shells panel", "Selects it (Ctrl/Cmd+click toggles, Shift+click selects a range, double-click frames it); right-click for Frame, Isolate, Hide, Delete, Save As"},
         {"N  /  Shift+N", "Next / previous defect of the selected row (worst first, within the active filter) and fly to it"},
-        {".  or  Numpad .", "Frames the focused facet looking down +Normal (press '.' again to toggle to -Normal); a focused hole frames the whole hole, looking in along the hole's outward normal; with no focused defect, frames the selected shells"},
+        {".  or  Numpad .", "Frames the focused facet looking down +Normal (press '.' again to toggle to -Normal); a focused hole frames the whole hole, looking in along the hole's outward normal; after Shift+click / B / C, frames the selected faces (square on when they face one way, '.' again flips); with no focused defect, frames the selected shells"},
         {"Shift + .", "Frames the focused facet (or hole) from the -Normal (back / inside) side"},
         {"Home  or  H", "Frames the entire mesh and resets the Orbit Pivot to the mesh center"},
         {"G", "Toggles Ghost (base-mesh transparency)"},

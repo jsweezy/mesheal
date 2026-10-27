@@ -654,6 +654,7 @@ void AppController::syncBrowserResult() {
 }
 
 void AppController::selectCategory(std::optional<DefectCategory> category) {
+    faceSelectionFocus_ = false;
     pickedFaceIndex_ = -1;
     selectedCategory_ = category;
     activeTool_ = category ? ToolSlot::DefectCategory : ToolSlot::None;
@@ -668,12 +669,14 @@ void AppController::setSubtypeFilter(int subtype) {
 }
 
 void AppController::selectHistogramBin(std::size_t bin, bool extend) {
+    faceSelectionFocus_ = false;
     browser_.selectBin(bin, extend);
     browser_.selectAllVisible();
     onFocusChanged();
 }
 
 void AppController::stepHistogramBin(int direction) {
+    faceSelectionFocus_ = false;
     browser_.stepBin(direction);
     browser_.selectAllVisible();
     onFocusChanged();
@@ -689,11 +692,13 @@ void AppController::setDefectSort(int column, bool descending) {
 }
 
 void AppController::clickDefectRow(std::size_t visiblePosition, bool toggle, bool range) {
+    faceSelectionFocus_ = false;
     browser_.clickRow(visiblePosition, toggle, range);
     onFocusChanged();
 }
 
 void AppController::selectAllVisibleDefects() {
+    faceSelectionFocus_ = false;
     browser_.selectAllVisible();
     onFocusChanged();
 }
@@ -709,6 +714,7 @@ void AppController::invertDefectSelection() {
 }
 
 void AppController::focusDefect(std::size_t element) {
+    faceSelectionFocus_ = false;
     browser_.focusElement(element);
     onFocusChanged();
 }
@@ -722,6 +728,7 @@ std::span<const Eigen::Index> AppController::focusedRelatedFaces() const noexcep
 }
 
 bool AppController::focusRelatedFace(Eigen::Index faceIndex) {
+    faceSelectionFocus_ = false;
     if (browser_.result() == nullptr) {
         return false;
     }
@@ -735,6 +742,7 @@ bool AppController::focusRelatedFace(Eigen::Index faceIndex) {
 }
 
 bool AppController::focusNextDefect(int direction) {
+    faceSelectionFocus_ = false;
     if (!browser_.focusStep(direction)) {
         return false;
     }
@@ -743,6 +751,7 @@ bool AppController::focusNextDefect(int direction) {
 }
 
 PickOutcome AppController::pickFace(Eigen::Index faceIndex) {
+    faceSelectionFocus_ = false;
     if (mesh_.empty() || faceIndex < 0 || faceIndex >= mesh_.numFaces()) {
         return PickOutcome::None;
     }
@@ -1333,11 +1342,13 @@ bool AppController::undoLastModification() {
 // -----------------------------------------------------------------------------
 
 void AppController::clickShell(std::size_t shell, bool toggle, bool range, std::span<const std::size_t> order) {
+    faceSelectionFocus_ = false;
     shells_.click(shell, toggle, range, order);
     onShellsChanged();
 }
 
 void AppController::selectShellsWhere(const std::function<bool(std::size_t)>& predicate) {
+    faceSelectionFocus_ = false;
     shells_.selectWhere(predicate);
     onShellsChanged();
 }
@@ -1364,6 +1375,7 @@ void AppController::hideSelectedShells() {
 }
 
 bool AppController::toggleIsolateShells() {
+    faceSelectionFocus_ = false;
     const bool wasIsolated = shells_.isolated();
     if (!shells_.toggleIsolate()) {
         postStatusMessage("Select one or more shells to isolate (click a row, or Alt+click in 3D).");
@@ -1380,6 +1392,7 @@ bool AppController::toggleIsolateShells() {
 }
 
 bool AppController::pickShell(Eigen::Index faceIndex, bool toggle) {
+    faceSelectionFocus_ = false;
     const int shell = shells_.shellOfFace(faceIndex);
     if (shell < 0 || !shells_.multiShell()) {
         return false;
@@ -1971,6 +1984,12 @@ CameraFocusTarget AppController::computeCameraFocusTarget(
     if (mesh_.empty()) {
         return focus;
     }
+    if (faceSelectionFocused()) {
+        focus = computeFaceSelectionFocusTarget(currentViewDirection, normalSide, preferredUpDirection);
+        if (focus.valid) {
+            return focus;
+        }
+    }
 
     const BoundingBox bounds = computeActiveSelectionOrMeshBounds();
     focus.selectionBounds = bounds;
@@ -2026,6 +2045,64 @@ CameraFocusTarget AppController::computeCameraFocusTarget(
     return focus;
 }
 
+CameraFocusTarget AppController::computeFaceSelectionFocusTarget(const Eigen::Vector3d& currentViewDirection,
+                                                                 FocusNormalSide normalSide,
+                                                                 const Eigen::Vector3d& preferredUpDirection) const {
+    // The shown selected faces: their box, and their area-weighted normal (twice the area per face)
+    CameraFocusTarget focus;
+    const std::vector<std::uint8_t> shown = shownFaceMask();
+    BoundingBox bounds;
+    bool any = false;
+    Eigen::Vector3d normalSum = Eigen::Vector3d::Zero();
+    double areaSum = 0.0;
+    for (Eigen::Index f = 0; f < mesh_.numFaces(); ++f) {
+        const auto uf = static_cast<std::size_t>(f);
+        if (uf >= faceSelected_.size() || faceSelected_[uf] == 0 || (!shown.empty() && shown[uf] == 0)) {
+            continue;
+        }
+        const Eigen::Vector3d a = mesh_.V.row(mesh_.F(f, 0)).transpose();
+        const Eigen::Vector3d b = mesh_.V.row(mesh_.F(f, 1)).transpose();
+        const Eigen::Vector3d c = mesh_.V.row(mesh_.F(f, 2)).transpose();
+        const Eigen::Vector3d n = (b - a).cross(c - a);
+        normalSum += n;
+        areaSum += n.norm();
+        const Eigen::Vector3d lo = a.cwiseMin(b).cwiseMin(c);
+        const Eigen::Vector3d hi = a.cwiseMax(b).cwiseMax(c);
+        bounds = any ? BoundingBox{bounds.min.cwiseMin(lo), bounds.max.cwiseMax(hi)} : BoundingBox{lo, hi};
+        any = true;
+    }
+    if (!any) {
+        return focus;
+    }
+    focus.selectionBounds = bounds;
+    focus.targetCenter = bounds.center();
+    const double meshDiag = std::max(mesh_.boundingBox().diagonal(), 1.0e-6);
+    focus.focusRadius = std::max(bounds.diagonal() > 0.0 ? 1.75 * bounds.diagonal() : 0.1 * meshDiag, 1.0e-3 * meshDiag);
+
+    // A patch that mostly faces one way is looked at square on ("." again flips to its back, as for a
+    // defect face); one facing every way (a whole shell) keeps the view direction
+    Eigen::Vector3d viewDir = currentViewDirection;
+    int sign = 0;
+    if (normalSide != FocusNormalSide::PreserveViewDirection && areaSum > 0.0 &&
+        normalSum.norm() >= settings::kFocusSelectionMinNormalAlignment * areaSum) {
+        sign = normalSide == FocusNormalSide::NegativeNormal ? -1
+               : normalSide == FocusNormalSide::AutoToggleNormal && lastFramedSelection_ == faceSelectionGeneration_ &&
+                         lastFocusedNormalSign_ == +1
+                   ? -1
+                   : +1;
+        viewDir = -static_cast<double>(sign) * normalSum.normalized();
+    }
+    if (viewDir.norm() <= 1.0e-12 || !viewDir.allFinite()) {
+        viewDir = Eigen::Vector3d(-1.0, -1.0, -1.0);
+    }
+    viewDir.normalize();
+    focus.normalSideSign = sign;
+    focus.cameraPosition = focus.targetCenter - viewDir * focus.focusRadius;
+    focus.cameraUpDirection = computeOrthogonalUpVector(viewDir, preferredUpDirection);
+    focus.valid = true;
+    return focus;
+}
+
 CameraFocusTarget AppController::focusOnSelection(
     FocusNormalSide normalSide,
     const Eigen::Vector3d& currentViewDirection,
@@ -2039,6 +2116,14 @@ CameraFocusTarget AppController::focusOnSelection(
     }
 
     orbitPivot_ = focus.targetCenter;
+    const bool framedSelection = faceSelectionFocused();
+    lastFramedSelection_ = framedSelection && focus.normalSideSign != 0 ? faceSelectionGeneration_ : 0;
+    if (framedSelection) {
+        lastFocusedFaceIndex_ = -1;
+        lastFocusedNormalSign_ = focus.normalSideSign;
+        lastFramedHole_.reset();
+        return focus;
+    }
     if (focus.normalSideSign != 0) {
         lastFocusedFaceIndex_ = focusedSingleFace();
         lastFocusedNormalSign_ = focus.normalSideSign;

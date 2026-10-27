@@ -83,6 +83,8 @@ bool AppController::clearFaceSelection() {
 }
 
 void AppController::onFaceSelectionChanged() {
+    ++faceSelectionGeneration_;
+    faceSelectionFocus_ = faceSelectedCount_ > 0;
     // A Decimate / Merge preview was computed on the old selection
     if (activeTool_ == ToolSlot::Decimate || activeTool_ == ToolSlot::MergeVertices) {
         discardGlobalCandidates();

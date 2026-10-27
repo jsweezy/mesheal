@@ -741,6 +741,10 @@ public:
         const Eigen::Vector3d& currentViewDirection = Eigen::Vector3d(-1.0, -1.0, -1.0),
         FocusNormalSide normalSide = FocusNormalSide::PreserveViewDirection,
         const Eigen::Vector3d& preferredUpDirection = Eigen::Vector3d(0.0, 1.0, 0.0)) const;
+    /// The camera framing the shown selected faces (invalid when none is shown).
+    [[nodiscard]] CameraFocusTarget computeFaceSelectionFocusTarget(const Eigen::Vector3d& currentViewDirection,
+                                                                    FocusNormalSide normalSide,
+                                                                    const Eigen::Vector3d& preferredUpDirection) const;
 
     /// Stateful camera focus invoked by '.' (`AutoToggleNormal`), 'Shift+.' (`NegativeNormal`),
     /// or UI buttons. Updates `orbitPivot_` to the target centroid and tracks `+N` <-> `-N` toggling.
@@ -983,6 +987,10 @@ public:
     void selectAllFaces();
     /// Deletes the selected faces of the shown shells (undoable). Refuses to delete every face.
     bool deleteSelectedFaces();
+    /// "." frames the face selection: it changed after the last defect / shell focus.
+    [[nodiscard]] bool faceSelectionFocused() const noexcept {
+        return faceSelectionFocus_ && faceSelectedCount_ > 0;
+    }
     /// Returns false when nothing was selected.
     bool clearFaceSelection();
 
@@ -1255,6 +1263,9 @@ private:
     mutable FaceVisibility faceVisibility_;
     mutable std::uint64_t faceVisibilityGeneration_ = 0;
     mutable std::vector<std::uint8_t> faceVisibilityShown_;
+    bool faceSelectionFocus_ = false;            ///< "." frames the face selection (off after a defect / shell focus)
+    std::uint64_t faceSelectionGeneration_ = 0;  ///< Bumped on every selection change
+    std::uint64_t lastFramedSelection_ = 0;      ///< Generation "." last framed from one side (0 = none)
     /// The ray-cast tree of the shown faces, rebuilt after an edit or a shell hide / show.
     const FaceVisibility& faceVisibility() const;
     /// 1 for faces of visible shells (empty = all shown).

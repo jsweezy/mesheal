@@ -313,6 +313,15 @@ TEST_CASE("Merge Vertices uses 0.05 mm by default, applies and undoes", "[app][s
     controller.openMergeVertices();
     REQUIRE(controller.activeTool() == ToolSlot::MergeVertices);
     REQUIRE(controller.globalRepairParams().mergeDistanceMm == 0.05);
+    ogun::GlobalRepairParams params = controller.globalRepairParams();
+    params.mergeDistanceMm = 100.0; // the slider's range is 0.0001 to 10 mm
+    controller.setGlobalRepairParams(params);
+    REQUIRE(controller.globalRepairParams().mergeDistanceMm == ogun::settings::kMaxMergeDistanceMm);
+    params.mergeDistanceMm = 0.0;
+    controller.setGlobalRepairParams(params);
+    REQUIRE(controller.globalRepairParams().mergeDistanceMm == ogun::settings::kMinMergeDistanceMm);
+    params.mergeDistanceMm = 0.05;
+    controller.setGlobalRepairParams(params);
     controller.previewGlobalRepair();
     const ogun::RepairCandidate* c = controller.shownGlobalCandidate();
     REQUIRE(c != nullptr);
@@ -377,4 +386,38 @@ TEST_CASE("Delete Selected Faces leaves hidden shells alone", "[app][selection]"
     REQUIRE(controller.deleteSelectedFaces());
     REQUIRE(controller.mesh().numFaces() == 192); // only the shown cube went
     REQUIRE(controller.mesh().V.col(2).minCoeff() >= 10.0 - 1e-9);
+}
+
+TEST_CASE("Focus (.) frames the selected faces, square on, and flips on a second press", "[app][selection][camera]") {
+    ogun::AppController controller;
+    controller.setMesh(gridCube(), "grid cube");
+    REQUIRE_FALSE(controller.faceSelectionFocused());
+    REQUIRE(controller.selectFacesInRectangle(topView(), kScreenMin, kScreenMax, true) == 32); // the top, z = 8
+    REQUIRE(controller.faceSelectionFocused());
+
+    const Eigen::Vector3d sideways(1.0, 0.0, 0.0);
+    const ogun::CameraFocusTarget first = controller.focusOnSelection(ogun::FocusNormalSide::AutoToggleNormal, sideways);
+    REQUIRE(first.valid);
+    REQUIRE(first.targetCenter.isApprox(Eigen::Vector3d(4.0, 4.0, 8.0)));
+    REQUIRE(first.normalSideSign == +1);
+    REQUIRE(first.cameraPosition.z() > 8.0); // above the top, looking down at it
+    REQUIRE(std::abs(first.cameraPosition.x() - 4.0) < 1e-9);
+    REQUIRE(controller.orbitPivot().isApprox(first.targetCenter));
+    const ogun::CameraFocusTarget second = controller.focusOnSelection(ogun::FocusNormalSide::AutoToggleNormal, sideways);
+    REQUIRE(second.normalSideSign == -1);
+    REQUIRE(second.cameraPosition.z() < 8.0); // from inside, under the top
+
+    // A selection facing every way (the whole cube) keeps the view direction
+    controller.selectAllFaces();
+    const ogun::CameraFocusTarget all = controller.focusOnSelection(ogun::FocusNormalSide::AutoToggleNormal, sideways);
+    REQUIRE(all.normalSideSign == 0);
+    REQUIRE((all.targetCenter - all.cameraPosition).normalized().isApprox(sideways));
+
+    // Clicking a face focuses it instead; selecting again gives the focus back to the selection
+    controller.pickFace(0);
+    REQUIRE_FALSE(controller.faceSelectionFocused());
+    controller.toggleFaceSelected(1);
+    REQUIRE(controller.faceSelectionFocused());
+    controller.clearFaceSelection();
+    REQUIRE_FALSE(controller.faceSelectionFocused());
 }

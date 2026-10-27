@@ -407,11 +407,14 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
         const double toFile = unitConversionFactor(Unit::Millimeter, unit);
         double distance = params.mergeDistanceMm * toFile;
         const std::string label = "Distance (" + std::string(unitSymbol(unit)) + ")";
-        if (ImGui::InputDouble(label.c_str(), &distance, 0.0, 0.0, "%.4g", ImGuiInputTextFlags_EnterReturnsTrue)) {
-            params.mergeDistanceMm = std::max(distance, 0.0) / toFile;
+        const double lo = settings::kMinMergeDistanceMm * toFile;
+        const double hi = settings::kMaxMergeDistanceMm * toFile;
+        if (ImGui::SliderScalar(label.c_str(), ImGuiDataType_Double, &distance, &lo, &hi, "%.4g", ImGuiSliderFlags_Logarithmic)) {
+            params.mergeDistanceMm = std::clamp(distance / toFile, settings::kMinMergeDistanceMm, settings::kMaxMergeDistanceMm);
             changed = true;
         }
-        tooltip("Vertices closer than this are merged (default 0.05 mm). Press Enter to apply.");
+        tooltip("Vertices closer than this are merged (default 0.05 mm; 0.0001 to 10 mm, log scale). "
+                "Ctrl+click (Control, not Cmd) to type a value.");
         changed |= ImGui::Checkbox("Keep surfaces apart", &params.mergeKeepSurfacesApart);
         tooltip("On: two vertices merge only when an edge joins them (a short edge collapses) or both lie "
                 "on open edges (a crack is welded). Surfaces and shells that touch stay apart. Off: any "
