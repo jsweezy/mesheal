@@ -1524,7 +1524,7 @@ HighlightOverlayGeometry AppController::buildHighlightOverlay() const {
     }
     // Then the face selection (B / C / Shift+click)
     if (faceSelectedCount_ > 0) {
-        const Eigen::Vector3d selected = rgbFromArray(settings::kDefaultFaceSelectionColor);
+        const Eigen::Vector3d& selected = overlayAppearance_.faceSelectionColor;
         for (std::size_t f = 0; f < faceSelected_.size() && f < numFaces; ++f) {
             if (faceSelected_[f] != 0) {
                 overlay.faceColors[f] = selected;
@@ -1696,6 +1696,7 @@ void AppController::setOverlayAppearance(const OverlayAppearance& appearance) no
     overlayAppearance_.backFaceColor = clampColor(appearance.backFaceColor, overlayAppearance_.backFaceColor);
     overlayAppearance_.smoothShade = appearance.smoothShade;
     overlayAppearance_.categoryTintColor = clampColor(appearance.categoryTintColor, overlayAppearance_.categoryTintColor);
+    overlayAppearance_.faceSelectionColor = clampColor(appearance.faceSelectionColor, overlayAppearance_.faceSelectionColor);
     clampStyle(appearance.selectedFaces, overlayAppearance_.selectedFaces);
     clampStyle(appearance.previewPatch, overlayAppearance_.previewPatch);
     overlayAppearance_.originalEdgeColor = clampColor(appearance.originalEdgeColor, overlayAppearance_.originalEdgeColor);

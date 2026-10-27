@@ -21,9 +21,8 @@ using gui::withThousands;
 
 namespace {
 
-ImU32 selectionColor(float alpha) {
-    const auto& c = settings::kDefaultFaceSelectionColor;
-    return ImGui::GetColorU32(ImVec4(static_cast<float>(c[0]), static_cast<float>(c[1]), static_cast<float>(c[2]), alpha));
+ImU32 selectionColor(const Eigen::Vector3d& c, float alpha) {
+    return ImGui::GetColorU32(ImVec4(static_cast<float>(c.x()), static_cast<float>(c.y()), static_cast<float>(c.z()), alpha));
 }
 
 } // namespace
@@ -126,18 +125,19 @@ void PolyscopeGui::drawFaceSelectOverlay() {
     }
     ImDrawList* draw = ImGui::GetForegroundDrawList();
     const ImVec2 mouse = ImGui::GetIO().MousePos;
+    const Eigen::Vector3d& color = controller_.overlayAppearance().faceSelectionColor;
     if (faceSelectMode_ == FaceSelectMode::Circle) {
-        draw->AddCircle(mouse, circleRadiusPx_, selectionColor(0.9f), 48, 1.5f);
+        draw->AddCircle(mouse, circleRadiusPx_, selectionColor(color, 0.9f), 48, 1.5f);
         return;
     }
     if (boxDragging_) {
         const ImVec2 start(static_cast<float>(boxStart_.x()), static_cast<float>(boxStart_.y()));
-        draw->AddRectFilled(start, mouse, selectionColor(0.12f));
-        draw->AddRect(start, mouse, selectionColor(0.9f), 0.0f, 0, 1.5f);
+        draw->AddRectFilled(start, mouse, selectionColor(color, 0.12f));
+        draw->AddRect(start, mouse, selectionColor(color, 0.9f), 0.0f, 0, 1.5f);
     } else {
         // Crosshair until the drag starts
-        draw->AddLine(ImVec2(mouse.x - 12.0f, mouse.y), ImVec2(mouse.x + 12.0f, mouse.y), selectionColor(0.9f));
-        draw->AddLine(ImVec2(mouse.x, mouse.y - 12.0f), ImVec2(mouse.x, mouse.y + 12.0f), selectionColor(0.9f));
+        draw->AddLine(ImVec2(mouse.x - 12.0f, mouse.y), ImVec2(mouse.x + 12.0f, mouse.y), selectionColor(color, 0.9f));
+        draw->AddLine(ImVec2(mouse.x, mouse.y - 12.0f), ImVec2(mouse.x, mouse.y + 12.0f), selectionColor(color, 0.9f));
     }
 }
 
@@ -172,7 +172,8 @@ void PolyscopeGui::drawSelectFacesMenu() {
         : "Off: box and circle select only the faces you can see. On: also the hidden faces behind them.");
     ImGui::Separator();
     ImGui::TextDisabled("%s faces selected", withThousands(controller_.selectedFaceCount()).c_str());
-    ImGui::TextDisabled("Use them: Mesh > Simplify > Decimate, Mesh > Clean Up > Weld / Merge Vertices");
+    ImGui::TextDisabled("Use them: Mesh > Decimate, Weld / Merge Vertices, Delete Selected Faces (Del)");
+    ImGui::TextDisabled("Color: Display > Base mesh > Selected faces");
     ImGui::EndMenu();
 }
 

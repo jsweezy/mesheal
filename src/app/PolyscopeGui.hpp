@@ -85,6 +85,8 @@ private:
     void toggleIsolateShells();
     /// Deletes the selected shells at the end of the frame (undoable).
     void deleteSelectedShells();
+    /// Del: the selected faces when there are any, else the selected shells.
+    void deleteSelection();
     void saveSelectedShellsDialog(bool eachOwnFile);
 
     // ---- Right column: Mesh Health & Tool slot (PolyscopeGuiHealth.cpp) ----
@@ -219,6 +221,7 @@ private:
     // Shells panel
     int smallShellFaces_ = settings::kDefaultSmallShellFaces;
     bool deleteShellsRequested_ = false;
+    bool deleteFacesRequested_ = false;
 
     // 3D sync
     bool syncPending_ = false;

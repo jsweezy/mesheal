@@ -397,51 +397,53 @@ void PolyscopeGui::drawMeshMenu() {
         plannedMenuItem("Translate / Rotate / Mirror", "Planned.");
         ImGui::EndMenu();
     }
-    if (ImGui::BeginMenu("Clean Up")) {
-        if (ImGui::MenuItem("Weld / Merge Vertices...", nullptr, false, controller_.hasMesh())) {
-            controller_.openMergeVertices();
-            showTool_ = true;
-            requestSync();
-        }
-        tooltip("Merge vertices closer than a distance (default 0.05 mm) in the whole mesh or the selected faces, "
-                "removing the faces that collapse. Preview, then apply.");
-        plannedMenuItem("Remove Degenerate Faces...", "Planned (P5).");
-        plannedMenuItem("Remove Duplicate Faces", "Planned (P5).");
-        if (ImGui::MenuItem("Remove Small Shells...", nullptr, false, controller_.shells().multiShell())) {
-            // Selecting them in the Shells panel lets the user review before pressing Delete
-            const auto limit = static_cast<std::size_t>(smallShellFaces_);
-            controller_.selectShellsWhere([&](std::size_t s) { return controller_.shells().shell(s).faces.size() < limit; });
-            showShells_ = true;
-            controller_.postStatusMessage(withThousands(controller_.shells().selectedCount()) + " shell(s) under " +
-                                          withThousands(limit) + " faces selected: press Delete to remove them.");
-            requestSync();
-        }
-        tooltip("Selects the shells smaller than N faces in the Shells panel (Select... sets N).");
-        ImGui::Separator();
-        if (ImGui::MenuItem("Alpha Wrap...", nullptr, false, controller_.hasMesh())) {
-            controller_.openAlphaWrap();
-            showTool_ = true;
-            requestSync();
-        }
-        tooltip("Shrink-wrap the mesh (or the shells in scope) into a new watertight, manifold surface without "
-                "self-intersections (CGAL 3D Alpha Wrapping). Set alpha and offset, preview, then apply.");
-        ImGui::EndMenu();
-    }
     if (ImGui::BeginMenu("Shells", controller_.shells().multiShell())) {
         drawShellActionItems();
         ImGui::EndMenu();
     }
-    if (ImGui::BeginMenu("Simplify")) {
-        if (ImGui::MenuItem("Decimate...", nullptr, false, controller_.hasMesh())) {
-            controller_.openDecimate();
-            showTool_ = true;
-            requestSync();
-        }
-        tooltip("Reduce the face count of the whole mesh or the selected faces (ratio 0.01 to 1, default 0.5). "
-                "Preview, then apply.");
-        plannedMenuItem("Remesh...", "Planned.");
-        ImGui::EndMenu();
+
+    // Modify: every operation that changes the faces, in one place. Decimate, Weld and Delete work on
+    // the selected faces (Shift+click, B, C), else the shells in scope, else the whole mesh
+    ImGui::SeparatorText("Modify");
+    const bool hasMesh = controller_.hasMesh();
+    if (ImGui::MenuItem("Decimate...", nullptr, false, hasMesh)) {
+        controller_.openDecimate();
+        showTool_ = true;
+        requestSync();
     }
+    tooltip("Reduce the face count of the selected faces, or the whole mesh (ratio 0.01 to 1, default 0.5). "
+            "Preview, then apply.");
+    if (ImGui::MenuItem("Weld / Merge Vertices...", nullptr, false, hasMesh)) {
+        controller_.openMergeVertices();
+        showTool_ = true;
+        requestSync();
+    }
+    tooltip("Merge vertices closer than a distance (default 0.05 mm) in the selected faces, or the whole mesh, "
+            "removing the faces that collapse. Preview, then apply.");
+    if (ImGui::MenuItem("Alpha Wrap...", nullptr, false, hasMesh)) {
+        controller_.openAlphaWrap();
+        showTool_ = true;
+        requestSync();
+    }
+    tooltip("Shrink-wrap the mesh (or the shells in scope) into a new watertight, manifold surface without "
+            "self-intersections (CGAL 3D Alpha Wrapping). Set alpha and offset, preview, then apply.");
+    if (ImGui::MenuItem("Delete Selected Faces", "Del", false, controller_.selectedFaceCount() > 0)) {
+        deleteSelection();
+    }
+    tooltip("Remove the selected faces (Shift+click, B or C) from the mesh. Undo with Cmd+Z.");
+    if (ImGui::MenuItem("Remove Small Shells...", nullptr, false, controller_.shells().multiShell())) {
+        // Selecting them in the Shells panel lets the user review before pressing Delete
+        const auto limit = static_cast<std::size_t>(smallShellFaces_);
+        controller_.selectShellsWhere([&](std::size_t s) { return controller_.shells().shell(s).faces.size() < limit; });
+        showShells_ = true;
+        controller_.postStatusMessage(withThousands(controller_.shells().selectedCount()) + " shell(s) under " +
+                                      withThousands(limit) + " faces selected: press Delete to remove them.");
+        requestSync();
+    }
+    tooltip("Selects the shells smaller than N faces in the Shells panel (Select... sets N).");
+    plannedMenuItem("Remove Degenerate Faces...", "Planned (P5).");
+    plannedMenuItem("Remove Duplicate Faces", "Planned (P5).");
+    plannedMenuItem("Remesh...", "Planned.");
     ImGui::Separator();
     if (ImGui::MenuItem("Mesh Info", nullptr, showMeshInfo_ && showHealth_)) {
         showHealth_ = true;
@@ -895,9 +897,9 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"A  /  Alt+A", "Select all shown faces / deselect all faces"},
         {"Esc", "Leaves box / circle select; clears the defect selection; then closes the Tool and deselects the row, then clears the face selection, then the shell selection"},
         {"I", "Shells: isolate the selected shells (Mesh Health then covers only them); press again to bring the others back. With another shell selected, switches the isolation to it"},
-        {"Delete  /  Backspace", "Shells: deletes the selected shells (undoable)"},
+        {"Delete  /  Backspace", "Deletes the selected faces (Mesh > Delete Selected Faces); with no faces selected, the selected shells. Undoable"},
         {"F5", "Check Mesh: runs every Mesh Health row in the background"},
-        {"Ctrl/Cmd + Z", "Undoes the last mesh modification (repair, Fix All / Fix Selected, Scale, Delete Shells), one step at a time"},
+        {"Ctrl/Cmd + Z", "Undoes the last mesh modification (repair, Fix All / Fix Selected, Scale, Decimate, Weld, Delete Faces / Shells), one step at a time"},
         {"Ctrl/Cmd + O / S / Shift+S", "Open, Save (overwrite, asks the first time), Save As"},
         {"Ctrl/Cmd + ,", "Preferences"},
         {"?  or  F1", "Toggles this Navigation & Shortcuts window"},

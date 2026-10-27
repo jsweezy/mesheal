@@ -330,6 +330,12 @@ void PolyscopeGui::drawUiFrame() {
     layoutResetPending_ = false;
 
     // Deferred: deleting rebuilds the shell list the Shells table may still be iterating
+    if (deleteFacesRequested_) {
+        deleteFacesRequested_ = false;
+        if (controller_.deleteSelectedFaces()) {
+            requestSync(true);
+        }
+    }
     if (deleteShellsRequested_) {
         deleteShellsRequested_ = false;
         if (controller_.deleteSelectedShells()) {
@@ -700,10 +706,9 @@ void PolyscopeGui::handleKeyboardShortcuts() {
         if (ImGui::IsKeyPressed(ImGuiKey_I, false)) {
             toggleIsolateShells();
         }
-        if ((ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false)) &&
-            controller_.shells().selectedCount() > 0) {
-            deleteSelectedShells();
-        }
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false)) {
+        deleteSelection();
     }
     if (ImGui::IsKeyPressed(ImGuiKey_Period, false) ||
         ImGui::IsKeyPressed(ImGuiKey_KeypadDecimal, false)) {

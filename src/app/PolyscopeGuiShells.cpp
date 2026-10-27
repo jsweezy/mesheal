@@ -455,6 +455,14 @@ void PolyscopeGui::deleteSelectedShells() {
     deleteShellsRequested_ = true;
 }
 
+void PolyscopeGui::deleteSelection() {
+    if (controller_.selectedFaceCount() > 0) {
+        deleteFacesRequested_ = true;
+    } else if (controller_.shells().selectedCount() > 0) {
+        deleteShellsRequested_ = true;
+    }
+}
+
 void PolyscopeGui::saveSelectedShellsDialog(bool eachOwnFile) {
     if (controller_.shells().selectedCount() == 0) {
         return;

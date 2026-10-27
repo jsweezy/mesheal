@@ -326,3 +326,55 @@ TEST_CASE("Merge Vertices uses 0.05 mm by default, applies and undoes", "[app][s
     REQUIRE(controller.undoLastModification());
     REQUIRE(controller.mesh().F == before.F);
 }
+
+TEST_CASE("The face selection color can be changed and reset", "[app][selection]") {
+    ogun::AppController controller;
+    controller.setMesh(gridCube(), "grid cube");
+    controller.toggleFaceSelected(5);
+    ogun::OverlayAppearance appearance = controller.overlayAppearance();
+    REQUIRE(appearance.faceSelectionColor.isApprox(ogun::rgbFromArray(ogun::settings::kDefaultFaceSelectionColor)));
+    appearance.faceSelectionColor = Eigen::Vector3d(0.1, 0.9, 0.2);
+    controller.setOverlayAppearance(appearance);
+    REQUIRE(controller.overlayAppearance().faceSelectionColor.isApprox(Eigen::Vector3d(0.1, 0.9, 0.2)));
+    REQUIRE(controller.buildHighlightOverlay().faceColors[5].isApprox(Eigen::Vector3d(0.1, 0.9, 0.2)));
+    controller.resetOverlayAppearanceToDefaults();
+    REQUIRE(controller.buildHighlightOverlay().faceColors[5].isApprox(
+        ogun::rgbFromArray(ogun::settings::kDefaultFaceSelectionColor)));
+}
+
+TEST_CASE("Delete Selected Faces removes them as one undo step", "[app][selection][undo]") {
+    ogun::AppController controller;
+    controller.setMesh(gridCube(), "grid cube");
+    const ogun::Mesh before = controller.mesh();
+    REQUIRE_FALSE(controller.deleteSelectedFaces()); // nothing selected
+
+    REQUIRE(controller.selectFacesInRectangle(topView(), kScreenMin, kScreenMax, true) == 32);
+    REQUIRE(controller.deleteSelectedFaces());
+    REQUIRE(controller.mesh().numFaces() == 160);
+    REQUIRE(controller.lastUndoActionLabel() == "Delete 32 Faces");
+    REQUIRE(controller.selectedFaceCount() == 0);
+    for (Eigen::Index f = 0; f < controller.mesh().numFaces(); ++f) {
+        REQUIRE(controller.mesh().N(f, 2) < 0.99); // the top is gone
+    }
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().F == before.F);
+
+    controller.selectAllFaces();
+    REQUIRE_FALSE(controller.deleteSelectedFaces()); // would leave no mesh
+    REQUIRE(controller.mesh().numFaces() == 192);
+}
+
+TEST_CASE("Delete Selected Faces leaves hidden shells alone", "[app][selection]") {
+    ogun::Mesh mesh = gridCube();
+    ogun::Mesh above = gridCube();
+    above.V.col(2).array() += 10.0;
+    ogun::appendMesh(mesh, above);
+    mesh.recomputeNormals();
+    ogun::AppController controller;
+    controller.setMesh(mesh, "two cubes");
+    controller.selectAllFaces();
+    controller.setShellVisible(static_cast<std::size_t>(controller.shells().shellOfFace(192)), false);
+    REQUIRE(controller.deleteSelectedFaces());
+    REQUIRE(controller.mesh().numFaces() == 192); // only the shown cube went
+    REQUIRE(controller.mesh().V.col(2).minCoeff() >= 10.0 - 1e-9);
+}

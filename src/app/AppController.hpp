@@ -204,6 +204,8 @@ struct OverlayAppearance {
     Eigen::Vector3d backFaceColor = rgbFromArray(settings::kDefaultBackFaceColor);
     bool smoothShade = false;
     Eigen::Vector3d categoryTintColor = rgbFromArray(settings::kDefaultCategoryTintColor);
+    /// Faces selected with Shift+click, B or C (and the box / brush outline).
+    Eigen::Vector3d faceSelectionColor = rgbFromArray(settings::kDefaultFaceSelectionColor);
     SurfaceStyle selectedFaces{
         rgbFromArray(settings::kDefaultSelectedFaceColor),
         rgbFromArray(settings::kDefaultSelectedEdgeColor)};
@@ -979,6 +981,8 @@ public:
     std::size_t selectFaces(std::span<const Eigen::Index> faces, bool select);
     void toggleFaceSelected(Eigen::Index face);
     void selectAllFaces();
+    /// Deletes the selected faces of the shown shells (undoable). Refuses to delete every face.
+    bool deleteSelectedFaces();
     /// Returns false when nothing was selected.
     bool clearFaceSelection();
 

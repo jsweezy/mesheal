@@ -115,6 +115,9 @@ void PolyscopeGui::drawDisplayPanel() {
             baseChanged |= colorSwatch("##backFaceColor", appearance.backFaceColor);
         }
         baseChanged |= ImGui::Checkbox("Smooth shading", &appearance.smoothShade);
+        ImGui::SameLine();
+        tintChanged |= colorSwatch("Selected faces", appearance.faceSelectionColor);
+        tooltip("Color of the faces selected with Shift+click, B (box) or C (circle).");
     }
 
     if (ImGui::CollapsingHeader("Defect highlight")) {
@@ -133,6 +136,7 @@ void PolyscopeGui::drawDisplayPanel() {
         tooltip("Color of every defect of the selected Mesh Health row.");
         ImGui::SameLine();
         tintChanged |= colorSwatch("Selected", appearance.selectedFaces.color);
+        tooltip("Fill of the selected defect.");
         ImGui::SameLine();
         overlayChanged |= colorSwatch("Edges##defect", appearance.selectedFaces.edgeColor);
         ImGui::SameLine();

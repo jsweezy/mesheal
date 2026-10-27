@@ -43,6 +43,35 @@ void AppController::selectAllFaces() {
     onFaceSelectionChanged();
 }
 
+bool AppController::deleteSelectedFaces() {
+    std::vector<std::uint8_t> drop = faceSelected_;
+    const std::vector<std::uint8_t> shown = shownFaceMask();
+    for (std::size_t f = 0; f < shown.size() && f < drop.size(); ++f) {
+        drop[f] = static_cast<std::uint8_t>(drop[f] & shown[f]);
+    }
+    const auto count = static_cast<std::size_t>(std::count(drop.begin(), drop.end(), std::uint8_t{1}));
+    if (count == 0) {
+        postStatusMessage("Select the faces to delete first (Shift+click, B or C).");
+        return false;
+    }
+    if (count == static_cast<std::size_t>(mesh_.numFaces())) {
+        postStatusMessage("Every face is selected: deleting them all would leave no mesh.", true);
+        return false;
+    }
+    std::vector<Eigen::Index> keep;
+    keep.reserve(static_cast<std::size_t>(mesh_.numFaces()) - count);
+    for (Eigen::Index f = 0; f < mesh_.numFaces(); ++f) {
+        if (static_cast<std::size_t>(f) >= drop.size() || drop[static_cast<std::size_t>(f)] == 0) {
+            keep.push_back(f);
+        }
+    }
+    const std::string label = "Delete " + std::to_string(count) + (count == 1 ? " Face" : " Faces");
+    pushUndoEntry(label);
+    finishMeshEdit(extractFaces(mesh_, keep)); // also clears the selection: face numbers change
+    postStatusMessage(label + ".");
+    return true;
+}
+
 bool AppController::clearFaceSelection() {
     const bool had = faceSelectedCount_ > 0;
     faceSelected_.clear();
