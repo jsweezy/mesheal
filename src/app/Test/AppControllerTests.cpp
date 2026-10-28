@@ -1,5 +1,6 @@
 #include "app/AppController.hpp"
 #include "io/SampleMeshes.hpp"
+#include "core/Settings.hpp"
 #include "mesh/Units.hpp"
 
 #include <catch2/catch_approx.hpp>
@@ -1318,4 +1319,54 @@ TEST_CASE("AppController merges in the background, can cancel, and drops a stale
         REQUIRE(controller.lastUndoActionLabel() != "Merge 2 Shells");
         REQUIRE(controller.shells().size() == 3);
     }
+}
+
+TEST_CASE("Thin face defaults start at the built-in values and are independent of the live thresholds",
+          "[app][controller][preferences]") {
+    ogun::AppController controller;
+    const auto& def = controller.preferenceDefaults().thinFace;
+    CHECK(def.minAltitude == ogun::settings::kDefaultThinFaceMinAltitude);
+    CHECK(def.minArea == ogun::settings::kDefaultThinFaceMinArea);
+    CHECK(def.maxAspectRatio == ogun::settings::kDefaultThinFaceMaxAspectRatio);
+    CHECK(controller.thresholds().minAltitude == def.minAltitude);
+
+    // Editing a default updates the live value
+    ogun::ThinFaceThresholds edited = def;
+    edited.minAltitude = 0.25;
+    edited.minArea = 0.5;
+    edited.maxAspectRatio = 20.0;
+    controller.setThinFaceDefaults(edited);
+    CHECK(controller.preferenceDefaults().thinFace.minAltitude == 0.25);
+    CHECK(controller.thresholds().minAltitude == 0.25);
+    CHECK(controller.thresholds().minArea == 0.5);
+    CHECK(controller.thresholds().maxAspectRatio == 20.0);
+
+    // Editing the live value leaves the default alone
+    ogun::ThinFaceThresholds live = controller.thresholds();
+    live.minAltitude = 0.75;
+    live.maxAspectRatio = 5.0;
+    controller.setThresholds(live);
+    CHECK(controller.thresholds().minAltitude == 0.75);
+    CHECK(controller.preferenceDefaults().thinFace.minAltitude == 0.25);
+    CHECK(controller.preferenceDefaults().thinFace.maxAspectRatio == 20.0);
+
+    // Loading a mesh keeps the live thresholds (it does not reset them)
+    controller.loadSampleDefectiveMesh();
+    CHECK(controller.thresholds().minAltitude == 0.75);
+    CHECK(controller.preferenceDefaults().thinFace.minAltitude == 0.25);
+}
+
+TEST_CASE("Changing a thin face default marks an Auto-off Thin row Stale like the tool controls",
+          "[app][controller][preferences]") {
+    ogun::AppController controller;
+    controller.loadSampleDefectiveMesh();
+    controller.setAutoCheck(ogun::DefectCategory::ThinFaces, false);
+    controller.checkMesh();
+    REQUIRE(thinStatus(controller) != ogun::HealthStatus::Stale);
+
+    ogun::ThinFaceThresholds strict = controller.preferenceDefaults().thinFace;
+    strict.minArea = 1.0e9;
+    controller.setThinFaceDefaults(strict);
+    CHECK(controller.thresholds().minArea == 1.0e9);
+    CHECK(thinStatus(controller) == ogun::HealthStatus::Stale);
 }

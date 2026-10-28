@@ -50,6 +50,12 @@ enum class HealthStatus {
 [[nodiscard]] const char* healthStatusLabel(HealthStatus status) noexcept;
 
 /// State of one Mesh Health row.
+/// Preferences > Units & Tolerance defaults; the live tool settings start from these and
+/// editing the live settings never changes them. Kept plain so it is easy to serialize.
+struct PreferenceDefaults {
+    ThinFaceThresholds thinFace{}; // min altitude / min area / max aspect ratio (file units)
+};
+
 struct CategoryHealth {
     HealthStatus status = HealthStatus::NotRun;
     bool autoCheck = true;
@@ -354,6 +360,14 @@ public:
 
     /// Updates the thin-face thresholds; the Thin row re-runs (Auto) or turns Stale.
     void setThresholds(const ThinFaceThresholds& thresholds);
+
+    /// Startup defaults edited in Preferences; independent of the live tool settings.
+    [[nodiscard]] const PreferenceDefaults& preferenceDefaults() const noexcept {
+        return preferenceDefaults_;
+    }
+
+    /// Stores new thin-face defaults and copies them into the live thresholds.
+    void setThinFaceDefaults(const ThinFaceThresholds& defaults);
 
     [[nodiscard]] double degenerateAreaEpsilon() const noexcept {
         return degenerateAreaEpsilon_;
@@ -1242,6 +1256,7 @@ private:
     bool modified_ = false;
     std::string lastErrorMessage_;
     ToleranceConfig toleranceConfig_{};
+    PreferenceDefaults preferenceDefaults_{}; // declared before thresholds_, which starts from it
     ThinFaceThresholds thresholds_{};
     double degenerateAreaEpsilon_ = settings::kDefaultDegenerateAreaEpsilon;
     double intersectionTolerance_ = settings::kDefaultIntersectionTolerance;

@@ -67,7 +67,7 @@ std::size_t CategoryHealth::displayCount(DefectCategory category) const noexcept
 }
 
 AppController::AppController()
-    : thresholds_(ThinFaceThresholds::defaultsForUnit(Unit::Millimeter)) {
+    : thresholds_(preferenceDefaults_.thinFace) {
     mesh_.fileUnit = Unit::Millimeter;
     for (const DefectCategory category : kAllDefectCategories) {
         autoCheckDefaults_[categoryIndex(category)] = categoryInfo(category).autoDefault;
@@ -285,6 +285,11 @@ void AppController::setThresholds(const ThinFaceThresholds& thresholds) {
     if (changed) {
         onCheckParamsChanged(DefectCategory::ThinFaces);
     }
+}
+
+void AppController::setThinFaceDefaults(const ThinFaceThresholds& defaults) {
+    preferenceDefaults_.thinFace = defaults;
+    setThresholds(defaults);
 }
 
 void AppController::setDegenerateAreaEpsilon(double epsilon) {
