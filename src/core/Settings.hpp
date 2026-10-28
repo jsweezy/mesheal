@@ -39,6 +39,9 @@ inline constexpr double kDefaultCameraFovDegrees = 45.0;          // Polyscope d
 inline constexpr double kMinCameraFovDegrees     = 5.0;           // Minimum clamped FOV to prevent projection singularity
 inline constexpr double kMaxCameraFovDegrees     = 160.0;         // Maximum clamped FOV for wide-angle view
 inline constexpr float  kDragIgnoreThreshold     = 0.01f;         // Minimum pixel delta to register viewport camera drag
+inline constexpr float  kDefaultMouseZoomSpeed   = 1.0f;          // Preferences > Mouse zoom speed: multiplier of wheel and drag zoom steps (1 = unchanged)
+inline constexpr float  kMinMouseZoomSpeed       = 0.1f;          // Slowest zoom speed multiplier
+inline constexpr float  kMaxMouseZoomSpeed       = 5.0f;          // Fastest zoom speed multiplier
 
 // -----------------------------------------------------------------------------
 // Thin Face Diagnostics Threshold Defaults (file units; the unit is only a label)

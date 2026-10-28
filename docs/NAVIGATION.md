@@ -8,6 +8,8 @@ Ogun uses **Blender-inspired, selection-centric 3D camera navigation** tailored 
 
 ### Mouse Controls (3D Viewport)
 
+These are the bindings of the default **Ogun** mouse scheme. *Edit > Preferences > Mouse* switches to a Blender, OpenSCAD, Maya, Fusion 360 or SolidWorks scheme, or rebinds any action (see [Mouse Schemes](#mouse-schemes-edit--preferences--mouse) below). The in-app **3D Viewport Navigation & Shortcuts** window always lists the active bindings.
+
 | Action | Input | Behavior |
 | :--- | :--- | :--- |
 | **Orbit / Rotate** | `Left-Click Drag` | Orbits the camera around the active **Orbit Pivot** (respecting the active Polyscope camera style: *Turntable* or *Free*). |
@@ -18,6 +20,32 @@ Ogun uses **Blender-inspired, selection-centric 3D camera navigation** tailored 
 | **Toggle Face in the Face Selection** | `Shift + Left-Click` (no drag) | Adds the face under the cursor to the **face selection** (magenta), or removes it. Faces cut away by a slice plane are clicked through. *Decimate* and *Weld / Merge Vertices* work on the selected faces when there are any. |
 | **Box / Circle Select Faces** | `B` then drag / `C` then paint | See the keyboard table. In these modes the left mouse button selects instead of orbiting. |
 | **Select Shell** | `Alt + Left-Click` (`Alt + Ctrl/Cmd + Left-Click` toggles) | Multi-shell meshes: selects the whole shell under the cursor in the **Shells** panel (or adds / removes it). A plain click never changes the shell selection, so working on a set of shells is never undone by clicking a defect. |
+
+### Mouse Schemes (Edit > Preferences > Mouse)
+
+The **Mouse** tab of Preferences has a **Scheme** combo and a table with one row per action. Each input is a small button: click it to change it (press the mouse button, or turn the wheel, over the capture box while holding the modifier keys, or pick the button and the Shift / Ctrl / Alt boxes by hand) or remove it; **+** adds another input (up to three per action). Picking a scheme replaces every binding; editing any binding switches the scheme to **Custom**. *Reset to defaults* at the bottom of Preferences also restores the Ogun scheme.
+
+| Action | Ogun (default) | Blender | OpenSCAD | Maya | Fusion 360 | SolidWorks |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| Orbit | `Left drag` | `Middle drag` | `Left drag`, `Shift + Left drag` | `Alt + Left drag` | `Shift + Middle drag` | `Middle drag` |
+| Pan | `Shift + Left`, `Right` or `Middle drag` | `Shift + Middle drag` | `Right drag` | `Alt + Middle drag` | `Middle drag` | `Ctrl + Middle drag` |
+| Zoom (drag) | `Ctrl + Shift + Left drag` | `Ctrl + Middle drag` | `Middle drag`, `Shift + Right drag` | `Alt + Right drag` | (none) | `Shift + Middle drag` |
+| Zoom (wheel) | `Wheel` | `Wheel` | `Wheel` | `Wheel` | `Wheel` | `Wheel` |
+| Near clip plane | `Shift + Wheel` | `Shift + Wheel` | `Shift + Wheel` | `Shift + Wheel` | `Shift + Wheel` | `Shift + Wheel` |
+| Select face / defect | `Left click` | `Left click` | `Left click` | `Left click` | `Left click` | `Left click` |
+| Toggle face in selection | `Shift + Left click` | same | same | same | same | same |
+| Select shell | `Alt + Left click` | same | same | same | same | same |
+| Clear pick | `Right click` | same | same | same | same | same |
+
+How inputs are matched:
+- A **click** is a press and release without moving the mouse, so a drag and a click on the same button never conflict (Ogun: `Left drag` orbits, `Left click` selects; Maya: `Alt + Left drag` tumbles, `Alt + Left click` selects a shell).
+- **Drags and the wheel:** modifiers that no binding of that button uses are ignored, and the others must match exactly. In the Ogun scheme `Alt + Left drag` still orbits, `Shift + Alt + Left drag` pans, and `Ctrl + Left drag` does nothing; in Blender `Left drag` does nothing, so left-click selection never fights the camera.
+- **Clicks:** an exact match first; otherwise the binding with the most modifiers that are all held (*Toggle face* needs its exact modifiers). So `Ctrl + Shift + Left click` selects and `Shift + Alt + Left click` selects the shell. Adding `Ctrl` (when the Select shell binding does not already use it) or `Cmd` to a Select shell click adds or removes the shell.
+- **Conflicts:** two actions of the same kind on the same input are drawn red in the table with a warning below it; the action higher in the table wins.
+- **Box (`B`) and Circle (`C`) select** draw with the first button of *Select face*: Left in every built-in scheme. Right-click cancels them unless *Select face* is on the right button; middle-drag erases in Circle select unless *Select face* is on the middle button.
+- **Ctrl** is the Control key, also on macOS (keyboard shortcuts still use Cmd).
+- **Zoom options:** *Invert wheel zoom* (off: wheel up zooms in) and *Zoom speed* (0.1x to 5x, default 1x) multiply every wheel and drag zoom step.
+- The scheme is saved with the other preferences (`mouse.preset`, `mouse.invert_wheel_zoom`, `mouse.zoom_speed` and one `mouse.<action>` line per action, e.g. `mouse.pan = shift+left, right, middle`). A built-in scheme always uses its own bindings; only *Custom* reads the binding lines. An unknown scheme name gives the Ogun scheme, and an invalid binding line keeps the Ogun binding of that action.
 
 ---
 

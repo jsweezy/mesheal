@@ -27,6 +27,18 @@ ImU32 selectionColor(const Eigen::Vector3d& c, float alpha) {
     return ImGui::GetColorU32(ImVec4(static_cast<float>(c.x()), static_cast<float>(c.y()), static_cast<float>(c.z()), alpha));
 }
 
+ImGuiMouseButton imguiButton(MouseInput input) noexcept {
+    switch (input) {
+    case MouseInput::Right: return ImGuiMouseButton_Right;
+    case MouseInput::Middle: return ImGuiMouseButton_Middle;
+    case MouseInput::Left:
+    case MouseInput::Wheel:
+    case MouseInput::None:
+        break;
+    }
+    return ImGuiMouseButton_Left;
+}
+
 } // namespace
 
 ScreenView PolyscopeGui::currentScreenView() const {
@@ -93,18 +105,21 @@ void PolyscopeGui::exitFaceSelectMode() {
 void PolyscopeGui::handleFaceSelectTool() {
     const ImGuiIO& io = ImGui::GetIO();
     const Eigen::Vector2d mouse(io.MousePos.x, io.MousePos.y);
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+    // The Select button of Preferences > Mouse draws (Left by default); right-click cancels unless it selects
+    const MouseInput selectInput = selectToolButton(mouseMapping_);
+    const ImGuiMouseButton selectButton = imguiButton(selectInput);
+    if (selectInput != MouseInput::Right && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
         exitFaceSelectMode();
         return;
     }
     const bool removeModifier = io.KeyShift || io.KeyCtrl || io.KeySuper;
 
     if (faceSelectMode_ == FaceSelectMode::Box) {
-        if (!boxDragging_ && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        if (!boxDragging_ && ImGui::IsMouseClicked(selectButton)) {
             boxDragging_ = true;
             boxStart_ = mouse;
             boxRemoves_ = removeModifier;
-        } else if (boxDragging_ && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        } else if (boxDragging_ && ImGui::IsMouseReleased(selectButton)) {
             const std::size_t changed = controller_.selectFacesInRectangle(currentScreenView(), boxStart_, mouse, !boxRemoves_);
             controller_.postStatusMessage(withThousands(changed) + (boxRemoves_ ? " faces deselected; " : " faces selected; ") +
                                           withThousands(controller_.selectedFaceCount()) + " selected.");
@@ -120,8 +135,8 @@ void PolyscopeGui::handleFaceSelectTool() {
         circleRadiusPx_ = std::clamp(circleRadiusPx_ * std::pow(1.15f, io.MouseWheel), settings::kMinCircleSelectRadiusPx,
                                      settings::kMaxCircleSelectRadiusPx);
     }
-    const bool paint = ImGui::IsMouseDown(ImGuiMouseButton_Left);
-    const bool erase = ImGui::IsMouseDown(ImGuiMouseButton_Middle);
+    const bool paint = ImGui::IsMouseDown(selectButton);
+    const bool erase = selectInput != MouseInput::Middle && ImGui::IsMouseDown(ImGuiMouseButton_Middle);
     if (!paint && !erase) {
         lastPaint_ = Eigen::Vector2d::Constant(-1.0e9);
         return;

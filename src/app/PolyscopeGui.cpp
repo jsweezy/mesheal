@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <optional>
 #include <queue>
 #include <string>
 #include <utility>
@@ -235,6 +236,7 @@ PolyscopeGui::PolyscopeGui(AppController& controller, std::filesystem::path pref
     : controller_(controller),
       showCompass_(prefs.showCompass),
       uiScale_(prefs.uiScale),
+      mouseMapping_(prefs.mouse),
       preferencesFile_(std::move(preferencesFile)),
       savedPreferences_(prefs),
       recentFiles_(std::move(recentFilesFile)) {
@@ -430,71 +432,100 @@ void PolyscopeGui::handleViewportMouseNavigation() {
         ? rawDist
         : std::max(minNavDist, 1.0e-3 * meshDiag);
 
-    // 1. Scroll wheel zoom (or Shift+Scroll clip plane shift)
+    // Preferences > Mouse decides which input does what (Ogun's scheme by default)
+    const MouseModifiers mods = gui::heldMouseModifiers();
+    const double zoomSpeed = static_cast<double>(mouseMapping_.zoomSpeed);
+
+    // 1. Scroll wheel: zoom or near clip plane shift
     const double xoffset = io.MouseWheelH;
     const double yoffset = io.MouseWheel;
     if (xoffset != 0.0 || yoffset != 0.0) {
         const double maxScroll = (std::abs(yoffset) > std::abs(xoffset)) ? yoffset : xoffset;
-        if (maxScroll != 0.0) {
-            if (io.KeyShift) {
-                polyscope::view::processClipPlaneShift(maxScroll);
-            } else {
-                processPivotZoom(maxScroll, effectiveDist);
-            }
+        const std::optional<MouseAction> wheel = resolveMouseWheel(mouseMapping_, mods);
+        if (maxScroll != 0.0 && wheel == MouseAction::NearClip) {
+            polyscope::view::processClipPlaneShift(maxScroll);
+        } else if (maxScroll != 0.0 && wheel == MouseAction::WheelZoom) {
+            processPivotZoom((mouseMapping_.invertWheelZoom ? -maxScroll : maxScroll) * zoomSpeed, effectiveDist);
         }
     }
 
-    // 2. Mouse drags (Orbit, Pan, or Drag-Zoom)
-    const bool dragLeft = ImGui::IsMouseDragging(ImGuiMouseButton_Left);
-    const bool dragRight = !dragLeft && ImGui::IsMouseDragging(ImGuiMouseButton_Right);
-    const bool dragMiddle = !dragLeft && !dragRight && ImGui::IsMouseDragging(ImGuiMouseButton_Middle);
-    if (dragLeft || dragRight || dragMiddle) {
+    // 2. Mouse drags: one button at a time (left, then right, then middle)
+    MouseInput dragButton = MouseInput::None;
+    if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+        dragButton = MouseInput::Left;
+    } else if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
+        dragButton = MouseInput::Right;
+    } else if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+        dragButton = MouseInput::Middle;
+    }
+    if (dragButton != MouseInput::None) {
         const glm::vec2 dragDelta{
             io.MouseDelta.x / static_cast<float>(polyscope::view::windowWidth),
             -io.MouseDelta.y / static_cast<float>(polyscope::view::windowHeight)};
         dragDistSinceLastRelease_ += std::abs(dragDelta.x) + std::abs(dragDelta.y);
 
-        const bool isDragZoom = dragLeft && io.KeyShift && io.KeyCtrl;
-        const bool isTranslate = (dragLeft && io.KeyShift && !io.KeyCtrl) || dragRight || dragMiddle;
-        const bool isRotate = dragLeft && !io.KeyShift && !io.KeyCtrl;
-
-        if (isDragZoom) {
-            processPivotZoom(static_cast<double>(dragDelta.y) * 5.0, effectiveDist);
-        } else if (isRotate) {
+        // An unbound drag does nothing
+        const std::optional<MouseAction> action = resolveMouseDrag(mouseMapping_, dragButton, mods);
+        if (action == MouseAction::Zoom) {
+            processPivotZoom(static_cast<double>(dragDelta.y) * 5.0 * zoomSpeed, effectiveDist);
+        } else if (action == MouseAction::Orbit) {
             processPivotRotate(dragDelta.x, dragDelta.y);
-        } else if (isTranslate) {
+        } else if (action == MouseAction::Pan) {
             processPivotTranslate(dragDelta.x, dragDelta.y, effectiveDist);
         }
     }
 
-    // 3. Click picks on release when not dragging
-    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-        if (dragDistSinceLastRelease_ < settings::kDragIgnoreThreshold && io.KeyShift && !io.KeyAlt && !io.KeyCtrl &&
-            controller_.hasMesh()) {
-            // Shift+click toggles the face in the face selection (Blender)
-            const ImVec2 p = ImGui::GetMousePos();
+    // 3. Clicks act on release when the mouse did not drag
+    for (const auto& [imguiButton, button] : {std::pair{ImGuiMouseButton_Left, MouseInput::Left},
+                                              std::pair{ImGuiMouseButton_Right, MouseInput::Right},
+                                              std::pair{ImGuiMouseButton_Middle, MouseInput::Middle}}) {
+        if (ImGui::IsMouseReleased(imguiButton)) {
+            if (dragDistSinceLastRelease_ < settings::kDragIgnoreThreshold) {
+                handleViewportClick(button);
+            }
+            dragDistSinceLastRelease_ = 0.0f;
+        }
+    }
+}
+
+void PolyscopeGui::handleViewportClick(MouseInput button) {
+    const ImGuiIO& io = ImGui::GetIO();
+    const MouseModifiers mods = gui::heldMouseModifiers();
+    const std::optional<MouseClickMatch> click = resolveMouseClick(mouseMapping_, button, mods);
+    if (!click) {
+        return;
+    }
+    const ImVec2 p = ImGui::GetMousePos();
+    switch (click->action) {
+    case MouseAction::ToggleFace:
+        if (controller_.hasMesh()) {
+            // Toggles the face in the face selection (Blender's Shift+click)
             if (const std::optional<Eigen::Index> face = controller_.faceAtScreenPoint(currentScreenView(), Eigen::Vector2d(p.x, p.y))) {
                 controller_.toggleFaceSelected(*face);
                 controller_.postStatusMessage(gui::withThousands(controller_.selectedFaceCount()) + " faces selected.");
                 requestSync();
             }
-        } else if (dragDistSinceLastRelease_ < settings::kDragIgnoreThreshold) {
-            const ImVec2 p = ImGui::GetMousePos();
-            const polyscope::PickResult pickResult = polyscope::pickAtScreenCoords(glm::vec2{p.x, p.y});
-            polyscope::setSelection(pickResult);
-            handleViewportFacePick(pickResult);
+            break;
         }
-        dragDistSinceLastRelease_ = 0.0f;
+        [[fallthrough]]; // no mesh: a plain pick, as before
+    case MouseAction::Select:
+    case MouseAction::SelectShell: {
+        const polyscope::PickResult pickResult = polyscope::pickAtScreenCoords(glm::vec2{p.x, p.y});
+        polyscope::setSelection(pickResult);
+        // Cmd, or Ctrl when the binding does not already need it, adds or removes the shell
+        const bool toggle = io.KeySuper || (io.KeyCtrl && (click->binding.modifiers & kMouseModCtrl) == 0);
+        handleViewportFacePick(pickResult, click->action == MouseAction::SelectShell, toggle);
+        break;
     }
-    if (ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
-        if (dragDistSinceLastRelease_ < settings::kDragIgnoreThreshold) {
-            polyscope::resetSelection();
-        }
-        dragDistSinceLastRelease_ = 0.0f;
+    case MouseAction::ClearPick:
+        polyscope::resetSelection();
+        break;
+    default:
+        break;
     }
 }
 
-void PolyscopeGui::handleViewportFacePick(const polyscope::PickResult& pickResult) {
+void PolyscopeGui::handleViewportFacePick(const polyscope::PickResult& pickResult, bool shellPick, bool shellToggle) {
     if (!pickResult.isHit || !controller_.hasMesh()) {
         return;
     }
@@ -525,10 +556,9 @@ void PolyscopeGui::handleViewportFacePick(const polyscope::PickResult& pickResul
 
     const auto localFace = static_cast<std::size_t>(elementId - nVerts);
     const Eigen::Index face = faceMap ? (*faceMap)[localFace] : static_cast<Eigen::Index>(localFace);
-    // Alt+click selects the shell (Cmd/Ctrl too: toggles it); a plain click never changes the shell selection
-    const ImGuiIO& io = ImGui::GetIO();
-    if (io.KeyAlt && controller_.shells().multiShell()) {
-        if (controller_.pickShell(face, io.KeyCtrl || io.KeySuper)) {
+    // Select Shell (Alt+click by default; Cmd/Ctrl too: toggles it); a plain click never changes the shell selection
+    if (shellPick && controller_.shells().multiShell()) {
+        if (controller_.pickShell(face, shellToggle)) {
             showShells_ = true;
             requestSync();
         }

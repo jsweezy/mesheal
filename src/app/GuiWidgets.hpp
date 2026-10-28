@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/AppController.hpp"
+#include "app/MouseMapping.hpp"
 #include "diagnostics/MeshHealth.hpp"
 #include "mesh/Units.hpp"
 
@@ -33,6 +34,9 @@ inline const ImVec4 kFixAllButtonColor(0.20f, 0.45f, 0.25f, 1.0f);
 
 /// Tooltip on the last item (short delay).
 void tooltip(const char* text);
+
+/// Shift / Ctrl / Alt held now, as Preferences > Mouse modifier bits.
+[[nodiscard]] MouseModifiers heldMouseModifiers();
 
 /// "(?)" marker with a wrapped tooltip.
 void helpMarker(const char* text);

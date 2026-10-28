@@ -25,6 +25,7 @@ Unlike 3D printing repair tools—which often voxelize or aggressively alter geo
   - Automatic orbit pivot centered on selected facet centroids.
   - Dynamic 3D curve and point overlays ensuring sub-pixel slivers remain visible at any zoom level.
   - Ghost / semi-transparent mesh toggling and interactive clipping plane.
+  - Mouse schemes (*Edit > Preferences > Mouse*): Ogun's default, Blender, OpenSCAD, Maya, Fusion 360 and SolidWorks presets, or rebind any orbit / pan / zoom / select input yourself (conflicts are flagged).
 - **Synchronized Dual Mesh Architecture**: Combines `ogun::Mesh` (contiguous `Eigen` buffers for high-performance Polyscope rendering) with **CGAL** (`CGAL::Surface_mesh<EPICK::Point_3>`) for $O(1)$ halfedge queries and exact geometric predicates.
 - **Interactive Single-Face Live Repair Preview**: Classifies defective facets into **Caps**, **Needles**, **Microscopic Triangles**, and **Dangling Flaps**. Generates a live 3D preview of the 2-ring neighborhood across targeted Euler operators (*Flip Longest Edge*, *Collapse Shortest Edge*, *Snap Collinear Vertex*, *Remove Degenerate Flap*) before committing.
 - **Batch Sliver Healing**: **Fix All** (or **Fix Selected** for a hand-picked set) combining iterative Cap edge-flips, link-safe Needle edge-collapses, and CGAL `remove_almost_degenerate_faces` while protecting sharp feature creases.

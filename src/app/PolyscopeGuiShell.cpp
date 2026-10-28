@@ -19,6 +19,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace ogun {
 
@@ -36,7 +37,224 @@ void plannedMenuItem(const char* label, const char* when) {
     tooltip(when);
 }
 
+/// What an action does, for the Mouse tab's tooltips.
+const char* mouseActionHelp(MouseAction action) {
+    switch (action) {
+    case MouseAction::Orbit: return "Orbits the camera around the Orbit Pivot.";
+    case MouseAction::Pan: return "Moves the camera and the Orbit Pivot in the view plane.";
+    case MouseAction::Zoom: return "Dollies toward the Orbit Pivot (drag up) or away from it (drag down).";
+    case MouseAction::WheelZoom: return "Dollies toward or away from the Orbit Pivot.";
+    case MouseAction::NearClip: return "Shifts the camera's near clip plane.";
+    case MouseAction::Select:
+        return "Clicks a face: focuses a defect of the selected Mesh Health row, or opens the row that holds it. "
+               "Its button also draws Box (B) and paints Circle (C) select.";
+    case MouseAction::ToggleFace: return "Adds the face under the cursor to the face selection, or removes it.";
+    case MouseAction::SelectShell:
+        return "Selects the shell under the cursor (multi-shell meshes). Add Ctrl or Cmd to add or remove it.";
+    case MouseAction::ClearPick: return "Clears Polyscope's pick.";
+    }
+    return "";
+}
+
 } // namespace
+
+void PolyscopeGui::drawMousePreferencesTab() {
+    MouseMapping& mapping = mouseMapping_;
+    ImGui::SetNextItemWidth(200.0f);
+    if (ImGui::BeginCombo("Scheme", mousePresetName(mapping.preset))) {
+        for (const MousePreset preset : kAllMousePresets) {
+            if (ImGui::Selectable(mousePresetName(preset), preset == mapping.preset)) {
+                selectMousePreset(mapping, preset);
+            }
+            tooltip(mousePresetDescription(preset));
+        }
+        ImGui::EndCombo();
+    }
+    gui::helpMarker("Which mouse button and modifier keys orbit, pan, zoom and select in the 3D view. Picking a "
+                    "scheme replaces every binding below; editing a binding switches to Custom.");
+    ImGui::TextWrapped("%s", mousePresetDescription(mapping.preset));
+
+    const std::vector<MouseConflict> conflicts = findMouseConflicts(mapping);
+    const auto inConflict = [&conflicts](MouseAction action, const MouseBinding& binding) {
+        return std::any_of(conflicts.begin(), conflicts.end(), [&](const MouseConflict& c) {
+            return c.binding == binding && (c.first == action || c.second == action);
+        });
+    };
+
+    bool openEditor = false;
+    if (ImGui::BeginTable("MouseBindings", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH)) {
+        ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 170.0f);
+        ImGui::TableSetupColumn("Inputs (click one to change it, + to add one)", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableHeadersRow();
+        for (const MouseAction action : kAllMouseActions) {
+            ImGui::PushID(static_cast<int>(action));
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(mouseActionName(action));
+            tooltip(mouseActionHelp(action));
+            ImGui::TableSetColumnIndex(1);
+            const MouseActionBindings& bindings = mapping.of(action);
+            std::size_t slot = 0;
+            for (; slot < bindings.size() && bindings[slot].bound(); ++slot) {
+                if (slot > 0) {
+                    ImGui::SameLine();
+                }
+                const bool conflict = inConflict(action, bindings[slot]);
+                if (conflict) {
+                    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.60f, 0.15f, 0.15f, 1.0f));
+                }
+                ImGui::PushID(static_cast<int>(slot));
+                if (ImGui::SmallButton(formatMouseBinding(bindings[slot], mouseActionKind(action)).c_str())) {
+                    editingMouseAction_ = action;
+                    editingMouseSlot_ = slot;
+                    openEditor = true;
+                }
+                ImGui::PopID();
+                if (conflict) {
+                    ImGui::PopStyleColor();
+                }
+                tooltip(conflict ? "Also bound to another action (see the warning below). Click to change it."
+                                 : "Click to change or remove this input.");
+            }
+            if (slot < bindings.size()) {
+                if (slot > 0) {
+                    ImGui::SameLine();
+                }
+                if (ImGui::SmallButton("+")) {
+                    editingMouseAction_ = action;
+                    editingMouseSlot_ = slot;
+                    openEditor = true;
+                }
+                tooltip(slot == 0 ? "Not bound: click to add an input." : "Add another input for this action.");
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+    if (openEditor) {
+        ImGui::OpenPopup("MouseBindingEditor");
+    }
+    drawMouseBindingEditor();
+
+    for (const MouseConflict& c : conflicts) {
+        ImGui::TextColored(gui::kErrorColor, "%s is bound to both %s and %s: only %s acts on it.",
+                           formatMouseBinding(c.binding, mouseActionKind(c.first)).c_str(), mouseActionName(c.first),
+                           mouseActionName(c.second), mouseActionName(c.first));
+    }
+    ImGui::TextDisabled("A click is a press and release without moving, so a drag and a click on the same");
+    ImGui::TextDisabled("button never conflict. Ctrl is the Control key, also on macOS.");
+
+    ImGui::SeparatorText("Zoom");
+    ImGui::Checkbox("Invert wheel zoom", &mapping.invertWheelZoom);
+    tooltip("Off: wheel up (away from you) zooms in. On: wheel up zooms out.");
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SliderFloat("Zoom speed", &mapping.zoomSpeed, settings::kMinMouseZoomSpeed, settings::kMaxMouseZoomSpeed,
+                       "%.2fx", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+    tooltip("Multiplies each wheel and drag zoom step (1.00x: Ogun's default speed).");
+}
+
+void PolyscopeGui::drawMouseBindingEditor() {
+    if (!ImGui::BeginPopup("MouseBindingEditor")) {
+        return;
+    }
+    const MouseAction action = editingMouseAction_;
+    const MouseActionKind kind = mouseActionKind(action);
+    const std::size_t slot = std::min(editingMouseSlot_, kMaxMouseBindingsPerAction - 1);
+    const MouseBinding current = mouseMapping_.of(action)[slot];
+    ImGui::TextUnformatted(mouseActionName(action));
+    ImGui::TextDisabled("Input %zu: %s", slot + 1, formatMouseBinding(current, kind).c_str());
+
+    // Click to capture: press the button (or turn the wheel) over the box with the modifiers held
+    const ImVec2 size(320.0f, 3.0f * ImGui::GetFrameHeight());
+    const ImVec2 corner = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton("capture", size,
+                           ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight |
+                               ImGuiButtonFlags_MouseButtonMiddle);
+    const bool hovered = ImGui::IsItemHovered();
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const ImVec2 far(corner.x + size.x, corner.y + size.y);
+    draw->AddRectFilled(corner, far, ImGui::GetColorU32(hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg), 4.0f);
+    draw->AddRect(corner, far, ImGui::GetColorU32(ImGuiCol_Border), 4.0f);
+    const char* prompt = kind == MouseActionKind::Wheel ? "Hold the modifier keys and scroll here"
+                                                         : "Hold the modifier keys and press a mouse button here";
+    const ImVec2 textSize = ImGui::CalcTextSize(prompt);
+    draw->AddText(ImVec2(corner.x + (size.x - textSize.x) * 0.5f, corner.y + (size.y - textSize.y) * 0.5f),
+                  ImGui::GetColorU32(ImGuiCol_Text), prompt);
+
+    std::optional<MouseBinding> edited;
+    if (hovered) {
+        const ImGuiIO& io = ImGui::GetIO();
+        if (kind == MouseActionKind::Wheel) {
+            if (io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f) {
+                edited = MouseBinding{MouseInput::Wheel, gui::heldMouseModifiers()};
+            }
+        } else {
+            for (const auto& [button, input] : {std::pair{ImGuiMouseButton_Left, MouseInput::Left},
+                                                std::pair{ImGuiMouseButton_Middle, MouseInput::Middle},
+                                                std::pair{ImGuiMouseButton_Right, MouseInput::Right}}) {
+                if (ImGui::IsMouseClicked(button)) {
+                    edited = MouseBinding{input, gui::heldMouseModifiers()};
+                }
+            }
+        }
+    }
+
+    // Or set it by hand
+    MouseBinding manual = current;
+    if (kind == MouseActionKind::Wheel) {
+        bool wheel = manual.bound();
+        if (ImGui::Checkbox("Wheel", &wheel)) {
+            manual.input = wheel ? MouseInput::Wheel : MouseInput::None;
+        }
+    } else {
+        constexpr std::array<std::pair<MouseInput, const char*>, 3> kButtons = {{
+            {MouseInput::Left, "Left"}, {MouseInput::Middle, "Middle"}, {MouseInput::Right, "Right"},
+        }};
+        for (const auto& [input, label] : kButtons) {
+            if (ImGui::RadioButton(label, manual.input == input)) {
+                manual.input = input;
+            }
+            ImGui::SameLine();
+        }
+        ImGui::TextDisabled(kind == MouseActionKind::Click ? "click" : "drag");
+    }
+    ImGui::BeginDisabled(!manual.bound());
+    for (const auto& [bit, label] : {std::pair{kMouseModCtrl, "Ctrl"}, std::pair{kMouseModShift, "Shift"},
+                                     std::pair{kMouseModAlt, "Alt"}}) {
+        bool on = (manual.modifiers & bit) != 0;
+        if (ImGui::Checkbox(label, &on)) {
+            manual.modifiers = static_cast<MouseModifiers>(on ? (manual.modifiers | bit) : (manual.modifiers & ~bit));
+        }
+        ImGui::SameLine();
+    }
+    ImGui::NewLine();
+    ImGui::EndDisabled();
+    if (!manual.bound()) {
+        manual.modifiers = kMouseModNone;
+    }
+    if (!edited && !(manual == current)) {
+        edited = manual;
+    }
+
+    bool close = false;
+    if (current.bound() && ImGui::Button("Remove")) {
+        edited = MouseBinding{};
+    }
+    if (current.bound()) {
+        ImGui::SameLine();
+    }
+    if (ImGui::Button("Done")) {
+        close = true;
+    }
+    if (edited && setMouseBinding(mouseMapping_, action, slot, *edited) && !edited->bound()) {
+        close = true; // the remaining inputs moved up: nothing left to edit in this slot
+    }
+    if (close) {
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+}
 
 // -----------------------------------------------------------------------------
 // Docked layout
@@ -880,6 +1098,10 @@ void PolyscopeGui::drawPreferencesWindow(float top, float bottom, float rightCol
             gui::helpMarker("Above this many defects the Tool panel shows a summary and histogram instead of a list.");
             ImGui::EndTabItem();
         }
+        if (ImGui::BeginTabItem("Mouse")) {
+            drawMousePreferencesTab();
+            ImGui::EndTabItem();
+        }
         if (ImGui::BeginTabItem("Performance")) {
             int overlayCap = static_cast<int>(controller_.overlayCap());
             ImGui::SetNextItemWidth(160.0f);
@@ -898,8 +1120,8 @@ void PolyscopeGui::drawPreferencesWindow(float top, float bottom, float rightCol
         applyPreferences(UserPreferences{});
         controller_.postStatusMessage("Preferences and Display styles reset to the built-in defaults.");
     }
-    tooltip("Restore every preference on these tabs and every Display panel style (colors, widths, preview, "
-            "background) to its built-in value, and save.");
+    tooltip("Restore every preference on these tabs (the Ogun mouse scheme included) and every Display panel style "
+            "(colors, widths, preview, background) to its built-in value, and save.");
     if (preferencesFile_.empty()) {
         ImGui::TextDisabled("No home directory: preferences last for this session only.");
     } else {
@@ -916,6 +1138,7 @@ UserPreferences PolyscopeGui::currentPreferences() const {
     prefs.uiScale = uiScale_;
     prefs.backgroundColor = polyscope::view::bgColor;
     prefs.showCompass = showCompass_;
+    prefs.mouse = mouseMapping_;
     return prefs;
 }
 
@@ -924,6 +1147,7 @@ void PolyscopeGui::applyPreferences(const UserPreferences& prefs) {
     uiScale_ = prefs.uiScale;
     polyscope::view::bgColor = prefs.backgroundColor;
     showCompass_ = prefs.showCompass;
+    mouseMapping_ = prefs.mouse;
     applyTransparencyModeForPreview();
     applyBaseMeshStyleToPolyscope();
     requestSync();
@@ -1154,7 +1378,7 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         "facets feels smooth at any zoom depth. Every button tooltip shows its key.");
     ImGui::Separator();
 
-    const auto table = [](const char* id, const char* left, std::initializer_list<std::pair<const char*, const char*>> rows) {
+    const auto table = [](const char* id, const char* left, const std::vector<std::pair<std::string, std::string>>& rows) {
         if (ImGui::BeginTable(id, 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg)) {
             ImGui::TableSetupColumn(left, ImGuiTableColumnFlags_WidthFixed, 175.0f);
             ImGui::TableSetupColumn("Behavior", ImGuiTableColumnFlags_WidthStretch);
@@ -1162,22 +1386,28 @@ void PolyscopeGui::drawNavigationHelpWindow() {
             for (const auto& [key, behavior] : rows) {
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
-                ImGui::TextUnformatted(key);
+                ImGui::TextUnformatted(key.c_str());
                 ImGui::TableSetColumnIndex(1);
-                ImGui::TextWrapped("%s", behavior);
+                ImGui::TextWrapped("%s", behavior.c_str());
             }
             ImGui::EndTable();
         }
     };
 
+    // The mouse rows show the active scheme (Preferences > Mouse)
+    const auto inputs = [this](MouseAction action) { return describeMouseBindings(mouseMapping_, action); };
     ImGui::TextUnformatted("Mouse Controls (3D Viewport)");
+    ImGui::TextDisabled("Scheme: %s. Change it in Edit > Preferences > Mouse.", mousePresetName(mouseMapping_.preset));
     table("MouseNavTable", "Action", {
-        {"Orbit / Rotate", "Left-Click Drag (orbits around the active Orbit Pivot)"},
-        {"Pan Camera & Pivot", "Shift + Left-Click Drag, Right-Click Drag, or Middle-Click Drag (shifts the Orbit Pivot with the camera, scaled by depth)"},
-        {"Zoom (Dolly)", "Scroll Wheel or Ctrl + Shift + Left-Click Drag (speed scales with distance to the Orbit Pivot)"},
-        {"Select Face", "Left-Click a face: if it is a defect of the selected Mesh Health row it becomes the focus (Inspector, Orbit Pivot at its centroid); with no row selected, the row containing it opens; a clean face only moves the Orbit Pivot. Right-Click clears the Polyscope pick."},
-        {"Select Shell", "Alt + Left-Click a face selects its whole shell in the Shells panel (multi-shell meshes); Alt + Ctrl/Cmd + Click adds or removes it. A plain click never changes the shell selection."},
-        {"Toggle Face", "Shift + Left-Click a face adds it to or removes it from the face selection (Decimate and Weld / Merge Vertices then work on the selected faces). Faces a slice plane cuts away are clicked through"},
+        {"Orbit / Rotate", inputs(MouseAction::Orbit) + " (orbits around the active Orbit Pivot)"},
+        {"Pan Camera & Pivot", inputs(MouseAction::Pan) + " (shifts the Orbit Pivot with the camera, scaled by depth)"},
+        {"Zoom (Dolly)", inputs(MouseAction::WheelZoom) + "; drag: " + inputs(MouseAction::Zoom) +
+                             " (speed scales with distance to the Orbit Pivot)"},
+        {"Near Clip Plane", inputs(MouseAction::NearClip) + " shifts the near clip plane (Ogun also adjusts it as you zoom)"},
+        {"Select Face", inputs(MouseAction::Select) + " a face: if it is a defect of the selected Mesh Health row it becomes the focus (Inspector, Orbit Pivot at its centroid); with no row selected, the row containing it opens; a clean face only moves the Orbit Pivot. " +
+                            inputs(MouseAction::ClearPick) + " clears the Polyscope pick."},
+        {"Select Shell", inputs(MouseAction::SelectShell) + " a face selects its whole shell in the Shells panel (multi-shell meshes); with Ctrl/Cmd added it adds or removes it. A plain click never changes the shell selection."},
+        {"Toggle Face", inputs(MouseAction::ToggleFace) + " a face adds it to or removes it from the face selection (Decimate and Weld / Merge Vertices then work on the selected faces). Faces a slice plane cuts away are clicked through"},
     });
 
     ImGui::Spacing();

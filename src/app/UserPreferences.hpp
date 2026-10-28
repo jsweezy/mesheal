@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/AppController.hpp"
+#include "app/MouseMapping.hpp"
 #include "core/Settings.hpp"
 #include "diagnostics/MeshHealth.hpp"
 #include "mesh/ToleranceConfig.hpp"
@@ -41,6 +42,7 @@ struct UserPreferences {
     float uiScale = 1.0f;
     std::array<float, 4> backgroundColor = settings::kDefaultBackgroundColor;
     bool showCompass = false; ///< View > Compass: the XYZ orientation gizmo
+    MouseMapping mouse{};     ///< Preferences > Mouse: preset, bindings, wheel direction and zoom speed
 };
 
 /// `<configDir>/preferences.conf` (empty when `configDir` is empty).

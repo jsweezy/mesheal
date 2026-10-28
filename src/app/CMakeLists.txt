@@ -12,6 +12,7 @@ add_library(ogun_app_controller STATIC
     FaceSelection.cpp
     HealthCheckRunner.cpp
     MergeJobRunner.cpp
+    MouseMapping.cpp
     RepairJobRunner.cpp
     ShellBrowser.cpp
     RecentFiles.cpp

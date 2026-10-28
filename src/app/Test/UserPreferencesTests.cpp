@@ -75,6 +75,24 @@ ogun::UserPreferences customPreferences() {
     p.uiScale = 1.35f;
     p.backgroundColor = {0.1f, 0.2f, 0.3f, 1.0f};
     p.showCompass = !p.showCompass;
+    // A custom mouse scheme that changes every action's bindings
+    using ogun::MouseAction;
+    using ogun::MouseInput;
+    p.mouse.preset = ogun::MousePreset::Custom;
+    p.mouse.invertWheelZoom = true;
+    p.mouse.zoomSpeed = 1.5f;
+    const auto set = [&p](MouseAction action, ogun::MouseActionBindings bindings) {
+        p.mouse.bindings[static_cast<std::size_t>(action)] = bindings;
+    };
+    set(MouseAction::Orbit, {{{MouseInput::Middle, 0}}});
+    set(MouseAction::Pan, {{{MouseInput::Middle, ogun::kMouseModShift}, {MouseInput::Right, ogun::kMouseModAlt}}});
+    set(MouseAction::Zoom, {{{MouseInput::Middle, ogun::kMouseModCtrl}}});
+    set(MouseAction::WheelZoom, {{{MouseInput::Wheel, ogun::kMouseModCtrl}}});
+    set(MouseAction::NearClip, {{{MouseInput::Wheel, ogun::kMouseModAlt}}});
+    set(MouseAction::Select, {{{MouseInput::Right, 0}}});
+    set(MouseAction::ToggleFace, {{{MouseInput::Right, ogun::kMouseModCtrl}}});
+    set(MouseAction::SelectShell, {{{MouseInput::Right, ogun::kMouseModAlt}}});
+    set(MouseAction::ClearPick, {});
     return p;
 }
 
@@ -112,6 +130,7 @@ TEST_CASE("User preferences round trip every field through the config file", "[a
     CHECK(loaded.uiScale == custom.uiScale);
     CHECK(loaded.backgroundColor == custom.backgroundColor);
     CHECK(loaded.showCompass == custom.showCompass);
+    CHECK(loaded.mouse == custom.mouse);
 
     // Saving again overwrites in place
     REQUIRE(ogun::saveUserPreferences(defaults, file, &error));
@@ -209,6 +228,7 @@ TEST_CASE("Startup applies the saved preferences, live thin-face thresholds incl
     captured.uiScale = custom.uiScale;
     captured.backgroundColor = custom.backgroundColor;
     captured.showCompass = custom.showCompass;
+    captured.mouse = custom.mouse;
     CHECK(ogun::sameUserPreferences(captured, custom));
 
     // A new mesh's Mesh Health rows take the saved Auto defaults
@@ -221,4 +241,54 @@ TEST_CASE("Startup applies the saved preferences, live thin-face thresholds incl
     CHECK(controller.thresholds().minAltitude == ogun::settings::kDefaultThinFaceMinAltitude);
     CHECK(ogun::sameUserPreferences(controller.userPreferences(), ogun::UserPreferences{}));
     std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("Mouse preferences: presets apply as built, unknown or invalid values fall back to Ogun's", "[app][preferences][mouse]") {
+    using ogun::MouseAction;
+    using ogun::MouseInput;
+    const ogun::MouseMapping ogunDefault;
+
+    // A file from before Preferences > Mouse existed gives the Ogun scheme
+    CHECK(ogun::parseUserPreferences("weld_floor = 1e-6\n").mouse == ogunDefault);
+
+    // A built-in preset uses its own bindings, whatever the file stores
+    const ogun::UserPreferences blender = ogun::parseUserPreferences(
+        "mouse.preset = blender\n"
+        "mouse.orbit = right\n"
+        "mouse.zoom_speed = 2\n"
+        "mouse.invert_wheel_zoom = true\n");
+    CHECK(blender.mouse.preset == ogun::MousePreset::Blender);
+    CHECK(blender.mouse.bindings == ogun::mousePresetBindings(ogun::MousePreset::Blender));
+    CHECK(blender.mouse.zoomSpeed == 2.0f);
+    CHECK(blender.mouse.invertWheelZoom);
+
+    // Unknown preset (e.g. from a newer Ogun): the Ogun scheme
+    const ogun::UserPreferences future = ogun::parseUserPreferences(
+        "mouse.preset = cura\n"
+        "mouse.orbit = right\n"
+        "mouse.zoom_speed = 1000\n");
+    CHECK(future.mouse.preset == ogun::MousePreset::Ogun);
+    CHECK(future.mouse.bindings == ogunDefault.bindings);
+    CHECK(future.mouse.zoomSpeed == ogun::settings::kMaxMouseZoomSpeed);
+
+    // Custom: valid bindings are kept, invalid ones keep Ogun's binding for that action
+    const ogun::UserPreferences custom = ogun::parseUserPreferences(
+        "mouse.preset = custom\n"
+        "mouse.orbit = middle\n"
+        "mouse.pan = banana\n"
+        "mouse.zoom_wheel = left\n"     // a button for a wheel action
+        "mouse.select = wheel\n"        // the wheel for a click action
+        "mouse.clear_pick = none\n"
+        "mouse.future_action = left\n"); // unknown key
+    CHECK(custom.mouse.preset == ogun::MousePreset::Custom);
+    CHECK(custom.mouse.of(MouseAction::Orbit) == ogun::MouseActionBindings{{{MouseInput::Middle, 0}}});
+    CHECK(custom.mouse.of(MouseAction::Pan) == ogunDefault.of(MouseAction::Pan));
+    CHECK(custom.mouse.of(MouseAction::WheelZoom) == ogunDefault.of(MouseAction::WheelZoom));
+    CHECK(custom.mouse.of(MouseAction::Select) == ogunDefault.of(MouseAction::Select));
+    CHECK_FALSE(custom.mouse.of(MouseAction::ClearPick)[0].bound());
+
+    // The default file writes the Ogun scheme, readable as text
+    const std::string text = ogun::formatUserPreferences(ogun::UserPreferences{});
+    CHECK(text.find("mouse.preset = ogun\n") != std::string::npos);
+    CHECK(text.find("mouse.pan = shift+left, right, middle\n") != std::string::npos);
 }

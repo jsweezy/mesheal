@@ -6,6 +6,7 @@ add_executable(ogun_app_tests
     HealthModelTests.cpp
     HoleRepairTests.cpp
     IntersectionRepairTests.cpp
+    MouseMappingTests.cpp
     RecentFilesTests.cpp
     ShellBrowserTests.cpp
     UserPreferencesTests.cpp

@@ -222,7 +222,7 @@ void addSurfaceStyle(std::vector<Field>& fields, const char* section, const std:
 const std::vector<Field>& preferenceFields() {
     static const std::vector<Field> fields = [] {
         std::vector<Field> f;
-        f.reserve(48);
+        f.reserve(64);
 
         const char* tol = "Preferences > Units & Tolerance (file units)";
         f.push_back(realField(tol, "weld_floor", [](auto& p) -> auto& { return p.tolerance.absFloor; }, 0.0, kHuge));
@@ -308,6 +308,37 @@ const std::vector<Field>& preferenceFields() {
                      },
                      equalBy([](auto& p) -> auto& { return p.backgroundColor; })});
         f.push_back(boolField("View", "show_compass", [](auto& p) -> auto& { return p.showCompass; }));
+
+        // A built-in preset's bindings are applied after parsing (`applyMousePresetBindings`); the
+        // binding keys are written anyway so the file shows the active scheme
+        const char* mouse = "Preferences > Mouse";
+        f.push_back(enumField(mouse, "mouse.preset", [](auto& p) -> auto& { return p.mouse.preset; },
+                              std::array<std::pair<MousePreset, const char*>, kMousePresetCount>{{
+                                  {MousePreset::Ogun, mousePresetKey(MousePreset::Ogun)},
+                                  {MousePreset::Blender, mousePresetKey(MousePreset::Blender)},
+                                  {MousePreset::OpenScad, mousePresetKey(MousePreset::OpenScad)},
+                                  {MousePreset::Maya, mousePresetKey(MousePreset::Maya)},
+                                  {MousePreset::Fusion360, mousePresetKey(MousePreset::Fusion360)},
+                                  {MousePreset::SolidWorks, mousePresetKey(MousePreset::SolidWorks)},
+                                  {MousePreset::Custom, mousePresetKey(MousePreset::Custom)},
+                              }}));
+        f.push_back(boolField(mouse, "mouse.invert_wheel_zoom", [](auto& p) -> auto& { return p.mouse.invertWheelZoom; }));
+        f.push_back(realField(mouse, "mouse.zoom_speed", [](auto& p) -> auto& { return p.mouse.zoomSpeed; },
+                              settings::kMinMouseZoomSpeed, settings::kMaxMouseZoomSpeed));
+        for (const MouseAction action : kAllMouseActions) {
+            const std::size_t i = static_cast<std::size_t>(action);
+            f.push_back({mouse, std::string("mouse.") + mouseActionKey(action),
+                         [i](const UserPreferences& p) { return formatMouseBindingList(p.mouse.bindings[i]); },
+                         [i, action](UserPreferences& p, std::string_view text) {
+                             const auto bindings = parseMouseBindingList(text, action);
+                             if (!bindings) {
+                                 return false;
+                             }
+                             p.mouse.bindings[i] = *bindings;
+                             return true;
+                         },
+                         equalBy([i](auto& p) -> auto& { return p.mouse.bindings[i]; })});
+        }
         return f;
     }();
     return fields;
@@ -376,6 +407,7 @@ UserPreferences parseUserPreferences(std::string_view text) {
             it->parse(prefs, value); // a malformed value keeps the default
         }
     }
+    applyMousePresetBindings(prefs.mouse);
     return prefs;
 }
 

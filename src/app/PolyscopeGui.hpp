@@ -64,6 +64,10 @@ private:
     void drawLeftColumn(float top, float bottom, float rightColumnLeft);
     void drawRightColumn(float top, float bottom);
     void drawPreferencesWindow(float top, float bottom, float rightColumnLeft);
+    /// Preferences > Mouse: preset, one row of bindings per action, conflicts, zoom options.
+    void drawMousePreferencesTab();
+    /// Popup editing one binding of the Mouse tab (click-to-capture plus button / modifier controls).
+    void drawMouseBindingEditor();
     /// Controller preferences plus the GUI-only ones (UI scale, background color).
     [[nodiscard]] UserPreferences currentPreferences() const;
     /// Applies `prefs` to the controller, the GUI and Polyscope (Preferences > Reset to defaults).
@@ -159,7 +163,10 @@ private:
     // ---- Viewport input & Polyscope sync (PolyscopeGui.cpp) ----
     void handleViewportMouseNavigation();
     void handleKeyboardShortcuts();
-    void handleViewportFacePick(const polyscope::PickResult& pickResult);
+    /// `shellPick`: Select Shell (on multi-shell meshes), adding / removing it when `shellToggle`.
+    void handleViewportFacePick(const polyscope::PickResult& pickResult, bool shellPick, bool shellToggle);
+    /// Runs the click action bound to `button` (released without dragging).
+    void handleViewportClick(MouseInput button);
     void processPivotRotate(float dragDeltaX, float dragDeltaY);
     void processPivotTranslate(float dragDeltaX, float dragDeltaY, double effectiveDist);
     void processPivotZoom(double amount, double effectiveDist);
@@ -229,6 +236,9 @@ private:
     bool leftColumnAutoCollapsed_ = false;
     float rightColumnWidth_ = settings::kRightColumnDefaultPx;
     float uiScale_ = 1.0f;
+    MouseMapping mouseMapping_;                  ///< Preferences > Mouse (saved preference)
+    MouseAction editingMouseAction_ = MouseAction::Orbit; ///< Binding open in the Mouse tab's editor
+    std::size_t editingMouseSlot_ = 0;
 
     // Saved preferences (written to `preferencesFile_` whenever a value changes)
     std::filesystem::path preferencesFile_;

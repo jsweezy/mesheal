@@ -27,6 +27,12 @@ void tooltip(const char* text) {
     }
 }
 
+MouseModifiers heldMouseModifiers() {
+    const ImGuiIO& io = ImGui::GetIO();
+    return static_cast<MouseModifiers>((io.KeyShift ? kMouseModShift : 0) | (io.KeyCtrl ? kMouseModCtrl : 0) |
+                                       (io.KeyAlt ? kMouseModAlt : 0));
+}
+
 void helpMarker(const char* text) {
     ImGui::SameLine();
     ImGui::TextDisabled("(?)");

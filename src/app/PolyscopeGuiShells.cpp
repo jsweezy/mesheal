@@ -59,7 +59,13 @@ void PolyscopeGui::drawShellsPanel() {
 
     const ShellBrowser& shells = controller_.shells();
     if (shells.selectedCount() == 0) {
-        ImGui::TextDisabled("Click a shell, or Alt+click it in 3D.");
+        const MouseBinding& shellClick = mouseMapping_.of(MouseAction::SelectShell)[0];
+        if (shellClick.bound()) {
+            ImGui::TextDisabled("Click a shell, or %s it in 3D.",
+                                formatMouseBinding(shellClick, MouseActionKind::Click).c_str());
+        } else {
+            ImGui::TextDisabled("Click a shell to select it.");
+        }
     } else {
         std::size_t faces = 0;
         for (const std::size_t s : shells.selectedShells()) {
