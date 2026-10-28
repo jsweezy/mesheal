@@ -402,18 +402,16 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
         break;
     }
     case GlobalRepairMethod::MergeVertices: {
-        // Edited in the file's unit, stored in millimetres
-        const Unit unit = controller_.fileUnit();
-        const double toFile = unitConversionFactor(Unit::Millimeter, unit);
-        double distance = params.mergeDistanceMm * toFile;
-        const std::string label = "Distance (" + std::string(unitSymbol(unit)) + ")";
-        const double lo = settings::kMinMergeDistanceMm * toFile;
-        const double hi = settings::kMaxMergeDistanceMm * toFile;
+        // The number is in file coordinates; the unit is only a label
+        double distance = params.mergeDistanceMm;
+        const std::string label = "Distance (" + std::string(unitSymbol(controller_.fileUnit())) + ")";
+        const double lo = settings::kMinMergeDistanceMm;
+        const double hi = settings::kMaxMergeDistanceMm;
         if (ImGui::SliderScalar(label.c_str(), ImGuiDataType_Double, &distance, &lo, &hi, "%.4g", ImGuiSliderFlags_Logarithmic)) {
-            params.mergeDistanceMm = std::clamp(distance / toFile, settings::kMinMergeDistanceMm, settings::kMaxMergeDistanceMm);
+            params.mergeDistanceMm = std::clamp(distance, settings::kMinMergeDistanceMm, settings::kMaxMergeDistanceMm);
             changed = true;
         }
-        tooltip("Vertices closer than this are merged (default 0.05 mm; 0.0001 to 10 mm, log scale). "
+        tooltip("Vertices closer than this are merged (default 0.05; 0.0001 to 10, log scale; the unit is only a label). "
                 "Ctrl+click (Control, not Cmd) to type a value.");
         changed |= ImGui::Checkbox("Keep surfaces apart", &params.mergeKeepSurfacesApart);
         tooltip("On: two vertices merge only when an edge joins them (a short edge collapses) or both lie "
@@ -424,10 +422,10 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
         if (meanEdge > 0.0) {
             const double ratio = distance / meanEdge;
             if (ratio < 1.0) {
-                ImGui::TextDisabled("mean edge %s (the distance is %.0f%% of it)", lengthText(meanEdge, unit).c_str(), 100.0 * ratio);
+                ImGui::TextDisabled("mean edge %s (the distance is %.0f%% of it)", lengthText(meanEdge, controller_.fileUnit()).c_str(), 100.0 * ratio);
             } else {
                 ImGui::PushStyleColor(ImGuiCol_Text, gui::kDefectColor);
-                ImGui::TextWrapped("mean edge %s: the distance is %.3gx that, so %s", lengthText(meanEdge, unit).c_str(), ratio,
+                ImGui::TextWrapped("mean edge %s: the distance is %.3gx that, so %s", lengthText(meanEdge, controller_.fileUnit()).c_str(), ratio,
                                    ratio < settings::kMergeCollapseWarnRatio ? "many edges will collapse" : "whole areas will collapse");
                 ImGui::PopStyleColor();
             }

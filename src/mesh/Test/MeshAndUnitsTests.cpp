@@ -30,26 +30,18 @@ ogun::Mesh makeTestTetrahedron(ogun::Unit unit = ogun::Unit::Millimeter) {
 
 } // namespace
 
-TEST_CASE("Changing File Units leaves vertex coordinates V untouched and converts atomic floor tolerance",
+TEST_CASE("Changing File Units leaves vertex coordinates V and the weld floor untouched",
           "[mesh][units][tolerance]") {
     ogun::Mesh mesh = makeTestTetrahedron(ogun::Unit::Millimeter);
     const Eigen::MatrixXd originalV = mesh.V;
-    const ogun::ToleranceConfig tolConfig; // Default: absFloorCm = 1e-9, relTol = 1e-9
+    const ogun::ToleranceConfig tolConfig; // Default: absFloor = 1e-9, relTol = 1e-9
 
-    REQUIRE(mesh.fileUnit == ogun::Unit::Millimeter);
-    REQUIRE(tolConfig.absFloorInUnit(mesh.fileUnit) == Catch::Approx(1e-8).epsilon(1e-12));
-
-    // Re-interpret file units from mm to cm without scaling geometry
     ogun::setFileUnit(mesh, ogun::Unit::Centimeter);
 
     REQUIRE(mesh.fileUnit == ogun::Unit::Centimeter);
     REQUIRE(mesh.V.isApprox(originalV, 0.0));
-    REQUIRE(tolConfig.absFloorInUnit(mesh.fileUnit) == Catch::Approx(1e-9).epsilon(1e-12));
-
-    // Check additional supported units
-    REQUIRE(tolConfig.absFloorInUnit(ogun::Unit::Meter) == Catch::Approx(1e-11).epsilon(1e-12));
-    REQUIRE(tolConfig.absFloorInUnit(ogun::Unit::Inch) == Catch::Approx(1e-9 / 2.54).epsilon(1e-12));
-    REQUIRE(tolConfig.absFloorInUnit(ogun::Unit::Foot) == Catch::Approx(1e-9 / 30.48).epsilon(1e-12));
+    REQUIRE(tolConfig.absFloor == ogun::settings::kDefaultWeldAbsFloor);
+    REQUIRE(tolConfig.coordinateTolerance(0.0, 0.0) == ogun::settings::kDefaultWeldAbsFloor);
 }
 
 TEST_CASE("extractFaces keeps only the listed faces and the vertices they use", "[mesh]") {
@@ -131,37 +123,32 @@ TEST_CASE("Round-trip conversion between ogun::Mesh and manifold::MeshGL",
     REQUIRE(roundTrip64.F == original.F);
 }
 
-TEST_CASE("Local coordinate-relative tolerance uses 1e-9 cm floor near origin and scales at large coordinates",
+TEST_CASE("Local coordinate-relative tolerance uses the 1e-9 floor near origin and scales at large coordinates",
           "[mesh][tolerance]") {
     const ogun::ToleranceConfig config{1e-9, 1e-9};
 
-    SECTION("Near the origin in cm, the 1e-9 cm atomic floor dominates") {
-        const double epsOrigin = config.coordinateTolerance(0.0, 1e-12, ogun::Unit::Centimeter);
+    SECTION("Near the origin the 1e-9 atomic floor dominates") {
+        const double epsOrigin = config.coordinateTolerance(0.0, 1e-12);
         REQUIRE(epsOrigin == Catch::Approx(1e-9).epsilon(1e-15));
 
         const Eigen::Vector3d p(0.0, 0.0, 0.0);
         const Eigen::Vector3d qClose(5e-10, -5e-10, 9e-10);
         const Eigen::Vector3d qFar(2e-9, 0.0, 0.0);
-        REQUIRE(config.verticesMatchWithinTolerance(p, qClose, ogun::Unit::Centimeter));
-        REQUIRE_FALSE(config.verticesMatchWithinTolerance(p, qFar, ogun::Unit::Centimeter));
-    }
-
-    SECTION("Near the origin in mm, the converted 1e-8 mm floor dominates") {
-        const double epsOriginMm = config.coordinateTolerance(0.0, 1e-12, ogun::Unit::Millimeter);
-        REQUIRE(epsOriginMm == Catch::Approx(1e-8).epsilon(1e-15));
+        REQUIRE(config.verticesMatchWithinTolerance(p, qClose));
+        REQUIRE_FALSE(config.verticesMatchWithinTolerance(p, qFar));
     }
 
     SECTION("At large coordinates (e.g., 1e9 cm), relative tolerance scales proportionally") {
         const double largeCoord = 1e9; // 10,000 km in cm
-        const double epsLarge = config.coordinateTolerance(largeCoord, largeCoord + 0.5, ogun::Unit::Centimeter);
+        const double epsLarge = config.coordinateTolerance(largeCoord, largeCoord + 0.5);
         // relTol * max(|p|, |q|) ~= 1e-9 * 1e9 = 1.0 cm >> 1e-9 cm floor
         REQUIRE(epsLarge == Catch::Approx(1e-9 * (largeCoord + 0.5)).epsilon(1e-12));
 
         const Eigen::Vector3d p(largeCoord, -largeCoord, 0.0);
         const Eigen::Vector3d qWithinRel(largeCoord + 0.5, -largeCoord - 0.5, 5e-10);
         const Eigen::Vector3d qOutsideRel(largeCoord + 2.0, -largeCoord, 0.0);
-        REQUIRE(config.verticesMatchWithinTolerance(p, qWithinRel, ogun::Unit::Centimeter));
-        REQUIRE_FALSE(config.verticesMatchWithinTolerance(p, qOutsideRel, ogun::Unit::Centimeter));
+        REQUIRE(config.verticesMatchWithinTolerance(p, qWithinRel));
+        REQUIRE_FALSE(config.verticesMatchWithinTolerance(p, qOutsideRel));
     }
 }
 

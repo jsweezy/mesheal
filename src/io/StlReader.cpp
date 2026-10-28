@@ -27,9 +27,8 @@ double computeProjectionKey(const Eigen::Vector3d& p) noexcept {
 // within `tolConfig` along all three coordinate axes, including an IEEE-754 ULP safety margin.
 double computeMaxKeyDelta(
     const Eigen::Vector3d& p,
-    Unit unit,
     const ToleranceConfig& tolConfig) noexcept {
-    const double epsAbs = std::max(0.0, tolConfig.absFloorInUnit(unit));
+    const double epsAbs = std::max(0.0, tolConfig.absFloor);
     const double rel = std::clamp(tolConfig.relTol, 0.0, 0.5);
     const double denom = 1.0 - rel;
 
@@ -93,9 +92,9 @@ Mesh weldVerticesLocal(
             triPos[static_cast<std::size_t>(c)] = rawV.row(vIdx).transpose();
         }
 
-        const bool m01 = tolConfig.verticesMatchWithinTolerance(triPos[0], triPos[1], unit);
-        const bool m12 = tolConfig.verticesMatchWithinTolerance(triPos[1], triPos[2], unit);
-        const bool m20 = tolConfig.verticesMatchWithinTolerance(triPos[2], triPos[0], unit);
+        const bool m01 = tolConfig.verticesMatchWithinTolerance(triPos[0], triPos[1]);
+        const bool m12 = tolConfig.verticesMatchWithinTolerance(triPos[1], triPos[2]);
+        const bool m20 = tolConfig.verticesMatchWithinTolerance(triPos[2], triPos[0]);
 
         const auto fIdx = static_cast<std::size_t>(f);
         isSubTolCorner[fIdx][0] = m01 || m20;
@@ -141,7 +140,7 @@ Mesh weldVerticesLocal(
         const auto cIdx = static_cast<std::size_t>(entry.corner);
         const Eigen::Vector3d& p = entry.pos;
         const double key = entry.key;
-        const double maxDeltaKey = computeMaxKeyDelta(p, unit, tolConfig);
+        const double maxDeltaKey = computeMaxKeyDelta(p, tolConfig);
 
         int bestU = -1;
         double bestDistSq = std::numeric_limits<double>::infinity();
@@ -156,7 +155,7 @@ Mesh weldVerticesLocal(
                 return;
             }
             const Eigen::Vector3d& q = weldedPositions[static_cast<std::size_t>(u)];
-            if (!tolConfig.verticesMatchWithinTolerance(p, q, unit)) {
+            if (!tolConfig.verticesMatchWithinTolerance(p, q)) {
                 return;
             }
             const double distSq = (p - q).squaredNorm();

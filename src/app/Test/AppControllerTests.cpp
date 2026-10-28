@@ -37,20 +37,24 @@ TEST_CASE("AppController loads sample mesh, changes File Units without scaling V
     const Eigen::MatrixXd originalV = controller.mesh().V;
     REQUIRE(controller.mesh().boundingBox().extents().isApprox(Eigen::Vector3d(10.0, 10.0, 10.0), 1e-12));
 
-    // Changing File Units dropdown from mm to cm leaves V untouched and converts physical thresholds
-    controller.setFileUnit(ogun::Unit::Centimeter);
-    REQUIRE(controller.fileUnit() == ogun::Unit::Centimeter);
-    REQUIRE(controller.mesh().V.isApprox(originalV, 0.0));
-    REQUIRE(controller.thresholds().minAltitude == Catch::Approx(1.0e-5).epsilon(1e-12));
-    REQUIRE(controller.thresholds().minArea == Catch::Approx(1.0e-10).epsilon(1e-12));
-    REQUIRE(controller.thresholds().maxAspectRatio == Catch::Approx(1000.0).epsilon(1e-12));
-    REQUIRE(controller.toleranceConfig().absFloorInUnit(controller.fileUnit()) ==
-            Catch::Approx(1.0e-9).epsilon(1e-15));
-
-    // Switch back to mm, then explicitly rescale coordinates from mm to cm
+    // Changing File Units from mm to cm only relabels: V and every setting keep their numbers
+    const ogun::ThinFaceThresholds thresholdsBefore = controller.thresholds();
+    const ogun::ToleranceConfig toleranceBefore = controller.toleranceConfig();
+    const double mergeBefore = controller.globalRepairParams().mergeDistanceMm;
+    for (const ogun::Unit unit : ogun::kAllUnits) {
+        controller.setFileUnit(unit);
+        REQUIRE(controller.fileUnit() == unit);
+        REQUIRE(controller.mesh().V.isApprox(originalV, 0.0));
+        REQUIRE(controller.thresholds().minAltitude == thresholdsBefore.minAltitude);
+        REQUIRE(controller.thresholds().minArea == thresholdsBefore.minArea);
+        REQUIRE(controller.thresholds().maxAspectRatio == thresholdsBefore.maxAspectRatio);
+        REQUIRE(controller.toleranceConfig().absFloor == toleranceBefore.absFloor);
+        REQUIRE(controller.toleranceConfig().relTol == toleranceBefore.relTol);
+        REQUIRE(controller.globalRepairParams().mergeDistanceMm == mergeBefore);
+    }
     controller.setFileUnit(ogun::Unit::Millimeter);
-    REQUIRE(controller.thresholds().minAltitude == Catch::Approx(1.0e-4).epsilon(1e-12));
-    REQUIRE(controller.thresholds().minArea == Catch::Approx(1.0e-8).epsilon(1e-12));
+
+    // Only the explicit scale converts numbers
 
     controller.scaleMeshCoordinatesToUnit(ogun::Unit::Centimeter);
     REQUIRE(controller.fileUnit() == ogun::Unit::Centimeter);

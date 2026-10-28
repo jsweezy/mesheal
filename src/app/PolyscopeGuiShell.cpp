@@ -400,7 +400,7 @@ void PolyscopeGui::drawMeshMenu() {
         controller_.openMergeVertices();
         requestSync();
     }
-    tooltip("Merge vertices closer than a distance (default 0.05 mm) in the selected faces, or the whole mesh, "
+    tooltip("Merge vertices closer than a distance (default 0.05) in the selected faces, or the whole mesh, "
             "removing the faces that collapse. Preview, then apply.");
     if (ImGui::MenuItem("Alpha Wrap...", nullptr, false, hasMesh)) {
         controller_.openAlphaWrap();
@@ -583,8 +583,7 @@ void PolyscopeGui::drawStatusBar(float top, float height) {
     if (ImGui::SmallButton(unitButton.c_str())) {
         ImGui::OpenPopup("FileUnitsPopup");
     }
-    tooltip("File units: click to change. They re-interpret the numbers in the file and never move "
-            "vertices. Mesh > Units & Scale has the same setting and coordinate scaling.");
+    tooltip("File units: click to change. They only relabel the numbers; no value or vertex changes. Mesh > Units & Scale has the same setting and coordinate scaling.");
     if (ImGui::BeginPopup("FileUnitsPopup")) {
         ImGui::TextDisabled("File units (re-interpret, no scaling)");
         for (const Unit u : kAllUnits) {
@@ -717,11 +716,11 @@ void PolyscopeGui::drawPreferencesWindow() {
             ToleranceConfig tol = controller_.toleranceConfig();
             bool changed = false;
             ImGui::PushItemWidth(110.0f);
-            if (ImGui::InputDouble("Weld floor (cm)", &tol.absFloorCm, 0.0, 0.0, "%.0e")) {
-                tol.absFloorCm = std::max(0.0, tol.absFloorCm);
+            if (ImGui::InputDouble("Weld floor", &tol.absFloor, 0.0, 0.0, "%.0e")) {
+                tol.absFloor = std::max(0.0, tol.absFloor);
                 changed = true;
             }
-            gui::helpMarker("Absolute vertex-welding tolerance floor used when loading STL files.");
+            gui::helpMarker("Absolute vertex-welding tolerance floor used when loading STL files, in file coordinates (the file unit does not change it).");
             if (ImGui::InputDouble("Relative tolerance", &tol.relTol, 0.0, 0.0, "%.0e")) {
                 tol.relTol = std::max(0.0, tol.relTol);
                 changed = true;
@@ -732,7 +731,7 @@ void PolyscopeGui::drawPreferencesWindow() {
             }
             const std::string sym(unitSymbol(controller_.fileUnit()));
             ImGui::TextDisabled("Active floor: %.0e %s (applies to the next load)",
-                                controller_.toleranceConfig().absFloorInUnit(controller_.fileUnit()), sym.c_str());
+                                controller_.toleranceConfig().absFloor, sym.c_str());
             if (ImGui::Button("Reset default tolerances")) {
                 controller_.setToleranceConfig(ToleranceConfig{});
             }

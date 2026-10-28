@@ -236,9 +236,7 @@ void AppController::setFileUnit(Unit newUnit) noexcept {
     }
 
     ogun::setFileUnit(mesh_, newUnit);
-    thresholds_ = thresholds_.convertedToUnit(oldUnit, newUnit);
-    // Same numbers, new unit: lengths in results stay valid, but the thin thresholds changed meaning
-    onCheckParamsChanged(DefectCategory::ThinFaces);
+    // Units are a label only: thresholds and results keep their numbers, so nothing is rechecked
 }
 
 void AppController::scaleMeshCoordinatesToUnit(Unit targetUnit) {

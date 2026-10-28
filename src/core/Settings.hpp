@@ -41,10 +41,10 @@ inline constexpr double kMaxCameraFovDegrees     = 160.0;         // Maximum cla
 inline constexpr float  kDragIgnoreThreshold     = 0.01f;         // Minimum pixel delta to register viewport camera drag
 
 // -----------------------------------------------------------------------------
-// Thin Face Diagnostics Threshold Defaults (referenced to Millimeters)
+// Thin Face Diagnostics Threshold Defaults (file units; the unit is only a label)
 // -----------------------------------------------------------------------------
-inline constexpr double kDefaultThinFaceMinAltitude     = 1.0e-4; // Minimum allowable triangle altitude h_min = 2A / l_max (mm)
-inline constexpr double kDefaultThinFaceMinArea         = 1.0e-8; // Minimum allowable triangle surface area A (mm^2)
+inline constexpr double kDefaultThinFaceMinAltitude     = 1.0e-4; // Minimum allowable triangle altitude h_min = 2A / l_max (file units)
+inline constexpr double kDefaultThinFaceMinArea         = 1.0e-8; // Minimum allowable triangle surface area A (file units^2)
 inline constexpr double kDefaultThinFaceMaxAspectRatio  = 1000.0;// Dimensionless maximum aspect ratio ceiling (l_max / h_min)
 
 // -----------------------------------------------------------------------------
@@ -74,9 +74,9 @@ inline constexpr double kDefaultAlphaWrapOffsetRatio      = 30.0;   // Alpha wra
 inline constexpr double kDefaultDecimateRatio             = 0.5;    // Mesh > Simplify > Decimate: keep this fraction of the faces
 inline constexpr double kMinDecimateRatio                 = 0.01;   // Smallest decimation ratio offered
 inline constexpr double kMaxDecimateRatio                 = 1.0;    // Largest decimation ratio offered (no change)
-inline constexpr double kDefaultMergeDistanceMm           = 0.05;   // Mesh > Weld / Merge Vertices: merge distance in mm
-inline constexpr double kMinMergeDistanceMm               = 1.0e-4; // Merge distance slider minimum (log scale), mm
-inline constexpr double kMaxMergeDistanceMm               = 10.0;   // Merge distance slider maximum, mm
+inline constexpr double kDefaultMergeDistanceMm           = 0.05;   // Mesh > Weld / Merge Vertices: merge distance in file units (unitless)
+inline constexpr double kMinMergeDistanceMm               = 1.0e-4; // Merge distance slider minimum (log scale), file units
+inline constexpr double kMaxMergeDistanceMm               = 10.0;   // Merge distance slider maximum, file units
 inline constexpr double kMergeCollapseWarnRatio           = 5.0;    // Merge distance / mean edge above which "whole areas will collapse"
 inline constexpr bool   kDefaultMergeKeepSurfacesApart    = true;   // Merge vertices only along an edge or between open-edge vertices
 inline constexpr double kMinAlphaWrapOffsetDiag           = 1.0e-5; // Smallest offset offered, as a fraction of the bbox diagonal
@@ -162,7 +162,7 @@ inline constexpr std::size_t kMaxUndoHistoryDepth    = 50;        // Max undo sn
 // -----------------------------------------------------------------------------
 // Vertex Welding Tolerance Defaults
 // -----------------------------------------------------------------------------
-inline constexpr double kDefaultWeldAbsFloorCm = 1.0e-9;          // Absolute tolerance floor in cm (~1 hydrogen atom)
+inline constexpr double kDefaultWeldAbsFloor = 1.0e-9;            // Absolute tolerance floor in file coordinates (unitless: the file unit never rescales it)
 inline constexpr double kDefaultWeldRelTol     = 1.0e-9;          // Coordinate-relative vertex welding tolerance
 
 } // namespace ogun::settings
