@@ -211,6 +211,7 @@ private:
     bool showNavigationHelpWindow_ = false;
     bool requestAbout_ = false;
     bool requestSaveConfirm_ = false;
+    bool requestDeleteConfirm_ = false;                      ///< Open the X-key "Delete N selected faces?" popup
     bool requestSetOrigin_ = false;                          ///< Open the Set Origin to Selection confirmation
     Eigen::Vector3d pendingOrigin_ = Eigen::Vector3d::Zero(); ///< Selection centroid shown in that confirmation
     bool layoutResetPending_ = true;

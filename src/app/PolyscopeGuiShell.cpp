@@ -426,10 +426,10 @@ void PolyscopeGui::drawMeshMenu() {
     }
     tooltip("Shrink-wrap the mesh (or the shells in scope) into a new watertight, manifold surface without "
             "self-intersections (CGAL 3D Alpha Wrapping). Set alpha and offset, preview, then apply.");
-    if (ImGui::MenuItem("Delete Selected Faces", "Del", false, controller_.selectedFaceCount() > 0)) {
+    if (ImGui::MenuItem("Delete Selected Faces", "X / Del", false, controller_.selectedFaceCount() > 0)) {
         deleteSelection();
     }
-    tooltip("Remove the selected faces (Shift+click, B or C) from the mesh. Undo with Cmd+Z.");
+    tooltip("Remove the selected faces (Shift+click, B or C) from the mesh. X asks first; Del / Backspace delete at once. Undo with Cmd+Z.");
     if (ImGui::MenuItem("Remove Small Shells...", nullptr, false, controller_.shells().multiShell())) {
         // Selecting them in the Shells panel lets the user review before pressing Delete
         const auto limit = static_cast<std::size_t>(smallShellFaces_);
@@ -929,6 +929,29 @@ void PolyscopeGui::drawModalPopups() {
         ImGui::EndPopup();
     }
 
+    if (requestDeleteConfirm_) {
+        requestDeleteConfirm_ = false;
+        ImGui::SetNextWindowPos(ImGui::GetMousePos(), ImGuiCond_Always, ImVec2(0.5f, 0.0f));
+        ImGui::OpenPopup("DeleteFacesConfirm");
+    }
+    if (ImGui::BeginPopup("DeleteFacesConfirm")) {
+        const std::size_t count = controller_.selectedFaceCount();
+        ImGui::Text("Delete %s selected face%s?", gui::withThousands(count).c_str(), count == 1 ? "" : "s");
+        if (ImGui::IsWindowAppearing()) {
+            ImGui::SetKeyboardFocusHere();
+        }
+        if (ImGui::Button("Delete") || ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
+            ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false)) {
+            deleteSelection();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
     if (requestSetOrigin_) {
         ImGui::OpenPopup("Set Origin to Selection");
         requestSetOrigin_ = false;
@@ -1034,7 +1057,8 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"A  /  Alt+A", "Select all shown faces / deselect all faces"},
         {"Esc", "Leaves box / circle select; clears the defect selection; then closes the Tool and deselects the row, then clears the face selection, then the shell selection"},
         {"I", "Shells: isolate the selected shells (Mesh Health then covers only them); press again to bring the others back. With another shell selected, switches the isolation to it"},
-        {"Delete  /  Backspace", "Deletes the selected faces (Mesh > Delete Selected Faces); with no faces selected, the selected shells. Undoable"},
+        {"X", "Asks \"Delete N selected faces?\" next to the cursor (Enter or Delete confirms; Esc, Cancel or a click outside cancels), then deletes the selected faces as Delete does"},
+        {"Delete  /  Backspace", "Immediately (no confirmation) deletes the selected faces (Mesh > Delete Selected Faces); with no faces selected, the selected shells. Undoable"},
         {"F5", "Check Mesh: runs every Mesh Health row in the background"},
         {"Ctrl/Cmd + Z", "Undoes the last mesh modification (repair, Fix All / Fix Selected, Scale, Transform, Decimate, Weld, Delete Faces / Shells), one step at a time"},
         {"Ctrl/Cmd + O / S / Shift+S", "Open, Save (overwrite, asks the first time), Save As"},

@@ -674,7 +674,7 @@ void PolyscopeGui::handleKeyboardShortcuts() {
     if (io.WantCaptureKeyboard && ImGui::IsAnyItemActive()) {
         return;
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
         if (faceSelectMode_ != FaceSelectMode::None) {
             exitFaceSelectMode(); // first Esc only leaves box / circle select
         } else if (controller_.escape()) {
@@ -723,6 +723,14 @@ void PolyscopeGui::handleKeyboardShortcuts() {
     }
     if (ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false)) {
         deleteSelection();
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_X, false) && !io.KeyShift && !io.KeyAlt) {
+        // Blender-style: X asks first, Delete / Backspace do not
+        if (controller_.selectedFaceCount() > 0) {
+            requestDeleteConfirm_ = true;
+        } else {
+            controller_.postStatusMessage("No faces selected.");
+        }
     }
     if (ImGui::IsKeyPressed(ImGuiKey_Period, false) ||
         ImGui::IsKeyPressed(ImGuiKey_KeypadDecimal, false)) {
