@@ -71,6 +71,7 @@ private:
     /// Saves the preferences when they changed, once no widget is being edited (`force`: even then).
     void savePreferencesIfChanged(bool force = false);
     void drawNavigationHelpWindow();
+    void drawAboutWindow();
     void drawModalPopups();
     void resetLayout();
     void openFileDialog();
@@ -209,7 +210,7 @@ private:
     bool showMeshInfo_ = false;
     bool showPreferences_ = false;
     bool showNavigationHelpWindow_ = false;
-    bool requestAbout_ = false;
+    bool showAboutWindow_ = false;
     bool requestSaveConfirm_ = false;
     bool requestDeleteConfirm_ = false;                      ///< Open the X-key "Delete N selected faces?" popup
     bool requestSetOrigin_ = false;                          ///< Open the Set Origin to Selection confirmation

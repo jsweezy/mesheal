@@ -336,6 +336,9 @@ void PolyscopeGui::drawUiFrame() {
     if (showNavigationHelpWindow_) {
         drawNavigationHelpWindow();
     }
+    if (showAboutWindow_) {
+        drawAboutWindow();
+    }
     drawModalPopups();
     drawFaceSelectOverlay();
     layoutResetPending_ = false;

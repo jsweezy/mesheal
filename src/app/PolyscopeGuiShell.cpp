@@ -1,9 +1,12 @@
+#include "app/AboutInfo.hpp"
 #include "app/GuiWidgets.hpp"
 #include "app/PolyscopeGui.hpp"
 #include "core/Settings.hpp"
+#include "ogun/Version.hpp"
 
 #include <imgui.h>
 #include <polyscope/polyscope.h>
+#include <polyscope/render/engine.h>
 #include <polyscope/screenshot.h>
 #include <polyscope/view.h>
 #include <portable-file-dialogs.h>
@@ -490,7 +493,7 @@ void PolyscopeGui::drawHelpMenu() {
         showNavigationHelpWindow_ = !showNavigationHelpWindow_;
     }
     if (ImGui::MenuItem("About Ogun")) {
-        requestAbout_ = true;
+        showAboutWindow_ = true;
     }
     ImGui::EndMenu();
 }
@@ -916,19 +919,6 @@ void PolyscopeGui::savePreferencesIfChanged(bool force) {
 }
 
 void PolyscopeGui::drawModalPopups() {
-    if (requestAbout_) {
-        ImGui::OpenPopup("About Ogun");
-        requestAbout_ = false;
-    }
-    if (ImGui::BeginPopupModal("About Ogun", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextUnformatted("Ogun - STL Mesh Inspection & Repair Tool");
-        ImGui::TextDisabled("Prepares STL meshes for simulation. GPL-3.0-or-later.");
-        if (ImGui::Button("Close")) {
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::EndPopup();
-    }
-
     if (requestDeleteConfirm_) {
         requestDeleteConfirm_ = false;
         ImGui::SetNextWindowPos(ImGui::GetMousePos(), ImGuiCond_Always, ImVec2(0.5f, 0.0f));
@@ -1000,6 +990,113 @@ void PolyscopeGui::drawModalPopups() {
         }
         ImGui::EndPopup();
     }
+}
+
+void PolyscopeGui::drawAboutWindow() {
+    const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(560.0f, 440.0f), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("About Ogun", &showAboutWindow_)) {
+        ImGui::End();
+        return;
+    }
+
+    if (ImGui::BeginTabBar("AboutTabs")) {
+        if (ImGui::BeginTabItem("Version")) {
+            constexpr float kIconSize = 112.0f;
+            if (appIconTexture_ != nullptr) {
+                const float indent = (ImGui::GetContentRegionAvail().x - kIconSize) * 0.5f;
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, indent));
+                ImGui::Image(appIconTexture_->getNativeHandle(), ImVec2(kIconSize, kIconSize));
+            }
+            const auto centredText = [](const std::string& text) {
+                const float indent = (ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(text.c_str()).x) * 0.5f;
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, indent));
+                ImGui::TextUnformatted(text.c_str());
+            };
+            ImGui::Spacing();
+            centredText("Ogun");
+            centredText("Version " + std::string(kVersionString) + " (" + std::string(kVersionDate) + ")");
+            centredText("By Jeremy Sweezy");
+            ImGui::Spacing();
+            centredText("Licensed under the GNU General Public License v3.0 (GPLv3)");
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Credits")) {
+            ImGui::TextUnformatted("Author: Jeremy Sweezy");
+            ImGui::Spacing();
+            ImGui::TextUnformatted("Built on these open-source projects:");
+            constexpr std::array<std::pair<const char*, const char*>, 9> kCredits = {{
+                {"CGAL", "computational geometry: alpha wrap, hole filling and intersection repair"},
+                {"Manifold", "robust mesh booleans and merging of shells"},
+                {"libigl", "mesh processing and geometry queries"},
+                {"Eigen", "linear algebra"},
+                {"Polyscope", "the 3D viewport and application window"},
+                {"Dear ImGui", "the user interface widgets"},
+                {"Boost", "support libraries used by CGAL"},
+                {"portable-file-dialogs", "native open and save dialogs"},
+                {"Catch2", "the unit-test framework"},
+            }};
+            for (const auto& [name, use] : kCredits) {
+                ImGui::BulletText("%s: %s", name, use);
+            }
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Dependencies")) {
+            if (ImGui::BeginTable("AboutDependencies", 2,
+                                  ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY)) {
+                ImGui::TableSetupScrollFreeze(0, 1);
+                ImGui::TableSetupColumn("Name");
+                ImGui::TableSetupColumn("Version");
+                ImGui::TableHeadersRow();
+                for (const DependencyInfo& dep : kDependencies) {
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(dep.name.data(), dep.name.data() + dep.name.size());
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(dep.version.data(), dep.version.data() + dep.version.size());
+                }
+                ImGui::EndTable();
+            }
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Copyright")) {
+            const std::string_view notice = copyrightNotice();
+            if (ImGui::Button("Copy")) {
+                ImGui::SetClipboardText(std::string(notice).c_str());
+            }
+            ImGui::BeginChild("CopyrightText", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Border,
+                              ImGuiWindowFlags_HorizontalScrollbar);
+            ImGui::TextUnformatted(notice.data(), notice.data() + notice.size());
+            ImGui::EndChild();
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Build Info")) {
+            if (ImGui::Button("Copy build info")) {
+                ImGui::SetClipboardText(buildInfoText().c_str());
+            }
+            ImGui::SameLine();
+            ImGui::TextDisabled("(for bug reports)");
+            ImGui::BeginChild("BuildInfoText", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Border);
+            const auto row = [](const char* label, const std::string& value) {
+                ImGui::TextDisabled("%s", label);
+                ImGui::TextWrapped("%s", value.c_str());
+                ImGui::Spacing();
+            };
+            row("Build date", std::string(kBuildTimestamp));
+            row("Build type", std::string(kBuildType));
+            row("Compiler", std::string(kCompilerId) + " " + std::string(kCompilerVersion));
+            row("C++ standard", std::string(kCxxStandard));
+            row("Platform", std::string(kPlatform));
+            row("Compiler flags", std::string(kCxxFlags));
+            row("Linker flags", kLinkerFlags.empty() ? std::string("(none)") : std::string(kLinkerFlags));
+            row("Libraries", librariesText());
+            ImGui::EndChild();
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+    }
+    ImGui::End();
 }
 
 void PolyscopeGui::drawNavigationHelpWindow() {
