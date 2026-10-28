@@ -418,17 +418,17 @@ void PolyscopeGui::drawCategorySettings(DefectCategory category) {
     case DefectCategory::ThinFaces: {
         ThinFaceThresholds thresh = controller_.thresholds();
         bool changed = false;
-        if (ImGui::InputDouble(("Min altitude h_min (" + sym + ")").c_str(), &thresh.minAltitude, 0.0, 0.0, "%.0e",
+        if (ImGui::InputDouble(("Min altitude h_min (" + sym + ")").c_str(), &thresh.minAltitude, 0.0, 0.0, "%.6g",
                                ImGuiInputTextFlags_EnterReturnsTrue)) {
             thresh.minAltitude = std::max(0.0, thresh.minAltitude);
             changed = true;
         }
-        if (ImGui::InputDouble(("Min area (" + sym + "^2)").c_str(), &thresh.minArea, 0.0, 0.0, "%.0e",
+        if (ImGui::InputDouble(("Min area (" + sym + "^2)").c_str(), &thresh.minArea, 0.0, 0.0, "%.6g",
                                ImGuiInputTextFlags_EnterReturnsTrue)) {
             thresh.minArea = std::max(0.0, thresh.minArea);
             changed = true;
         }
-        if (ImGui::InputDouble("Max aspect ratio (l_max / h_min)", &thresh.maxAspectRatio, 0.0, 0.0, "%.0f",
+        if (ImGui::InputDouble("Max aspect ratio (l_max / h_min)", &thresh.maxAspectRatio, 0.0, 0.0, "%.6g",
                                ImGuiInputTextFlags_EnterReturnsTrue)) {
             thresh.maxAspectRatio = std::max(1.0, thresh.maxAspectRatio);
             changed = true;
@@ -442,7 +442,7 @@ void PolyscopeGui::drawCategorySettings(DefectCategory category) {
     }
     case DefectCategory::Degenerate: {
         double eps = controller_.degenerateAreaEpsilon();
-        if (ImGui::InputDouble("Zero-area epsilon (x diag^2)", &eps, 0.0, 0.0, "%.0e",
+        if (ImGui::InputDouble("Zero-area epsilon (x diag^2)", &eps, 0.0, 0.0, "%.6g",
                                ImGuiInputTextFlags_EnterReturnsTrue)) {
             controller_.setDegenerateAreaEpsilon(eps);
             requestSync();
@@ -452,7 +452,7 @@ void PolyscopeGui::drawCategorySettings(DefectCategory category) {
     }
     case DefectCategory::Intersections: {
         double tolerance = controller_.intersectionTolerance();
-        if (ImGui::InputDouble("Tolerance (x diagonal)", &tolerance, 0.0, 0.0, "%.0e",
+        if (ImGui::InputDouble("Tolerance (x diagonal)", &tolerance, 0.0, 0.0, "%.6g",
                                ImGuiInputTextFlags_EnterReturnsTrue)) {
             controller_.setIntersectionTolerance(tolerance);
             requestSync();

@@ -775,39 +775,41 @@ void PolyscopeGui::drawPreferencesWindow() {
     }
     if (ImGui::BeginTabBar("PreferencesTabs")) {
         if (ImGui::BeginTabItem("Units & Tolerance")) {
-            ToleranceConfig tol = controller_.toleranceConfig();
+            const ToleranceConfig storedTol = controller_.toleranceConfig();
+            ToleranceConfig tol = storedTol;
             bool changed = false;
             ImGui::PushItemWidth(110.0f);
-            if (ImGui::InputDouble("Weld floor", &tol.absFloor, 0.0, 0.0, "%.0e")) {
+            if (ImGui::InputDouble("Weld floor", &tol.absFloor, 0.0, 0.0, "%.6g")) {
                 tol.absFloor = std::max(0.0, tol.absFloor);
                 changed = true;
             }
             gui::helpMarker("Absolute vertex-welding tolerance floor used when loading STL files, in file coordinates (the file unit does not change it).");
-            if (ImGui::InputDouble("Relative tolerance", &tol.relTol, 0.0, 0.0, "%.0e")) {
+            if (ImGui::InputDouble("Relative tolerance", &tol.relTol, 0.0, 0.0, "%.6g")) {
                 tol.relTol = std::max(0.0, tol.relTol);
                 changed = true;
             }
             ImGui::PopItemWidth();
-            if (changed) {
+            if (changed && (tol.absFloor != storedTol.absFloor || tol.relTol != storedTol.relTol)) {
                 controller_.setToleranceConfig(tol);
             }
             const std::string sym(unitSymbol(controller_.fileUnit()));
             ImGui::SeparatorText("Thin / sliver faces defaults");
-            ThinFaceThresholds def = controller_.preferenceDefaults().thinFace;
+            const ThinFaceThresholds stored = controller_.preferenceDefaults().thinFace;
+            ThinFaceThresholds def = stored;
             bool defChanged = false;
             ImGui::PushItemWidth(110.0f);
             if (ImGui::InputDouble(("Default min altitude h_min (" + sym + ")").c_str(), &def.minAltitude, 0.0, 0.0,
-                                   "%.0e",
+                                   "%.6g",
                                    ImGuiInputTextFlags_EnterReturnsTrue)) {
                 def.minAltitude = std::max(0.0, def.minAltitude);
                 defChanged = true;
             }
-            if (ImGui::InputDouble(("Default min area (" + sym + "^2)").c_str(), &def.minArea, 0.0, 0.0, "%.0e",
+            if (ImGui::InputDouble(("Default min area (" + sym + "^2)").c_str(), &def.minArea, 0.0, 0.0, "%.6g",
                                    ImGuiInputTextFlags_EnterReturnsTrue)) {
                 def.minArea = std::max(0.0, def.minArea);
                 defChanged = true;
             }
-            if (ImGui::InputDouble("Default max aspect ratio", &def.maxAspectRatio, 0.0, 0.0, "%.0f",
+            if (ImGui::InputDouble("Default max aspect ratio", &def.maxAspectRatio, 0.0, 0.0, "%.6g",
                                    ImGuiInputTextFlags_EnterReturnsTrue)) {
                 def.maxAspectRatio = std::max(1.0, def.maxAspectRatio);
                 defChanged = true;
@@ -815,7 +817,8 @@ void PolyscopeGui::drawPreferencesWindow() {
             ImGui::PopItemWidth();
             gui::helpMarker("Editing a default (press Enter) also sets the Thin / sliver faces setting. Changing that setting "
                             "later does not change the default.");
-            if (defChanged) {
+            if (defChanged && (def.minAltitude != stored.minAltitude || def.minArea != stored.minArea ||
+                               def.maxAspectRatio != stored.maxAspectRatio)) {
                 controller_.setThinFaceDefaults(def);
                 requestSync();
             }
