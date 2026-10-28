@@ -1010,7 +1010,7 @@ void PolyscopeGui::drawModalPopups() {
 void PolyscopeGui::drawAboutWindow() {
     const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(560.0f, 440.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(560.0f, 520.0f), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("About Ogun", &showAboutWindow_)) {
         ImGui::End();
         return;
@@ -1018,7 +1018,7 @@ void PolyscopeGui::drawAboutWindow() {
 
     if (ImGui::BeginTabBar("AboutTabs")) {
         if (ImGui::BeginTabItem("Version")) {
-            constexpr float kIconSize = 112.0f;
+            constexpr float kIconSize = 224.0f;
             if (appIconTexture_ != nullptr) {
                 const float indent = (ImGui::GetContentRegionAvail().x - kIconSize) * 0.5f;
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, indent));
