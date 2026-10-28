@@ -379,8 +379,13 @@ void PolyscopeGui::processPendingSync() {
 }
 
 void PolyscopeGui::undoLastModification() {
+    // Undoing a scale or transform moves the whole mesh back: re-frame it, as the edit itself did
+    const bool reframe = controller_.undoMovesWholeMesh();
     if (controller_.undoLastModification()) {
         requestSync(true);
+        if (reframe) {
+            syncMeshStructureToPolyscope(true);
+        }
     }
 }
 

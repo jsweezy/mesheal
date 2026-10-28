@@ -1509,3 +1509,38 @@ TEST_CASE("Apply Scale rescales the merge distance with the thresholds and undo 
     REQUIRE(controller.globalRepairParams().mergeDistance == distance);
     REQUIRE(controller.thresholds().minAltitude == altitude);
 }
+
+TEST_CASE("Undoing a scale or transform reports that it moves the whole mesh (the view re-frames)",
+          "[app][controller][transform][undo]") {
+    ogun::AppController controller;
+    controller.loadSampleDefectiveMesh();
+    REQUIRE_FALSE(controller.undoMovesWholeMesh()); // nothing to undo
+
+    // A local edit does not move the whole mesh
+    const Eigen::Index face[] = {0};
+    controller.selectFaces(face, true);
+    REQUIRE(controller.deleteSelectedFaces());
+    REQUIRE_FALSE(controller.undoMovesWholeMesh());
+
+    controller.scaleMeshCoordinatesToUnit(ogun::Unit::Centimeter);
+    REQUIRE(controller.undoMovesWholeMesh());
+
+    controller.selectFaces(face, true);
+    REQUIRE(controller.setOriginToSelection());
+    REQUIRE(controller.undoMovesWholeMesh());
+
+    controller.openTransform();
+    controller.previewTransform(ogun::MeshTransform{Eigen::Vector3d(1.0, 0.0, 0.0), Eigen::Vector3d::Zero()});
+    REQUIRE(controller.applyTransform());
+    REQUIRE(controller.undoMovesWholeMesh());
+
+    // Each undo pops one entry: Translate / Rotate, Set Origin, Scale, then the face delete
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.undoMovesWholeMesh());
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.undoMovesWholeMesh());
+    REQUIRE(controller.undoLastModification());
+    REQUIRE_FALSE(controller.undoMovesWholeMesh());
+    REQUIRE(controller.undoLastModification());
+    REQUIRE_FALSE(controller.canUndo());
+}

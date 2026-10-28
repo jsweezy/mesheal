@@ -266,6 +266,7 @@ struct UndoEntry {
     ShellBrowser shells;
     std::string actionLabel;
     double mergeDistance = settings::kDefaultMergeDistance; ///< Restored with the mesh: Apply Scale rescales it
+    bool movesWholeMesh = false; ///< Scale or Transform: undoing it moves the whole mesh, so the view re-frames
 };
 
 /// Headless Presentation Model / Controller for the Ogun STL Repair application.
@@ -1216,12 +1217,19 @@ public:
     /// Label of the modification that `undoLastModification()` would revert (empty if none).
     [[nodiscard]] std::string lastUndoActionLabel() const;
 
+    /// True when undoing the last modification moves the whole mesh (Apply Scale, Set Origin to Selection,
+    /// Translate / Rotate): the GUI then re-frames the view (Home), as those edits do.
+    [[nodiscard]] bool undoMovesWholeMesh() const noexcept {
+        return !undoStack_.empty() && undoStack_.back().movesWholeMesh;
+    }
+
     /// Restores the mesh, thresholds, diagnostics and selection recorded before the last modification.
     bool undoLastModification();
 
 private:
-    /// Records the current mesh and inspection context before a modification.
-    void pushUndoEntry(std::string actionLabel);
+    /// Records the current mesh and inspection context before a modification (`movesWholeMesh`: a
+    /// scale or rigid transform of every vertex, see `undoMovesWholeMesh`).
+    void pushUndoEntry(std::string actionLabel, bool movesWholeMesh = false);
     /// Swaps in a modified mesh: new generation, focus and picks cleared, history kept. The shells are
     /// rebuilt (keeping their view state) unless `shells` restores a snapshot.
     void replaceMeshPreservingHistory(Mesh mesh, std::optional<ShellBrowser> shells = std::nullopt);

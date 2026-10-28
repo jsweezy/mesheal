@@ -958,13 +958,23 @@ void PolyscopeGui::drawModalPopups() {
         ImGui::Text("Move the selection centroid (%.6g, %.6g, %.6g) %s to the origin?", c.x() + 0.0, c.y() + 0.0,
                     c.z() + 0.0, unit.c_str());
         ImGui::Text("This translates the whole mesh by (%.6g, %.6g, %.6g).", -c.x() + 0.0, -c.y() + 0.0, -c.z() + 0.0);
-        ImGui::TextDisabled("One undo step. Hidden shells move too.");
-        if (ImGui::Button("OK")) {
-            confirmSetOriginToSelection();
-            ImGui::CloseCurrentPopup();
-        }
+        ImGui::TextDisabled("One undo step. Hidden shells move too. Enter: OK, Esc: Cancel.");
+        // Keyboard navigation is off, so Enter / Esc are read here (the app's shortcuts are paused
+        // while a popup is open). Not on the first frame, so the key that opened it cannot answer it.
+        const bool appearing = ImGui::IsWindowAppearing();
+        const bool enter = !appearing && (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
+                                          ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false));
+        const bool escape = !appearing && ImGui::IsKeyPressed(ImGuiKey_Escape, false);
+        ImGui::PushStyleColor(ImGuiCol_Button, gui::kFixAllButtonColor); // the default button
+        const bool ok = ImGui::Button("OK");
+        ImGui::PopStyleColor();
+        ImGui::SetItemDefaultFocus();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel")) {
+        const bool cancel = ImGui::Button("Cancel") || escape;
+        if (cancel) {
+            ImGui::CloseCurrentPopup();
+        } else if (ok || enter) {
+            confirmSetOriginToSelection();
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
@@ -1162,7 +1172,8 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"X", "Asks \"Delete N selected faces?\" next to the cursor (Enter or the Delete button confirms; Esc, Cancel or a click outside cancels), then deletes the selected faces as Delete does"},
         {"Delete  /  Backspace", "Immediately (no confirmation) deletes the selected faces (Mesh > Delete Selected Faces); with no faces selected, the selected shells. Undoable"},
         {"F5", "Check Mesh: runs every Mesh Health row in the background"},
-        {"Ctrl/Cmd + Z", "Undoes the last mesh modification (repair, Fix All / Fix Selected, Scale, Transform, Decimate, Weld, Delete Faces / Shells), one step at a time"},
+        {"Ctrl/Cmd + Z", "Undoes the last mesh modification (repair, Fix All / Fix Selected, Scale, Transform, Decimate, Weld, Delete Faces / Shells), one step at a time. "
+                         "Undoing a Scale or Transform re-frames the camera (Home)"},
         {"Ctrl/Cmd + O / S / Shift+S", "Open, Save (overwrite, asks the first time), Save As"},
         {"Ctrl/Cmd + ,", "Preferences"},
         {"?  or  F1", "Toggles this Navigation & Shortcuts window"},

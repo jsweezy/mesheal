@@ -75,7 +75,7 @@ bool AppController::transformWholeMesh(const MeshTransform& transform, std::stri
     std::vector<std::uint8_t> selection = faceSelected_;
     const std::size_t selectedCount = faceSelectedCount_;
 
-    pushUndoEntry(std::move(actionLabel));
+    pushUndoEntry(std::move(actionLabel), true);
     finishMeshEdit(std::move(moved), std::move(shells));
     faceSelected_ = std::move(selection);
     faceSelectedCount_ = selectedCount;

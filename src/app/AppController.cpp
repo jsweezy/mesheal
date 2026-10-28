@@ -249,7 +249,8 @@ void AppController::scaleMeshCoordinatesToUnit(Unit targetUnit) {
 
     pushUndoEntry(
         "Scale Mesh Coordinates (" + std::string(unitSymbol(oldUnit)) + " -> " +
-        std::string(unitSymbol(targetUnit)) + ")");
+        std::string(unitSymbol(targetUnit)) + ")",
+        true);
     Mesh scaled = mesh_;
     ogun::scaleMeshToUnit(scaled, targetUnit);
     thresholds_ = thresholds_.convertedToUnit(oldUnit, targetUnit);
@@ -1322,7 +1323,7 @@ bool AppController::splitNonManifold(DefectCategory category, bool selectedOnly)
     return true;
 }
 
-void AppController::pushUndoEntry(std::string actionLabel) {
+void AppController::pushUndoEntry(std::string actionLabel, bool movesWholeMesh) {
     undoStack_.push_back(UndoEntry{
         mesh_,
         thresholds_,
@@ -1338,7 +1339,8 @@ void AppController::pushUndoEntry(std::string actionLabel) {
         modified_,
         shells_,
         std::move(actionLabel),
-        globalParams_.mergeDistance});
+        globalParams_.mergeDistance,
+        movesWholeMesh});
     if (undoStack_.size() > settings::kMaxUndoHistoryDepth) {
         undoStack_.erase(undoStack_.begin());
     }
