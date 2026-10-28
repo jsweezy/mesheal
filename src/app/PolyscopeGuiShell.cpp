@@ -199,7 +199,7 @@ void PolyscopeGui::drawFileMenu() {
     if (ImGui::MenuItem("Open...", modShortcut("O").c_str())) {
         openFileDialog();
     }
-    plannedMenuItem("Open Recent", "Planned (P5).");
+    drawOpenRecentMenu();
     if (ImGui::BeginMenu("Load Sample")) {
         if (ImGui::MenuItem("Defective test cube")) {
             loadSample(nullptr);
@@ -487,10 +487,51 @@ void PolyscopeGui::openFileDialog() {
         "",
         {"STL Mesh (*.stl)", "*.stl *.STL", "All Files", "*"},
         pfd::opt::none).result();
-    if (!selection.empty() && controller_.loadStlFile(std::filesystem::path(selection.front()))) {
-        overwriteConfirmedFor_.clear();
-        syncMeshStructureToPolyscope(true);
+    if (!selection.empty()) {
+        openStlFile(std::filesystem::path(selection.front()));
     }
+}
+
+void PolyscopeGui::openStlFile(const std::filesystem::path& path) {
+    if (!controller_.loadStlFile(path)) {
+        return;
+    }
+    recentFiles_.add(path);
+    if (std::string error; !recentFiles_.save(&error)) {
+        controller_.postStatusMessage("Could not save the recent files list: " + error, true);
+    }
+    overwriteConfirmedFor_.clear();
+    syncMeshStructureToPolyscope(true);
+}
+
+// A missing file is shown greyed out (not removed on click), so the list stays predictable and the
+// entry comes back if the drive is remounted. The full path is the tooltip.
+void PolyscopeGui::drawOpenRecentMenu() {
+    if (!ImGui::BeginMenu("Open Recent")) {
+        return;
+    }
+    if (recentFiles_.empty()) {
+        ImGui::MenuItem("(none)", nullptr, false, false);
+    }
+    // Copy: opening a file reorders the list while it is drawn
+    const std::vector<std::filesystem::path> entries = recentFiles_.entries();
+    std::error_code ec;
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        const std::string label = entries[i].filename().string() + "##recent" + std::to_string(i);
+        const bool exists = std::filesystem::exists(entries[i], ec);
+        if (ImGui::MenuItem(label.c_str(), nullptr, false, exists)) {
+            openStlFile(entries[i]);
+        }
+        tooltip((entries[i].string() + (exists ? "" : "\n(file not found)")).c_str());
+    }
+    ImGui::Separator();
+    if (ImGui::MenuItem("Clear Recent", nullptr, false, !recentFiles_.empty())) {
+        recentFiles_.clear();
+        if (std::string error; !recentFiles_.save(&error)) {
+            controller_.postStatusMessage("Could not save the recent files list: " + error, true);
+        }
+    }
+    ImGui::EndMenu();
 }
 
 void PolyscopeGui::loadSample(const char* exampleFile) {

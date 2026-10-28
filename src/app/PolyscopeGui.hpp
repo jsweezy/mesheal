@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/AppController.hpp"
+#include "app/RecentFiles.hpp"
 #include "app/UserPreferences.hpp"
 
 #include <array>
@@ -40,8 +41,9 @@ public:
 
     /// `preferencesFile`: where preference changes are saved (empty: not saved). `prefs`: the loaded
     /// preferences, whose controller part is already applied (`loadAndApplyUserPreferences`).
+    /// `recentFilesFile`: backing file of File > Open Recent (empty: kept for the session only).
     explicit PolyscopeGui(AppController& controller, std::filesystem::path preferencesFile = {},
-                          const UserPreferences& prefs = UserPreferences{});
+                          const UserPreferences& prefs = UserPreferences{}, std::filesystem::path recentFilesFile = {});
 
     /// Initializes Polyscope, registers callbacks, syncs initial mesh state, and launches the event loop.
     void run();
@@ -72,6 +74,9 @@ private:
     void drawModalPopups();
     void resetLayout();
     void openFileDialog();
+    /// Loads an STL by path (Open dialog and Open Recent): records it in the recent list on success.
+    void openStlFile(const std::filesystem::path& path);
+    void drawOpenRecentMenu();
     void saveCurrentFile();
     void saveAsDialog(StlFormat format);
     void saveTo(const std::string& path, StlFormat format);
@@ -209,6 +214,8 @@ private:
     std::filesystem::path preferencesFile_;
     UserPreferences savedPreferences_;  ///< Values last loaded or saved; a difference triggers a save
     std::string preferencesSaveError_;
+
+    RecentFiles recentFiles_;  ///< File > Open Recent
 
     // Status bar message (mirrors the controller's latest message for a few seconds)
     std::uint64_t shownMessageSerial_ = 0;

@@ -229,11 +229,15 @@ void removePointCloudIfPresent(const char* name) {
 
 } // namespace
 
-PolyscopeGui::PolyscopeGui(AppController& controller, std::filesystem::path preferencesFile, const UserPreferences& prefs)
+PolyscopeGui::PolyscopeGui(AppController& controller, std::filesystem::path preferencesFile, const UserPreferences& prefs,
+                       std::filesystem::path recentFilesFile)
     : controller_(controller),
       uiScale_(prefs.uiScale),
       preferencesFile_(std::move(preferencesFile)),
-      savedPreferences_(prefs) {}
+      savedPreferences_(prefs),
+      recentFiles_(std::move(recentFilesFile)) {
+    recentFiles_.load();
+}
 
 void PolyscopeGui::run() {
     polyscope::options::programName = "Ogun - STL Mesh Inspection & Repair Tool";

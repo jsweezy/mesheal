@@ -1,6 +1,7 @@
 #include "app/AppController.hpp"
 #include "app/PolyscopeGui.hpp"
 #include "app/UserPreferences.hpp"
+#include "app/RecentFiles.hpp"
 #include "io/ConfigDirectory.hpp"
 
 #include <filesystem>
@@ -15,6 +16,8 @@ int main(int argc, char** argv) {
     const std::filesystem::path prefsFile = ogun::preferencesFilePath(ogun::configDirectory());
     const ogun::UserPreferences prefs = ogun::loadAndApplyUserPreferences(controller, prefsFile);
 
+    const std::filesystem::path recentFile = ogun::recentFilesPath(ogun::configDirectory());
+
     if (argc > 1) {
         const std::string_view arg1(argv[1]);
         if (arg1 == "-h" || arg1 == "--help") {
@@ -27,12 +30,19 @@ int main(int argc, char** argv) {
         const std::filesystem::path stlPath(arg1);
         if (!controller.loadStlFile(stlPath)) {
             std::cerr << "Warning: " << controller.lastErrorMessage() << "\n";
+        } else {
+            ogun::RecentFiles recent(recentFile);
+            recent.load();
+            recent.add(stlPath);
+            if (std::string error; !recent.save(&error)) {
+                std::cerr << "Warning: could not save the recent files list: " << error << "\n";
+            }
         }
     } else {
         controller.loadSampleDefectiveMesh();
     }
 
-    ogun::PolyscopeGui gui(controller, prefsFile, prefs);
+    ogun::PolyscopeGui gui(controller, prefsFile, prefs, recentFile);
     gui.run();
     return 0;
 }
