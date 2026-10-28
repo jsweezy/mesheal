@@ -300,7 +300,7 @@ TEST_CASE("Decimate works on the selected faces only, applies and undoes", "[app
     REQUIRE(controller.mesh().F == before.F);
 }
 
-TEST_CASE("Merge Vertices uses 0.05 mm by default, applies and undoes", "[app][selection][merge][undo]") {
+TEST_CASE("Merge Vertices uses 0.05 by default, applies and undoes", "[app][selection][merge][undo]") {
     ogun::Mesh mesh = ogun::SampleMeshes::createGridCubeMesh(4, 8.0);
     const int a = mesh.F(0, 0);
     const int b = mesh.F(0, 1);
@@ -312,15 +312,15 @@ TEST_CASE("Merge Vertices uses 0.05 mm by default, applies and undoes", "[app][s
 
     controller.openMergeVertices();
     REQUIRE(controller.activeTool() == ToolSlot::MergeVertices);
-    REQUIRE(controller.globalRepairParams().mergeDistanceMm == 0.05);
+    REQUIRE(controller.globalRepairParams().mergeDistance == 0.05);
     ogun::GlobalRepairParams params = controller.globalRepairParams();
-    params.mergeDistanceMm = 100.0; // the slider's range is 0.0001 to 10 mm
+    params.mergeDistance = 100.0; // the slider's range is 0.0001 to 10
     controller.setGlobalRepairParams(params);
-    REQUIRE(controller.globalRepairParams().mergeDistanceMm == ogun::settings::kMaxMergeDistanceMm);
-    params.mergeDistanceMm = 0.0;
+    REQUIRE(controller.globalRepairParams().mergeDistance == ogun::settings::kMaxMergeDistance);
+    params.mergeDistance = 0.0;
     controller.setGlobalRepairParams(params);
-    REQUIRE(controller.globalRepairParams().mergeDistanceMm == ogun::settings::kMinMergeDistanceMm);
-    params.mergeDistanceMm = 0.05;
+    REQUIRE(controller.globalRepairParams().mergeDistance == ogun::settings::kMinMergeDistance);
+    params.mergeDistance = 0.05;
     controller.setGlobalRepairParams(params);
     controller.previewGlobalRepair();
     const ogun::RepairCandidate* c = controller.shownGlobalCandidate();

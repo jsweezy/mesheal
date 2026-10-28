@@ -403,12 +403,12 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
     }
     case GlobalRepairMethod::MergeVertices: {
         // The number is in file coordinates; the unit is only a label
-        double distance = params.mergeDistanceMm;
+        double distance = params.mergeDistance;
         const std::string label = "Distance (" + std::string(unitSymbol(controller_.fileUnit())) + ")";
-        const double lo = settings::kMinMergeDistanceMm;
-        const double hi = settings::kMaxMergeDistanceMm;
+        const double lo = settings::kMinMergeDistance;
+        const double hi = settings::kMaxMergeDistance;
         if (ImGui::SliderScalar(label.c_str(), ImGuiDataType_Double, &distance, &lo, &hi, "%.4g", ImGuiSliderFlags_Logarithmic)) {
-            params.mergeDistanceMm = std::clamp(distance, settings::kMinMergeDistanceMm, settings::kMaxMergeDistanceMm);
+            params.mergeDistance = std::clamp(distance, settings::kMinMergeDistance, settings::kMaxMergeDistance);
             changed = true;
         }
         tooltip("Vertices closer than this are merged (default 0.05; 0.0001 to 10, log scale; the unit is only a label). "

@@ -265,6 +265,7 @@ struct UndoEntry {
     bool modified = false;
     ShellBrowser shells;
     std::string actionLabel;
+    double mergeDistance = settings::kDefaultMergeDistance; ///< Restored with the mesh: Apply Scale rescales it
 };
 
 /// Headless Presentation Model / Controller for the Ogun STL Repair application.

@@ -57,8 +57,8 @@ struct GlobalRepairParams {
     double alphaWrapOffset = 0.0;
     /// Decimate: fraction of the faces in scope to keep.
     double decimateRatio = settings::kDefaultDecimateRatio;
-    /// Merge vertices: distance in millimetres (converted to the mesh's unit).
-    double mergeDistanceMm = settings::kDefaultMergeDistanceMm;
+    /// Merge vertices: distance in file coordinates (unitless; the file unit does not change it).
+    double mergeDistance = settings::kDefaultMergeDistance;
     /// Merge vertices: only along edges and open edges, so touching surfaces / shells are not pinched.
     bool mergeKeepSurfacesApart = settings::kDefaultMergeKeepSurfacesApart;
     /// Winding-number rebuild: grid cells along the longest side.

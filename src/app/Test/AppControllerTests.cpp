@@ -42,7 +42,7 @@ TEST_CASE("AppController loads sample mesh, changes File Units without scaling V
     // Changing File Units from mm to cm only relabels: V and every setting keep their numbers
     const ogun::ThinFaceThresholds thresholdsBefore = controller.thresholds();
     const ogun::ToleranceConfig toleranceBefore = controller.toleranceConfig();
-    const double mergeBefore = controller.globalRepairParams().mergeDistanceMm;
+    const double mergeBefore = controller.globalRepairParams().mergeDistance;
     for (const ogun::Unit unit : ogun::kAllUnits) {
         controller.setFileUnit(unit);
         REQUIRE(controller.fileUnit() == unit);
@@ -52,7 +52,7 @@ TEST_CASE("AppController loads sample mesh, changes File Units without scaling V
         REQUIRE(controller.thresholds().maxAspectRatio == thresholdsBefore.maxAspectRatio);
         REQUIRE(controller.toleranceConfig().absFloor == toleranceBefore.absFloor);
         REQUIRE(controller.toleranceConfig().relTol == toleranceBefore.relTol);
-        REQUIRE(controller.globalRepairParams().mergeDistanceMm == mergeBefore);
+        REQUIRE(controller.globalRepairParams().mergeDistance == mergeBefore);
     }
     controller.setFileUnit(ogun::Unit::Millimeter);
 
@@ -1488,4 +1488,24 @@ TEST_CASE("Translate / Rotate previews without changing the mesh, applies as one
     controller.closeTool();
     REQUIRE_FALSE(controller.transformPreviewShown());
     REQUIRE(controller.transformParams().isIdentity());
+}
+
+TEST_CASE("Apply Scale rescales the merge distance with the thresholds and undo restores it", "[app][controller][units][undo]") {
+    ogun::AppController controller;
+    controller.loadSampleDefectiveMesh();
+    const double distance = controller.globalRepairParams().mergeDistance;
+    const double altitude = controller.thresholds().minAltitude;
+
+    controller.scaleMeshCoordinatesToUnit(ogun::Unit::Meter);
+    REQUIRE(controller.globalRepairParams().mergeDistance == Catch::Approx(distance * 0.001).epsilon(1e-12));
+    REQUIRE(controller.thresholds().minAltitude == Catch::Approx(altitude * 0.001).epsilon(1e-12));
+
+    // Changing the label alone never touches it
+    controller.setFileUnit(ogun::Unit::Centimeter);
+    REQUIRE(controller.globalRepairParams().mergeDistance == Catch::Approx(distance * 0.001).epsilon(1e-12));
+
+    controller.setFileUnit(ogun::Unit::Meter);
+    controller.undoLastModification();
+    REQUIRE(controller.globalRepairParams().mergeDistance == distance);
+    REQUIRE(controller.thresholds().minAltitude == altitude);
 }

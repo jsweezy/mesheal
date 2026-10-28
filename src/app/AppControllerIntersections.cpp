@@ -213,8 +213,8 @@ void AppController::setGlobalRepairParams(const GlobalRepairParams& params) {
         std::clamp(globalParams_.alphaWrapDetail, settings::kMinAlphaWrapDetail, settings::kMaxAlphaWrapDetail);
     globalParams_.alphaWrapOffset = std::max(globalParams_.alphaWrapOffset, 0.0);
     globalParams_.decimateRatio = std::clamp(globalParams_.decimateRatio, settings::kMinDecimateRatio, settings::kMaxDecimateRatio);
-    globalParams_.mergeDistanceMm =
-        std::clamp(globalParams_.mergeDistanceMm, settings::kMinMergeDistanceMm, settings::kMaxMergeDistanceMm);
+    globalParams_.mergeDistance =
+        std::clamp(globalParams_.mergeDistance, settings::kMinMergeDistance, settings::kMaxMergeDistance);
     globalParams_.windingResolution = std::clamp(globalParams_.windingResolution, settings::kMinWindingGridResolution,
                                                  settings::kMaxWindingGridResolution);
 }

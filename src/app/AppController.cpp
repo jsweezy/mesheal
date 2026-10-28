@@ -253,6 +253,8 @@ void AppController::scaleMeshCoordinatesToUnit(Unit targetUnit) {
     Mesh scaled = mesh_;
     ogun::scaleMeshToUnit(scaled, targetUnit);
     thresholds_ = thresholds_.convertedToUnit(oldUnit, targetUnit);
+    // Keeps its physical size; deliberately not clamped to the slider range
+    globalParams_.mergeDistance *= unitConversionFactor(oldUnit, targetUnit);
     finishMeshEdit(std::move(scaled));
     postStatusMessage("Scaled coordinates from " + std::string(unitSymbol(oldUnit)) + " to " +
                       std::string(unitSymbol(targetUnit)) + ".");
@@ -1335,7 +1337,8 @@ void AppController::pushUndoEntry(std::string actionLabel) {
         selectedHoleMethod_,
         modified_,
         shells_,
-        std::move(actionLabel)});
+        std::move(actionLabel),
+        globalParams_.mergeDistance});
     if (undoStack_.size() > settings::kMaxUndoHistoryDepth) {
         undoStack_.erase(undoStack_.begin());
     }
@@ -1355,6 +1358,7 @@ bool AppController::undoLastModification() {
     checkRunner_.cancel();
     replaceMeshPreservingHistory(std::move(entry.mesh), std::move(entry.shells));
     thresholds_ = entry.thresholds;
+    globalParams_.mergeDistance = entry.mergeDistance;
     modified_ = entry.modified;
 
     // The restored mesh is identical to the snapshot, so its results are valid again

@@ -29,8 +29,7 @@ RepairCandidate runInPlace(const Mesh& mesh, std::span<const std::uint8_t> faceI
         candidate.statusMessage = r.statusMessage;
         result = std::move(r.mesh);
     } else {
-        const double distance = params.mergeDistanceMm * unitConversionFactor(Unit::Millimeter, mesh.fileUnit);
-        MergeByDistanceResult r = mergeByDistance(mesh, distance, faceInScope, params.mergeKeepSurfacesApart);
+        MergeByDistanceResult r = mergeByDistance(mesh, params.mergeDistance, faceInScope, params.mergeKeepSurfacesApart);
         candidate.statusMessage = r.statusMessage;
         result = std::move(r.mesh);
     }
@@ -141,7 +140,7 @@ double alphaWrapOffset(const GlobalRepairParams& params, double alpha) noexcept 
 bool GlobalRepairParams::operator==(const GlobalRepairParams& other) const noexcept {
     return unionCrossingShells == other.unionCrossingShells && alphaWrapDetail == other.alphaWrapDetail &&
            alphaWrapOffset == other.alphaWrapOffset && decimateRatio == other.decimateRatio &&
-           mergeDistanceMm == other.mergeDistanceMm && mergeKeepSurfacesApart == other.mergeKeepSurfacesApart &&
+           mergeDistance == other.mergeDistance && mergeKeepSurfacesApart == other.mergeKeepSurfacesApart &&
            windingResolution == other.windingResolution &&
            simplifyRebuild == other.simplifyRebuild && islandSettings.dilationRings == other.islandSettings.dilationRings &&
            islandSettings.cgalMaxSteps == other.islandSettings.cgalMaxSteps &&

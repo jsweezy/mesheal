@@ -136,12 +136,12 @@ TEST_CASE("Decimating selected faces keeps every other face and joins them exact
     REQUIRE(ogun::vertexDeviation(r.mesh, mesh).maxCoeff() < 1e-9);
 }
 
-TEST_CASE("Decimate and merge run as one-method operators with the merge distance in mm", "[repair][cleanup][global]") {
-    // A centimetre mesh: 0.05 mm is 0.005 cm, so a 0.004 cm edge collapses and a 0.006 cm one does not
-    ogun::Mesh mesh = cubeWithShortEdge(0.004);
+TEST_CASE("Decimate and merge run as one-method operators with the merge distance in file units", "[repair][cleanup][global]") {
+    // A centimetre mesh: the distance is 0.05 in file coordinates, so a 0.04 edge collapses and a 0.06 one does not
+    ogun::Mesh mesh = cubeWithShortEdge(0.04);
     mesh.fileUnit = ogun::Unit::Centimeter;
     ogun::GlobalRepairParams params;
-    REQUIRE(params.mergeDistanceMm == 0.05);
+    REQUIRE(params.mergeDistance == 0.05);
     REQUIRE(params.decimateRatio == 0.5);
     const ogun::RepairCandidate merged = ogun::runGlobalRepair(mesh, {}, ogun::GlobalRepairMethod::MergeVertices, params);
     REQUIRE(merged.success);
@@ -149,7 +149,7 @@ TEST_CASE("Decimate and merge run as one-method operators with the merge distanc
     REQUIRE(merged.removedFaces.size() >= 2);
     REQUIRE(merged.metrics.watertight());
 
-    ogun::Mesh wider = cubeWithShortEdge(0.006);
+    ogun::Mesh wider = cubeWithShortEdge(0.06);
     wider.fileUnit = ogun::Unit::Centimeter;
     const ogun::RepairCandidate kept = ogun::runGlobalRepair(wider, {}, ogun::GlobalRepairMethod::MergeVertices, params);
     REQUIRE(kept.success);
@@ -213,4 +213,23 @@ TEST_CASE("Decimate stops at the target face count, not one collapse below it", 
     const ogun::Mesh sphere = ogun::SampleMeshes::createSphereMesh(16, 24, 5.0);
     const ogun::DecimateResult s = ogun::decimate(sphere, 0.3);
     REQUIRE(s.facesAfter >= static_cast<std::size_t>(std::lround(0.3 * static_cast<double>(sphere.numFaces()))));
+}
+
+TEST_CASE("Merge distance is in file coordinates whatever the file unit", "[repair][merge][units]") {
+    for (const ogun::Unit unit : {ogun::Unit::Millimeter, ogun::Unit::Centimeter, ogun::Unit::Meter}) {
+        ogun::GlobalRepairParams params;
+        params.mergeDistance = 0.05;
+
+        ogun::Mesh closer = cubeWithShortEdge(0.04);
+        closer.fileUnit = unit;
+        const ogun::RepairCandidate merged = ogun::runGlobalRepair(closer, {}, ogun::GlobalRepairMethod::MergeVertices, params);
+        REQUIRE(merged.success);
+        REQUIRE(merged.mesh.numFaces() == closer.numFaces() - 2);
+
+        ogun::Mesh farther = cubeWithShortEdge(0.06);
+        farther.fileUnit = unit;
+        const ogun::RepairCandidate kept = ogun::runGlobalRepair(farther, {}, ogun::GlobalRepairMethod::MergeVertices, params);
+        REQUIRE(kept.success);
+        REQUIRE(kept.mesh.numFaces() == farther.numFaces());
+    }
 }
