@@ -138,9 +138,11 @@ void PolyscopeGui::drawMousePreferencesTab() {
     drawMouseBindingEditor();
 
     for (const MouseConflict& c : conflicts) {
-        ImGui::TextColored(gui::kErrorColor, "%s is bound to both %s and %s: only %s acts on it.",
+        ImGui::PushStyleColor(ImGuiCol_Text, gui::kErrorColor);
+        ImGui::TextWrapped("%s is bound to both %s and %s: only %s acts on it.",
                            formatMouseBinding(c.binding, mouseActionKind(c.first)).c_str(), mouseActionName(c.first),
                            mouseActionName(c.second), mouseActionName(c.first));
+        ImGui::PopStyleColor();
     }
     ImGui::TextDisabled("A click is a press and release without moving, so a drag and a click on the same");
     ImGui::TextDisabled("button never conflict. Ctrl is the Control key, also on macOS.");

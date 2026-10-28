@@ -75,4 +75,29 @@ TEST_CASE("Floating windows tile the free 3D view without overlapping", "[app][l
         }
         CHECK(ogun::tileWindows(tiny, 0, 330.0f, 240.0f, kGap).empty());
     }
+
+    SECTION("Preferred heights size each row to its content and shrink together when short of room") {
+        const std::vector<float> heights{200.0f, 400.0f, 500.0f, 150.0f};
+        const LayoutRect tall{0.0f, 0.0f, 1800.0f, 1000.0f};
+        const auto one = ogun::tileWindows(tall, 4, 330.0f, 240.0f, kGap, heights);
+        checkTiles(one, tall, 4);
+        for (const LayoutRect& r : one) {
+            CHECK(r.height == 500.0f); // one row, as tall as the tallest window
+        }
+
+        // One column: stacked, each slot as tall as asked while there is room
+        const LayoutRect column{0.0f, 0.0f, 250.0f, 1400.0f};
+        const auto stacked = ogun::tileWindows(column, 4, 330.0f, 240.0f, kGap, heights);
+        checkTiles(stacked, column, 4);
+        for (std::size_t i = 0; i < 4; ++i) {
+            CHECK(stacked[i].height == heights[i]);
+        }
+
+        // Too short: every row shrinks in proportion, still inside and apart
+        const LayoutRect shortArea{0.0f, 0.0f, 250.0f, 600.0f};
+        const auto squeezed = ogun::tileWindows(shortArea, 4, 330.0f, 240.0f, kGap, heights);
+        checkTiles(squeezed, shortArea, 4);
+        CHECK(squeezed[1].height < heights[1]);
+        CHECK(squeezed[2].height > squeezed[0].height);
+    }
 }

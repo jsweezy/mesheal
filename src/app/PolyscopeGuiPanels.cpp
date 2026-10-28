@@ -393,12 +393,16 @@ void polyscopeWindow(const char* title, bool* open, const LayoutRect& tile, std:
 
 void PolyscopeGui::drawPolyscopeWindows(float top, float bottom, float rightColumnLeft) {
     // One tile each, side by side from the left of the free 3D view (more rows when it is narrow), so
-    // any set of them opens without overlapping. Each opens in its tile (also after Reset Layout).
+    // any set of them opens without overlapping; each row is tall enough for its windows' content. Each opens in its tile (also after Reset Layout).
     const float margin = settings::kPanelMarginPx;
     const float freeLeft = settings::kLeftColumnWidthPx + 2.0f * margin;
     const LayoutRect free{freeLeft, top, std::max(rightColumnLeft - margin - freeLeft, 0.0f), std::max(bottom - top, 0.0f)};
+    std::vector<float> heights(settings::kPolyscopeWindowHeightsPx.begin(), settings::kPolyscopeWindowHeightsPx.end());
+    for (float& h : heights) {
+        h *= uiScale_;
+    }
     const std::vector<LayoutRect> tiles =
-        tileWindows(free, 4, settings::kPolyscopeWindowWidthPx, settings::kPolyscopeWindowMinWidthPx, margin);
+        tileWindows(free, 4, settings::kPolyscopeWindowWidthPx, settings::kPolyscopeWindowMinWidthPx, margin, heights);
     polyscopeWindow("Polyscope: Slice Planes", &showPolySlicePlanes_, tiles[0], {"Slice Planes"},
                     [] { polyscope::buildSlicePlaneGUI(); });
     polyscopeWindow("Polyscope: Appearance", &showPolyAppearance_, tiles[1], {"Appearance", "Transparency"}, [] {
@@ -465,6 +469,14 @@ void PolyscopeGui::drawNoMeshHint(float left, float top, float bottom) {
     const ImVec2 size = ImGui::CalcTextSize(text);
     const float right = ImGui::GetIO().DisplaySize.x - rightColumnWidth_ - 2.0f * settings::kPanelMarginPx;
     const ImVec2 pos(left + (right - left - size.x) * 0.5f, top + (bottom - top - size.y) * 0.5f);
+    // Floating windows are translucent: skip the hint while any of them covers it
+    const ImRect textRect(pos, ImVec2(pos.x + size.x, pos.y + size.y));
+    for (const ImGuiWindow* window : ImGui::GetCurrentContext()->Windows) {
+        if (window->Active && !window->Hidden && (window->Flags & (ImGuiWindowFlags_ChildWindow | ImGuiWindowFlags_Tooltip)) == 0 &&
+            window->Rect().Overlaps(textRect)) {
+            return;
+        }
+    }
     ImGui::GetBackgroundDrawList()->AddText(pos, ImGui::GetColorU32(ImGuiCol_TextDisabled), text);
 }
 

@@ -246,6 +246,24 @@ PolyscopeGui::PolyscopeGui(AppController& controller, std::filesystem::path pref
     recentFiles_.load();
 }
 
+namespace {
+
+GLFWscrollfun gImGuiScrollCallback = nullptr;
+
+// Over an ImGui window the wheel scrolls it; ImGui's 5 lines per tick is too coarse for tall panels.
+// Over the 3D view the event passes unchanged (zoom and Zoom speed are untouched).
+void scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
+    if (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse) {
+        xoffset *= static_cast<double>(settings::kUiWheelScrollScale);
+        yoffset *= static_cast<double>(settings::kUiWheelScrollScale);
+    }
+    if (gImGuiScrollCallback != nullptr) {
+        gImGuiScrollCallback(window, xoffset, yoffset);
+    }
+}
+
+} // namespace
+
 void PolyscopeGui::run() {
     polyscope::options::programName = "Ogun v" + std::string(kVersionString) + " - STL Mesh Inspection & Repair Tool";
     polyscope::options::autocenterStructures = false;
@@ -256,6 +274,7 @@ void PolyscopeGui::run() {
 
     polyscope::init();
     polyscope::state::doDefaultMouseInteraction = false;
+    gImGuiScrollCallback = glfwSetScrollCallback(glfwGetCurrentContext(), scrollCallback);
     polyscope::view::bgColor = savedPreferences_.backgroundColor;
     applyTransparencyModeForPreview();
     loadAndApplyApplicationIcon();
