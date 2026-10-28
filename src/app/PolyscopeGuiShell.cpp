@@ -44,6 +44,7 @@ void plannedMenuItem(const char* label, const char* when) {
 
 void PolyscopeGui::resetLayout() {
     showStructures_ = false;
+    showPolySlicePlanes_ = showPolyAppearance_ = showPolyView_ = showPolyRender_ = false;
     showShells_ = true;
     rightColumnWidth_ = settings::kRightColumnDefaultPx;
     layoutResetPending_ = true;
@@ -331,6 +332,21 @@ void PolyscopeGui::drawViewMenu() {
         return;
     }
     ImGui::MenuItem("Structures (advanced)", nullptr, &showStructures_);
+    if (ImGui::BeginMenu("Polyscope")) {
+        ImGui::MenuItem("Slice Planes", nullptr, &showPolySlicePlanes_);
+        tooltip("Polyscope's slice planes: add, move and remove cutting planes. Also under Navigate > View.");
+        ImGui::MenuItem("Appearance", nullptr, &showPolyAppearance_);
+        tooltip("Background color, transparency mode (None / Simple / Pretty), ground plane, tone mapping, "
+                "anti-aliasing, materials.");
+        ImGui::MenuItem("Camera & Clipping", nullptr, &showPolyView_);
+        tooltip("Navigation style, up and front direction, field of view, clip planes, slice planes. Also under "
+                "Navigate > View.");
+        ImGui::MenuItem("Render & Debug", nullptr, &showPolyRender_);
+        tooltip("Frame rate, max fps, vsync, force refresh, pick buffer.");
+        ImGui::EndMenu();
+    }
+    ImGui::MenuItem("Compass", nullptr, &showCompass_);
+    tooltip("Draw X / Y / Z axes in the corner of the 3D view, turning with the camera.");
     ImGui::Separator();
     if (ImGui::BeginMenu("Camera", controller_.hasMesh())) {
         if (ImGui::MenuItem("Home (frame all)", "Home / H")) {
@@ -890,6 +906,7 @@ UserPreferences PolyscopeGui::currentPreferences() const {
     UserPreferences prefs = controller_.userPreferences();
     prefs.uiScale = uiScale_;
     prefs.backgroundColor = polyscope::view::bgColor;
+    prefs.showCompass = showCompass_;
     return prefs;
 }
 
@@ -897,6 +914,7 @@ void PolyscopeGui::applyPreferences(const UserPreferences& prefs) {
     controller_.applyUserPreferences(prefs);
     uiScale_ = prefs.uiScale;
     polyscope::view::bgColor = prefs.backgroundColor;
+    showCompass_ = prefs.showCompass;
     applyTransparencyModeForPreview();
     applyBaseMeshStyleToPolyscope();
     requestSync();
@@ -1164,6 +1182,8 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"R", "Commit Repair: applies the Inspector's chosen repair to the focused defect (thin face, intersecting island or hole); one undo step. Refused, with the reason in the status bar, when the preview is not safe"},
         {"Home  or  H", "Frames the entire mesh and resets the Orbit Pivot to the mesh center"},
         {"G", "Toggles Ghost (base-mesh transparency)"},
+        {"View > Compass", "Draws X (red), Y (green), Z (blue) axes in the bottom-left of the 3D view, turning with the camera. Off by default"},
+        {"View > Polyscope", "Opens Polyscope's Slice Planes, Appearance (transparency, ground plane, background), Camera & Clipping and Render & Debug sections as floating windows"},
         {"B", "Box select faces: drag a rectangle (Shift+drag deselects); one box per B. Esc or right-click cancels. Only the faces you see, unless Select Through or Ghost (G) is on; hidden shells never"},
         {"C", "Circle select faces: paint with the brush (Shift or middle drag deselects, wheel resizes); Esc, Enter or right-click finishes"},
         {"A  /  Alt+A", "Select all shown faces / deselect all faces"},

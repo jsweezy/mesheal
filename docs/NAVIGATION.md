@@ -60,6 +60,8 @@ Ogun uses **Blender-inspired, selection-centric 3D camera navigation** tailored 
 
 ### Mouse in the Shells panel (multi-shell meshes)
 
+**View > Compass** draws X / Y / Z axes (red / green / blue) in the bottom-left corner of the 3D view; they turn with the camera. It is off by default and remembered. **View > Polyscope** opens Polyscope's Slice Planes, Appearance (transparency, ground plane, background), Camera & Clipping and Render & Debug sections as floating windows. Ogun starts empty when no STL is given on the command line.
+
 The **Shells** panel (left column, between Navigate and Structures) appears only when the mesh has more than one shell. Mesh Health covers the **selected** shells, or the **visible** shells when none is selected; a *Scope* line in Mesh Health says so, with an *All shells* button. A crossing counts only when both of its shells are in scope.
 
 | Input | Behavior |

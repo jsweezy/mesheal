@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
         if (arg1 == "-h" || arg1 == "--help") {
             std::cout << "Usage: " << argv[0] << " [path/to/model.stl]\n"
                       << "  Launches Ogun STL inspection and repair viewer.\n"
-                      << "  If no STL file path is provided, loads the built-in sample defective mesh.\n";
+                      << "  If no STL file path is provided, nothing is loaded: use File > Open or File > Load Sample.\n";
             return 0;
         }
 
@@ -38,8 +38,6 @@ int main(int argc, char** argv) {
                 std::cerr << "Warning: could not save the recent files list: " << error << "\n";
             }
         }
-    } else {
-        controller.loadSampleDefectiveMesh();
     }
 
     ogun::PolyscopeGui gui(controller, prefsFile, prefs, recentFile);

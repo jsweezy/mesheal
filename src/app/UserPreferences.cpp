@@ -307,6 +307,7 @@ const std::vector<Field>& preferenceFields() {
                          return true;
                      },
                      equalBy([](auto& p) -> auto& { return p.backgroundColor; })});
+        f.push_back(boolField("View", "show_compass", [](auto& p) -> auto& { return p.showCompass; }));
         return f;
     }();
     return fields;

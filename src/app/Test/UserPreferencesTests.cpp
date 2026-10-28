@@ -74,6 +74,7 @@ ogun::UserPreferences customPreferences() {
     p.overlayCap = 1234;
     p.uiScale = 1.35f;
     p.backgroundColor = {0.1f, 0.2f, 0.3f, 1.0f};
+    p.showCompass = !p.showCompass;
     return p;
 }
 
@@ -110,6 +111,7 @@ TEST_CASE("User preferences round trip every field through the config file", "[a
     CHECK(loaded.defaults.thinFace.minAltitude == custom.defaults.thinFace.minAltitude);
     CHECK(loaded.uiScale == custom.uiScale);
     CHECK(loaded.backgroundColor == custom.backgroundColor);
+    CHECK(loaded.showCompass == custom.showCompass);
 
     // Saving again overwrites in place
     REQUIRE(ogun::saveUserPreferences(defaults, file, &error));
@@ -163,6 +165,7 @@ TEST_CASE("Malformed or partial preference files fall back per key", "[app][pref
     // Keys not in the text keep their defaults
     CHECK(prefs.ghostOpacity == defaults.ghostOpacity);
     CHECK(prefs.backgroundColor == defaults.backgroundColor);
+    CHECK_FALSE(prefs.showCompass);
 
     // A truncated / binary file does not crash and gives defaults for what it cannot read
     const ogun::UserPreferences garbage = ogun::parseUserPreferences(std::string("\0\xff=\n= =\nweld_floor", 16));
@@ -205,6 +208,7 @@ TEST_CASE("Startup applies the saved preferences, live thin-face thresholds incl
     ogun::UserPreferences captured = controller.userPreferences();
     captured.uiScale = custom.uiScale;
     captured.backgroundColor = custom.backgroundColor;
+    captured.showCompass = custom.showCompass;
     CHECK(ogun::sameUserPreferences(captured, custom));
 
     // A new mesh's Mesh Health rows take the saved Auto defaults

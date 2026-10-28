@@ -3,12 +3,17 @@
 #include "core/Settings.hpp"
 
 #include <imgui.h>
+#include <imgui_internal.h>
+#include <polyscope/options.h>
 #include <polyscope/polyscope.h>
 #include <polyscope/render/engine.h>
+#include <polyscope/slice_plane.h>
 #include <polyscope/structure.h>
 #include <polyscope/view.h>
 
+#include <algorithm>
 #include <array>
+#include <initializer_list>
 #include <string>
 
 namespace ogun {
@@ -347,6 +352,111 @@ void PolyscopeGui::drawStructuresPanel() {
         }
         ImGui::PopID();
     }
+}
+
+// -----------------------------------------------------------------------------
+// View > Polyscope windows, Compass and the empty-state hint
+// -----------------------------------------------------------------------------
+
+namespace {
+
+/// Floating window for one of Polyscope's own sections; its tree nodes start open (`openNodes`, outermost first).
+template <typename Body>
+void polyscopeWindow(const char* title, bool* open, ImVec2 pos, std::initializer_list<const char*> openNodes, Body&& body) {
+    if (!*open) {
+        return;
+    }
+    ImGui::SetNextWindowPos(pos, ImGuiCond_FirstUseEver);
+    if (ImGui::Begin(title, open, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (ImGui::IsWindowAppearing()) {
+            // A tree node's open state is stored under its ID, nested nodes under their parent's ID
+            ImGuiID parent = ImGui::GetCurrentWindow()->IDStack.back();
+            for (const char* node : openNodes) {
+                const ImGuiID id = ImHashStr(node, 0, parent);
+                ImGui::GetStateStorage()->SetInt(id, 1);
+                parent = id;
+            }
+        }
+        ImGui::PushItemWidth(130.0f);
+        body();
+        ImGui::PopItemWidth();
+    }
+    ImGui::End();
+}
+
+} // namespace
+
+void PolyscopeGui::drawPolyscopeWindows() {
+    const float x = settings::kLeftColumnWidthPx + 4.0f * settings::kPanelMarginPx;
+    const float y = ImGui::GetFrameHeight() + 4.0f * settings::kPanelMarginPx;
+    polyscopeWindow("Polyscope: Slice Planes", &showPolySlicePlanes_, ImVec2(x, y), {"Slice Planes"},
+                    [] { polyscope::buildSlicePlaneGUI(); });
+    polyscopeWindow("Polyscope: Appearance", &showPolyAppearance_, ImVec2(x + 30.0f, y + 30.0f),
+                    {"Appearance", "Transparency"}, [] {
+                        if (polyscope::render::engine != nullptr) {
+                            polyscope::render::engine->buildEngineGui();
+                        }
+                    });
+    polyscopeWindow("Polyscope: Camera & Clipping", &showPolyView_, ImVec2(x + 60.0f, y + 60.0f), {"View"},
+                    [] { polyscope::view::buildViewGui(); });
+    polyscopeWindow("Polyscope: Render & Debug", &showPolyRender_, ImVec2(x + 90.0f, y + 90.0f), {}, [] {
+        ImGui::Text("Rolling: %.1f ms/frame (%.1f fps)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+        if (ImGui::InputInt("max fps", &polyscope::options::maxFPS, 0) &&
+            polyscope::options::maxFPS < 1 && polyscope::options::maxFPS != -1) {
+            polyscope::options::maxFPS = -1;
+        }
+        ImGui::Checkbox("vsync", &polyscope::options::enableVSync);
+        ImGui::Checkbox("Always redraw", &polyscope::options::alwaysRedraw);
+        ImGui::Checkbox("Show pick buffer", &polyscope::options::debugDrawPickBuffer);
+        if (ImGui::Button("Force refresh")) {
+            polyscope::refresh();
+        }
+    });
+}
+
+void PolyscopeGui::drawCompass(float left, float bottom) {
+    if (!showCompass_ || polyscope::view::windowWidth <= 0) {
+        return;
+    }
+    const float scale = uiScale_;
+    const float length = 46.0f * scale;
+    const ImVec2 origin(left + length + 18.0f * scale, bottom - length - 14.0f * scale);
+
+    struct Axis {
+        const char* label;
+        glm::vec3 direction;
+        ImU32 color;
+    };
+    const glm::mat3 rotation(polyscope::view::viewMat);
+    std::array<Axis, 3> axes = {{{"X", rotation * glm::vec3(1, 0, 0), IM_COL32(230, 70, 70, 255)},
+                                 {"Y", rotation * glm::vec3(0, 1, 0), IM_COL32(80, 200, 80, 255)},
+                                 {"Z", rotation * glm::vec3(0, 0, 1), IM_COL32(80, 130, 240, 255)}}};
+    // Axes pointing away from the viewer first (view space looks down -z), so near ones draw on top
+    std::sort(axes.begin(), axes.end(), [](const Axis& a, const Axis& b) { return a.direction.z < b.direction.z; });
+
+    ImDrawList* draw = ImGui::GetBackgroundDrawList();
+    draw->AddCircleFilled(origin, length + 12.0f * scale, IM_COL32(0, 0, 0, 40), 32);
+    for (const Axis& axis : axes) {
+        const ImVec2 tip(origin.x + axis.direction.x * length, origin.y - axis.direction.y * length);
+        const bool near = axis.direction.z >= 0.0f;
+        const ImU32 color = near ? axis.color : (axis.color & 0x00FFFFFFu) | (140u << 24);
+        draw->AddLine(origin, tip, color, 2.5f * scale);
+        draw->AddCircleFilled(tip, 8.0f * scale, color, 16);
+        const ImVec2 textSize = ImGui::CalcTextSize(axis.label);
+        draw->AddText(ImVec2(tip.x - textSize.x * 0.5f, tip.y - textSize.y * 0.5f), IM_COL32(255, 255, 255, 255),
+                      axis.label);
+    }
+}
+
+void PolyscopeGui::drawNoMeshHint(float left, float top, float bottom) {
+    if (controller_.hasMesh()) {
+        return;
+    }
+    const char* text = "No mesh loaded. Open an STL (File > Open) or load a sample (File > Load Sample).";
+    const ImVec2 size = ImGui::CalcTextSize(text);
+    const float right = ImGui::GetIO().DisplaySize.x - rightColumnWidth_ - 2.0f * settings::kPanelMarginPx;
+    const ImVec2 pos(left + (right - left - size.x) * 0.5f, top + (bottom - top - size.y) * 0.5f);
+    ImGui::GetBackgroundDrawList()->AddText(pos, ImGui::GetColorU32(ImGuiCol_TextDisabled), text);
 }
 
 } // namespace ogun

@@ -233,6 +233,7 @@ void removePointCloudIfPresent(const char* name) {
 PolyscopeGui::PolyscopeGui(AppController& controller, std::filesystem::path preferencesFile, const UserPreferences& prefs,
                        std::filesystem::path recentFilesFile)
     : controller_(controller),
+      showCompass_(prefs.showCompass),
       uiScale_(prefs.uiScale),
       preferencesFile_(std::move(preferencesFile)),
       savedPreferences_(prefs),
@@ -339,6 +340,9 @@ void PolyscopeGui::drawUiFrame() {
     if (showAboutWindow_) {
         drawAboutWindow();
     }
+    drawPolyscopeWindows();
+    drawCompass(settings::kLeftColumnWidthPx + 2.0f * settings::kPanelMarginPx, bottom);
+    drawNoMeshHint(settings::kLeftColumnWidthPx + 2.0f * settings::kPanelMarginPx, top, bottom);
     drawModalPopups();
     drawFaceSelectOverlay();
     layoutResetPending_ = false;

@@ -40,6 +40,7 @@ struct UserPreferences {
     // ---- GUI-only state (PolyscopeGui) ----
     float uiScale = 1.0f;
     std::array<float, 4> backgroundColor = settings::kDefaultBackgroundColor;
+    bool showCompass = false; ///< View > Compass: the XYZ orientation gizmo
 };
 
 /// `<configDir>/preferences.conf` (empty when `configDir` is empty).

@@ -88,6 +88,9 @@ private:
     void drawDisplayPanel();
     void drawNavigatePanel();
     void drawStructuresPanel();
+    void drawPolyscopeWindows();
+    void drawCompass(float left, float bottom);
+    void drawNoMeshHint(float left, float top, float bottom);
     void flyToStandardView(int view);
     void toggleGhost();
     void toggleOrthographic();
@@ -207,6 +210,11 @@ private:
     bool showStructures_ = false;      ///< Structures panel, off until View > Structures (advanced)
     bool showShells_ = true;           ///< Shells panel (shown only for multi-shell meshes)
     bool structuresCollapsed_ = true;  ///< Structures panel state, to size the Shells panel above it
+    bool showCompass_ = false;         ///< View > Compass (saved preference)
+    bool showPolySlicePlanes_ = false; ///< View > Polyscope > Slice Planes window
+    bool showPolyAppearance_ = false;  ///< ... Appearance (background, transparency, ground plane, ...)
+    bool showPolyView_ = false;        ///< ... Camera & Clipping (navigation style, up / front, FOV, clip planes)
+    bool showPolyRender_ = false;      ///< ... Render & Debug (frame rate, vsync, redraw)
     bool showMeshInfo_ = false;
     bool showPreferences_ = false;
     bool showNavigationHelpWindow_ = false;
