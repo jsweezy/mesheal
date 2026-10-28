@@ -26,6 +26,7 @@
 #include <filesystem>
 #include <queue>
 #include <string>
+#include <utility>
 #include <vector>
 
 extern "C" {
@@ -228,8 +229,11 @@ void removePointCloudIfPresent(const char* name) {
 
 } // namespace
 
-PolyscopeGui::PolyscopeGui(AppController& controller)
-    : controller_(controller) {}
+PolyscopeGui::PolyscopeGui(AppController& controller, std::filesystem::path preferencesFile, const UserPreferences& prefs)
+    : controller_(controller),
+      uiScale_(prefs.uiScale),
+      preferencesFile_(std::move(preferencesFile)),
+      savedPreferences_(prefs) {}
 
 void PolyscopeGui::run() {
     polyscope::options::programName = "Ogun - STL Mesh Inspection & Repair Tool";
@@ -241,6 +245,7 @@ void PolyscopeGui::run() {
 
     polyscope::init();
     polyscope::state::doDefaultMouseInteraction = false;
+    polyscope::view::bgColor = savedPreferences_.backgroundColor;
     applyTransparencyModeForPreview();
     loadAndApplyApplicationIcon();
 
@@ -254,6 +259,7 @@ void PolyscopeGui::run() {
     };
 
     polyscope::show();
+    savePreferencesIfChanged(true);
     appIconTexture_.reset();
 }
 
@@ -344,6 +350,7 @@ void PolyscopeGui::drawUiFrame() {
     }
     processPendingSync();
     applyEffectiveHighlightSizingToPolyscope(false);
+    savePreferencesIfChanged();
 }
 
 void PolyscopeGui::requestSync(bool meshChanged) noexcept {

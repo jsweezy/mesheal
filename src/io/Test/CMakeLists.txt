@@ -1,4 +1,5 @@
 add_executable(ogun_io_tests
+    ConfigDirectoryTests.cpp
     StlReaderTests.cpp
 )
 

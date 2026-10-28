@@ -1,5 +1,7 @@
 #include "app/AppController.hpp"
 #include "app/PolyscopeGui.hpp"
+#include "app/UserPreferences.hpp"
+#include "io/ConfigDirectory.hpp"
 
 #include <filesystem>
 #include <iostream>
@@ -9,6 +11,9 @@ int main(int argc, char** argv) {
     ogun::AppController controller;
     // Check Mesh after load runs on a worker, so the window opens (with Cancel) while it runs
     controller.setBackgroundChecks(true);
+    // Saved preferences first: the weld floor and thin-face thresholds apply to the file loaded below
+    const std::filesystem::path prefsFile = ogun::preferencesFilePath(ogun::configDirectory());
+    const ogun::UserPreferences prefs = ogun::loadAndApplyUserPreferences(controller, prefsFile);
 
     if (argc > 1) {
         const std::string_view arg1(argv[1]);
@@ -27,7 +32,7 @@ int main(int argc, char** argv) {
         controller.loadSampleDefectiveMesh();
     }
 
-    ogun::PolyscopeGui gui(controller);
+    ogun::PolyscopeGui gui(controller, prefsFile, prefs);
     gui.run();
     return 0;
 }

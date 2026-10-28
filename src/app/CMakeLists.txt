@@ -12,6 +12,7 @@ add_library(ogun_app_controller STATIC
     MergeJobRunner.cpp
     RepairJobRunner.cpp
     ShellBrowser.cpp
+    UserPreferences.cpp
 )
 add_library(ogun::app_controller ALIAS ogun_app_controller)
 

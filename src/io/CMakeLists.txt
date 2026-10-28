@@ -1,4 +1,5 @@
 add_library(ogun_io STATIC
+    ConfigDirectory.cpp
     StlReader.cpp
     StlWriter.cpp
     SampleMeshes.cpp

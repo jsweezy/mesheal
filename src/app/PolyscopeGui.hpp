@@ -1,10 +1,12 @@
 #pragma once
 
 #include "app/AppController.hpp"
+#include "app/UserPreferences.hpp"
 
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -36,7 +38,10 @@ public:
     static constexpr const char* kDefectFacesName = "Selected Defect Faces";
     static constexpr const char* kOriginalEdgesName = "Original Edges (Before Repair)";
 
-    explicit PolyscopeGui(AppController& controller);
+    /// `preferencesFile`: where preference changes are saved (empty: not saved). `prefs`: the loaded
+    /// preferences, whose controller part is already applied (`loadAndApplyUserPreferences`).
+    explicit PolyscopeGui(AppController& controller, std::filesystem::path preferencesFile = {},
+                          const UserPreferences& prefs = UserPreferences{});
 
     /// Initializes Polyscope, registers callbacks, syncs initial mesh state, and launches the event loop.
     void run();
@@ -57,6 +62,12 @@ private:
     void drawLeftColumn(float top, float bottom, float rightColumnLeft);
     void drawRightColumn(float top, float bottom);
     void drawPreferencesWindow();
+    /// Controller preferences plus the GUI-only ones (UI scale, background color).
+    [[nodiscard]] UserPreferences currentPreferences() const;
+    /// Applies `prefs` to the controller, the GUI and Polyscope (Preferences > Reset to defaults).
+    void applyPreferences(const UserPreferences& prefs);
+    /// Saves the preferences when they changed, once no widget is being edited (`force`: even then).
+    void savePreferencesIfChanged(bool force = false);
     void drawNavigationHelpWindow();
     void drawModalPopups();
     void resetLayout();
@@ -193,6 +204,11 @@ private:
     bool leftColumnAutoCollapsed_ = false;
     float rightColumnWidth_ = settings::kRightColumnDefaultPx;
     float uiScale_ = 1.0f;
+
+    // Saved preferences (written to `preferencesFile_` whenever a value changes)
+    std::filesystem::path preferencesFile_;
+    UserPreferences savedPreferences_;  ///< Values last loaded or saved; a difference triggers a save
+    std::string preferencesSaveError_;
 
     // Status bar message (mirrors the controller's latest message for a few seconds)
     std::uint64_t shownMessageSerial_ = 0;

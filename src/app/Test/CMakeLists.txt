@@ -6,6 +6,7 @@ add_executable(ogun_app_tests
     HoleRepairTests.cpp
     IntersectionRepairTests.cpp
     ShellBrowserTests.cpp
+    UserPreferencesTests.cpp
 )
 
 target_link_libraries(ogun_app_tests

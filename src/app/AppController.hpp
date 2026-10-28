@@ -49,13 +49,15 @@ enum class HealthStatus {
 
 [[nodiscard]] const char* healthStatusLabel(HealthStatus status) noexcept;
 
-/// State of one Mesh Health row.
+struct UserPreferences;
+
 /// Preferences > Units & Tolerance defaults; the live tool settings start from these and
 /// editing the live settings never changes them. Kept plain so it is easy to serialize.
 struct PreferenceDefaults {
     ThinFaceThresholds thinFace{}; // min altitude / min area / max aspect ratio (file units)
 };
 
+/// State of one Mesh Health row.
 struct CategoryHealth {
     HealthStatus status = HealthStatus::NotRun;
     bool autoCheck = true;
@@ -368,6 +370,12 @@ public:
 
     /// Stores new thin-face defaults and copies them into the live thresholds.
     void setThinFaceDefaults(const ThinFaceThresholds& defaults);
+
+    /// Saved preference values held by the controller (UserPreferences.hpp; GUI-only fields keep defaults).
+    [[nodiscard]] UserPreferences userPreferences() const;
+
+    /// Applies loaded or reset preferences; the live thin-face thresholds start from the saved defaults.
+    void applyUserPreferences(const UserPreferences& prefs);
 
     [[nodiscard]] double degenerateAreaEpsilon() const noexcept {
         return degenerateAreaEpsilon_;

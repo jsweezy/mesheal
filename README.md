@@ -30,6 +30,7 @@ Unlike 3D printing repair tools—which often voxelize or aggressively alter geo
 - **Universal Multi-Step Undo (`Ctrl+Z` / `Cmd+Z`)**: Every operation modifying the mesh in memory (single-face repair commits, hole fills, batch repairs, non-manifold splits, coordinate scaling) pushes a snapshot to Ogun's undo history stack.
 - **STL Export (File > Save / Save As)**: Save repaired meshes in **Binary STL** (default) or **ASCII STL** formats.
 - **Menu-Bar GUI**: `File Edit View Mesh Repair Help` menus, docked Display / Navigate / Structures panels on the left, Mesh Health and a per-defect Tool panel on the right, and a status bar ([UI_DESIGN.md](UI_DESIGN.md)).
+- **Saved Preferences**: Everything in *Edit > Preferences* (weld floor, relative tolerance, the Thin / sliver faces defaults, Auto defaults, UI scale, caps) and every *Display* panel style (colors, edge widths, point radius, preview mode and opacities, base mesh style, background) is saved as soon as it changes to `~/.config/ogun/preferences.conf` (`$XDG_CONFIG_HOME/ogun/` when set, on macOS and Linux) and reused at the next start. The file is plain `key = value` text; *Preferences > Reset to defaults* restores the built-in values.
 
 ---
 
@@ -79,7 +80,7 @@ ogun_stl_repair_tool/
 └── src/
     ├── core/           # Mathematical constants & centralized default settings (+ src/core/Test/)
     ├── mesh/           # Indexed Face-Vertex Mesh, CGAL Interop, Units & ToleranceConfig (+ src/mesh/Test/)
-    ├── io/             # STL reading, edge-aware welding, STL export & sample meshes (+ src/io/Test/)
+    ├── io/             # STL reading, edge-aware welding, STL export, sample meshes & the config directory (+ src/io/Test/)
     ├── diagnostics/    # Mesh Health checks: topology, self-intersections, thin/sliver, degenerate, duplicates (+ src/diagnostics/Test/)
     ├── repair/         # Sliver healing, hole filling, intersection repair (islands, self-union, rebuilds, metrics) (+ src/repair/Test/)
     ├── app/            # Headless AppController (+ src/app/Test/) & Polyscope/ImGui viewer

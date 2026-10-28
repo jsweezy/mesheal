@@ -131,6 +131,7 @@ inline constexpr float kMinViewportWidthPx     = 400.0f;          // Below this 
 inline constexpr double kStatusMessageSeconds  = 8.0;             // Seconds a status-bar message stays before reverting to "Ready"
 inline constexpr float kMinUiScale             = 0.6f;            // Minimum Preferences > Interface UI scale
 inline constexpr float kMaxUiScale             = 2.5f;            // Maximum Preferences > Interface UI scale
+inline constexpr std::array<float, 4> kDefaultBackgroundColor = {1.0f, 1.0f, 1.0f, 0.0f}; // RGBA 3D-view background (Polyscope default; Display > Appearance)
 
 // -----------------------------------------------------------------------------
 // Shells panel (UI_DESIGN.md §16)

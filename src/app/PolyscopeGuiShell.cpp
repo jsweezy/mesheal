@@ -804,8 +804,56 @@ void PolyscopeGui::drawPreferencesWindow() {
         ImGui::EndTabBar();
     }
     ImGui::Separator();
-    ImGui::TextDisabled("Settings last for this session. Saving defaults is planned (P5).");
+    if (ImGui::Button("Reset to defaults")) {
+        applyPreferences(UserPreferences{});
+        controller_.postStatusMessage("Preferences and Display styles reset to the built-in defaults.");
+    }
+    tooltip("Restore every preference on these tabs and every Display panel style (colors, widths, preview, "
+            "background) to its built-in value, and save.");
+    if (preferencesFile_.empty()) {
+        ImGui::TextDisabled("No home directory: preferences last for this session only.");
+    } else {
+        ImGui::TextDisabled("Changes are saved automatically to %s", preferencesFile_.string().c_str());
+        if (!preferencesSaveError_.empty()) {
+            ImGui::TextColored(ImVec4(0.9f, 0.3f, 0.2f, 1.0f), "Save failed: %s", preferencesSaveError_.c_str());
+        }
+    }
     ImGui::End();
+}
+
+UserPreferences PolyscopeGui::currentPreferences() const {
+    UserPreferences prefs = controller_.userPreferences();
+    prefs.uiScale = uiScale_;
+    prefs.backgroundColor = polyscope::view::bgColor;
+    return prefs;
+}
+
+void PolyscopeGui::applyPreferences(const UserPreferences& prefs) {
+    controller_.applyUserPreferences(prefs);
+    uiScale_ = prefs.uiScale;
+    polyscope::view::bgColor = prefs.backgroundColor;
+    applyTransparencyModeForPreview();
+    applyBaseMeshStyleToPolyscope();
+    requestSync();
+}
+
+void PolyscopeGui::savePreferencesIfChanged(bool force) {
+    // While a slider is dragged or a field typed in, wait for the release
+    if (preferencesFile_.empty() || (!force && ImGui::IsAnyItemActive())) {
+        return;
+    }
+    const UserPreferences prefs = currentPreferences();
+    if (sameUserPreferences(prefs, savedPreferences_)) {
+        return;
+    }
+    savedPreferences_ = prefs; // also on failure, so a read-only file is not retried every frame
+    std::string error;
+    if (saveUserPreferences(prefs, preferencesFile_, &error)) {
+        preferencesSaveError_.clear();
+    } else {
+        preferencesSaveError_ = error;
+        controller_.postStatusMessage("Could not save preferences: " + error, true);
+    }
 }
 
 void PolyscopeGui::drawModalPopups() {

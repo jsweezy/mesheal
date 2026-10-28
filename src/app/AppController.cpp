@@ -1,4 +1,5 @@
 #include "app/AppController.hpp"
+#include "app/UserPreferences.hpp"
 #include "core/Constants.hpp"
 #include "core/Settings.hpp"
 #include "diagnostics/ShellNesting.hpp"
@@ -290,6 +291,38 @@ void AppController::setThresholds(const ThinFaceThresholds& thresholds) {
 void AppController::setThinFaceDefaults(const ThinFaceThresholds& defaults) {
     preferenceDefaults_.thinFace = defaults;
     setThresholds(defaults);
+}
+
+UserPreferences AppController::userPreferences() const {
+    UserPreferences prefs;
+    prefs.appearance = overlayAppearance_;
+    prefs.ghostOpacity = ghostMeshOpacity_;
+    prefs.repairPreviewVisible = repairPreviewVisible_;
+    prefs.previewDisplayMode = previewDisplayMode_;
+    prefs.previewBaseOpacity = previewBaseOpacity_;
+    prefs.previewPatchOpacity = previewPatchOpacity_;
+    prefs.tolerance = toleranceConfig_;
+    prefs.defaults = preferenceDefaults_;
+    prefs.checkMeshAfterLoad = checkMeshAfterLoad_;
+    prefs.autoCheckDefaults = autoCheckDefaults_;
+    prefs.listCap = listCap_;
+    prefs.overlayCap = overlayCap_;
+    return prefs;
+}
+
+void AppController::applyUserPreferences(const UserPreferences& prefs) {
+    setOverlayAppearance(prefs.appearance);
+    setGhostMeshOpacity(prefs.ghostOpacity);
+    setRepairPreviewVisible(prefs.repairPreviewVisible);
+    setPreviewDisplayMode(prefs.previewDisplayMode);
+    setPreviewBaseOpacity(prefs.previewBaseOpacity);
+    setPreviewPatchOpacity(prefs.previewPatchOpacity);
+    setToleranceConfig(prefs.tolerance);
+    setThinFaceDefaults(prefs.defaults.thinFace);
+    setCheckMeshAfterLoad(prefs.checkMeshAfterLoad);
+    autoCheckDefaults_ = prefs.autoCheckDefaults;
+    setListCap(prefs.listCap);
+    setOverlayCap(prefs.overlayCap);
 }
 
 void AppController::setDegenerateAreaEpsilon(double epsilon) {
