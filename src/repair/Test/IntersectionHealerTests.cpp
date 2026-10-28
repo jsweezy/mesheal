@@ -13,6 +13,8 @@
 
 #include <Eigen/Geometry>
 
+#include <array>
+#include <cstdio>
 #include <numeric>
 #include <vector>
 
@@ -221,34 +223,61 @@ TEST_CASE("Global repairs merge overlapping cubes into one clean shell", "[repai
     }
 }
 
-TEST_CASE("The alpha wrap lies the chosen offset outside the input", "[repair][global][wrap]") {
+TEST_CASE("Alpha wrap offset is alpha / x and follows alpha", "[repair][global][wrap]") {
+    ogun::GlobalRepairParams params;
+    // The default x reproduces the old automatic offset, alpha / 30
+    REQUIRE(params.alphaWrapOffsetRatio == ogun::settings::kDefaultAlphaWrapOffsetRatio);
+    REQUIRE(params.alphaWrapOffsetRatio == 30.0);
+    const double diag = 100.0;
+    const double alpha = ogun::alphaWrapAlpha(params, diag);
+    REQUIRE(alpha == Catch::Approx(diag / ogun::settings::kDefaultAlphaWrapDetail));
+    REQUIRE(ogun::alphaWrapOffset(params, alpha) == Catch::Approx(alpha / 30.0));
+
+    params.alphaWrapOffsetRatio = 75.0;
+    REQUIRE(ogun::alphaWrapOffset(params, alpha) == Catch::Approx(alpha / 75.0));
+
+    // For a fixed x, a larger alpha (lower detail) gives a proportionally larger offset
+    params.alphaWrapDetail = 25.0;
+    const double coarseAlpha = ogun::alphaWrapAlpha(params, diag);
+    REQUIRE(coarseAlpha == Catch::Approx(4.0 * alpha));
+    REQUIRE(ogun::alphaWrapOffset(params, coarseAlpha) == Catch::Approx(4.0 * ogun::alphaWrapOffset(params, alpha)));
+    REQUIRE(ogun::alphaWrapOffset(params, coarseAlpha) == Catch::Approx(coarseAlpha / 75.0));
+
+    // A non-positive x (never set by the app) falls back to the default
+    params.alphaWrapOffsetRatio = 0.0;
+    REQUIRE(ogun::alphaWrapOffset(params, alpha) == Catch::Approx(alpha / 30.0));
+}
+
+TEST_CASE("The alpha wrap lies alpha / x outside the input", "[repair][global][wrap]") {
     const ogun::Mesh cube = ogun::SampleMeshes::createCubeMesh(10.0);
     ogun::GlobalRepairParams params;
     params.alphaWrapDetail = 20.0; // coarse: keeps the test fast
     const double alpha = ogun::alphaWrapAlpha(params, cube.boundingBox().diagonal());
-    REQUIRE(ogun::alphaWrapOffset(params, alpha) == Catch::Approx(alpha / 30.0)); // 0 = automatic
 
-    const ogun::RepairCandidate automatic = ogun::runGlobalRepair(cube, {}, ogun::GlobalRepairMethod::AlphaWrap, params);
-    params.alphaWrapOffset = alpha / 30.0;
-    const ogun::RepairCandidate same = ogun::runGlobalRepair(cube, {}, ogun::GlobalRepairMethod::AlphaWrap, params);
-    params.alphaWrapOffset = 0.5;
+    const ogun::RepairCandidate standard = ogun::runGlobalRepair(cube, {}, ogun::GlobalRepairMethod::AlphaWrap, params);
+    params.alphaWrapOffsetRatio = 2.0;
     const ogun::RepairCandidate wide = ogun::runGlobalRepair(cube, {}, ogun::GlobalRepairMethod::AlphaWrap, params);
-    REQUIRE(automatic.success);
-    REQUIRE(same.success);
+    REQUIRE(standard.success);
     REQUIRE(wide.success);
-    REQUIRE(same.mesh.F == automatic.mesh.F);
     REQUIRE(wide.metrics.watertight());
+    REQUIRE(standard.params.alphaWrapOffsetRatio == 30.0);
+    REQUIRE(wide.params.alphaWrapOffsetRatio == 2.0);
 
     // The wrap stays about `offset` outside the cube: never closer, and the volume grows with it
-    for (const auto* c : {&automatic, &wide}) {
-        const double offset = ogun::alphaWrapOffset(c->params, alpha);
+    for (const auto* c : {&standard, &wide}) {
+        const double offset = alpha / c->params.alphaWrapOffsetRatio;
         CAPTURE(offset);
+        REQUIRE(ogun::alphaWrapOffset(c->params, alpha) == Catch::Approx(offset));
         REQUIRE(c->metrics.maxDeviation >= 0.9 * offset);
         REQUIRE(c->metrics.maxDeviation <= 2.0 * offset);
         REQUIRE(c->metrics.volumeAfter > 1000.0);
+        // The effective offset alpha / x is what reaches CGAL
+        std::array<char, 96> text{};
+        std::snprintf(text.data(), text.size(), "Wrapped with alpha %.3g and offset %.3g.", alpha, offset);
+        CAPTURE(c->statusMessage);
+        REQUIRE(c->statusMessage.find(text.data()) != std::string::npos);
     }
-    REQUIRE(wide.metrics.volumeAfter > automatic.metrics.volumeAfter + 100.0); // 10.5^3 - 10^3 is 157 before rounding
-    REQUIRE(wide.statusMessage.find("offset 0.5") != std::string::npos);
+    REQUIRE(wide.metrics.volumeAfter > standard.metrics.volumeAfter + 100.0); // offset 0.43: 10.87^3 - 10^3 is 283 before rounding
 }
 
 TEST_CASE("Winding-number rebuild of an axis-aligned cube has no degenerate faces", "[repair][intersections][global]") {

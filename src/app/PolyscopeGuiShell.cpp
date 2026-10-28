@@ -444,7 +444,7 @@ void PolyscopeGui::drawMeshMenu() {
         requestSync();
     }
     tooltip("Shrink-wrap the mesh (or the shells in scope) into a new watertight, manifold surface without "
-            "self-intersections (CGAL 3D Alpha Wrapping). Set alpha and offset, preview, then apply.");
+            "self-intersections (CGAL 3D Alpha Wrapping). Set alpha and the offset (alpha / x), preview, then apply.");
     if (ImGui::MenuItem("Delete Selected Faces", "X / Del", false, controller_.selectedFaceCount() > 0)) {
         deleteSelection();
     }

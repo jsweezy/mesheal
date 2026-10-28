@@ -134,12 +134,13 @@ double alphaWrapAlpha(const GlobalRepairParams& params, double diag) noexcept {
 }
 
 double alphaWrapOffset(const GlobalRepairParams& params, double alpha) noexcept {
-    return params.alphaWrapOffset > 0.0 ? params.alphaWrapOffset : alpha / settings::kDefaultAlphaWrapOffsetRatio;
+    const double ratio = params.alphaWrapOffsetRatio > 0.0 ? params.alphaWrapOffsetRatio : settings::kDefaultAlphaWrapOffsetRatio;
+    return alpha / ratio;
 }
 
 bool GlobalRepairParams::operator==(const GlobalRepairParams& other) const noexcept {
     return unionCrossingShells == other.unionCrossingShells && alphaWrapDetail == other.alphaWrapDetail &&
-           alphaWrapOffset == other.alphaWrapOffset && decimateRatio == other.decimateRatio &&
+           alphaWrapOffsetRatio == other.alphaWrapOffsetRatio && decimateRatio == other.decimateRatio &&
            mergeDistance == other.mergeDistance && mergeKeepSurfacesApart == other.mergeKeepSurfacesApart &&
            windingResolution == other.windingResolution &&
            simplifyRebuild == other.simplifyRebuild && islandSettings.dilationRings == other.islandSettings.dilationRings &&

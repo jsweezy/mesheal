@@ -2,6 +2,7 @@
 #include "diagnostics/SelfIntersections.hpp"
 #include "io/SampleMeshes.hpp"
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -225,10 +226,14 @@ TEST_CASE("Mesh > Clean Up > Alpha Wrap: one method, offset, apply and undo", "[
 
     ogun::GlobalRepairParams params = controller.globalRepairParams();
     params.alphaWrapDetail = 20.0;
-    params.alphaWrapOffset = -1.0; // clamped to 0: automatic
+    REQUIRE(params.alphaWrapOffsetRatio == ogun::settings::kDefaultAlphaWrapOffsetRatio);
+    params.alphaWrapOffsetRatio = -1.0; // clamped to the slider range
     controller.setGlobalRepairParams(params);
-    REQUIRE(controller.globalRepairParams().alphaWrapOffset == 0.0);
-    params.alphaWrapOffset = 0.4;
+    REQUIRE(controller.globalRepairParams().alphaWrapOffsetRatio == ogun::settings::kMinAlphaWrapOffsetRatio);
+    params.alphaWrapOffsetRatio = 1.0e6;
+    controller.setGlobalRepairParams(params);
+    REQUIRE(controller.globalRepairParams().alphaWrapOffsetRatio == ogun::settings::kMaxAlphaWrapOffsetRatio);
+    params.alphaWrapOffsetRatio = 10.0;
     controller.setGlobalRepairParams(params);
 
     // Only the shell in scope is wrapped
@@ -244,7 +249,24 @@ TEST_CASE("Mesh > Clean Up > Alpha Wrap: one method, offset, apply and undo", "[
     const ogun::RepairCandidate* c = controller.shownGlobalCandidate();
     REQUIRE(c != nullptr);
     REQUIRE(c->success);
-    REQUIRE(c->params.alphaWrapOffset == 0.4);
+    REQUIRE(c->params.alphaWrapOffsetRatio == 10.0);
+    {
+        // The wrap used offset = alpha / x for the scope's diagonal
+        const double alpha = ogun::alphaWrapAlpha(c->params, controller.shells().shell(first).bbox.diagonal());
+        REQUIRE(ogun::alphaWrapOffset(c->params, alpha) == Catch::Approx(alpha / 10.0));
+        REQUIRE(c->metrics.maxDeviation >= 0.9 * alpha / 10.0);
+    }
+
+    // A new x (or a new alpha, which moves the offset with it) makes the candidate stale
+    params.alphaWrapOffsetRatio = 20.0;
+    controller.setGlobalRepairParams(params);
+    REQUIRE_FALSE(c->params == controller.globalRepairParams());
+    params.alphaWrapOffsetRatio = 10.0;
+    params.alphaWrapDetail = 30.0;
+    REQUIRE_FALSE(c->params == params);
+    params.alphaWrapDetail = 20.0;
+    controller.setGlobalRepairParams(params);
+    REQUIRE(c->params == controller.globalRepairParams());
     REQUIRE(c->metrics.watertight());
     REQUIRE(c->metrics.intersectingFacesAfter == 0);
     REQUIRE(static_cast<std::size_t>(c->metrics.facesBefore) == controller.shells().shell(first).faces.size());

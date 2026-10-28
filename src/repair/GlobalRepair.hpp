@@ -51,10 +51,10 @@ inline constexpr std::array<GlobalRepairMethod, 3> kHoleRepairMethods = {
 struct GlobalRepairParams {
     /// Self-union: also merge shells that cross each other (else each shell is united on its own).
     bool unionCrossingShells = true;
-    /// Alpha wrap: alpha = bbox diagonal / detail; offset = the wrap's distance outside the input
-    /// (a length; 0 = automatic, alpha / kDefaultAlphaWrapOffsetRatio).
+    /// Alpha wrap: alpha = bbox diagonal / detail; offset (the wrap's distance outside the input)
+    /// = alpha / offset ratio, so it follows alpha.
     double alphaWrapDetail = settings::kDefaultAlphaWrapDetail;
-    double alphaWrapOffset = 0.0;
+    double alphaWrapOffsetRatio = settings::kDefaultAlphaWrapOffsetRatio;
     /// Decimate: fraction of the faces in scope to keep.
     double decimateRatio = settings::kDefaultDecimateRatio;
     /// Merge vertices: distance in file coordinates (unitless; the file unit does not change it).
@@ -74,7 +74,7 @@ struct GlobalRepairParams {
     [[nodiscard]] bool operator==(const GlobalRepairParams& other) const noexcept;
 };
 
-/// Alpha wrap: alpha for a scope with bounding-box diagonal `diag`, and the offset used with it.
+/// Alpha wrap: alpha for a scope with bounding-box diagonal `diag`, and the offset used with it (alpha / ratio).
 [[nodiscard]] double alphaWrapAlpha(const GlobalRepairParams& params, double diag) noexcept;
 [[nodiscard]] double alphaWrapOffset(const GlobalRepairParams& params, double alpha) noexcept;
 

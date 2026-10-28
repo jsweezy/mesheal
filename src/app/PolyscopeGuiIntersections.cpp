@@ -442,24 +442,14 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
                 "narrower than about alpha are closed; wider ones are followed inside.");
         ImGui::TextDisabled("alpha = %s", lengthText(alpha, controller_.fileUnit()).c_str());
 
-        bool autoOffset = params.alphaWrapOffset <= 0.0;
-        if (ImGui::Checkbox("Automatic offset (alpha / 30)", &autoOffset)) {
-            params.alphaWrapOffset = autoOffset ? 0.0 : alphaWrapOffset(GlobalRepairParams{}, alpha);
-            changed = true;
-        }
-        tooltip("The offset is how far outside the input the wrap lies. CGAL suggests alpha / 30.");
-        if (!autoOffset) {
-            const double minOffset = diag * settings::kMinAlphaWrapOffsetDiag;
-            const double maxOffset = diag * settings::kMaxAlphaWrapOffsetDiag;
-            const std::string label = "Offset (" + std::string(unitSymbol(controller_.fileUnit())) + ")";
-            changed |= ImGui::SliderScalar(label.c_str(), ImGuiDataType_Double, &params.alphaWrapOffset, &minOffset,
-                                           &maxOffset, "%.3g", ImGuiSliderFlags_Logarithmic);
-            tooltip("Distance of the wrap outside the input surface. Smaller follows the input more closely (the "
-                    "volume grows less) but makes more faces and takes longer; larger rounds edges off. Ctrl+click "
-                    "(Control, not Cmd) to type a value.");
-        }
-        ImGui::TextDisabled("offset = %s (alpha / %.3g)", lengthText(alphaWrapOffset(params, alpha), controller_.fileUnit()).c_str(),
-                            alpha / alphaWrapOffset(params, alpha));
+        changed |= ImGui::SliderScalar("Offset (alpha / x)", ImGuiDataType_Double, &params.alphaWrapOffsetRatio,
+                                       &settings::kMinAlphaWrapOffsetRatio, &settings::kMaxAlphaWrapOffsetRatio, "x = %.0f");
+        tooltip("The offset is how far outside the input the wrap lies: offset = alpha / x, so it follows "
+                "alpha. CGAL suggests x = 30. A higher x follows the input more closely (the volume grows less) "
+                "but makes more faces and takes longer; a lower one rounds edges off. Ctrl+click (Control, not "
+                "Cmd) to type a value.");
+        ImGui::TextDisabled("offset = %s (alpha / %.0f)", lengthText(alphaWrapOffset(params, alpha), controller_.fileUnit()).c_str(),
+                            params.alphaWrapOffsetRatio);
         changed |= ImGui::Checkbox("Simplify to the original face count##wrap", &params.simplifyRebuild);
         break;
     }

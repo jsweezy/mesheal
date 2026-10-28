@@ -70,7 +70,9 @@ inline constexpr int    kMaxIslandRepairRounds            = 4;    // Repair All 
 inline constexpr double kDefaultAlphaWrapDetail           = 100.0;  // Alpha wrap: alpha = bbox diagonal / detail (larger = tighter, slower)
 inline constexpr double kMinAlphaWrapDetail               = 10.0;   // Lowest alpha-wrap detail offered
 inline constexpr double kMaxAlphaWrapDetail               = 1000.0; // Highest alpha-wrap detail offered (very slow on big meshes)
-inline constexpr double kDefaultAlphaWrapOffsetRatio      = 30.0;   // Alpha wrap: automatic offset = alpha / ratio (CGAL's suggestion)
+inline constexpr double kDefaultAlphaWrapOffsetRatio      = 30.0;   // Alpha wrap: offset = alpha / ratio (CGAL's suggestion)
+inline constexpr double kMinAlphaWrapOffsetRatio          = 1.0;    // Lowest offset ratio offered (offset = alpha: loosest wrap)
+inline constexpr double kMaxAlphaWrapOffsetRatio          = 200.0;  // Highest offset ratio offered (offset = alpha / 200: tightest, slowest)
 inline constexpr double kDefaultDecimateRatio             = 0.5;    // Mesh > Simplify > Decimate: keep this fraction of the faces
 inline constexpr double kMinDecimateRatio                 = 0.01;   // Smallest decimation ratio offered
 inline constexpr double kMaxDecimateRatio                 = 1.0;    // Largest decimation ratio offered (no change)
@@ -79,8 +81,6 @@ inline constexpr double kMinMergeDistance               = 1.0e-4; // Merge dista
 inline constexpr double kMaxMergeDistance               = 10.0;   // Merge distance slider maximum, file units
 inline constexpr double kMergeCollapseWarnRatio           = 5.0;    // Merge distance / mean edge above which "whole areas will collapse"
 inline constexpr bool   kDefaultMergeKeepSurfacesApart    = true;   // Merge vertices only along an edge or between open-edge vertices
-inline constexpr double kMinAlphaWrapOffsetDiag           = 1.0e-5; // Smallest offset offered, as a fraction of the bbox diagonal
-inline constexpr double kMaxAlphaWrapOffsetDiag           = 0.05;   // Largest offset offered, as a fraction of the bbox diagonal
 inline constexpr int    kDefaultWindingGridResolution     = 128;    // Winding-number rebuild: grid cells along the longest bbox side
 inline constexpr int    kMinWindingGridResolution         = 16;     // Lowest winding-number grid resolution offered
 inline constexpr int    kMaxWindingGridResolution         = 512;    // Highest winding-number grid resolution offered
