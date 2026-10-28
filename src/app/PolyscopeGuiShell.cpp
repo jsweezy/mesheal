@@ -688,7 +688,7 @@ void PolyscopeGui::drawStatusBar(float top, float height) {
                     withThousands(static_cast<std::size_t>(mesh.numFaces())).c_str());
         divider();
         const std::string sym(unitSymbol(unit));
-        const BoundingBox bbox = mesh.boundingBox();
+        const BoundingBox bbox = controller_.meshBounds();
         const Eigen::Vector3d ext = bbox.extents();
         ImGui::Text("%.4g x %.4g x %.4g %s", ext.x(), ext.y(), ext.z(), sym.c_str());
         if (ImGui::BeginItemTooltip()) {
@@ -1168,7 +1168,7 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"Zoom (Dolly)", "Scroll Wheel or Ctrl + Shift + Left-Click Drag (speed scales with distance to the Orbit Pivot)"},
         {"Select Face", "Left-Click a face: if it is a defect of the selected Mesh Health row it becomes the focus (Inspector, Orbit Pivot at its centroid); with no row selected, the row containing it opens; a clean face only moves the Orbit Pivot. Right-Click clears the Polyscope pick."},
         {"Select Shell", "Alt + Left-Click a face selects its whole shell in the Shells panel (multi-shell meshes); Alt + Ctrl/Cmd + Click adds or removes it. A plain click never changes the shell selection."},
-        {"Toggle Face", "Shift + Left-Click a face adds it to or removes it from the face selection (Decimate and Weld / Merge Vertices then work on the selected faces)"},
+        {"Toggle Face", "Shift + Left-Click a face adds it to or removes it from the face selection (Decimate and Weld / Merge Vertices then work on the selected faces). Faces a slice plane cuts away are clicked through"},
     });
 
     ImGui::Spacing();
@@ -1184,9 +1184,9 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"G", "Toggles Ghost (base-mesh transparency)"},
         {"View > Compass", "Draws X (red), Y (green), Z (blue) axes in the bottom-left of the 3D view, turning with the camera. Off by default"},
         {"View > Polyscope", "Opens Polyscope's Slice Planes, Appearance (transparency, ground plane, background), Camera & Clipping and Render & Debug sections as floating windows"},
-        {"B", "Box select faces: drag a rectangle (Shift+drag deselects); one box per B. Esc or right-click cancels. Only the faces you see, unless Select Through or Ghost (G) is on; hidden shells never"},
-        {"C", "Circle select faces: paint with the brush (Shift or middle drag deselects, wheel resizes); Esc, Enter or right-click finishes"},
-        {"A  /  Alt+A", "Select all shown faces / deselect all faces"},
+        {"B", "Box select faces: drag a rectangle (Shift+drag deselects); one box per B. Esc or right-click cancels. Only the faces you see, unless Select Through or Ghost (G) is on; hidden shells and faces cut away by a slice plane never"},
+        {"C", "Circle select faces: paint with the brush (Shift or middle drag deselects, wheel resizes); Esc, Enter or right-click finishes. As B, never faces cut away by a slice plane"},
+        {"A  /  Alt+A", "Select all shown faces (not hidden shells or faces a slice plane cuts away) / deselect all faces"},
         {"Esc", "Leaves box / circle select; clears the defect selection; then closes the Tool and deselects the row, then clears the face selection, then the shell selection"},
         {"I", "Shells: isolate the selected shells (Mesh Health then covers only them); press again to bring the others back. With another shell selected, switches the isolation to it"},
         {"X", "Asks \"Delete N selected faces?\" next to the cursor (Enter or the Delete button confirms; Esc, Cancel or a click outside cancels), then deletes the selected faces as Delete does"},

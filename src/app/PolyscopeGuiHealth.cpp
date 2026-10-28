@@ -281,7 +281,7 @@ void PolyscopeGui::drawMeshInfo() {
     }
     const Mesh& mesh = controller_.mesh();
     const std::string sym(unitSymbol(controller_.fileUnit()));
-    const BoundingBox bbox = mesh.boundingBox();
+    const BoundingBox bbox = controller_.meshBounds();
     const Eigen::Vector3d ext = bbox.extents();
     ImGui::Text("Vertices %s   Triangles %s",
                 withThousands(static_cast<std::size_t>(mesh.numVertices())).c_str(),
@@ -1012,7 +1012,7 @@ void PolyscopeGui::drawTransformOperator() {
     if (identity) {
         ImGui::TextDisabled("Enter a translation or a rotation to preview it.");
     } else {
-        const Eigen::Vector3d before = controller_.mesh().boundingBox().center();
+        const Eigen::Vector3d before = controller_.meshBounds().center();
         const Eigen::Vector3d after = controller_.transformPreviewBounds().center();
         ImGui::TextWrapped("Box center (%.6g, %.6g, %.6g) -> (%.6g, %.6g, %.6g) %s", before.x() + 0.0, before.y() + 0.0,
                            before.z() + 0.0, after.x() + 0.0, after.y() + 0.0, after.z() + 0.0, unit.c_str());

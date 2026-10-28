@@ -250,7 +250,7 @@ void PolyscopeGui::flyToStandardView(int view) {
     case 5: side = -up; screenUp = front; break;
     default: break;
     }
-    const BoundingBox bbox = controller_.mesh().boundingBox();
+    const BoundingBox bbox = controller_.meshBounds();
     const glm::vec3 center = toGlmVec(bbox.center());
     const auto distance = static_cast<float>(1.6 * std::max(bbox.diagonal(), 1.0e-9));
     controller_.resetOrbitPivotToMeshCenter();

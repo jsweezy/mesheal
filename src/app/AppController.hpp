@@ -35,6 +35,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace ogun {
@@ -472,6 +473,9 @@ public:
         return meshGeneration_;
     }
 
+    /// The mesh's bounding box, cached per mesh generation (the viewport reads it every frame).
+    [[nodiscard]] const BoundingBox& meshBounds() const noexcept;
+
     // -------------------------------------------------------------------------
     // Selected Row, Filters, Multi-Selection & Focus (Tool panel)
     // -------------------------------------------------------------------------
@@ -725,7 +729,16 @@ public:
 
     /// Computes the active selection center: the exact centroid of a focused single face, otherwise
     /// the bounding-box center of the focused / selected / visible defects (or the whole mesh).
+    /// O(1) per frame while nothing changes (see `activeSelectionOrMeshBounds`).
     [[nodiscard]] Eigen::Vector3d computeSelectionCentroid() const noexcept;
+
+    /// Box of the focused / selected / visible defects, else the selected or visible shells, else the
+    /// whole mesh. Cached: recomputed only when the mesh, the defect browser (row, filters, selection,
+    /// focus), the shells (visibility, selection), the health results, the picked face or the focused
+    /// hole changed, since the viewport asks for it several times every frame.
+    [[nodiscard]] BoundingBox activeSelectionOrMeshBounds() const noexcept;
+    /// The same box, always recomputed (O(defect faces)); the cache is checked against it in the tests.
+    [[nodiscard]] BoundingBox computeActiveSelectionOrMeshBounds() const noexcept;
 
     /// Computes a unit viewing normal for inspecting `faceIndex`. Uses the triangle's
     /// unit normal `N.row(faceIndex)` when non-zero, or a deterministic unit vector
@@ -1014,7 +1027,8 @@ public:
     /// Adds (`select`) or removes the faces; returns how many changed.
     std::size_t selectFaces(std::span<const Eigen::Index> faces, bool select);
     void toggleFaceSelected(Eigen::Index face);
-    void selectAllFaces();
+    /// Selects every shown face: hidden shells and faces the slice planes cut away stay out.
+    void selectAllFaces(std::span<const ClipPlane> clipPlanes = {});
     /// Deletes the selected faces of the shown shells (undoable). Refuses to delete every face.
     bool deleteSelectedFaces();
     /// "." frames the face selection: it changed after the last defect / shell focus.
@@ -1025,13 +1039,14 @@ public:
     bool clearFaceSelection();
 
     /// Box / circle selection of the faces whose centre is inside the shape on screen; only the faces
-    /// seen there unless `selectThrough()` (Blender's X-ray). Returns how many changed.
+    /// seen there unless `selectThrough()` (Blender's X-ray), and never those the view's slice planes cut
+    /// away. Returns how many changed.
     std::size_t selectFacesInRectangle(const ScreenView& view, const Eigen::Vector2d& a, const Eigen::Vector2d& b, bool select);
     /// A brush stroke from `from` to `to` (a circle when they are equal).
     std::size_t selectFacesInStroke(const ScreenView& view, const Eigen::Vector2d& from, const Eigen::Vector2d& to, double radius,
                                     bool select);
     /// The first face under a screen point (Shift+click), by a ray cast: dense meshes leave no room
-    /// for polyscope's pick, which takes a vertex when the click is near one.
+    /// for polyscope's pick, which takes a vertex when the click is near one. Slice planes are seen through.
     [[nodiscard]] std::optional<Eigen::Index> faceAtScreenPoint(const ScreenView& view, const Eigen::Vector2d& point) const;
 
     [[nodiscard]] bool selectThrough() const noexcept {
@@ -1047,6 +1062,7 @@ public:
 
     /// Faces Decimate / Merge Vertices work on: the selected faces, else the shells in scope (empty = all).
     [[nodiscard]] std::vector<std::uint8_t> operatorScopeMask() const;
+    /// Faces in `operatorScopeMask()`; cached, as the Decimate / Merge panels show it every frame.
     [[nodiscard]] std::size_t operatorScopeFaceCount() const;
     /// "the 1,204 selected faces", "the shells in scope" or "the whole mesh".
     [[nodiscard]] std::string operatorScopeText() const;
@@ -1314,7 +1330,17 @@ private:
         bool addTriangles = true,
         std::unordered_map<int, std::size_t>* nodeOf = nullptr) const;
 
-    [[nodiscard]] BoundingBox computeActiveSelectionOrMeshBounds() const noexcept;
+    /// Everything `computeActiveSelectionOrMeshBounds` reads, for its cache.
+    struct FrameBoundsKey {
+        std::uint64_t meshGeneration = 0;
+        std::uint64_t browserRevision = 0;
+        std::uint64_t shellsRevision = 0;
+        std::uint64_t healthRevision = 0;
+        Eigen::Index pickedFace = -1;
+        std::optional<std::size_t> focusedHole;
+        bool operator==(const FrameBoundsKey&) const = default;
+    };
+    [[nodiscard]] FrameBoundsKey frameBoundsKey() const noexcept;
     [[nodiscard]] static Eigen::Vector3d computeOrthogonalUpVector(
         const Eigen::Vector3d& lookDirection,
         const Eigen::Vector3d& preferredUp) noexcept;
@@ -1342,6 +1368,11 @@ private:
     bool checkMeshAfterLoad_ = settings::kDefaultCheckMeshAfterLoad;
     bool backgroundChecks_ = false;
     std::uint64_t meshGeneration_ = 0;
+    std::uint64_t healthRevision_ = 0; ///< Bumped whenever a row's result is replaced or dropped
+    mutable std::optional<std::pair<FrameBoundsKey, BoundingBox>> frameBoundsCache_;
+    mutable std::optional<std::pair<std::uint64_t, BoundingBox>> meshBoundsCache_; ///< Keyed on meshGeneration_
+    /// operatorScopeFaceCount, keyed on the mesh generation, face selection, shells and active tool
+    mutable std::optional<std::pair<std::array<std::uint64_t, 4>, std::size_t>> operatorScopeCountCache_;
     HealthCheckRunner checkRunner_;
 
     std::optional<DefectCategory> selectedCategory_;

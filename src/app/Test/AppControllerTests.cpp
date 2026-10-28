@@ -1,5 +1,6 @@
 #include "app/AppController.hpp"
 #include "io/SampleMeshes.hpp"
+#include "io/StlReader.hpp"
 #include "core/Settings.hpp"
 #include "mesh/Units.hpp"
 
@@ -1543,4 +1544,171 @@ TEST_CASE("Undoing a scale or transform reports that it moves the whole mesh (th
     REQUIRE_FALSE(controller.undoMovesWholeMesh());
     REQUIRE(controller.undoLastModification());
     REQUIRE_FALSE(controller.canUndo());
+}
+
+namespace {
+
+/// The cached frame box (and mesh box) must equal a fresh computation. Returns the box so callers can
+/// check that the steps really changed it.
+ogun::BoundingBox requireFrameCacheFresh(const ogun::AppController& controller) {
+    const ogun::BoundingBox cached = controller.activeSelectionOrMeshBounds();
+    const ogun::BoundingBox fresh = controller.computeActiveSelectionOrMeshBounds();
+    REQUIRE(cached.min == fresh.min);
+    REQUIRE(cached.max == fresh.max);
+    const ogun::BoundingBox mesh = controller.mesh().boundingBox();
+    REQUIRE(controller.meshBounds().min == mesh.min);
+    REQUIRE(controller.meshBounds().max == mesh.max);
+    if (controller.focusedFaceIndex() < 0) {
+        REQUIRE(controller.computeSelectionCentroid() == fresh.center());
+    }
+    const std::vector<std::uint8_t> scope = controller.operatorScopeMask();
+    REQUIRE(controller.operatorScopeFaceCount() ==
+            (scope.empty() ? static_cast<std::size_t>(controller.mesh().numFaces())
+                           : static_cast<std::size_t>(std::count(scope.begin(), scope.end(), std::uint8_t{1}))));
+    return cached;
+}
+
+/// Counts the distinct boxes seen, so a test can tell that its steps changed the framed box.
+struct BoxLog {
+    std::vector<ogun::BoundingBox> seen;
+    void add(const ogun::BoundingBox& box) {
+        const bool known = std::any_of(seen.begin(), seen.end(), [&](const ogun::BoundingBox& b) { return b.min == box.min && b.max == box.max; });
+        if (!known) {
+            seen.push_back(box);
+        }
+    }
+};
+
+} // namespace
+
+TEST_CASE("The per-frame selection box cache follows defect selection, filters, thresholds, edits and undo",
+          "[app][controller][camera][cache]") {
+    // The sample's three thin faces plus a second cube far away (two shells)
+    ogun::Mesh mesh = ogun::SampleMeshes::createSampleDefectiveMesh();
+    ogun::Mesh far = ogun::SampleMeshes::createCubeMesh();
+    far.V.col(0).array() += 100.0;
+    ogun::appendMesh(mesh, far);
+    mesh.recomputeNormals();
+    ogun::AppController controller;
+    controller.setMesh(mesh, "defective + cube");
+    REQUIRE(controller.shells().multiShell());
+    BoxLog log;
+    const auto step = [&] { log.add(requireFrameCacheFresh(controller)); };
+    step();
+
+    controller.selectCategory(ogun::DefectCategory::ThinFaces); // the visible defects
+    step();
+    controller.selectAllVisibleDefects();
+    step();
+    controller.selectNoDefects();
+    step();
+    REQUIRE(controller.focusNextDefect(1));
+    step();
+    REQUIRE(controller.focusNextDefect(1));
+    step();
+    controller.clickDefectRow(2, true, false); // Ctrl+click adds a row
+    step();
+    controller.setDefectSort(0, true);
+    step();
+    controller.selectHistogramBin(0, false);
+    step();
+    controller.clearHistogramBinFilter();
+    step();
+    controller.selectCategory(std::nullopt);
+    step();
+    REQUIRE(controller.pickFace(mesh.numFaces() - 1) == ogun::PickOutcome::PickedFace); // on the far cube
+    step();
+    controller.selectCategory(ogun::DefectCategory::ThinFaces);
+    step();
+
+    // Looser thresholds re-run the check: a new result (fewer rows) at the same address
+    ogun::ThinFaceThresholds loose = controller.thresholds();
+    loose.minAltitude = 1e-9;
+    loose.minArea = 1e-12;
+    loose.maxAspectRatio = 1e9;
+    controller.setThresholds(loose);
+    step();
+    controller.setThresholds(ogun::ThinFaceThresholds::defaultsForUnit(ogun::Unit::Millimeter));
+    step();
+
+    // Edits and undo
+    controller.focusDefect(1);
+    step();
+    REQUIRE(controller.fixSelectedThinFaces());
+    step();
+    controller.selectCategory(ogun::DefectCategory::ThinFaces);
+    step();
+    REQUIRE(controller.undoLastModification());
+    step();
+    controller.selectAllFaces();
+    REQUIRE(controller.deleteSelectedFaces() == false); // every face: refused
+    controller.clearFaceSelection();
+    controller.toggleFaceSelected(0);
+    REQUIRE(controller.deleteSelectedFaces());
+    step();
+    REQUIRE(controller.undoLastModification());
+    step();
+    REQUIRE(log.seen.size() >= 4);
+}
+
+TEST_CASE("The per-frame selection box cache follows shell visibility, shell selection and hole focus",
+          "[app][controller][camera][cache][shells]") {
+    ogun::AppController controller;
+    controller.setMesh(ogun::separateTouchingContacts(ogun::SampleMeshes::createHolesSampleMesh()), "holes");
+    REQUIRE(controller.shells().size() == 4);
+    BoxLog log;
+    const auto step = [&] { log.add(requireFrameCacheFresh(controller)); };
+    step();
+
+    // No row: the visible / selected shells
+    controller.setShellVisible(0, false);
+    step();
+    controller.setShellVisible(1, false);
+    step();
+    controller.showAllShells();
+    step();
+    const std::size_t order[] = {0, 1, 2, 3};
+    controller.clickShell(2, false, false, order);
+    step();
+    controller.clickShell(3, true, false, order);
+    step();
+    REQUIRE(controller.toggleIsolateShells());
+    step();
+    REQUIRE(controller.toggleIsolateShells());
+    step();
+    controller.selectShellsWhere([](std::size_t) { return false; });
+    step();
+    controller.openDecimate(); // its panel shows the scope's face count every frame
+    step();
+    controller.toggleFaceSelected(0);
+    step();
+    controller.setShellVisible(static_cast<std::size_t>(controller.shells().shellOfFace(0)), false);
+    step();
+    controller.showAllShells();
+    controller.clearFaceSelection();
+    step();
+    controller.closeTool();
+    step();
+    controller.hideAllShells();
+    step();
+    controller.showAllShells();
+    step();
+
+    // Open edges: the focused hole frames its rim
+    controller.selectCategory(ogun::DefectCategory::OpenEdges);
+    step();
+    for (int i = 0; i < 4; ++i) {
+        REQUIRE(controller.focusNextDefect(1));
+        step();
+    }
+    controller.setShellVisible(static_cast<std::size_t>(controller.shells().size() - 1), false); // scope changes
+    step();
+    controller.showAllShells();
+    step();
+    REQUIRE(controller.focusNextDefect(1));
+    REQUIRE(controller.commitFocusedRepair()); // fills the hole (an edit)
+    step();
+    REQUIRE(controller.undoLastModification());
+    step();
+    REQUIRE(log.seen.size() >= 8);
 }

@@ -33,11 +33,18 @@ void AppController::toggleFaceSelected(Eigen::Index face) {
     selectFaces(one, !faceSelected(face));
 }
 
-void AppController::selectAllFaces() {
-    // Only the shown faces, as in Blender (hidden shells stay out)
+void AppController::selectAllFaces(std::span<const ClipPlane> clipPlanes) {
+    // Only the shown faces, as in Blender (hidden shells stay out), and not those cut away
     faceSelected_ = shownFaceMask();
     if (faceSelected_.empty()) {
         faceSelected_.assign(static_cast<std::size_t>(mesh_.numFaces()), 1);
+    }
+    if (!clipPlanes.empty()) {
+        for (Eigen::Index f = 0; f < mesh_.numFaces(); ++f) {
+            if (faceClipped(mesh_, f, clipPlanes)) {
+                faceSelected_[static_cast<std::size_t>(f)] = 0;
+            }
+        }
     }
     faceSelectedCount_ = static_cast<std::size_t>(std::count(faceSelected_.begin(), faceSelected_.end(), std::uint8_t{1}));
     onFaceSelectionChanged();
@@ -147,9 +154,15 @@ std::vector<std::uint8_t> AppController::operatorScopeMask() const {
 }
 
 std::size_t AppController::operatorScopeFaceCount() const {
-    const std::vector<std::uint8_t> mask = operatorScopeMask();
-    return mask.empty() ? static_cast<std::size_t>(mesh_.numFaces())
-                        : static_cast<std::size_t>(std::count(mask.begin(), mask.end(), std::uint8_t{1}));
+    const std::array<std::uint64_t, 4> key = {meshGeneration_, faceSelectionGeneration_, shells_.revision(),
+                                              static_cast<std::uint64_t>(activeTool_)};
+    if (!operatorScopeCountCache_ || operatorScopeCountCache_->first != key) {
+        const std::vector<std::uint8_t> mask = operatorScopeMask();
+        const std::size_t count = mask.empty() ? static_cast<std::size_t>(mesh_.numFaces())
+                                               : static_cast<std::size_t>(std::count(mask.begin(), mask.end(), std::uint8_t{1}));
+        operatorScopeCountCache_.emplace(key, count);
+    }
+    return operatorScopeCountCache_->second;
 }
 
 std::string AppController::operatorScopeText() const {

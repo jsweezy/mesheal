@@ -7,6 +7,7 @@
 namespace ogun {
 
 void DefectBrowser::setResult(const CategoryResult* result) {
+    revision_ = nextRevision();
     result_ = result;
     scopeMask_.clear();
     subtypeFilter_ = -1;
@@ -18,6 +19,7 @@ void DefectBrowser::setResult(const CategoryResult* result) {
     selectedCount_ = 0;
     anchorPos_ = kNone;
     focused_ = kNone;
+    recountScope();
     rebuildHistogram();
     rebuildVisible();
 }
@@ -30,35 +32,31 @@ void DefectBrowser::setScopeMask(std::vector<std::uint8_t> mask) {
     if (mask == scopeMask_) {
         return;
     }
+    revision_ = nextRevision();
     scopeMask_ = std::move(mask);
+    recountScope();
     binFilter_.reset();
     rebuildHistogram();
     rebuildVisible();
     pruneHidden();
 }
 
-std::array<std::size_t, 4> DefectBrowser::subtypeCounts() const noexcept {
-    std::array<std::size_t, 4> counts{};
+void DefectBrowser::recountScope() noexcept {
+    subtypeCounts_.fill(0);
+    scopedCount_ = 0;
     if (result_ == nullptr) {
-        return counts;
+        return;
     }
     for (std::size_t i = 0; i < result_->size(); ++i) {
+        if (!inScope(i)) {
+            continue;
+        }
+        ++scopedCount_;
         const int subtype = result_->elements[i].subtype;
-        if (inScope(i) && subtype >= 0 && subtype < static_cast<int>(counts.size())) {
-            ++counts[static_cast<std::size_t>(subtype)];
+        if (subtype >= 0 && subtype < static_cast<int>(subtypeCounts_.size())) {
+            ++subtypeCounts_[static_cast<std::size_t>(subtype)];
         }
     }
-    return counts;
-}
-
-std::size_t DefectBrowser::scopedCount() const noexcept {
-    if (result_ == nullptr) {
-        return 0;
-    }
-    if (scopeMask_.empty()) {
-        return result_->size();
-    }
-    return static_cast<std::size_t>(std::count_if(scopeMask_.begin(), scopeMask_.end(), [](std::uint8_t m) { return m != 0; }));
 }
 
 std::size_t DefectBrowser::binOfElement(std::size_t element) const noexcept {
@@ -134,6 +132,7 @@ void DefectBrowser::pruneHidden() {
 }
 
 void DefectBrowser::setSubtypeFilter(int subtype) {
+    revision_ = nextRevision();
     if (subtype == subtypeFilter_ || result_ == nullptr) {
         return;
     }
@@ -145,6 +144,7 @@ void DefectBrowser::setSubtypeFilter(int subtype) {
 }
 
 void DefectBrowser::selectBin(std::size_t bin, bool extend) {
+    revision_ = nextRevision();
     if (histogram_.empty() || bin >= histogram_.numBins()) {
         return;
     }
@@ -158,6 +158,7 @@ void DefectBrowser::selectBin(std::size_t bin, bool extend) {
 }
 
 void DefectBrowser::stepBin(int direction) {
+    revision_ = nextRevision();
     if (histogram_.empty()) {
         return;
     }
@@ -173,6 +174,7 @@ void DefectBrowser::stepBin(int direction) {
 }
 
 void DefectBrowser::clearBinFilter() {
+    revision_ = nextRevision();
     if (!binFilter_) {
         return;
     }
@@ -198,6 +200,7 @@ std::size_t DefectBrowser::visiblePositionOf(std::size_t element) const noexcept
 }
 
 void DefectBrowser::setSort(int column, bool descending) {
+    revision_ = nextRevision();
     if (column == sortColumn_ && descending == sortDescending_) {
         return;
     }
@@ -216,6 +219,7 @@ void DefectBrowser::setSelected(std::size_t element, bool selected) noexcept {
 }
 
 void DefectBrowser::clickRow(std::size_t pos, bool toggle, bool range) {
+    revision_ = nextRevision();
     if (pos >= visibleRows_.size()) {
         return;
     }
@@ -248,12 +252,14 @@ void DefectBrowser::clickRow(std::size_t pos, bool toggle, bool range) {
 }
 
 void DefectBrowser::selectAllVisible() {
+    revision_ = nextRevision();
     for (const std::size_t element : visibleRows_) {
         setSelected(element, true);
     }
 }
 
 void DefectBrowser::selectNone() {
+    revision_ = nextRevision();
     std::fill(selected_.begin(), selected_.end(), std::uint8_t{0});
     selectedCount_ = 0;
     focused_ = kNone;
@@ -261,6 +267,7 @@ void DefectBrowser::selectNone() {
 }
 
 void DefectBrowser::invertSelection() {
+    revision_ = nextRevision();
     for (const std::size_t element : visibleRows_) {
         setSelected(element, !isSelected(element));
     }
@@ -285,6 +292,7 @@ std::vector<std::size_t> DefectBrowser::selectedElements() const {
 }
 
 void DefectBrowser::focusElement(std::size_t element) {
+    revision_ = nextRevision();
     if (!isVisible(element)) {
         return;
     }
@@ -296,6 +304,7 @@ void DefectBrowser::focusElement(std::size_t element) {
 }
 
 bool DefectBrowser::focusStep(int direction) {
+    revision_ = nextRevision();
     if (visibleRows_.empty()) {
         return false;
     }

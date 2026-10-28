@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/Revision.hpp"
 #include "diagnostics/Histogram.hpp"
 #include "diagnostics/MeshHealth.hpp"
 
@@ -48,10 +49,14 @@ public:
     }
 
     /// In-scope elements per sub-type (index matches `CategoryInfo::subtypes`).
-    [[nodiscard]] std::array<std::size_t, 4> subtypeCounts() const noexcept;
+    [[nodiscard]] std::array<std::size_t, 4> subtypeCounts() const noexcept {
+        return subtypeCounts_;
+    }
 
     /// In-scope elements.
-    [[nodiscard]] std::size_t scopedCount() const noexcept;
+    [[nodiscard]] std::size_t scopedCount() const noexcept {
+        return scopedCount_;
+    }
 
     /// Sub-type filter (-1: all).
     [[nodiscard]] int subtypeFilter() const noexcept {
@@ -118,6 +123,7 @@ public:
     /// Focuses and selects only `element` (no-op if it is hidden by the filters).
     void focusElement(std::size_t element);
     void clearFocus() noexcept {
+        revision_ = nextRevision();
         focused_ = kNone;
     }
     /// Steps the focus through the visible rows (wrapping). Returns false if nothing is visible.
@@ -131,7 +137,14 @@ public:
         return visibleRows_.size() <= listCap;
     }
 
+    /// Changes with every change of the result, filters, sorting, selection or focus (see nextRevision).
+    [[nodiscard]] std::uint64_t revision() const noexcept {
+        return revision_;
+    }
+
 private:
+    /// Recounts `subtypeCounts_` and `scopedCount_` (the Tool panel reads them every frame).
+    void recountScope() noexcept;
     void rebuildHistogram();
     void rebuildVisible();
     void pruneHidden();
@@ -154,6 +167,9 @@ private:
     std::size_t selectedCount_ = 0;
     std::size_t anchorPos_ = kNone;
     std::size_t focused_ = kNone;
+    std::array<std::size_t, 4> subtypeCounts_{};
+    std::size_t scopedCount_ = 0;
+    std::uint64_t revision_ = nextRevision();
 };
 
 } // namespace ogun

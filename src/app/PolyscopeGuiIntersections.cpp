@@ -436,7 +436,7 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
         changed |= ImGui::SliderScalar("Detail (diagonal / alpha)", ImGuiDataType_Double, &params.alphaWrapDetail,
                                        &settings::kMinAlphaWrapDetail, &settings::kMaxAlphaWrapDetail, "%.0f",
                                        ImGuiSliderFlags_Logarithmic);
-        const double diag = controller_.mesh().boundingBox().diagonal();
+        const double diag = controller_.meshBounds().diagonal();
         const double alpha = alphaWrapAlpha(params, diag);
         tooltip("Higher detail = smaller alpha = a tighter wrap, but much slower on big meshes. Gaps and holes "
                 "narrower than about alpha are closed; wider ones are followed inside.");

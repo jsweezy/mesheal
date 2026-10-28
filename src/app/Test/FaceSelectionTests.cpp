@@ -450,3 +450,197 @@ TEST_CASE("Focus (.) frames the selected faces, square on, and flips on a second
     controller.clearFaceSelection();
     REQUIRE_FALSE(controller.faceSelectionFocused());
 }
+
+namespace {
+
+Eigen::Vector3d faceCentre(const ogun::Mesh& mesh, Eigen::Index f) {
+    return (mesh.V.row(mesh.F(f, 0)) + mesh.V.row(mesh.F(f, 1)) + mesh.V.row(mesh.F(f, 2))).transpose() / 3.0;
+}
+
+/// Keeps z <= 6: cuts the top (z = 8) off the grid cube.
+const ogun::ClipPlane kCutTop{Eigen::Vector3d(4.0, 4.0, 6.0), -Eigen::Vector3d::UnitZ()};
+
+} // namespace
+
+TEST_CASE("Slice planes: cut-away faces are not selected, by box, brush, click or select all", "[app][selection][slice]") {
+    const ogun::Mesh mesh = gridCube();
+    ogun::FaceVisibility visibility;
+    visibility.build(mesh);
+    const auto keptCount = [&](std::span<const ogun::ClipPlane> planes) {
+        std::size_t n = 0;
+        for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+            n += ogun::faceClipped(mesh, f, planes) ? 0 : 1;
+        }
+        return n;
+    };
+
+    for (const bool ortho : {false, true}) {
+        CAPTURE(ortho);
+        ogun::ScreenView view = topView(ortho);
+        // No planes: the top only, as before
+        REQUIRE(ogun::facesInRectangle(mesh, view, kScreenMin, kScreenMax, &visibility).size() == 32);
+
+        view.clipPlanes = {kCutTop};
+        const std::vector<Eigen::Index> seen = ogun::facesInRectangle(mesh, view, kScreenMin, kScreenMax, &visibility);
+        // The cut-away top neither counts nor hides the bottom (seen from inside) behind it
+        std::size_t bottom = 0;
+        for (const Eigen::Index f : seen) {
+            REQUIRE(faceCentre(mesh, f).z() <= 6.0);
+            bottom += mesh.N(f, 2) < -0.99 ? 1 : 0;
+        }
+        REQUIRE(bottom == 32);
+        // Select through: every face the plane keeps
+        const std::vector<Eigen::Index> through = ogun::facesInRectangle(mesh, view, kScreenMin, kScreenMax, nullptr);
+        REQUIRE(through.size() == keptCount(view.clipPlanes));
+
+        // The brush and a click reach the bottom through the cut-away top
+        const Eigen::Vector2d centre(400.0, 290.0);
+        const std::vector<Eigen::Index> brushed = ogun::facesInStroke(mesh, view, centre, centre, 60.0, &visibility);
+        REQUIRE_FALSE(brushed.empty());
+        for (const Eigen::Index f : brushed) {
+            REQUIRE(mesh.N(f, 2) < -0.99);
+        }
+        const std::optional<Eigen::Index> clicked = visibility.faceAt(mesh, view, centre);
+        REQUIRE(clicked);
+        REQUIRE(mesh.N(*clicked, 2) < -0.99);
+    }
+
+    // The controller passes the view's planes on; Select All takes them too
+    ogun::AppController controller;
+    controller.setMesh(gridCube(), "grid cube");
+    ogun::ScreenView view = topView();
+    view.clipPlanes = {kCutTop};
+    REQUIRE(controller.selectFacesInRectangle(view, kScreenMin, kScreenMax, true) > 32);
+    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+        REQUIRE((controller.faceSelected(f) ? faceCentre(mesh, f).z() <= 6.0 : true));
+    }
+    const auto face = controller.faceAtScreenPoint(view, Eigen::Vector2d(400.0, 290.0));
+    REQUIRE(face);
+    REQUIRE(mesh.N(*face, 2) < -0.99);
+    controller.clearFaceSelection();
+    controller.selectAllFaces(view.clipPlanes);
+    REQUIRE(controller.selectedFaceCount() == keptCount(view.clipPlanes));
+    controller.selectAllFaces();
+    REQUIRE(controller.selectedFaceCount() == 192);
+}
+
+TEST_CASE("Slice planes: a face seen through a hole is not brushed when the plane cuts it away", "[app][selection][slice]") {
+    // The grid cube with a hole in the bottom around (4, 4, 0), seen from below: through the hole the
+    // brush reaches the inside of the top
+    const ogun::Mesh cube = gridCube();
+    std::vector<Eigen::Index> keep;
+    for (Eigen::Index f = 0; f < cube.numFaces(); ++f) {
+        const Eigen::Vector3d c = faceCentre(cube, f);
+        if (!(cube.N(f, 2) < -0.99 && (c.head<2>() - Eigen::Vector2d(4.0, 4.0)).norm() < 2.0)) {
+            keep.push_back(f);
+        }
+    }
+    ogun::Mesh mesh = ogun::extractFaces(cube, keep);
+    mesh.recomputeNormals();
+    REQUIRE(mesh.numFaces() < cube.numFaces());
+    ogun::FaceVisibility visibility;
+    visibility.build(mesh);
+
+    ogun::ScreenView view = makeView(Eigen::Vector3d(4.0, 4.0, -22.0), Eigen::Vector3d(4.0, 4.0, 4.0));
+    const Eigen::Vector2d hole = *view.project(Eigen::Vector3d(4.0, 4.0, 0.0));
+    const Eigen::Vector2d rim = *view.project(Eigen::Vector3d(7.0, 4.0, 0.0));
+    const double radius = (rim - hole).norm();
+    const auto topFaces = [&](const std::vector<Eigen::Index>& faces) {
+        return std::count_if(faces.begin(), faces.end(), [&](Eigen::Index f) { return mesh.N(f, 2) > 0.99; });
+    };
+
+    const std::vector<Eigen::Index> plain = ogun::facesInStroke(mesh, view, hole, hole, radius, &visibility);
+    REQUIRE(topFaces(plain) > 0); // without a plane the top shows through the hole
+
+    view.clipPlanes = {kCutTop};
+    for (const ogun::FaceVisibility* v : {static_cast<const ogun::FaceVisibility*>(&visibility), static_cast<const ogun::FaceVisibility*>(nullptr)}) {
+        const std::vector<Eigen::Index> cut = ogun::facesInStroke(mesh, view, hole, hole, radius, v);
+        REQUIRE_FALSE(cut.empty());
+        REQUIRE(topFaces(cut) == 0);
+        for (const Eigen::Index f : cut) {
+            REQUIRE(faceCentre(mesh, f).z() <= 6.0);
+        }
+    }
+    // The faces around the hole are still brushed
+    const std::vector<Eigen::Index> cut = ogun::facesInStroke(mesh, view, hole, hole, radius, &visibility);
+    REQUIRE(std::count_if(cut.begin(), cut.end(), [&](Eigen::Index f) { return mesh.N(f, 2) < -0.99; }) > 0);
+    // A click in the hole hits nothing now (the top is cut away, the inside of the cube is open)
+    REQUIRE(visibility.faceAt(mesh, view, hole).has_value() == false);
+}
+
+TEST_CASE("Slice planes: several planes, and faces the plane crosses go by their centre", "[app][selection][slice]") {
+    const ogun::Mesh mesh = gridCube();
+    // Two planes: keep z <= 6 and x <= 6
+    const std::vector<ogun::ClipPlane> planes = {kCutTop, ogun::ClipPlane{Eigen::Vector3d(6.0, 0.0, 0.0), -Eigen::Vector3d::UnitX()}};
+    ogun::ScreenView view = topView();
+    view.clipPlanes = planes;
+    const std::vector<Eigen::Index> through = ogun::facesInRectangle(mesh, view, kScreenMin, kScreenMax, nullptr);
+    std::size_t expected = 0;
+    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+        const Eigen::Vector3d c = faceCentre(mesh, f);
+        expected += c.z() <= 6.0 && c.x() <= 6.0 ? 1 : 0;
+    }
+    REQUIRE(through.size() == expected);
+    for (const Eigen::Index f : through) {
+        REQUIRE(faceCentre(mesh, f).x() <= 6.0);
+        REQUIRE(faceCentre(mesh, f).z() <= 6.0);
+    }
+    ogun::FaceVisibility visibility;
+    visibility.build(mesh);
+    const std::vector<Eigen::Index> seen = ogun::facesInRectangle(mesh, view, kScreenMin, kScreenMax, &visibility);
+    REQUIRE_FALSE(seen.empty());
+    for (const Eigen::Index f : seen) {
+        REQUIRE(faceCentre(mesh, f).x() <= 6.0);
+        REQUIRE(faceCentre(mesh, f).z() <= 6.0);
+    }
+
+    // z <= 5 crosses the side cells spanning z 4..6: the triangle whose centre is below 5 is kept
+    const std::vector<ogun::ClipPlane> cut5 = {ogun::ClipPlane{Eigen::Vector3d(0.0, 0.0, 5.0), -Eigen::Vector3d::UnitZ()}};
+    std::size_t crossedKept = 0;
+    std::size_t crossedCut = 0;
+    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+        double lo = 1e9;
+        double hi = -1e9;
+        for (int c = 0; c < 3; ++c) {
+            lo = std::min(lo, mesh.V(mesh.F(f, c), 2));
+            hi = std::max(hi, mesh.V(mesh.F(f, c), 2));
+        }
+        if (lo < 5.0 && hi > 5.0) {
+            const bool cut = ogun::faceClipped(mesh, f, cut5);
+            REQUIRE(cut == (faceCentre(mesh, f).z() > 5.0));
+            (cut ? crossedCut : crossedKept) += 1;
+        }
+    }
+    REQUIRE(crossedKept > 0);
+    REQUIRE(crossedCut > 0);
+    REQUIRE_FALSE(ogun::faceClipped(mesh, 0, {})); // no planes: nothing is cut
+}
+
+TEST_CASE("Slice planes: only the shown part of a face crossed by a plane hides what is behind it", "[app][selection][slice]") {
+    // Two parallel squares facing the eye, front (z = 2) and back (z = 0). The plane keeps x + z <= 6:
+    // the front is cut beyond x = 4, the back only beyond x = 6
+    ogun::Mesh mesh;
+    mesh.V.resize(8, 3);
+    mesh.V << 0, 0, 2, 8, 0, 2, 8, 8, 2, 0, 8, 2, //
+        0, 0, 0, 8, 0, 0, 8, 8, 0, 0, 8, 0;
+    mesh.F.resize(4, 3);
+    mesh.F << 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7;
+    mesh.recomputeNormals();
+    ogun::FaceVisibility visibility;
+    visibility.build(mesh);
+    for (const bool ortho : {false, true}) {
+        CAPTURE(ortho);
+        ogun::ScreenView view = makeView(Eigen::Vector3d(4.0, 4.0, 30.0), Eigen::Vector3d(4.0, 4.0, 0.0), ortho);
+        view.clipPlanes = {ogun::ClipPlane{Eigen::Vector3d(4.0, 0.0, 2.0), Eigen::Vector3d(-1.0, 0.0, -1.0).normalized()}};
+        const auto at = [&](double x, double y) { return visibility.faceAt(mesh, view, *view.project(Eigen::Vector3d(x, y, 2.0))); };
+        // Front face 1 (y > x) is crossed by the plane, its centre (2.7, 5.3) kept; face 0's centre is cut
+        REQUIRE_FALSE(ogun::faceClipped(mesh, 1, view.clipPlanes));
+        REQUIRE(ogun::faceClipped(mesh, 0, view.clipPlanes));
+        REQUIRE(at(2.0, 6.0) == std::optional<Eigen::Index>(1)); // the shown part of face 1
+        REQUIRE(at(4.5, 6.0) == std::optional<Eigen::Index>(3)); // through its cut-away part: the back
+        REQUIRE(at(5.0, 2.0) == std::optional<Eigen::Index>(2)); // through the cut-away face 0
+        REQUIRE_FALSE(visibility.visible(mesh, 0, view));        // cut away
+        REQUIRE(visibility.visible(mesh, 1, view));
+        REQUIRE_FALSE(visibility.visible(mesh, 3, view)); // behind the shown part of face 1
+    }
+}

@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <limits>
 
 namespace ogun {
 
@@ -31,7 +32,11 @@ std::vector<Eigen::Index> facesWhere(const Mesh& mesh, const ScreenView& view, c
             if (!shown.empty() && shown[static_cast<std::size_t>(f)] == 0) {
                 return;
             }
-            const std::optional<Eigen::Vector2d> p = view.project(centroid(mesh, f));
+            const Eigen::Vector3d c = centroid(mesh, f);
+            if (view.clipped(c)) {
+                return;
+            }
+            const std::optional<Eigen::Vector2d> p = view.project(c);
             hit[static_cast<std::size_t>(f)] = p && inside(*p) && (visibility == nullptr || visibility->visible(mesh, f, view)) ? 1 : 0;
         },
         1000);
@@ -45,6 +50,14 @@ std::vector<Eigen::Index> facesWhere(const Mesh& mesh, const ScreenView& view, c
 }
 
 } // namespace
+
+bool ScreenView::clippedBy(std::span<const ClipPlane> planes, const Eigen::Vector3d& p) noexcept {
+    return std::any_of(planes.begin(), planes.end(), [&](const ClipPlane& plane) { return (p - plane.origin).dot(plane.normal) < 0.0; });
+}
+
+bool faceClipped(const Mesh& mesh, Eigen::Index face, std::span<const ClipPlane> planes) noexcept {
+    return !planes.empty() && ScreenView::clippedBy(planes, centroid(mesh, face));
+}
 
 std::optional<Eigen::Vector2d> ScreenView::project(const Eigen::Vector3d& p) const {
     const Eigen::Vector4d clip = viewProjection * p.homogeneous();
@@ -81,18 +94,46 @@ void FaceVisibility::build(const Mesh& mesh, std::span<const std::uint8_t> shown
     }
 }
 
-std::optional<Eigen::Index> FaceVisibility::firstHit(const Eigen::Vector3d& origin, const Eigen::Vector3d& dir, double* t) const {
+std::optional<Eigen::Index> FaceVisibility::firstHit(const Eigen::Vector3d& origin, const Eigen::Vector3d& dir,
+                                                     std::span<const ClipPlane> planes, double* t) const {
+    if (F_.rows() == 0) {
+        return std::nullopt;
+    }
+    // The planes keep a convex part of the ray, [tMin, tMax]: cast from tMin, so the first hit there
+    // is the first shown one, and drop it past tMax. Scaling and moving to working space keeps t.
+    double tMin = 0.0;
+    double tMax = std::numeric_limits<double>::infinity();
+    const Eigen::Vector3d worldOrigin = fromWork(origin);
+    const Eigen::Vector3d worldDir = dir / scale_;
+    for (const ClipPlane& plane : planes) {
+        const double side = (worldOrigin - plane.origin).dot(plane.normal); // >= 0 on the kept side
+        const double rate = worldDir.dot(plane.normal);
+        if (rate > 0.0) {
+            tMin = std::max(tMin, -side / rate);
+        } else if (rate < 0.0) {
+            tMax = std::min(tMax, -side / rate);
+        } else if (side < 0.0) {
+            return std::nullopt; // parallel to the plane, on the cut side
+        }
+    }
+    if (tMin > tMax) {
+        return std::nullopt;
+    }
     igl::Hit hit{};
-    if (F_.rows() == 0 || !tree_.intersect_ray(V_, F_, origin.transpose(), dir.transpose(), hit)) {
+    const Eigen::Vector3d start = origin + tMin * dir;
+    if (!tree_.intersect_ray(V_, F_, start.transpose(), dir.transpose(), hit) || tMin + hit.t > tMax) {
         return std::nullopt;
     }
     if (t != nullptr) {
-        *t = hit.t;
+        *t = tMin + hit.t;
     }
     return treeFace_[static_cast<std::size_t>(hit.id)];
 }
 
 bool FaceVisibility::visible(const Mesh& mesh, Eigen::Index face, const ScreenView& view) const {
+    if (faceClipped(mesh, face, view.clipPlanes)) {
+        return false;
+    }
     if (!built_) {
         return true;
     }
@@ -105,28 +146,39 @@ bool FaceVisibility::visible(const Mesh& mesh, Eigen::Index face, const ScreenVi
 
     // Rays from the eye (perspective) or from far in front (orthographic) to three points inside the
     // face, t = 1 there. A ray along a shared edge of the faces in front can slip between them, so the
-    // face counts as seen when at least two of the three rays reach it.
-    const std::array<Eigen::Vector3d, 3> targets = {(a + b + c) / 3.0, 0.6 * a + 0.2 * b + 0.2 * c, 0.2 * a + 0.6 * b + 0.2 * c};
-    int seen = 0;
-    int missed = 0;
+    // face counts as seen when at least two of the three rays reach it. Points a slice plane cuts away
+    // are not drawn and do not vote; the centre is kept (tested above), and with fewer than three
+    // voters all of them must see the face.
+    std::array<Eigen::Vector3d, 3> targets = {(a + b + c) / 3.0, 0.6 * a + 0.2 * b + 0.2 * c, 0.2 * a + 0.6 * b + 0.2 * c};
+    std::size_t voters = 0;
     for (const Eigen::Vector3d& target : targets) {
-        if (seen >= 2 || missed >= 2) {
+        if (!view.clipped(fromWork(target))) {
+            targets[voters++] = target;
+        }
+    }
+    voters = std::max<std::size_t>(voters, 1); // the centre, should rounding put it on the plane
+    const std::size_t needed = voters == 3 ? 2 : voters;
+    std::size_t seen = 0;
+    std::size_t missed = 0;
+    for (std::size_t i = 0; i < voters; ++i) {
+        if (seen >= needed || missed > voters - needed) {
             break; // the vote is decided
         }
+        const Eigen::Vector3d& target = targets[i];
         const Eigen::Vector3d origin = view.orthographic ? Eigen::Vector3d(target - reach * view.viewDirection) : eye;
         const Eigen::Vector3d dir = target - origin;
         if (std::abs(normal.dot(dir.normalized())) < 1e-3) {
             return false; // edge-on: the ray runs in the face's plane
         }
         double t = 0.0;
-        const std::optional<Eigen::Index> first = firstHit(origin, dir, &t);
+        const std::optional<Eigen::Index> first = firstHit(origin, dir, view.clipPlanes, &t);
         if (first && (*first == face || t > 1.0 - 1e-6)) {
             ++seen;
         } else {
             ++missed;
         }
     }
-    return seen >= 2;
+    return seen >= needed;
 }
 
 std::optional<Eigen::Index> FaceVisibility::faceAt(const Mesh& mesh, const ScreenView& view, const Eigen::Vector2d& screen) const {
@@ -148,7 +200,7 @@ std::optional<Eigen::Index> FaceVisibility::faceAt(const Mesh& mesh, const Scree
         ? Eigen::Vector3d(nearPoint - (nearPoint.norm() + 2.0 * settings::kFaceVisibilityWorkingSize) * dir)
         : toWork(view.cameraPosition);
     (void)mesh;
-    return firstHit(origin, dir, nullptr);
+    return firstHit(origin, dir, view.clipPlanes, nullptr);
 }
 
 std::vector<Eigen::Index> facesInRectangle(const Mesh& mesh, const ScreenView& view, const Eigen::Vector2d& a,

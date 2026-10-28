@@ -423,7 +423,7 @@ void PolyscopeGui::handleViewportMouseNavigation() {
     const Eigen::Vector3d pivot = controller_.orbitPivot();
     const double rawDist = (camPos - pivot).norm();
     const double meshDiag = controller_.hasMesh()
-        ? std::max(controller_.mesh().boundingBox().diagonal(), 1.0e-6)
+        ? std::max(controller_.meshBounds().diagonal(), 1.0e-6)
         : 1.0;
     const double minNavDist = 1.0e-6 * meshDiag;
     const double effectiveDist = (std::isfinite(rawDist) && rawDist > minNavDist)
@@ -728,7 +728,7 @@ void PolyscopeGui::handleKeyboardShortcuts() {
         if (io.KeyAlt) {
             controller_.clearFaceSelection();
         } else {
-            controller_.selectAllFaces();
+            controller_.selectAllFaces(currentClipPlanes());
         }
         controller_.postStatusMessage(gui::withThousands(controller_.selectedFaceCount()) + " faces selected.");
         requestSync();

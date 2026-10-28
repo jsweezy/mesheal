@@ -147,6 +147,8 @@ private:
     // ---- Face selection tools: box (B), circle (C), Shift+click (PolyscopeGuiSelection.cpp) ----
     enum class FaceSelectMode { None, Box, Circle };
     [[nodiscard]] ScreenView currentScreenView() const;
+    /// The enabled Polyscope slice planes that cut the base mesh (world space).
+    [[nodiscard]] static std::vector<ClipPlane> currentClipPlanes();
     void startFaceSelectMode(FaceSelectMode mode);
     void exitFaceSelectMode();
     /// Mouse input while a select mode is on (instead of the camera).

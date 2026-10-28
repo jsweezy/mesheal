@@ -1,10 +1,12 @@
 #pragma once
 
+#include "app/Revision.hpp"
 #include "mesh/Mesh.hpp"
 
 #include <Eigen/Core>
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <span>
@@ -108,6 +110,11 @@ public:
     /// Number of shells in the scope.
     [[nodiscard]] std::size_t scopeCount() const noexcept;
 
+    /// Changes with every change of the shells or their visibility / selection (see nextRevision).
+    [[nodiscard]] std::uint64_t revision() const noexcept {
+        return revision_;
+    }
+
 private:
     void recountSelection() noexcept;
 
@@ -116,6 +123,7 @@ private:
     std::optional<std::vector<bool>> isolateRestore_; ///< Visibility to restore when un-isolating
     std::size_t selectedCount_ = 0;
     std::size_t anchor_ = static_cast<std::size_t>(-1);
+    std::uint64_t revision_ = nextRevision();
 };
 
 } // namespace ogun

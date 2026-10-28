@@ -8,6 +8,8 @@
 
 #include <imgui.h>
 #include <polyscope/polyscope.h>
+#include <polyscope/slice_plane.h>
+#include <polyscope/surface_mesh.h>
 #include <polyscope/view.h>
 
 #include <algorithm>
@@ -44,7 +46,25 @@ ScreenView PolyscopeGui::currentScreenView() const {
     view.orthographic = polyscope::view::projectionMode == polyscope::ProjectionMode::Orthographic;
     view.width = static_cast<double>(polyscope::view::windowWidth);
     view.height = static_cast<double>(polyscope::view::windowHeight);
+    view.clipPlanes = currentClipPlanes();
     return view;
+}
+
+std::vector<ClipPlane> PolyscopeGui::currentClipPlanes() {
+    std::vector<ClipPlane> planes;
+    polyscope::SurfaceMesh* base = polyscope::hasSurfaceMesh(kSurfaceMeshName) ? polyscope::getSurfaceMesh(kSurfaceMeshName) : nullptr;
+    for (const std::unique_ptr<polyscope::SlicePlane>& plane : polyscope::state::slicePlanes) {
+        if (!plane->getActive() || (base != nullptr && base->getIgnoreSlicePlane(plane->name))) {
+            continue;
+        }
+        // As SlicePlane::getCenter / getNormal: the plane's x axis is its normal, kept side positive
+        const glm::mat4 t = plane->getTransform();
+        const Eigen::Vector3d normal(t[0][0], t[0][1], t[0][2]);
+        if (normal.norm() > 0.0) {
+            planes.push_back(ClipPlane{Eigen::Vector3d(t[3][0], t[3][1], t[3][2]), normal.normalized()});
+        }
+    }
+    return planes;
 }
 
 void PolyscopeGui::startFaceSelectMode(FaceSelectMode mode) {
@@ -156,7 +176,7 @@ void PolyscopeGui::drawSelectFacesMenu() {
     ImGui::TextDisabled("Shift+click a face to toggle it");
     ImGui::Separator();
     if (ImGui::MenuItem("Select All", "A")) {
-        controller_.selectAllFaces();
+        controller_.selectAllFaces(currentClipPlanes());
         requestSync();
     }
     if (ImGui::MenuItem("Deselect All", "Alt+A", false, controller_.selectedFaceCount() > 0)) {
@@ -169,7 +189,8 @@ void PolyscopeGui::drawSelectFacesMenu() {
     }
     tooltip(controller_.ghostMeshEnabled()
         ? "On while Ghost (G) shows the hidden faces: box and circle select them too."
-        : "Off: box and circle select only the faces you can see. On: also the hidden faces behind them.");
+        : "Off: box and circle select only the faces you can see. On: also the hidden faces behind them. "
+          "Faces cut away by a slice plane are never selected.");
     ImGui::Separator();
     ImGui::TextDisabled("%s faces selected", withThousands(controller_.selectedFaceCount()).c_str());
     ImGui::TextDisabled("Use them: Mesh > Decimate, Weld / Merge Vertices, Delete Selected Faces (Del)");

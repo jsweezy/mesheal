@@ -52,6 +52,7 @@ constexpr std::size_t kNoAnchor = static_cast<std::size_t>(-1);
 } // namespace
 
 void ShellBrowser::clear() {
+    revision_ = nextRevision();
     shells_.clear();
     faceShell_.clear();
     isolateRestore_.reset();
@@ -60,6 +61,7 @@ void ShellBrowser::clear() {
 }
 
 void ShellBrowser::rebuild(const Mesh& mesh) {
+    revision_ = nextRevision();
     std::vector<ShellInfo> old = std::move(shells_);
     std::optional<std::vector<bool>> oldRestore = std::move(isolateRestore_);
     clear();
@@ -173,6 +175,7 @@ void ShellBrowser::rebuild(const Mesh& mesh) {
 }
 
 void ShellBrowser::updateBoxes(const Mesh& mesh) {
+    revision_ = nextRevision();
     for (ShellInfo& shell : shells_) {
         shell.bbox = boxOfFaces(mesh, shell.faces);
     }
@@ -183,6 +186,7 @@ int ShellBrowser::shellOfFace(Eigen::Index f) const noexcept {
 }
 
 void ShellBrowser::setNestedIn(std::span<const int> nestedIn) {
+    revision_ = nextRevision();
     for (std::size_t s = 0; s < shells_.size(); ++s) {
         shells_[s].nestedIn = s < nestedIn.size() ? nestedIn[s] : -1;
     }
@@ -194,12 +198,14 @@ void ShellBrowser::recountSelection() noexcept {
 }
 
 void ShellBrowser::setVisible(std::size_t s, bool visible) {
+    revision_ = nextRevision();
     if (s < shells_.size()) {
         shells_[s].visible = visible;
     }
 }
 
 void ShellBrowser::showAll() {
+    revision_ = nextRevision();
     for (ShellInfo& shell : shells_) {
         shell.visible = true;
     }
@@ -207,6 +213,7 @@ void ShellBrowser::showAll() {
 }
 
 void ShellBrowser::hideAll() {
+    revision_ = nextRevision();
     for (ShellInfo& shell : shells_) {
         shell.visible = false;
         shell.selected = false;
@@ -216,6 +223,7 @@ void ShellBrowser::hideAll() {
 }
 
 void ShellBrowser::hideSelected() {
+    revision_ = nextRevision();
     for (ShellInfo& shell : shells_) {
         if (shell.selected) {
             shell.visible = false;
@@ -226,6 +234,7 @@ void ShellBrowser::hideSelected() {
 }
 
 bool ShellBrowser::toggleIsolate() {
+    revision_ = nextRevision();
     if (isolateRestore_ && (selectedCount_ == 0 || selectionMatchesVisible())) {
         for (std::size_t s = 0; s < shells_.size(); ++s) {
             shells_[s].visible = (*isolateRestore_)[s];
@@ -261,6 +270,7 @@ bool ShellBrowser::faceVisible(Eigen::Index f) const noexcept {
 }
 
 void ShellBrowser::click(std::size_t s, bool toggle, bool range, std::span<const std::size_t> order) {
+    revision_ = nextRevision();
     if (s >= shells_.size()) {
         return;
     }
@@ -293,6 +303,7 @@ void ShellBrowser::click(std::size_t s, bool toggle, bool range, std::span<const
 }
 
 void ShellBrowser::selectWhere(const std::function<bool(std::size_t)>& predicate) {
+    revision_ = nextRevision();
     for (std::size_t s = 0; s < shells_.size(); ++s) {
         shells_[s].selected = predicate(s);
     }
@@ -301,14 +312,17 @@ void ShellBrowser::selectWhere(const std::function<bool(std::size_t)>& predicate
 }
 
 void ShellBrowser::selectAll() {
+    revision_ = nextRevision();
     selectWhere([](std::size_t) { return true; });
 }
 
 void ShellBrowser::selectNone() {
+    revision_ = nextRevision();
     selectWhere([](std::size_t) { return false; });
 }
 
 void ShellBrowser::invertSelection() {
+    revision_ = nextRevision();
     selectWhere([this](std::size_t s) { return !shells_[s].selected; });
 }
 

@@ -280,6 +280,7 @@ void AppController::resetHealthReport() {
         row.autoCheck = autoCheckDefaults_[categoryIndex(category)];
         row.result.reset();
     }
+    ++healthRevision_;
 }
 
 void AppController::setThresholds(const ThinFaceThresholds& thresholds) {
@@ -462,6 +463,7 @@ void AppController::applyCheckResult(CategoryResult result) {
     }
     row.status = (infoOnly || result.empty()) ? HealthStatus::Ok : HealthStatus::Defects;
     row.result = std::move(result);
+    ++healthRevision_;
     computeScope(category);
     refreshShellHealth();
     if (category == DefectCategory::Intersections && shells_.multiShell()) {
@@ -1365,6 +1367,7 @@ bool AppController::undoLastModification() {
 
     // The restored mesh is identical to the snapshot, so its results are valid again
     health_ = std::move(entry.health);
+    ++healthRevision_;
     for (CategoryHealth& row : health_.rows) {
         if (row.result) {
             row.result->meshGeneration = meshGeneration_;
@@ -1836,7 +1839,7 @@ double AppController::referenceFullMeshViewDistance() const noexcept {
     if (mesh_.empty()) {
         return 1.0;
     }
-    const double meshDiag = mesh_.boundingBox().diagonal();
+    const double meshDiag = meshBounds().diagonal();
     return std::max(1.0e-9, kReferenceFullMeshDistanceFactor * std::max(meshDiag, 1.0e-9));
 }
 
@@ -1893,7 +1896,7 @@ Eigen::Vector3d AppController::computeSelectionCentroid() const noexcept {
     if (face >= 0 && face < mesh_.numFaces()) {
         return computeFaceCentroid(face);
     }
-    return computeActiveSelectionOrMeshBounds().center();
+    return activeSelectionOrMeshBounds().center();
 }
 
 Eigen::Vector3d AppController::computeFaceInspectionNormal(Eigen::Index faceIndex) const noexcept {
@@ -1975,7 +1978,7 @@ void AppController::resetOrbitPivotToMeshCenter() noexcept {
     if (mesh_.empty()) {
         orbitPivot_ = Eigen::Vector3d::Zero();
     } else {
-        orbitPivot_ = mesh_.boundingBox().center();
+        orbitPivot_ = meshBounds().center();
     }
 }
 
@@ -2050,9 +2053,28 @@ BoundingBox AppController::computeActiveSelectionOrMeshBounds() const noexcept {
         }
     }
     if (!initializedBounds && !mesh_.empty()) {
-        bounds = mesh_.boundingBox();
+        bounds = meshBounds();
     }
     return bounds;
+}
+
+AppController::FrameBoundsKey AppController::frameBoundsKey() const noexcept {
+    return FrameBoundsKey{meshGeneration_, browser_.revision(), shells_.revision(), healthRevision_, pickedFaceIndex_, focusedHole_};
+}
+
+BoundingBox AppController::activeSelectionOrMeshBounds() const noexcept {
+    const FrameBoundsKey key = frameBoundsKey();
+    if (!frameBoundsCache_ || frameBoundsCache_->first != key) {
+        frameBoundsCache_.emplace(key, computeActiveSelectionOrMeshBounds());
+    }
+    return frameBoundsCache_->second;
+}
+
+const BoundingBox& AppController::meshBounds() const noexcept {
+    if (!meshBoundsCache_ || meshBoundsCache_->first != meshGeneration_) {
+        meshBoundsCache_.emplace(meshGeneration_, mesh_.boundingBox());
+    }
+    return meshBoundsCache_->second;
 }
 
 CameraFocusTarget AppController::computeCameraFocusTarget(
@@ -2070,12 +2092,12 @@ CameraFocusTarget AppController::computeCameraFocusTarget(
         }
     }
 
-    const BoundingBox bounds = computeActiveSelectionOrMeshBounds();
+    const BoundingBox bounds = activeSelectionOrMeshBounds();
     focus.selectionBounds = bounds;
     focus.targetCenter = computeSelectionCentroid();
 
     const double selDiag = bounds.diagonal();
-    const double meshDiag = std::max(mesh_.boundingBox().diagonal(), 1.0e-6);
+    const double meshDiag = std::max(meshBounds().diagonal(), 1.0e-6);
     const double minRadius = 1.0e-3 * meshDiag;
     const double rawRadius = (selDiag > 0.0)
         ? (1.75 * selDiag)
@@ -2155,7 +2177,7 @@ CameraFocusTarget AppController::computeFaceSelectionFocusTarget(const Eigen::Ve
     }
     focus.selectionBounds = bounds;
     focus.targetCenter = bounds.center();
-    const double meshDiag = std::max(mesh_.boundingBox().diagonal(), 1.0e-6);
+    const double meshDiag = std::max(meshBounds().diagonal(), 1.0e-6);
     focus.focusRadius = std::max(bounds.diagonal() > 0.0 ? 1.75 * bounds.diagonal() : 0.1 * meshDiag, 1.0e-3 * meshDiag);
 
     // A patch that mostly faces one way is looked at square on ("." again flips to its back, as for a
