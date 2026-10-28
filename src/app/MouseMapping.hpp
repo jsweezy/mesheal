@@ -127,6 +127,26 @@ struct MouseClickMatch {
 [[nodiscard]] std::optional<MouseClickMatch> resolveMouseClick(const MouseMapping& mapping, MouseInput button,
                                                                MouseModifiers held);
 
+/// Tells viewport clicks from drags. A click is a press over the 3D view and its release with less than
+/// the drag threshold of viewport dragging in between. Every press and release must be reported, also
+/// over a panel: a release there still ends the drag (else the next click was swallowed), and a press
+/// there (a slider drag) never turns into a click when released over the view.
+class ViewportClickTracker {
+public:
+    /// `button` went down; `overViewport`: the 3D view (not a panel, gizmo or select tool) got it.
+    void press(MouseInput button, bool overViewport) noexcept;
+    /// Viewport drag distance since the last release (any button).
+    void drag(float distance) noexcept;
+    /// `button` went up: true for a click. Starts the next press afresh either way.
+    [[nodiscard]] bool release(MouseInput button, float dragThreshold) noexcept;
+
+    [[nodiscard]] float dragDistance() const noexcept { return dragDistance_; }
+
+private:
+    std::array<bool, 3> pressedOverViewport_{}; ///< Left, Middle, Right
+    float dragDistance_ = 0.0f;
+};
+
 /// The button Box (B) and Circle (C) select draw with: Select's first button (Left if it has none).
 [[nodiscard]] MouseInput selectToolButton(const MouseMapping& mapping) noexcept;
 

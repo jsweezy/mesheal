@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <bit>
 #include <cctype>
+#include <cmath>
 
 namespace ogun {
 
@@ -357,6 +358,42 @@ std::optional<MouseClickMatch> resolveMouseClick(const MouseMapping& mapping, Mo
         }
     }
     return best;
+}
+
+namespace {
+
+std::optional<std::size_t> buttonSlot(MouseInput button) noexcept {
+    switch (button) {
+    case MouseInput::Left: return 0;
+    case MouseInput::Middle: return 1;
+    case MouseInput::Right: return 2;
+    case MouseInput::Wheel:
+    case MouseInput::None:
+        break;
+    }
+    return std::nullopt;
+}
+
+} // namespace
+
+void ViewportClickTracker::press(MouseInput button, bool overViewport) noexcept {
+    if (const std::optional<std::size_t> slot = buttonSlot(button)) {
+        pressedOverViewport_[*slot] = overViewport;
+    }
+}
+
+void ViewportClickTracker::drag(float distance) noexcept {
+    dragDistance_ += std::abs(distance);
+}
+
+bool ViewportClickTracker::release(MouseInput button, float dragThreshold) noexcept {
+    const std::optional<std::size_t> slot = buttonSlot(button);
+    const bool click = slot && pressedOverViewport_[*slot] && dragDistance_ < dragThreshold;
+    if (slot) {
+        pressedOverViewport_[*slot] = false;
+    }
+    dragDistance_ = 0.0f;
+    return click;
 }
 
 MouseInput selectToolButton(const MouseMapping& mapping) noexcept {

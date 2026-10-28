@@ -445,6 +445,11 @@ public:
 
     [[nodiscard]] bool checksRunning() const noexcept;
 
+    /// A check, repair or merge job is running: the GUI keeps its full frame rate to poll it.
+    [[nodiscard]] bool backgroundWorkRunning() const noexcept {
+        return checkRunner_.busy() || checksRunning() || repairRunner_.busy() || mergeRunner_.busy();
+    }
+
     /// Overall progress of the running check job in [0, 1].
     [[nodiscard]] float checkProgress() const noexcept {
         return checkRunner_.progress();

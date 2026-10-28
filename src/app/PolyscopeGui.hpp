@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/AppController.hpp"
+#include "app/FramePacer.hpp"
 #include "app/RecentFiles.hpp"
 #include "app/UserPreferences.hpp"
 
@@ -92,7 +93,8 @@ private:
     void drawDisplayPanel();
     void drawNavigatePanel();
     void drawStructuresPanel();
-    void drawPolyscopeWindows();
+    /// View > Polyscope windows, tiled in the free 3D view between the columns when they open.
+    void drawPolyscopeWindows(float top, float bottom, float rightColumnLeft);
     void drawCompass(float left, float bottom);
     void drawNoMeshHint(float left, float top, float bottom);
     void flyToStandardView(int view);
@@ -162,6 +164,8 @@ private:
 
     // ---- Viewport input & Polyscope sync (PolyscopeGui.cpp) ----
     void handleViewportMouseNavigation();
+    /// Sleeps or waits for input before the frame when nothing needs the full frame rate (idle CPU).
+    void paceFrame();
     void handleKeyboardShortcuts();
     /// `shellPick`: Select Shell (on multi-shell meshes), adding / removing it when `shellToggle`.
     void handleViewportFacePick(const polyscope::PickResult& pickResult, bool shellPick, bool shellToggle);
@@ -288,7 +292,8 @@ private:
     std::vector<Eigen::Vector3d> originalEdgeNodes_; ///< Points of the "Original Edges" tubes
     std::array<double, 22> lastNodeSizingKey_{};     ///< View matrix, FOV, viewport and sizes the node radii fit
     bool nodeRadiiDirty_ = true;
-    float dragDistSinceLastRelease_ = 0.0f;
+    ViewportClickTracker clickTracker_; ///< Tells viewport clicks from drags
+    FramePacer framePacer_;
 };
 
 } // namespace ogun

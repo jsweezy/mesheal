@@ -38,7 +38,7 @@ The **Mouse** tab of Preferences has a **Scheme** combo and a table with one row
 | Clear pick | `Right click` | same | same | same | same | same |
 
 How inputs are matched:
-- A **click** is a press and release without moving the mouse, so a drag and a click on the same button never conflict (Ogun: `Left drag` orbits, `Left click` selects; Maya: `Alt + Left drag` tumbles, `Alt + Left click` selects a shell).
+- A **click** is a press and release without moving the mouse, so a drag and a click on the same button never conflict (Ogun: `Left drag` orbits, `Left click` selects; Maya: `Alt + Left drag` tumbles, `Alt + Left click` selects a shell). The press must be in the 3D view: a press on a panel (e.g. dragging a slider) released over the view is not a click.
 - **Drags and the wheel:** modifiers that no binding of that button uses are ignored, and the others must match exactly. In the Ogun scheme `Alt + Left drag` still orbits, `Shift + Alt + Left drag` pans, and `Ctrl + Left drag` does nothing; in Blender `Left drag` does nothing, so left-click selection never fights the camera.
 - **Clicks:** an exact match first; otherwise the binding with the most modifiers that are all held (*Toggle face* needs its exact modifiers). So `Ctrl + Shift + Left click` selects and `Shift + Alt + Left click` selects the shell. Adding `Ctrl` (when the Select shell binding does not already use it) or `Cmd` to a Select shell click adds or removes the shell.
 - **Conflicts:** two actions of the same kind on the same input are drawn red in the table with a warning below it; the action higher in the table wins.
@@ -88,7 +88,7 @@ How inputs are matched:
 
 ### Mouse in the Shells panel (multi-shell meshes)
 
-**View > Compass** draws X / Y / Z axes (red / green / blue) in the bottom-left corner of the 3D view; they turn with the camera. It is off by default and remembered. **View > Polyscope** opens Polyscope's Slice Planes, Appearance (transparency, ground plane, background), Camera & Clipping and Render & Debug sections as floating windows. Ogun starts empty when no STL is given on the command line.
+**View > Compass** draws X / Y / Z axes (red / green / blue) in the bottom-left corner of the 3D view; they turn with the camera. It is off by default and remembered. **View > Polyscope** opens Polyscope's Slice Planes, Appearance (transparency, ground plane, background), Camera & Clipping and Render & Debug sections as floating windows. Each opens in its own place side by side along the top of the free 3D view (in rows when the view is narrow), so several open at once do not overlap. Ogun starts empty when no STL is given on the command line.
 
 The **Shells** panel (left column, between Navigate and Structures) appears only when the mesh has more than one shell. Mesh Health covers the **selected** shells, or the **visible** shells when none is selected; a *Scope* line in Mesh Health says so, with an *All shells* button. A crossing counts only when both of its shells are in scope.
 

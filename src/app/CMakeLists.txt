@@ -10,6 +10,8 @@ add_library(ogun_app_controller STATIC
     AppControllerTransform.cpp
     DefectBrowser.cpp
     FaceSelection.cpp
+    FramePacer.cpp
+    GuiLayout.cpp
     HealthCheckRunner.cpp
     MergeJobRunner.cpp
     MouseMapping.cpp
@@ -70,6 +72,8 @@ if(OGUN_BUILD_GUI)
         PRIVATE
             "${CMAKE_SOURCE_DIR}/src"
             "${CMAKE_CURRENT_SOURCE_DIR}"
+            # GLFW's header for glfwWaitEventsTimeout (idle frame pacing); the library comes with polyscope
+            "$<TARGET_PROPERTY:glfw,INTERFACE_INCLUDE_DIRECTORIES>"
     )
 
     target_link_libraries(ogun

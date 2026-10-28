@@ -1,3 +1,4 @@
+#include "app/GuiLayout.hpp"
 #include "app/GuiWidgets.hpp"
 #include "app/PolyscopeGui.hpp"
 #include "core/Settings.hpp"
@@ -15,6 +16,7 @@
 #include <array>
 #include <initializer_list>
 #include <string>
+#include <vector>
 
 namespace ogun {
 
@@ -360,13 +362,16 @@ void PolyscopeGui::drawStructuresPanel() {
 
 namespace {
 
-/// Floating window for one of Polyscope's own sections; its tree nodes start open (`openNodes`, outermost first).
+/// Floating window for one of Polyscope's own sections, opened in its own tile of the free 3D view and
+/// kept inside it; its tree nodes start open (`openNodes`, outermost first).
 template <typename Body>
-void polyscopeWindow(const char* title, bool* open, ImVec2 pos, std::initializer_list<const char*> openNodes, Body&& body) {
+void polyscopeWindow(const char* title, bool* open, const LayoutRect& tile, std::initializer_list<const char*> openNodes,
+                     Body&& body) {
     if (!*open) {
         return;
     }
-    ImGui::SetNextWindowPos(pos, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos(ImVec2(tile.x, tile.y), ImGuiCond_Appearing);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), ImVec2(tile.width, tile.height));
     if (ImGui::Begin(title, open, ImGuiWindowFlags_AlwaysAutoResize)) {
         if (ImGui::IsWindowAppearing()) {
             // A tree node's open state is stored under its ID, nested nodes under their parent's ID
@@ -386,20 +391,24 @@ void polyscopeWindow(const char* title, bool* open, ImVec2 pos, std::initializer
 
 } // namespace
 
-void PolyscopeGui::drawPolyscopeWindows() {
-    const float x = settings::kLeftColumnWidthPx + 4.0f * settings::kPanelMarginPx;
-    const float y = ImGui::GetFrameHeight() + 4.0f * settings::kPanelMarginPx;
-    polyscopeWindow("Polyscope: Slice Planes", &showPolySlicePlanes_, ImVec2(x, y), {"Slice Planes"},
+void PolyscopeGui::drawPolyscopeWindows(float top, float bottom, float rightColumnLeft) {
+    // One tile each, side by side from the left of the free 3D view (more rows when it is narrow), so
+    // any set of them opens without overlapping. Each opens in its tile (also after Reset Layout).
+    const float margin = settings::kPanelMarginPx;
+    const float freeLeft = settings::kLeftColumnWidthPx + 2.0f * margin;
+    const LayoutRect free{freeLeft, top, std::max(rightColumnLeft - margin - freeLeft, 0.0f), std::max(bottom - top, 0.0f)};
+    const std::vector<LayoutRect> tiles =
+        tileWindows(free, 4, settings::kPolyscopeWindowWidthPx, settings::kPolyscopeWindowMinWidthPx, margin);
+    polyscopeWindow("Polyscope: Slice Planes", &showPolySlicePlanes_, tiles[0], {"Slice Planes"},
                     [] { polyscope::buildSlicePlaneGUI(); });
-    polyscopeWindow("Polyscope: Appearance", &showPolyAppearance_, ImVec2(x + 30.0f, y + 30.0f),
-                    {"Appearance", "Transparency"}, [] {
-                        if (polyscope::render::engine != nullptr) {
-                            polyscope::render::engine->buildEngineGui();
-                        }
-                    });
-    polyscopeWindow("Polyscope: Camera & Clipping", &showPolyView_, ImVec2(x + 60.0f, y + 60.0f), {"View"},
+    polyscopeWindow("Polyscope: Appearance", &showPolyAppearance_, tiles[1], {"Appearance", "Transparency"}, [] {
+        if (polyscope::render::engine != nullptr) {
+            polyscope::render::engine->buildEngineGui();
+        }
+    });
+    polyscopeWindow("Polyscope: Camera & Clipping", &showPolyView_, tiles[2], {"View"},
                     [] { polyscope::view::buildViewGui(); });
-    polyscopeWindow("Polyscope: Render & Debug", &showPolyRender_, ImVec2(x + 90.0f, y + 90.0f), {}, [] {
+    polyscopeWindow("Polyscope: Render & Debug", &showPolyRender_, tiles[3], {}, [] {
         ImGui::Text("Rolling: %.1f ms/frame (%.1f fps)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
         if (ImGui::InputInt("max fps", &polyscope::options::maxFPS, 0) &&
             polyscope::options::maxFPS < 1 && polyscope::options::maxFPS != -1) {

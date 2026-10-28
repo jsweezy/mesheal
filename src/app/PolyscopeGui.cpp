@@ -8,7 +8,9 @@
 #include "app/MacAppIcon.hpp"
 #endif
 
+#include <GLFW/glfw3.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <polyscope/curve_network.h>
 #include <polyscope/curve_network_scalar_quantity.h>
 #include <polyscope/pick.h>
@@ -28,6 +30,7 @@
 #include <optional>
 #include <queue>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -313,7 +316,36 @@ void PolyscopeGui::loadAndApplyApplicationIcon() {
     }
 }
 
+void PolyscopeGui::paceFrame() {
+    // Polyscope builds and draws every frame at maxFPS and spins (yield loop) for the rest of each frame,
+    // also with nothing to do. Sleep the frame gap instead, and block on input while idle.
+    const ImGuiContext& g = *ImGui::GetCurrentContext();
+    FrameActivity activity;
+    activity.input = !g.InputEventsTrail.empty() || !g.InputEventsQueue.empty() || ImGui::IsAnyMouseDown() ||
+                     ImGui::IsAnyItemActive() || polyscope::redrawRequested() || syncPending_ || layoutResetPending_ ||
+                     controller_.statusMessageSerial() != shownMessageSerial_;
+    activity.animating = controller_.backgroundWorkRunning() || polyscope::view::midflight ||
+                         polyscope::options::alwaysRedraw || ImGui::GetIO().WantTextInput;
+    if (!controller_.statusMessage().empty()) {
+        // The status bar reverts to "Ready" when the message expires
+        const double age = std::chrono::duration<double>(std::chrono::steady_clock::now() - messageTime_).count();
+        if (age < settings::kStatusMessageSeconds) {
+            activity.secondsToDeadline = settings::kStatusMessageSeconds - age;
+        }
+    }
+
+    const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    const FrameWait wait = framePacer_.plan(now, activity, polyscope::options::maxFPS);
+    if (wait.kind == FrameWaitKind::Sleep) {
+        std::this_thread::sleep_for(std::chrono::duration<double>(wait.seconds));
+    } else if (wait.kind == FrameWaitKind::WaitForEvents) {
+        // Input that wakes it is queued for ImGui and handled from the next frame on
+        glfwWaitEventsTimeout(wait.seconds);
+    }
+}
+
 void PolyscopeGui::drawUiFrame() {
+    paceFrame();
     if (controller_.pollBackgroundChecks()) {
         requestSync();
     }
@@ -342,7 +374,7 @@ void PolyscopeGui::drawUiFrame() {
     if (showAboutWindow_) {
         drawAboutWindow();
     }
-    drawPolyscopeWindows();
+    drawPolyscopeWindows(top, bottom, rightLeft);
     drawCompass(settings::kLeftColumnWidthPx + 2.0f * settings::kPanelMarginPx, bottom);
     drawNoMeshHint(settings::kLeftColumnWidthPx + 2.0f * settings::kPanelMarginPx, top, bottom);
     drawModalPopups();
@@ -412,12 +444,31 @@ void PolyscopeGui::handleViewportMouseNavigation() {
         }
     }
 
+    // Every press and release is tracked, also over a panel, so a drag ending there cannot swallow the
+    // next click and a slider drag ending over the view is no click. Clicks act at the end, on release.
+    constexpr std::array<std::pair<ImGuiMouseButton, MouseInput>, 3> kButtons = {{
+        {ImGuiMouseButton_Left, MouseInput::Left},
+        {ImGuiMouseButton_Right, MouseInput::Right},
+        {ImGuiMouseButton_Middle, MouseInput::Middle},
+    }};
+    const bool viewportHasMouse = !(io.WantCaptureMouse || widgetCapturedMouse);
+    std::array<bool, kButtons.size()> clicked{};
+    for (std::size_t i = 0; i < kButtons.size(); ++i) {
+        const auto [imguiButton, button] = kButtons[i];
+        if (ImGui::IsMouseClicked(imguiButton)) {
+            clickTracker_.press(button, viewportHasMouse && faceSelectMode_ == FaceSelectMode::None);
+        }
+        if (ImGui::IsMouseReleased(imguiButton)) {
+            clicked[i] = clickTracker_.release(button, settings::kDragIgnoreThreshold);
+        }
+    }
+
     // Select modes own the mouse (a box drag keeps it even over a panel)
-    if (faceSelectMode_ != FaceSelectMode::None && (boxDragging_ || !(io.WantCaptureMouse || widgetCapturedMouse))) {
+    if (faceSelectMode_ != FaceSelectMode::None && (boxDragging_ || viewportHasMouse)) {
         handleFaceSelectTool();
         return;
     }
-    if (io.WantCaptureMouse || widgetCapturedMouse) {
+    if (!viewportHasMouse) {
         return;
     }
 
@@ -462,7 +513,7 @@ void PolyscopeGui::handleViewportMouseNavigation() {
         const glm::vec2 dragDelta{
             io.MouseDelta.x / static_cast<float>(polyscope::view::windowWidth),
             -io.MouseDelta.y / static_cast<float>(polyscope::view::windowHeight)};
-        dragDistSinceLastRelease_ += std::abs(dragDelta.x) + std::abs(dragDelta.y);
+        clickTracker_.drag(std::abs(dragDelta.x) + std::abs(dragDelta.y));
 
         // An unbound drag does nothing
         const std::optional<MouseAction> action = resolveMouseDrag(mouseMapping_, dragButton, mods);
@@ -476,14 +527,9 @@ void PolyscopeGui::handleViewportMouseNavigation() {
     }
 
     // 3. Clicks act on release when the mouse did not drag
-    for (const auto& [imguiButton, button] : {std::pair{ImGuiMouseButton_Left, MouseInput::Left},
-                                              std::pair{ImGuiMouseButton_Right, MouseInput::Right},
-                                              std::pair{ImGuiMouseButton_Middle, MouseInput::Middle}}) {
-        if (ImGui::IsMouseReleased(imguiButton)) {
-            if (dragDistSinceLastRelease_ < settings::kDragIgnoreThreshold) {
-                handleViewportClick(button);
-            }
-            dragDistSinceLastRelease_ = 0.0f;
+    for (std::size_t i = 0; i < kButtons.size(); ++i) {
+        if (clicked[i]) {
+            handleViewportClick(kButtons[i].second);
         }
     }
 }

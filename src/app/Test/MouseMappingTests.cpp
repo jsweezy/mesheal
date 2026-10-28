@@ -1,4 +1,5 @@
 #include "app/MouseMapping.hpp"
+#include "core/Settings.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -253,4 +254,78 @@ TEST_CASE("Mouse bindings format for display and round trip through the preferen
     }
     CHECK_FALSE(ogun::parseMouseBindingList("left", MouseAction::WheelZoom));
     CHECK(ogun::parseMouseBindingList("ctrl+wheel", MouseAction::WheelZoom));
+}
+
+namespace {
+
+constexpr float kThreshold = ogun::settings::kDragIgnoreThreshold;
+
+/// A press over the 3D view and its release after `dragged` of viewport dragging: the click action, if any.
+std::optional<MouseAction> viewportClick(const ogun::MouseMapping& m, ogun::ViewportClickTracker& tracker,
+                                         MouseInput button, MouseModifiers mods, float dragged = 0.0f) {
+    tracker.press(button, true);
+    if (dragged > 0.0f) {
+        tracker.drag(dragged);
+    }
+    if (!tracker.release(button, kThreshold)) {
+        return std::nullopt;
+    }
+    return click(m, button, mods);
+}
+
+} // namespace
+
+TEST_CASE("A plain left click in the 3D view selects the face under every mouse preset", "[app][mouse]") {
+    for (const MousePreset p : ogun::kAllMousePresets) {
+        INFO(ogun::mousePresetName(p));
+        const ogun::MouseMapping m = preset(p);
+        ogun::ViewportClickTracker tracker;
+        // Also where Left has no drag binding at all (Blender, Maya, Fusion 360, SolidWorks)
+        CHECK(viewportClick(m, tracker, MouseInput::Left, 0) == MouseAction::Select);
+        CHECK(viewportClick(m, tracker, MouseInput::Left, S) == MouseAction::ToggleFace);
+        CHECK(viewportClick(m, tracker, MouseInput::Left, A) == MouseAction::SelectShell);
+        CHECK(viewportClick(m, tracker, MouseInput::Left, C) == MouseAction::Select);
+        CHECK(viewportClick(m, tracker, MouseInput::Left, static_cast<MouseModifiers>(C | S)) == MouseAction::Select);
+        CHECK(viewportClick(m, tracker, MouseInput::Right, 0) == MouseAction::ClearPick);
+        CHECK(viewportClick(m, tracker, MouseInput::Middle, 0) == std::nullopt);
+        // A real drag is no click, bound or not, and the next click still works
+        CHECK(viewportClick(m, tracker, MouseInput::Left, 0, 0.2f) == std::nullopt);
+        CHECK(viewportClick(m, tracker, MouseInput::Left, 0) == MouseAction::Select);
+        // Jitter below the threshold is still a click
+        CHECK(viewportClick(m, tracker, MouseInput::Left, 0, 0.5f * kThreshold) == MouseAction::Select);
+    }
+}
+
+TEST_CASE("The viewport click tracker sees every press and release, also over panels", "[app][mouse]") {
+    ogun::ViewportClickTracker tracker;
+
+    SECTION("A drag released over a panel does not swallow the next click") {
+        // Blender: middle-drag orbit that ends over a panel; the release is reported but is no click
+        tracker.press(MouseInput::Middle, true);
+        tracker.drag(0.3f);
+        CHECK_FALSE(tracker.release(MouseInput::Middle, kThreshold));
+        CHECK(tracker.dragDistance() == 0.0f);
+        tracker.press(MouseInput::Left, true);
+        CHECK(tracker.release(MouseInput::Left, kThreshold));
+    }
+
+    SECTION("A press on a panel (slider drag) released over the 3D view is no click") {
+        tracker.press(MouseInput::Left, false);
+        CHECK_FALSE(tracker.release(MouseInput::Left, kThreshold));
+        tracker.press(MouseInput::Left, true);
+        CHECK(tracker.release(MouseInput::Left, kThreshold));
+    }
+
+    SECTION("A release without a tracked press, or of the wheel, is no click") {
+        CHECK_FALSE(tracker.release(MouseInput::Right, kThreshold));
+        tracker.press(MouseInput::Wheel, true);
+        CHECK_FALSE(tracker.release(MouseInput::Wheel, kThreshold));
+    }
+
+    SECTION("Buttons are tracked separately") {
+        tracker.press(MouseInput::Left, true);
+        tracker.press(MouseInput::Right, false);
+        CHECK_FALSE(tracker.release(MouseInput::Right, kThreshold));
+        CHECK(tracker.release(MouseInput::Left, kThreshold));
+    }
 }
