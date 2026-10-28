@@ -1,0 +1,19 @@
+# Ogun Releases
+
+Release notes, newest first. Versions are simple integers (v1, v2, ...) tagged in git as `v#`. See [RELEASE_PROCESS.md](RELEASE_PROCESS.md) for how to cut a release.
+
+## v1 — 2026-10-28
+
+First release.
+
+- Loads binary and ASCII STL with edge-aware, topology-aware multi-scale vertex welding; slivers and zero-area faces are preserved for inspection.
+- Informational file units (`mm`, `cm`, `m`, `in`, `ft`) that never rescale geometry; explicit Scale Mesh Coordinates action.
+- Mesh Health panel: holes, non-manifold edges and vertices, flipped normals, shells, thin / sliver faces, and self-intersections, with histograms and Next / Prev browsing for huge defect counts.
+- Blender-style selection-centric 3D navigation, rectangle face selection, clipping plane, and "." focus.
+- Sliver repair (caps, needles, microscopic triangles, dangling flaps) for single faces or all at once, with live preview.
+- Hole filling, non-manifold edge / vertex splitting, and intersection repair, each global or surgical.
+- Mesh > Decimate, Weld / Merge Vertices, Delete Selected Faces (`X`), Alpha Wrap clean-up, and Merge Shells.
+- Mesh > Transform: Set Origin to Selection and Translate / Rotate with preview.
+- Universal multi-step undo (`Ctrl+Z` / `Cmd+Z`) for every mesh modification.
+- File > Open Recent (last 10 STLs), Load Sample meshes, and Save / Save As in binary or ASCII STL.
+- Preferences and display styles saved to `~/.config/ogun/preferences.conf`.

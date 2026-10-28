@@ -33,6 +33,7 @@ target_compile_definitions(ogun_app_controller
 
 target_link_libraries(ogun_app_controller
     PUBLIC
+        ogun::core
         ogun::mesh
         ogun::io
         ogun::diagnostics

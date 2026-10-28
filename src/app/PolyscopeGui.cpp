@@ -2,6 +2,7 @@
 #include "app/GuiWidgets.hpp"
 #include "core/Constants.hpp"
 #include "core/Settings.hpp"
+#include "ogun/Version.hpp"
 
 #ifdef __APPLE__
 #include "app/MacAppIcon.hpp"
@@ -240,7 +241,7 @@ PolyscopeGui::PolyscopeGui(AppController& controller, std::filesystem::path pref
 }
 
 void PolyscopeGui::run() {
-    polyscope::options::programName = "Ogun - STL Mesh Inspection & Repair Tool";
+    polyscope::options::programName = "Ogun v" + std::string(kVersionString) + " - STL Mesh Inspection & Repair Tool";
     polyscope::options::autocenterStructures = false;
     polyscope::options::autoscaleStructures = false;
     polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;

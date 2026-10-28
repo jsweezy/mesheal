@@ -1,11 +1,15 @@
 cmake_minimum_required(VERSION 3.20)
 
+# RELEASE VERSION: edit the VERSION integer below and OGUN_VERSION_DATE together
+# (see RELEASE_PROCESS.md). Versions are simple integers: 1, 2, 3, ...
 project(
     Ogun
-    VERSION 0.1.0
+    VERSION 1
     DESCRIPTION "Ogun — STL Repair Tool for Simulation Meshes"
     LANGUAGES CXX C
 )
+
+set(OGUN_VERSION_DATE "2026-10-28")  # ISO release date (YYYY-MM-DD)
 
 # ------------------------------------------------------------------------------
 # Language Standard & Global Settings
@@ -52,6 +56,7 @@ endif()
 # ------------------------------------------------------------------------------
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(Dependencies)
+include(Version)
 
 # ------------------------------------------------------------------------------
 # Ogun Source Modules (each with co-located Test/ directory)

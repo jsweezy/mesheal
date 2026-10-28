@@ -1,11 +1,14 @@
 #include "core/Constants.hpp"
 #include "core/Settings.hpp"
+#include "ogun/Version.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 
+#include <cctype>
 #include <cmath>
 #include <numbers>
+#include <string>
 
 // Static assertions ensuring compile-time mathematical relationships
 static_assert(ogun::kPi == std::numbers::pi);
@@ -53,5 +56,32 @@ TEST_CASE("Core default settings provide expected baseline values", "[core][sett
         REQUIRE(ogun::settings::kDefaultThinFaceMaxAspectRatio == Catch::Approx(1000.0));
         REQUIRE(ogun::settings::kDefaultCapAngleDeg == Catch::Approx(170.0));
         REQUIRE(ogun::settings::kDefaultNeedleEdgeRatio == Catch::Approx(0.05));
+    }
+}
+
+TEST_CASE("Generated version and build info are sane", "[core][version]") {
+    REQUIRE(ogun::kVersion >= 1);
+    REQUIRE(ogun::kVersionString == std::to_string(ogun::kVersion));
+
+    // ISO date YYYY-MM-DD
+    const std::string date(ogun::kVersionDate);
+    REQUIRE(date.size() == 10);
+    for (std::size_t i = 0; i < date.size(); ++i) {
+        if (i == 4 || i == 7) {
+            REQUIRE(date[i] == '-');
+        } else {
+            REQUIRE(std::isdigit(static_cast<unsigned char>(date[i])));
+        }
+    }
+
+    REQUIRE_FALSE(ogun::kCompilerId.empty());
+    REQUIRE_FALSE(ogun::kCompilerVersion.empty());
+    REQUIRE_FALSE(ogun::kBuildTimestamp.empty());
+    REQUIRE_FALSE(ogun::kPlatform.empty());
+    REQUIRE(ogun::kCxxStandard.starts_with("C++"));
+    REQUIRE_FALSE(ogun::kDependencies.empty());
+    for (const auto& dep : ogun::kDependencies) {
+        REQUIRE_FALSE(dep.name.empty());
+        REQUIRE_FALSE(dep.version.empty());
     }
 }

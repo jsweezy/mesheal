@@ -43,6 +43,8 @@ Unlike 3D printing repair tools—which often voxelize or aggressively alter geo
 - **[UI_DESIGN.md](UI_DESIGN.md)**: GUI design (P1-P3 built): menu bar, Mesh Health panel, per-defect Tool panels, operator panels, large-defect-count handling, implementation notes, and the remaining phases.
 - **[PLAN.md](PLAN.md)**: Incremental development roadmap, module structure, and Test-Driven Development (TDD) harness with Catch2.
 - **[TODO.md](TODO.md)**: Punch list tracking completed and upcoming features.
+- **[RELEASES.md](RELEASES.md)**: Release notes for each version (simple integers, tagged `v1`, `v2`, ...).
+- **[RELEASE_PROCESS.md](RELEASE_PROCESS.md)**: How to cut a release: where the version number and date are set in `CMakeLists.txt`, and the tag and push steps.
 - **[LICENSE.md](LICENSE.md)**: Full text of the GNU General Public License v3.0.
 
 ---
