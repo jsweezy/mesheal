@@ -288,7 +288,6 @@ void PolyscopeGui::drawShellActionItems() {
     tooltip("Write the selected shells to new STL files. The open mesh is not changed.");
     if (ImGui::MenuItem("Merge...", nullptr, false, shells.selectedCount() >= 2)) {
         controller_.openMergeShells();
-        showTool_ = true;
         requestSync();
     }
     tooltip(shells.selectedCount() >= 2

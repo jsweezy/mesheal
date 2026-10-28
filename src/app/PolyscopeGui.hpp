@@ -181,11 +181,7 @@ private:
     std::shared_ptr<polyscope::render::TextureBuffer> appIconTexture_;
 
     // Panels & layout (View menu, Reset Layout)
-    bool showHealth_ = true;
-    bool showTool_ = true;
-    bool showDisplay_ = true;
-    bool showNavigate_ = true;
-    bool showStructures_ = true;
+    bool showStructures_ = false;      ///< Structures panel, off until View > Structures (advanced)
     bool showShells_ = true;           ///< Shells panel (shown only for multi-shell meshes)
     bool structuresCollapsed_ = true;  ///< Structures panel state, to size the Shells panel above it
     bool showMeshInfo_ = false;

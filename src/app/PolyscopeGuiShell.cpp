@@ -39,11 +39,7 @@ void plannedMenuItem(const char* label, const char* when) {
 // -----------------------------------------------------------------------------
 
 void PolyscopeGui::resetLayout() {
-    showHealth_ = true;
-    showTool_ = true;
-    showDisplay_ = true;
-    showNavigate_ = true;
-    showStructures_ = true;
+    showStructures_ = false;
     showShells_ = true;
     rightColumnWidth_ = settings::kRightColumnDefaultPx;
     layoutResetPending_ = true;
@@ -60,7 +56,7 @@ void PolyscopeGui::drawLeftColumn(float top, float bottom, float rightColumnLeft
 
     float y = top;
     const auto stackedPanel = [&](const char* title, bool* open, bool startCollapsed, auto&& body) {
-        if (!*open || y >= bottom) {
+        if ((open && !*open) || y >= bottom) {
             return;
         }
         ImGui::SetNextWindowPos(ImVec2(margin, y), ImGuiCond_Always);
@@ -83,8 +79,8 @@ void PolyscopeGui::drawLeftColumn(float top, float bottom, float rightColumnLeft
         ImGui::End();
     };
 
-    stackedPanel("Display", &showDisplay_, false, [this] { drawDisplayPanel(); });
-    stackedPanel("Navigate", &showNavigate_, false, [this] { drawNavigatePanel(); });
+    stackedPanel("Display", nullptr, false, [this] { drawDisplayPanel(); });
+    stackedPanel("Navigate", nullptr, false, [this] { drawNavigatePanel(); });
 
     // Shells (multi-shell meshes only) fills the column down to Structures, a title bar while collapsed
     const ShellBrowser& shells = controller_.shells();
@@ -121,22 +117,20 @@ void PolyscopeGui::drawRightColumn(float top, float bottom) {
     const float x = displayWidth - width - margin;
     float y = top;
 
-    if (showHealth_) {
-        ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Always);
-        ImGui::SetNextWindowSizeConstraints(ImVec2(width, 0.0f), ImVec2(width, (bottom - top) * 0.6f));
-        if (layoutResetPending_) {
-            ImGui::SetNextWindowCollapsed(false, ImGuiCond_Always);
-        }
-        if (ImGui::Begin("Mesh Health", &showHealth_, kDockedFlags | ImGuiWindowFlags_AlwaysAutoResize)) {
-            drawHealthPanel();
-        }
-        y += ImGui::GetWindowHeight() + margin;
-        ImGui::End();
+    ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_Always);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(width, 0.0f), ImVec2(width, (bottom - top) * 0.6f));
+    if (layoutResetPending_) {
+        ImGui::SetNextWindowCollapsed(false, ImGuiCond_Always);
     }
+    if (ImGui::Begin("Mesh Health", nullptr, kDockedFlags | ImGuiWindowFlags_AlwaysAutoResize)) {
+        drawHealthPanel();
+    }
+    y += ImGui::GetWindowHeight() + margin;
+    ImGui::End();
 
     // Progressive disclosure: the Tool slot exists only once a row or a Mesh operation is picked
     const ToolSlot slot = controller_.activeTool();
-    if (!showTool_ || slot == ToolSlot::None || y >= bottom - 60.0f) {
+    if (slot == ToolSlot::None || y >= bottom - 60.0f) {
         return;
     }
     std::string title = slot == ToolSlot::UnitsAndScale            ? std::string("Operation: Units & Scale")
@@ -275,7 +269,6 @@ void PolyscopeGui::drawFileMenu() {
     if (controller_.shells().selectedCount() == 0) {
         tooltip("Select shells in the Shells panel first (multi-shell meshes).");
     }
-    plannedMenuItem("Export Health Report...", "Planned.");
     ImGui::Separator();
     if (ImGui::MenuItem("Quit")) {
         polyscope::unshow();
@@ -329,15 +322,6 @@ void PolyscopeGui::drawEditMenu() {
 void PolyscopeGui::drawViewMenu() {
     if (!ImGui::BeginMenu("View")) {
         return;
-    }
-    ImGui::TextDisabled("Panels");
-    ImGui::MenuItem("Mesh Health", nullptr, &showHealth_);
-    ImGui::MenuItem("Tool / Operation", nullptr, &showTool_);
-    ImGui::MenuItem("Display", nullptr, &showDisplay_);
-    ImGui::MenuItem("Navigate", nullptr, &showNavigate_);
-    ImGui::MenuItem("Shells", nullptr, &showShells_, controller_.shells().multiShell());
-    if (!controller_.shells().multiShell()) {
-        tooltip("Shown for meshes made of several separate shells.");
     }
     ImGui::MenuItem("Structures (advanced)", nullptr, &showStructures_);
     ImGui::Separator();
@@ -408,21 +392,18 @@ void PolyscopeGui::drawMeshMenu() {
     const bool hasMesh = controller_.hasMesh();
     if (ImGui::MenuItem("Decimate...", nullptr, false, hasMesh)) {
         controller_.openDecimate();
-        showTool_ = true;
         requestSync();
     }
     tooltip("Reduce the face count of the selected faces, or the whole mesh (ratio 0.01 to 1, default 0.5). "
             "Preview, then apply.");
     if (ImGui::MenuItem("Weld / Merge Vertices...", nullptr, false, hasMesh)) {
         controller_.openMergeVertices();
-        showTool_ = true;
         requestSync();
     }
     tooltip("Merge vertices closer than a distance (default 0.05 mm) in the selected faces, or the whole mesh, "
             "removing the faces that collapse. Preview, then apply.");
     if (ImGui::MenuItem("Alpha Wrap...", nullptr, false, hasMesh)) {
         controller_.openAlphaWrap();
-        showTool_ = true;
         requestSync();
     }
     tooltip("Shrink-wrap the mesh (or the shells in scope) into a new watertight, manifold surface without "
@@ -445,8 +426,7 @@ void PolyscopeGui::drawMeshMenu() {
     plannedMenuItem("Remove Duplicate Faces", "Planned (P5).");
     plannedMenuItem("Remesh...", "Planned.");
     ImGui::Separator();
-    if (ImGui::MenuItem("Mesh Info", nullptr, showMeshInfo_ && showHealth_)) {
-        showHealth_ = true;
+    if (ImGui::MenuItem("Mesh Info", nullptr, showMeshInfo_)) {
         showMeshInfo_ = !showMeshInfo_;
     }
     ImGui::EndMenu();
