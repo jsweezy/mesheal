@@ -121,6 +121,10 @@ private:
     void drawThinFaceInspector();
     void drawIntersectionPartners();
     void drawUnitsAndScaleOperator();
+    /// Mesh > Transform > Translate / Rotate (live preview, Apply / Reset / Cancel).
+    void drawTransformOperator();
+    /// Mesh > Transform > Set Origin to Selection: applies it, then frames the moved mesh.
+    void confirmSetOriginToSelection();
 
     // ---- Intersecting faces: island Inspector & Repair All (PolyscopeGuiIntersections.cpp) ----
     void drawIntersectionInspector();
@@ -165,6 +169,8 @@ private:
     void syncDefectOverlaysToPolyscope(const HighlightOverlayGeometry& overlay);
     void syncRepairPreviewToPolyscope();
     void syncGlobalRepairPreviewToPolyscope();
+    /// Registers the Translate / Rotate preview (the shown faces at their moved positions).
+    void syncTransformPreviewToPolyscope();
     /// Gives every overlay sphere / tube end the radius that draws it at the set pixel size at its own depth.
     void applyPerNodeOverlayRadii(double edgeRadius, double originalEdgeRadius, double pointRadius, bool forceUpdate);
     /// Sets Polyscope's transparency mode preferred by the active preview display mode.
@@ -205,6 +211,8 @@ private:
     bool showNavigationHelpWindow_ = false;
     bool requestAbout_ = false;
     bool requestSaveConfirm_ = false;
+    bool requestSetOrigin_ = false;                          ///< Open the Set Origin to Selection confirmation
+    Eigen::Vector3d pendingOrigin_ = Eigen::Vector3d::Zero(); ///< Selection centroid shown in that confirmation
     bool layoutResetPending_ = true;
     bool leftColumnAutoCollapsed_ = false;
     float rightColumnWidth_ = settings::kRightColumnDefaultPx;

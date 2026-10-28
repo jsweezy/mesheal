@@ -172,6 +172,12 @@ void ShellBrowser::rebuild(const Mesh& mesh) {
     recountSelection();
 }
 
+void ShellBrowser::updateBoxes(const Mesh& mesh) {
+    for (ShellInfo& shell : shells_) {
+        shell.bbox = boxOfFaces(mesh, shell.faces);
+    }
+}
+
 int ShellBrowser::shellOfFace(Eigen::Index f) const noexcept {
     return f >= 0 && static_cast<std::size_t>(f) < faceShell_.size() ? faceShell_[static_cast<std::size_t>(f)] : -1;
 }

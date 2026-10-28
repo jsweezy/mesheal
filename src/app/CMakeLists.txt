@@ -6,6 +6,7 @@ add_library(ogun_app_controller STATIC
     AppControllerIntersections.cpp
     AppControllerMerge.cpp
     AppControllerSelection.cpp
+    AppControllerTransform.cpp
     DefectBrowser.cpp
     FaceSelection.cpp
     HealthCheckRunner.cpp

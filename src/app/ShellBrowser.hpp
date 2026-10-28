@@ -34,6 +34,10 @@ public:
     /// Forgets every shell and its state (a new mesh was loaded).
     void clear();
 
+    /// Recomputes the shell boxes after the vertices moved but the faces did not (a rigid transform):
+    /// the shells, their numbering and their view state stay as they are.
+    void updateBoxes(const Mesh& mesh);
+
     [[nodiscard]] std::size_t size() const noexcept {
         return shells_.size();
     }

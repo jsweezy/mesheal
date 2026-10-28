@@ -203,6 +203,7 @@ void AppController::replaceMeshPreservingHistory(Mesh mesh, std::optional<ShellB
     holes_.clear();
     holesValid_ = false;
     discardGlobalCandidates();
+    resetTransformTool();
     orbitPivot_ = computeSelectionCentroid();
 }
 
@@ -859,6 +860,7 @@ void AppController::clearSelection() {
     if (repairAllOpen()) {
         discardGlobalCandidates();
     }
+    resetTransformTool();
     pickedFaceIndex_ = -1;
     selectedCategory_.reset();
     activeTool_ = ToolSlot::None;
@@ -1036,6 +1038,10 @@ BaseMeshDisplay AppController::buildBaseMeshDisplay() const {
         }
         return display;
     }
+    if (transformPreviewShown() && transformPreviewShow_ == GlobalPreviewShow::Result) {
+        display.isCut = true; // the transformed copy replaces the mesh in 3D
+        return display;
+    }
     const bool cutPreview = previewUsesCutout();
     const std::vector<Eigen::Index> highlighted = highlightedFaceIndices();
     const bool shellsHidden = shells_.visibleCount() < shells_.size();
@@ -1087,8 +1093,8 @@ void AppController::setSelectedHealAction(HealAction action) {
 // Mesh edits (all undoable)
 // -----------------------------------------------------------------------------
 
-void AppController::finishMeshEdit(Mesh mesh) {
-    replaceMeshPreservingHistory(std::move(mesh));
+void AppController::finishMeshEdit(Mesh mesh, std::optional<ShellBrowser> shells) {
+    replaceMeshPreservingHistory(std::move(mesh), std::move(shells));
     modified_ = true;
     onMeshEdited();
 }

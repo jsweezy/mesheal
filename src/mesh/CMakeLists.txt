@@ -1,6 +1,7 @@
 add_library(ogun_mesh STATIC
     CgalMesh.cpp
     Mesh.cpp
+    MeshTransform.cpp
     Units.cpp
 )
 add_library(ogun::mesh ALIAS ogun_mesh)

@@ -774,9 +774,11 @@ void PolyscopeGui::syncHighlightOverlaysToPolyscope() {
 
     const HighlightOverlayGeometry overlay = controller_.buildHighlightOverlay();
     registerBaseMeshToPolyscope(overlay);
-    // A whole-mesh Repair All result replaces the base mesh, so the defect highlights would only clutter it
+    // A whole-mesh Repair All or Translate / Rotate result replaces the base mesh, so the defect highlights
+    // would only clutter it
     const bool globalResult =
-        controller_.globalPreviewShown() && controller_.globalPreviewShow() == GlobalPreviewShow::Result;
+        (controller_.globalPreviewShown() && controller_.globalPreviewShow() == GlobalPreviewShow::Result) ||
+        (controller_.transformPreviewShown() && controller_.transformPreviewShow() == GlobalPreviewShow::Result);
     syncDefectOverlaysToPolyscope(globalResult ? HighlightOverlayGeometry{} : overlay);
     syncRepairPreviewToPolyscope();
     applyOverlayAppearanceToPolyscope();
@@ -878,9 +880,9 @@ void PolyscopeGui::syncDefectOverlaysToPolyscope(const HighlightOverlayGeometry&
 
 void PolyscopeGui::syncMeshTransparencyToPolyscope() {
     auto alpha = static_cast<float>(controller_.effectiveBaseOpacity());
-    const bool globalShown = controller_.globalPreviewShown();
+    const bool globalShown = controller_.globalPreviewShown() || controller_.transformPreviewShown();
     if (globalShown) {
-        // Both: the current mesh is ghosted behind the Repair All result
+        // Both: the current mesh is ghosted behind the Repair All or Translate / Rotate result
         alpha = std::min(alpha, static_cast<float>(controller_.previewBaseOpacity()));
     }
     const bool previewShown = !globalShown && controller_.repairPreviewShown();
@@ -914,8 +916,12 @@ void PolyscopeGui::applyTransparencyModeForPreview() {
 }
 
 void PolyscopeGui::syncRepairPreviewToPolyscope() {
-    if (controller_.globalPreviewShown()) {
-        syncGlobalRepairPreviewToPolyscope();
+    if (controller_.globalPreviewShown() || controller_.transformPreviewShown()) {
+        if (controller_.globalPreviewShown()) {
+            syncGlobalRepairPreviewToPolyscope();
+        } else {
+            syncTransformPreviewToPolyscope();
+        }
         removeCurveNetworkIfPresent(kOriginalEdgesName);
         return;
     }
@@ -962,6 +968,35 @@ void PolyscopeGui::syncGlobalRepairPreviewToPolyscope() {
         }
     }
     psResult->addFaceColorQuantity(kFaceColorQuantityName, faceColors)->setEnabled(true);
+}
+
+void PolyscopeGui::syncTransformPreviewToPolyscope() {
+    const Mesh& mesh = controller_.mesh();
+    const ShellBrowser& shells = controller_.shells();
+    Eigen::MatrixXi shownF;
+    if (shells.visibleCount() == shells.size()) {
+        shownF = mesh.F;
+    } else {
+        std::vector<Eigen::Index> shown;
+        shown.reserve(static_cast<std::size_t>(mesh.numFaces()));
+        for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+            if (shells.faceVisible(f)) {
+                shown.push_back(f);
+            }
+        }
+        shownF.resize(static_cast<Eigen::Index>(shown.size()), 3);
+        for (Eigen::Index row = 0; row < shownF.rows(); ++row) {
+            shownF.row(row) = mesh.F.row(shown[static_cast<std::size_t>(row)]);
+        }
+    }
+    if (shownF.rows() == 0) {
+        removeSurfaceMeshIfPresent(kRepairPreviewName);
+        return;
+    }
+    // Every face moved, so the whole copy takes the preview color (applyOverlayAppearanceToPolyscope)
+    auto* psResult = polyscope::registerSurfaceMesh(kRepairPreviewName, controller_.transformPreviewVertices(), shownF);
+    psResult->setSmoothShade(false);
+    psResult->setBackFacePolicy(polyscope::BackFacePolicy::Identical);
 }
 
 void PolyscopeGui::applyOverlayAppearanceToPolyscope() {

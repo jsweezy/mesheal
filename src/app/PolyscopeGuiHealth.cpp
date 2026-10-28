@@ -957,4 +957,96 @@ void PolyscopeGui::drawUnitsAndScaleOperator() {
     }
 }
 
+// -----------------------------------------------------------------------------
+// Operation: Translate / Rotate (Mesh > Transform)
+// -----------------------------------------------------------------------------
+
+void PolyscopeGui::drawTransformOperator() {
+    if (!controller_.hasMesh()) {
+        ImGui::TextDisabled("No mesh loaded.");
+        return;
+    }
+    ImGui::TextWrapped("Moves and turns the whole mesh%s.",
+                       controller_.shells().visibleCount() < controller_.shells().size() ? " (hidden shells too)" : "");
+
+    MeshTransform transform = controller_.transformParams();
+    bool changed = false;
+    const std::string unit(unitSymbol(controller_.fileUnit()));
+    ImGui::PushItemWidth(140.0f);
+    ImGui::SeparatorText("Translate");
+    constexpr std::array<const char*, 3> kAxes = {"X", "Y", "Z"};
+    for (int axis = 0; axis < 3; ++axis) {
+        const std::string label = std::string(kAxes[static_cast<std::size_t>(axis)]) + " (" + unit + ")##translate";
+        changed |= ImGui::InputDouble(label.c_str(), &transform.translation[axis], 0.0, 0.0, "%.6g");
+    }
+    ImGui::TextDisabled("In file coordinates; the unit is only a label.");
+    ImGui::SeparatorText("Rotate (degrees)");
+    for (int axis = 0; axis < 3; ++axis) {
+        const std::string label = std::string("About ") + kAxes[static_cast<std::size_t>(axis)] + "##rotate";
+        changed |= ImGui::InputDouble(label.c_str(), &transform.rotationDeg[axis], 0.0, 0.0, "%.6g");
+    }
+    ImGui::PopItemWidth();
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::TextWrapped("Order: translate first, then rotate about the world X axis, then world Y, then world Z, all "
+                       "about the origin: p' = Rz Ry Rx (p + t). Positive angles turn counter-clockwise looking "
+                       "down the axis (right-hand rule).");
+    ImGui::PopStyleColor();
+    if (changed) {
+        controller_.previewTransform(transform);
+        requestSync();
+    }
+
+    const bool identity = controller_.transformParams().isIdentity();
+    ImGui::SeparatorText("Preview");
+    int show = static_cast<int>(controller_.transformPreviewShow());
+    bool showChanged = ImGui::RadioButton("Result##transform", &show, static_cast<int>(GlobalPreviewShow::Result));
+    ImGui::SameLine();
+    showChanged |= ImGui::RadioButton("Original##transform", &show, static_cast<int>(GlobalPreviewShow::Original));
+    ImGui::SameLine();
+    showChanged |= ImGui::RadioButton("Both##transform", &show, static_cast<int>(GlobalPreviewShow::Both));
+    tooltip("Both: the current mesh is ghosted behind the moved one (preview color).");
+    if (showChanged) {
+        controller_.setTransformPreviewShow(static_cast<GlobalPreviewShow>(show));
+        requestSync();
+    }
+    if (identity) {
+        ImGui::TextDisabled("Enter a translation or a rotation to preview it.");
+    } else {
+        const Eigen::Vector3d before = controller_.mesh().boundingBox().center();
+        const Eigen::Vector3d after = controller_.transformPreviewBounds().center();
+        ImGui::TextWrapped("Box center (%.6g, %.6g, %.6g) -> (%.6g, %.6g, %.6g) %s", before.x() + 0.0, before.y() + 0.0,
+                           before.z() + 0.0, after.x() + 0.0, after.y() + 0.0, after.z() + 0.0, unit.c_str());
+    }
+
+    ImGui::Separator();
+    ImGui::BeginDisabled(identity);
+    ImGui::PushStyleColor(ImGuiCol_Button, gui::kFixAllButtonColor);
+    if (ImGui::Button("Apply") && controller_.applyTransform()) {
+        requestSync(true);
+        syncMeshStructureToPolyscope(true);
+    }
+    ImGui::PopStyleColor();
+    tooltip("Move the mesh (one undo step), then frame it. The face selection is kept; the Auto checks re-run.");
+    ImGui::SameLine();
+    if (ImGui::Button("Reset")) {
+        controller_.previewTransform(MeshTransform{});
+        requestSync();
+    }
+    ImGui::EndDisabled();
+    tooltip("Set every field back to 0.");
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) {
+        controller_.closeTool();
+        requestSync();
+    }
+    tooltip("Close without changing the mesh.  Key: Esc");
+}
+
+void PolyscopeGui::confirmSetOriginToSelection() {
+    if (controller_.setOriginToSelection()) {
+        requestSync(true);
+        syncMeshStructureToPolyscope(true);
+    }
+}
+
 } // namespace ogun

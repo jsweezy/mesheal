@@ -13,6 +13,7 @@
 #include <cmath>
 #include <filesystem>
 #include <initializer_list>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -140,6 +141,7 @@ void PolyscopeGui::drawRightColumn(float top, float bottom) {
                         : slot == ToolSlot::Decimate               ? std::string("Operation: Decimate")
                         : slot == ToolSlot::MergeVertices          ? std::string("Operation: Merge Vertices")
                         : slot == ToolSlot::MergeShells            ? std::string("Operation: Merge Shells")
+                        : slot == ToolSlot::Transform              ? std::string("Operation: Translate / Rotate")
                         : std::string("Tool: ") + categoryInfo(*controller_.selectedCategory()).name;
     title += "###ToolSlot";
 
@@ -158,6 +160,8 @@ void PolyscopeGui::drawRightColumn(float top, float bottom) {
             drawRepairAllOperator();
         } else if (slot == ToolSlot::MergeShells) {
             drawMergeShellsOperator();
+        } else if (slot == ToolSlot::Transform) {
+            drawTransformOperator();
         } else {
             ImGui::PushTextWrapPos(0.0f); // long lines wrap at the panel edge
             drawToolPanel();
@@ -377,8 +381,22 @@ void PolyscopeGui::drawMeshMenu() {
         requestSync();
     }
     if (ImGui::BeginMenu("Transform")) {
+        const std::optional<Eigen::Vector3d> centroid = controller_.selectionCentroid();
+        if (ImGui::MenuItem("Set Origin to Selection...", nullptr, false, centroid.has_value())) {
+            pendingOrigin_ = *centroid;
+            requestSetOrigin_ = true;
+        }
+        tooltip(centroid ? "Move the whole mesh so the centroid of the selected faces (area weighted) lands on the "
+                           "origin. Asks first. One undo step."
+                         : "Select faces first");
+        if (ImGui::MenuItem("Translate / Rotate...", nullptr, false, controller_.hasMesh())) {
+            controller_.openTransform();
+            requestSync();
+        }
+        tooltip("Type a translation and rotations about X, Y and Z (degrees). Preview, then apply. Translation "
+                "happens before rotation.");
         plannedMenuItem("Center at Origin", "Planned.");
-        plannedMenuItem("Translate / Rotate / Mirror", "Planned.");
+        plannedMenuItem("Mirror", "Planned.");
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Shells", controller_.shells().multiShell())) {
@@ -911,6 +929,29 @@ void PolyscopeGui::drawModalPopups() {
         ImGui::EndPopup();
     }
 
+    if (requestSetOrigin_) {
+        ImGui::OpenPopup("Set Origin to Selection");
+        requestSetOrigin_ = false;
+    }
+    if (ImGui::BeginPopupModal("Set Origin to Selection", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        const Eigen::Vector3d& c = pendingOrigin_;
+        const std::string unit(unitSymbol(controller_.fileUnit()));
+        // + 0.0 turns -0 into 0
+        ImGui::Text("Move the selection centroid (%.6g, %.6g, %.6g) %s to the origin?", c.x() + 0.0, c.y() + 0.0,
+                    c.z() + 0.0, unit.c_str());
+        ImGui::Text("This translates the whole mesh by (%.6g, %.6g, %.6g).", -c.x() + 0.0, -c.y() + 0.0, -c.z() + 0.0);
+        ImGui::TextDisabled("One undo step. Hidden shells move too.");
+        if (ImGui::Button("OK")) {
+            confirmSetOriginToSelection();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
     if (requestSaveConfirm_) {
         ImGui::OpenPopup("Overwrite file?");
         requestSaveConfirm_ = false;
@@ -995,7 +1036,7 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"I", "Shells: isolate the selected shells (Mesh Health then covers only them); press again to bring the others back. With another shell selected, switches the isolation to it"},
         {"Delete  /  Backspace", "Deletes the selected faces (Mesh > Delete Selected Faces); with no faces selected, the selected shells. Undoable"},
         {"F5", "Check Mesh: runs every Mesh Health row in the background"},
-        {"Ctrl/Cmd + Z", "Undoes the last mesh modification (repair, Fix All / Fix Selected, Scale, Decimate, Weld, Delete Faces / Shells), one step at a time"},
+        {"Ctrl/Cmd + Z", "Undoes the last mesh modification (repair, Fix All / Fix Selected, Scale, Transform, Decimate, Weld, Delete Faces / Shells), one step at a time"},
         {"Ctrl/Cmd + O / S / Shift+S", "Open, Save (overwrite, asks the first time), Save As"},
         {"Ctrl/Cmd + ,", "Preferences"},
         {"?  or  F1", "Toggles this Navigation & Shortcuts window"},

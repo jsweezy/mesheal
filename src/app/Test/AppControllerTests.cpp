@@ -10,6 +10,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -1369,4 +1370,122 @@ TEST_CASE("Changing a thin face default marks an Auto-off Thin row Stale like th
     controller.setThinFaceDefaults(strict);
     CHECK(controller.thresholds().minArea == 1.0e9);
     CHECK(thinStatus(controller) == ogun::HealthStatus::Stale);
+}
+
+TEST_CASE("Set Origin to Selection moves the area-weighted selection centroid to the origin and undoes exactly",
+          "[app][controller][transform]") {
+    ogun::AppController controller;
+    // Two triangles of areas 4.5 and 18, apart from each other
+    ogun::Mesh mesh;
+    mesh.V.resize(6, 3);
+    mesh.V << 0.0, 0.0, 5.0,
+              3.0, 0.0, 5.0,
+              0.0, 3.0, 5.0,
+              10.0, 0.0, 5.0,
+              16.0, 0.0, 5.0,
+              10.0, 6.0, 5.0;
+    mesh.F.resize(2, 3);
+    mesh.F << 0, 1, 2,
+              3, 4, 5;
+    mesh.recomputeNormals();
+    controller.setMesh(mesh);
+    const Eigen::MatrixXd originalV = controller.mesh().V;
+
+    REQUIRE_FALSE(controller.selectionCentroid());
+    REQUIRE_FALSE(controller.setOriginToSelection()); // nothing selected
+    REQUIRE_FALSE(controller.canUndo());
+
+    // One facet: its triangle centroid
+    const Eigen::Index first[] = {0};
+    controller.selectFaces(first, true);
+    REQUIRE(controller.selectionCentroid()->isApprox(Eigen::Vector3d(1.0, 1.0, 5.0), 1e-12));
+
+    // Two faces: weighted 1 : 4 by area
+    const Eigen::Index second[] = {1};
+    controller.selectFaces(second, true);
+    const Eigen::Vector3d centroid = *controller.selectionCentroid();
+    REQUIRE(centroid.isApprox(Eigen::Vector3d(49.0 / 5.0, 9.0 / 5.0, 5.0), 1e-12));
+
+    REQUIRE(controller.setOriginToSelection());
+    REQUIRE(controller.isModified());
+    REQUIRE(controller.lastUndoActionLabel() == "Set Origin to Selection");
+    REQUIRE(controller.mesh().numFaces() == 2);
+    REQUIRE(controller.mesh().F == mesh.F);
+    REQUIRE(controller.mesh().V.isApprox(originalV.rowwise() - centroid.transpose(), 1e-12));
+    // Rigid: the faces keep their numbers, so the selection stays and its centroid is now the origin
+    REQUIRE(controller.selectedFaceCount() == 2);
+    REQUIRE(controller.selectionCentroid()->norm() < 1e-12);
+
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().V == originalV);
+    REQUIRE_FALSE(controller.isModified());
+    REQUIRE_FALSE(controller.canUndo());
+}
+
+TEST_CASE("Translate / Rotate previews without changing the mesh, applies as one undo step and re-checks",
+          "[app][controller][transform]") {
+    ogun::AppController controller;
+    controller.loadSampleDefectiveMesh();
+    REQUIRE(thinCount(controller) == 3);
+    const ogun::Mesh original = controller.mesh();
+
+    controller.openTransform();
+    REQUIRE(controller.activeTool() == ogun::ToolSlot::Transform);
+    REQUIRE(controller.transformParams().isIdentity());
+    REQUIRE_FALSE(controller.transformPreviewShown());
+    REQUIRE_FALSE(controller.applyTransform()); // identity: nothing to apply
+    REQUIRE_FALSE(controller.canUndo());
+
+    const ogun::MeshTransform transform{Eigen::Vector3d(10.0, -2.0, 0.5), Eigen::Vector3d(90.0, 0.0, 30.0)};
+    controller.previewTransform(transform);
+    REQUIRE(controller.transformParams() == transform);
+    REQUIRE(controller.transformPreviewShown());
+    REQUIRE(controller.mesh().V == original.V); // the preview is a copy
+    const Eigen::MatrixXd& preview = controller.transformPreviewVertices();
+    REQUIRE(preview.rows() == original.numVertices());
+    for (Eigen::Index v = 0; v < preview.rows(); ++v) {
+        const Eigen::Vector3d expected = ogun::transformPoint(transform, original.V.row(v).transpose());
+        REQUIRE((preview.row(v).transpose() - expected).norm() < 1e-12);
+    }
+
+    // Result hides the base mesh; Both draws it ghosted behind the preview; Original shows no preview
+    controller.setTransformPreviewShow(ogun::GlobalPreviewShow::Result);
+    const ogun::BaseMeshDisplay hidden = controller.buildBaseMeshDisplay();
+    REQUIRE(hidden.isCut);
+    REQUIRE(hidden.F.rows() == 0);
+    controller.setTransformPreviewShow(ogun::GlobalPreviewShow::Both);
+    REQUIRE_FALSE(controller.buildBaseMeshDisplay().isCut);
+    controller.setTransformPreviewShow(ogun::GlobalPreviewShow::Original);
+    REQUIRE_FALSE(controller.transformPreviewShown());
+    controller.setTransformPreviewShow(ogun::GlobalPreviewShow::Both);
+
+    // Non-finite input is ignored
+    ogun::MeshTransform bad = transform;
+    bad.translation.x() = std::numeric_limits<double>::quiet_NaN();
+    controller.previewTransform(bad);
+    REQUIRE(controller.transformParams().translation.x() == 0.0);
+    controller.previewTransform(transform);
+
+    const Eigen::MatrixXd expectedV = preview;
+    REQUIRE(controller.applyTransform());
+    REQUIRE(controller.lastUndoActionLabel() == "Translate / Rotate");
+    REQUIRE(controller.mesh().V.isApprox(expectedV, 1e-14));
+    REQUIRE(controller.mesh().F == original.F);
+    REQUIRE(controller.activeTool() == ogun::ToolSlot::Transform); // stays open, fields back to 0
+    REQUIRE(controller.transformParams().isIdentity());
+    REQUIRE_FALSE(controller.transformPreviewShown());
+    // A rigid transform keeps the thin faces; the Auto rows ran again on the moved mesh
+    REQUIRE(thinStatus(controller) == ogun::HealthStatus::Defects);
+    REQUIRE(thinCount(controller) == 3);
+
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().V == original.V);
+    REQUIRE_FALSE(controller.canUndo());
+
+    // Closing the tool drops the preview
+    controller.previewTransform(transform);
+    REQUIRE(controller.transformPreviewShown());
+    controller.closeTool();
+    REQUIRE_FALSE(controller.transformPreviewShown());
+    REQUIRE(controller.transformParams().isIdentity());
 }

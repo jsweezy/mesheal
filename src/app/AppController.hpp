@@ -14,6 +14,7 @@
 #include "io/StlWriter.hpp"
 #include "mesh/CgalMesh.hpp"
 #include "mesh/Mesh.hpp"
+#include "mesh/MeshTransform.hpp"
 #include "mesh/ToleranceConfig.hpp"
 #include "mesh/Units.hpp"
 #include "repair/GlobalRepair.hpp"
@@ -101,7 +102,8 @@ enum class ToolSlot {
     AlphaWrap,
     Decimate,
     MergeVertices,
-    MergeShells
+    MergeShells,
+    Transform
 };
 
 /// One line of the Merge Shells checklist (UI_DESIGN.md §16.3), built from Mesh Health.
@@ -1154,6 +1156,55 @@ public:
     bool applyGlobalRepair();
 
     // -------------------------------------------------------------------------
+    // Mesh > Transform: Set Origin to Selection, Translate / Rotate (AppControllerTransform.cpp)
+    // -------------------------------------------------------------------------
+
+    /// Area-weighted centroid of the selected faces in the shown shells (nullopt when none).
+    [[nodiscard]] std::optional<Eigen::Vector3d> selectionCentroid() const;
+
+    /// Translates the whole mesh so `selectionCentroid()` lands on the origin (one undo step).
+    bool setOriginToSelection();
+
+    /// Moves every vertex of the whole mesh (hidden shells too) by `transform` as one undo step named
+    /// `actionLabel`. The faces keep their numbers, so the face selection is kept. False for the identity.
+    bool transformWholeMesh(const MeshTransform& transform, std::string actionLabel);
+
+    /// Opens "Operation: Translate / Rotate" in the Tool slot with zero fields (deselects any row).
+    void openTransform();
+
+    /// Fields of the Translate / Rotate tool.
+    [[nodiscard]] const MeshTransform& transformParams() const noexcept {
+        return transform_;
+    }
+
+    /// Sets the tool's fields (non-finite values become 0) and recomputes the preview.
+    void previewTransform(const MeshTransform& transform);
+
+    /// Applies the tool's transform (one undo step) and zeroes its fields. False for the identity.
+    bool applyTransform();
+
+    /// Previewed vertex positions (rows match `mesh().V`; empty for the identity).
+    [[nodiscard]] const Eigen::MatrixXd& transformPreviewVertices() const noexcept {
+        return transformPreviewV_;
+    }
+
+    /// Bounding box of the previewed vertices (zero box when there is no preview).
+    [[nodiscard]] const BoundingBox& transformPreviewBounds() const noexcept {
+        return transformPreviewBounds_;
+    }
+
+    /// True when the GUI should draw the transformed mesh (tool open, not the identity, Show is not Original).
+    [[nodiscard]] bool transformPreviewShown() const noexcept;
+
+    /// Result: only the transformed mesh. Both: the current mesh ghosted behind it.
+    [[nodiscard]] GlobalPreviewShow transformPreviewShow() const noexcept {
+        return transformPreviewShow_;
+    }
+    void setTransformPreviewShow(GlobalPreviewShow show) noexcept {
+        transformPreviewShow_ = show;
+    }
+
+    // -------------------------------------------------------------------------
     // Universal Mesh Modification Undo (Ctrl+Z / Cmd+Z)
     // -------------------------------------------------------------------------
 
@@ -1173,8 +1224,11 @@ private:
     /// Swaps in a modified mesh: new generation, focus and picks cleared, history kept. The shells are
     /// rebuilt (keeping their view state) unless `shells` restores a snapshot.
     void replaceMeshPreservingHistory(Mesh mesh, std::optional<ShellBrowser> shells = std::nullopt);
-    /// Second half of every mesh edit (after `pushUndoEntry`): swap the mesh and re-check.
-    void finishMeshEdit(Mesh mesh);
+    /// Second half of every mesh edit (after `pushUndoEntry`): swap the mesh and re-check. `shells`
+    /// keeps the given shells instead of rebuilding them (the faces did not change).
+    void finishMeshEdit(Mesh mesh, std::optional<ShellBrowser> shells = std::nullopt);
+    /// Drops the Translate / Rotate fields and preview.
+    void resetTransformTool() noexcept;
     /// Applies a finished merge (one undo step), selects the merged shells and reports the numbers.
     bool applyMergeResult(FinishedMerge finished);
     /// Applies a finished background merge. Returns true if one arrived.
@@ -1333,6 +1387,12 @@ private:
     bool colorByDeviation_ = false;
     RepairJobRunner repairRunner_;
     MergeJobRunner mergeRunner_;
+
+    // Mesh > Transform > Translate / Rotate
+    MeshTransform transform_{};
+    Eigen::MatrixXd transformPreviewV_;
+    BoundingBox transformPreviewBounds_{};
+    GlobalPreviewShow transformPreviewShow_ = GlobalPreviewShow::Both;
 
     // Open edges: holes and the hole Inspector
     std::vector<HoleLoop> holes_;
