@@ -332,7 +332,7 @@ void PolyscopeGui::drawUiFrame() {
     drawStatusBar(display.y - statusHeight, statusHeight);
 
     if (showPreferences_) {
-        drawPreferencesWindow();
+        drawPreferencesWindow(top, bottom, rightLeft);
     }
     if (showNavigationHelpWindow_) {
         drawNavigationHelpWindow();

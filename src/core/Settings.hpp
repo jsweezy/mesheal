@@ -124,6 +124,8 @@ inline constexpr double kMinGhostOpacity         = 0.05;          // Minimum bas
 // -----------------------------------------------------------------------------
 inline constexpr float kPanelMarginPx          = 6.0f;            // Gap between docked panels and window edges (px)
 inline constexpr float kLeftColumnWidthPx      = 290.0f;          // Width of the left column (Display / Navigate / Structures)
+inline constexpr float kPreferencesWindowWidthPx  = 620.0f;          // Preferences default size (clamped to the free 3D view)
+inline constexpr float kPreferencesWindowHeightPx = 560.0f;
 inline constexpr float kRightColumnDefaultPx   = 420.0f;          // Default width of the right column (Mesh Health / Tool)
 inline constexpr float kRightColumnMinPx       = 340.0f;          // Minimum draggable right-column width
 inline constexpr float kRightColumnMaxPx       = 900.0f;          // Maximum draggable right-column width

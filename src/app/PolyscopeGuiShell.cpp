@@ -781,11 +781,20 @@ void PolyscopeGui::drawStatusBar(float top, float height) {
 // Floating windows
 // -----------------------------------------------------------------------------
 
-void PolyscopeGui::drawPreferencesWindow() {
-    const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(460.0f, 0.0f), ImGuiCond_Appearing);
-    if (!ImGui::Begin("Preferences", &showPreferences_, ImGuiWindowFlags_AlwaysAutoResize)) {
+void PolyscopeGui::drawPreferencesWindow(float top, float bottom, float rightColumnLeft) {
+    // Open centred in the free 3D view between the two columns so the Tool panel stays visible
+    const float margin = settings::kPanelMarginPx;
+    const float freeLeft = settings::kLeftColumnWidthPx + 2.0f * margin;
+    const float freeRight = rightColumnLeft - margin;
+    const float freeWidth = std::max(freeRight - freeLeft, 200.0f);
+    const float freeHeight = std::max(bottom - top, 200.0f);
+    const ImVec2 size(std::min(settings::kPreferencesWindowWidthPx, freeWidth),
+                      std::min(settings::kPreferencesWindowHeightPx, freeHeight));
+    const ImVec2 center(freeLeft + freeWidth * 0.5f, top + freeHeight * 0.5f);
+    const ImGuiCond cond = layoutResetPending_ ? ImGuiCond_Always : ImGuiCond_Appearing;
+    ImGui::SetNextWindowPos(center, cond, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(size, cond);
+    if (!ImGui::Begin("Preferences", &showPreferences_)) {
         ImGui::End();
         return;
     }

@@ -63,7 +63,7 @@ private:
     void drawStatusBar(float top, float height);
     void drawLeftColumn(float top, float bottom, float rightColumnLeft);
     void drawRightColumn(float top, float bottom);
-    void drawPreferencesWindow();
+    void drawPreferencesWindow(float top, float bottom, float rightColumnLeft);
     /// Controller preferences plus the GUI-only ones (UI scale, background color).
     [[nodiscard]] UserPreferences currentPreferences() const;
     /// Applies `prefs` to the controller, the GUI and Polyscope (Preferences > Reset to defaults).
