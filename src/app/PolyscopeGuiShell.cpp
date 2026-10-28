@@ -169,6 +169,7 @@ void PolyscopeGui::drawMouseBindingEditor() {
 
     // Click to capture: press the button (or turn the wheel) over the box with the modifiers held
     const ImVec2 size(320.0f, 3.0f * ImGui::GetFrameHeight());
+    ImGui::Dummy(ImVec2(size.x, 0.0f)); // fixes the popup width so the prompt wraps inside it
     const ImVec2 corner = ImGui::GetCursorScreenPos();
     ImGui::InvisibleButton("capture", size,
                            ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight |
@@ -180,9 +181,14 @@ void PolyscopeGui::drawMouseBindingEditor() {
     draw->AddRect(corner, far, ImGui::GetColorU32(ImGuiCol_Border), 4.0f);
     const char* prompt = kind == MouseActionKind::Wheel ? "Hold the modifier keys and scroll here"
                                                          : "Hold the modifier keys and press a mouse button here";
-    const ImVec2 textSize = ImGui::CalcTextSize(prompt);
-    draw->AddText(ImVec2(corner.x + (size.x - textSize.x) * 0.5f, corner.y + (size.y - textSize.y) * 0.5f),
-                  ImGui::GetColorU32(ImGuiCol_Text), prompt);
+    const float padding = ImGui::GetStyle().FramePadding.x;
+    ImGui::PushClipRect(corner, far, true);
+    ImGui::SetCursorScreenPos(ImVec2(corner.x + padding, corner.y + padding));
+    ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + size.x - 2.0f * padding);
+    ImGui::TextDisabled("%s", prompt);
+    ImGui::PopTextWrapPos();
+    ImGui::PopClipRect();
+    ImGui::SetCursorScreenPos(ImVec2(corner.x, far.y + ImGui::GetStyle().ItemSpacing.y));
 
     std::optional<MouseBinding> edited;
     if (hovered) {

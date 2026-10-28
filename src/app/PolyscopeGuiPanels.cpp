@@ -465,19 +465,38 @@ void PolyscopeGui::drawNoMeshHint(float left, float top, float bottom) {
     if (controller_.hasMesh()) {
         return;
     }
-    const char* text = "No mesh loaded. Open an STL (File > Open) or load a sample (File > Load Sample).";
-    const ImVec2 size = ImGui::CalcTextSize(text);
-    const float right = ImGui::GetIO().DisplaySize.x - rightColumnWidth_ - 2.0f * settings::kPanelMarginPx;
-    const ImVec2 pos(left + (right - left - size.x) * 0.5f, top + (bottom - top - size.y) * 0.5f);
-    // Floating windows are translucent: skip the hint while any of them covers it
-    const ImRect textRect(pos, ImVec2(pos.x + size.x, pos.y + size.y));
+    // Centred in the free view between the columns and wrapped to its width
+    const float margin = settings::kPanelMarginPx;
+    const float rightLeft = ImGui::GetIO().DisplaySize.x - rightColumnWidth_ - margin;
+    const LayoutRect free = freeViewArea(left - 2.0f * margin, rightLeft, top, bottom, margin);
+    const std::vector<std::string> lines =
+        wrapText("No mesh loaded. Open an STL (File > Open) or load a sample (File > Load Sample).",
+                 std::max(free.width - 2.0f * margin, 1.0f),
+                 [](const std::string& s) { return ImGui::CalcTextSize(s.c_str()).x; });
+    const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
+    const float blockHeight = lineHeight * static_cast<float>(lines.size());
+    float y = free.y + (free.height - blockHeight) * 0.5f;
+    float widest = 0.0f;
+    for (const std::string& line : lines) {
+        widest = std::max(widest, ImGui::CalcTextSize(line.c_str()).x);
+    }
+    const ImRect textRect(ImVec2(free.x + (free.width - widest) * 0.5f, y),
+                          ImVec2(free.x + (free.width + widest) * 0.5f, y + blockHeight));
+    // Floating windows (not the docked column panels) are translucent: skip the hint while one covers it
     for (const ImGuiWindow* window : ImGui::GetCurrentContext()->Windows) {
-        if (window->Active && !window->Hidden && (window->Flags & (ImGuiWindowFlags_ChildWindow | ImGuiWindowFlags_Tooltip)) == 0 &&
-            window->Rect().Overlaps(textRect)) {
+        constexpr ImGuiWindowFlags kSkipped =
+            ImGuiWindowFlags_NoMove | ImGuiWindowFlags_ChildWindow | ImGuiWindowFlags_Tooltip;
+        if (window->Active && !window->Hidden && (window->Flags & kSkipped) == 0 && window->Rect().Overlaps(textRect)) {
             return;
         }
     }
-    ImGui::GetBackgroundDrawList()->AddText(pos, ImGui::GetColorU32(ImGuiCol_TextDisabled), text);
+    ImDrawList* draw = ImGui::GetBackgroundDrawList();
+    for (const std::string& line : lines) {
+        const float width = ImGui::CalcTextSize(line.c_str()).x;
+        draw->AddText(ImVec2(free.x + (free.width - width) * 0.5f, y), ImGui::GetColorU32(ImGuiCol_TextDisabled),
+                      line.c_str());
+        y += lineHeight;
+    }
 }
 
 } // namespace ogun

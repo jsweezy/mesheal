@@ -101,3 +101,35 @@ TEST_CASE("Floating windows tile the free 3D view without overlapping", "[app][l
         CHECK(squeezed[2].height > squeezed[0].height);
     }
 }
+
+TEST_CASE("The empty-state hint wraps into the free view between the columns", "[app][layout]") {
+    const auto measure = [](const std::string& s) { return 10.0f * static_cast<float>(s.size()); };
+    const std::string text = "No mesh loaded. Open an STL (File > Open) or load a sample (File > Load Sample).";
+
+    const LayoutRect free = ogun::freeViewArea(300.0f, 1000.0f, 30.0f, 800.0f, 6.0f);
+    CHECK(free.x == 312.0f);
+    CHECK(free.right() == 994.0f);
+    CHECK(free.y == 30.0f);
+    CHECK(free.height == 770.0f);
+    CHECK(ogun::freeViewArea(300.0f, 100.0f, 30.0f, 20.0f, 6.0f).width == 0.0f);
+
+    SECTION("A wide gap keeps one line") {
+        CHECK(ogun::wrapText(text, 2000.0f, measure).size() == 1);
+    }
+    SECTION("A narrow gap wraps every line inside it and keeps all the words") {
+        const auto lines = ogun::wrapText(text, 400.0f, measure);
+        CHECK(lines.size() > 1);
+        std::string joined;
+        for (const std::string& line : lines) {
+            CHECK(measure(line) <= 400.0f);
+            joined += (joined.empty() ? "" : " ") + line;
+        }
+        CHECK(joined == text);
+    }
+    SECTION("A word wider than the gap gets its own line") {
+        const auto lines = ogun::wrapText("ab supercalifragilistic cd", 100.0f, measure);
+        REQUIRE(lines.size() == 3);
+        CHECK(lines[1] == "supercalifragilistic");
+    }
+    CHECK(ogun::wrapText("", 100.0f, measure).empty());
+}

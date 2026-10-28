@@ -54,4 +54,35 @@ std::vector<LayoutRect> tileWindows(const LayoutRect& area, std::size_t count, f
     return tiles;
 }
 
+LayoutRect freeViewArea(float leftColumnWidth, float rightColumnLeft, float top, float bottom, float margin) {
+    const float left = leftColumnWidth + 2.0f * margin;
+    return LayoutRect{left, top, std::max(rightColumnLeft - margin - left, 0.0f), std::max(bottom - top, 0.0f)};
+}
+
+std::vector<std::string> wrapText(std::string_view text, float maxWidth,
+                                  const std::function<float(const std::string&)>& measure) {
+    std::vector<std::string> lines;
+    std::string line;
+    std::size_t pos = 0;
+    while (pos < text.size()) {
+        const std::size_t end = std::min(text.find(' ', pos), text.size());
+        const std::string word(text.substr(pos, end - pos));
+        pos = end + 1;
+        if (word.empty()) {
+            continue;
+        }
+        const std::string candidate = line.empty() ? word : line + " " + word;
+        if (!line.empty() && measure(candidate) > maxWidth) {
+            lines.push_back(line);
+            line = word;
+        } else {
+            line = candidate;
+        }
+    }
+    if (!line.empty()) {
+        lines.push_back(line);
+    }
+    return lines;
+}
+
 } // namespace ogun
