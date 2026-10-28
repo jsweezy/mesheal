@@ -482,19 +482,26 @@ void PolyscopeGui::drawNoMeshHint(float left, float top, float bottom) {
     }
     const ImRect textRect(ImVec2(free.x + (free.width - widest) * 0.5f, y),
                           ImVec2(free.x + (free.width + widest) * 0.5f, y + blockHeight));
-    // Floating windows (not the docked column panels) are translucent: skip the hint while one covers it
-    for (const ImGuiWindow* window : ImGui::GetCurrentContext()->Windows) {
-        constexpr ImGuiWindowFlags kSkipped =
-            ImGuiWindowFlags_NoMove | ImGuiWindowFlags_ChildWindow | ImGuiWindowFlags_Tooltip;
-        if (window->Active && !window->Hidden && (window->Flags & kSkipped) == 0 && window->Rect().Overlaps(textRect)) {
+    // Background list: every window covers it. Preferences and the Polyscope windows are translucent,
+    // so skip the hint while one of them is open over the text.
+    const auto covers = [&textRect](const ImVec2& pos, const ImVec2& size) {
+        return textRect.Overlaps(ImRect(pos, ImVec2(pos.x + size.x, pos.y + size.y)));
+    };
+    for (const char* name : {"Preferences", "About Ogun", "Polyscope: Slice Planes", "Polyscope: Appearance",
+                             "Polyscope: Camera & Clipping", "Polyscope: Render & Debug"}) {
+        const ImGuiWindow* window = ImGui::FindWindowByName(name);
+        if (window != nullptr && window->Active && !window->Hidden && covers(window->Pos, window->Size)) {
             return;
         }
     }
+    // Dark grey on a light background, light grey on a dark one (the UI text colour is white)
+    const auto& bg = polyscope::view::bgColor;
+    const float luminance = 0.299f * bg[0] + 0.587f * bg[1] + 0.114f * bg[2];
+    const ImU32 hintColor = luminance > 0.5f ? IM_COL32(70, 70, 70, 255) : IM_COL32(190, 190, 190, 255);
     ImDrawList* draw = ImGui::GetBackgroundDrawList();
     for (const std::string& line : lines) {
         const float width = ImGui::CalcTextSize(line.c_str()).x;
-        draw->AddText(ImVec2(free.x + (free.width - width) * 0.5f, y), ImGui::GetColorU32(ImGuiCol_TextDisabled),
-                      line.c_str());
+        draw->AddText(ImVec2(free.x + (free.width - width) * 0.5f, y), hintColor, line.c_str());
         y += lineHeight;
     }
 }
