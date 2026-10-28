@@ -930,13 +930,15 @@ void PolyscopeGui::drawModalPopups() {
         if (ImGui::IsWindowAppearing()) {
             ImGui::SetKeyboardFocusHere();
         }
-        if (ImGui::Button("Delete") || ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
-            ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false)) {
-            deleteSelection();
+        if (count == 0) {
+            ImGui::CloseCurrentPopup(); // selection vanished: nothing left to confirm
+        } else if (ImGui::Button("Delete") || ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
+                   ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false)) {
+            deleteFacesRequested_ = true; // faces only, never the shell-delete path
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel")) {
+        if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
@@ -1154,7 +1156,7 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"A  /  Alt+A", "Select all shown faces / deselect all faces"},
         {"Esc", "Leaves box / circle select; clears the defect selection; then closes the Tool and deselects the row, then clears the face selection, then the shell selection"},
         {"I", "Shells: isolate the selected shells (Mesh Health then covers only them); press again to bring the others back. With another shell selected, switches the isolation to it"},
-        {"X", "Asks \"Delete N selected faces?\" next to the cursor (Enter or Delete confirms; Esc, Cancel or a click outside cancels), then deletes the selected faces as Delete does"},
+        {"X", "Asks \"Delete N selected faces?\" next to the cursor (Enter or the Delete button confirms; Esc, Cancel or a click outside cancels), then deletes the selected faces as Delete does"},
         {"Delete  /  Backspace", "Immediately (no confirmation) deletes the selected faces (Mesh > Delete Selected Faces); with no faces selected, the selected shells. Undoable"},
         {"F5", "Check Mesh: runs every Mesh Health row in the background"},
         {"Ctrl/Cmd + Z", "Undoes the last mesh modification (repair, Fix All / Fix Selected, Scale, Transform, Decimate, Weld, Delete Faces / Shells), one step at a time"},

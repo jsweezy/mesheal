@@ -651,6 +651,10 @@ void PolyscopeGui::handleKeyboardShortcuts() {
     if (io.WantTextInput) {
         return;
     }
+    // Popups and modals own the keyboard: no shortcut may act behind them
+    if (ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
+        return;
+    }
     const bool mod = io.KeyCtrl || io.KeySuper;
 
     if ((ImGui::IsKeyPressed(ImGuiKey_Slash, false) && io.KeyShift) ||
@@ -678,7 +682,7 @@ void PolyscopeGui::handleKeyboardShortcuts() {
     if (io.WantCaptureKeyboard && ImGui::IsAnyItemActive()) {
         return;
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         if (faceSelectMode_ != FaceSelectMode::None) {
             exitFaceSelectMode(); // first Esc only leaves box / circle select
         } else if (controller_.escape()) {
