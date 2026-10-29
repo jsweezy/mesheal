@@ -539,6 +539,26 @@ Mesh SampleMeshes::createCavityHoleSliversIntersectionsMesh(Unit unit) {
                           createBox({6.6, 5.4, 5.3}, {10.4, 6.6, 6.7}, false, unit)});
 }
 
+Mesh SampleMeshes::createDoubledFacesCubeMesh(Unit unit) {
+    const Mesh cube = createCubeMesh(10.0, unit);
+    Mesh mesh;
+    mesh.fileUnit = unit;
+    mesh.V.resize(kCleanCubeVertexCount + 1, 3);
+    mesh.V.topRows(kCleanCubeVertexCount) = cube.V;
+    mesh.V.row(kCleanCubeVertexCount) = Eigen::RowVector3d(5.0, 0.0, 0.0); // midpoint of edge 0-1
+
+    mesh.F.resize(kRepeatedVertexFaceIndex + 1, 3);
+    mesh.F.topRows(kCleanCubeFaceCount) = cube.F;
+    mesh.F.row(0) = Eigen::RowVector3i(0, 2, 8); // bottom (0, 2, 1) split at vertex 8
+    mesh.F.row(12) = Eigen::RowVector3i(8, 2, 1);
+    mesh.F.row(kFlatCapFaceIndex) = Eigen::RowVector3i(0, 8, 1);
+    mesh.F.row(kSameWindingCopyFaceIndex) = Eigen::RowVector3i(5, 6, 4);     // top (4, 5, 6)
+    mesh.F.row(kOppositeWindingCopyFaceIndex) = Eigen::RowVector3i(2, 7, 3); // back (2, 3, 7)
+    mesh.F.row(kRepeatedVertexFaceIndex) = Eigen::RowVector3i(6, 6, 7);
+    mesh.recomputeNormals();
+    return mesh;
+}
+
 Mesh SampleMeshes::createSampleDefectiveMesh(Unit unit) {
     const Mesh cube = createCubeMesh(10.0, unit);
 

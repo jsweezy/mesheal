@@ -5,6 +5,7 @@ add_executable(ogun_repair_tests
     NonManifoldSplitTests.cpp
     ShellMergeTests.cpp
     SliverHealerTests.cpp
+    TopologyCleanupTests.cpp
 )
 
 target_link_libraries(ogun_repair_tests

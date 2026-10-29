@@ -39,7 +39,7 @@ struct ShapeSample {
     Mesh (*make)(Unit unit);
 };
 
-constexpr std::array<ShapeSample, 9> kShapeSamples = {{
+constexpr std::array<ShapeSample, 10> kShapeSamples = {{
     {"Box with cavity, hole, slivers, and intersections",
      "Loaded a gridded box with a cavity, a hole, slivers, a fold and a peg through its side.",
      "A gridded box with a hollow inside (a cavity), a missing square (a hole), three thin faces, a top vertex "
@@ -70,6 +70,12 @@ constexpr std::array<ShapeSample, 9> kShapeSamples = {{
      "A body box, six thin boxes poking through its top, a small box hidden inside it touching nothing and one "
      "box apart from the rest: 9 shells.",
      [](Unit unit) { return SampleMeshes::createTurkeyLikeMesh(unit); }},
+    {"Cube with doubled and collapsed faces",
+     "Loaded a cube with two faces stored twice, a face that repeats a corner and a flat triangle on an edge.",
+     "A closed cube plus: a face stored twice the same way, a face stored twice facing both ways, a triangle that "
+     "repeats a corner and a flat triangle lying along the bottom front edge (closing a T-junction). 2 degenerate "
+     "and 2 duplicate faces.",
+     [](Unit unit) { return SampleMeshes::createDoubledFacesCubeMesh(unit); }},
 }};
 
 /// Menu item for a feature planned in a later phase: drawn disabled with a tooltip.
@@ -738,8 +744,8 @@ void PolyscopeGui::drawMeshMenu() {
         requestSync();
     }
     tooltip("Selects the shells smaller than N faces in the Shells panel (Select... sets N).");
-    plannedMenuItem("Remove Degenerate Faces...", "Planned (P5).");
-    plannedMenuItem("Remove Duplicate Faces", "Planned (P5).");
+    plannedMenuItem("Remove Degenerate Faces...", "Planned (P5). Fix All on the Degenerate faces row (Mesh Health) does this now.");
+    plannedMenuItem("Remove Duplicate Faces", "Planned (P5). Fix All on the Duplicate faces row (Mesh Health) does this now.");
     plannedMenuItem("Remesh...", "Planned.");
     ImGui::Separator();
     if (ImGui::MenuItem("Mesh Info", nullptr, showMeshInfo_)) {

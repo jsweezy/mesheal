@@ -9,10 +9,12 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -1861,4 +1863,176 @@ TEST_CASE("The per-frame selection box cache follows shell visibility, shell sel
     REQUIRE(controller.undoLastModification());
     step();
     REQUIRE(log.seen.size() >= 8);
+}
+
+namespace {
+
+/// The doubled faces cube, loaded the way File > Load Sample loads it.
+ogun::Mesh doubledFacesCube() {
+    return ogun::separateTouchingContacts(ogun::SampleMeshes::createDoubledFacesCubeMesh());
+}
+
+} // namespace
+
+TEST_CASE("AppController Fix All Degenerate Faces heals the zero-area face of the sample and undoes",
+          "[app][controller][repair][degenerate][undo]") {
+    using ogun::DefectCategory;
+    ogun::AppController controller;
+    controller.loadSampleDefectiveMesh();
+    const ogun::Mesh before = controller.mesh();
+    REQUIRE(controller.rowCount(DefectCategory::Degenerate) == 1);
+    REQUIRE(ogun::categoryInfo(DefectCategory::Degenerate).hasFixAll);
+
+    REQUIRE(controller.fixAllDegenerateFaces());
+    REQUIRE(controller.lastUndoActionLabel() == "Fix All Degenerate Faces");
+    REQUIRE(controller.rowCount(DefectCategory::Degenerate) == 0);
+    REQUIRE(controller.lastRepairStatusMessage().find("Healed 1 of 1 zero-area face") != std::string::npos);
+    REQUIRE(controller.isModified());
+
+    // Nothing left: no change and no undo entry
+    REQUIRE_FALSE(controller.fixAllDegenerateFaces());
+    REQUIRE(controller.lastRepairStatusMessage() == "No degenerate faces to fix.");
+
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().V == before.V);
+    REQUIRE(controller.mesh().F == before.F);
+    REQUIRE(controller.rowCount(DefectCategory::Degenerate) == 1);
+    REQUIRE_FALSE(controller.canUndo());
+}
+
+TEST_CASE("AppController heals a flat cap in a closed cube instead of deleting it",
+          "[app][controller][repair][degenerate][undo]") {
+    using ogun::DefectCategory;
+    // The closed part of the doubled faces cube: a T-junction on the bottom edge closed by a flat cap
+    std::vector<Eigen::Index> closed(static_cast<std::size_t>(ogun::SampleMeshes::kFlatCapFaceIndex + 1));
+    std::iota(closed.begin(), closed.end(), Eigen::Index{0});
+    ogun::AppController controller;
+    controller.setMesh(ogun::extractFaces(ogun::SampleMeshes::createDoubledFacesCubeMesh(), closed), "cap.stl");
+    const ogun::Mesh before = controller.mesh();
+    REQUIRE(controller.rowCount(DefectCategory::Degenerate) == 1);
+    REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 0);
+    const double volumeBefore = ogun::signedVolume(before);
+
+    REQUIRE(controller.fixAllDegenerateFaces());
+    REQUIRE(controller.rowCount(DefectCategory::Degenerate) == 0);
+    REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 0);
+    REQUIRE(controller.rowCount(DefectCategory::NonManifoldEdges) == 0);
+    // Not deleted: flipped into the front face (or collapsed with a bottom half), the cube stays closed
+    REQUIRE(controller.mesh().numFaces() >= 12);
+    REQUIRE(ogun::signedVolume(controller.mesh()) == Catch::Approx(volumeBefore));
+    REQUIRE(controller.lastRepairStatusMessage().find("Healed 1 of 1 zero-area face") != std::string::npos);
+
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().F == before.F);
+    REQUIRE(controller.rowCount(DefectCategory::Degenerate) == 1);
+}
+
+TEST_CASE("AppController Fix All Duplicate and Degenerate Faces clean the doubled faces cube, each undoable",
+          "[app][controller][repair][duplicates][degenerate][undo]") {
+    using ogun::DefectCategory;
+    ogun::AppController controller;
+    controller.setMesh(doubledFacesCube(), "Cube with doubled and collapsed faces");
+    const ogun::Mesh before = controller.mesh();
+    REQUIRE(controller.rowCount(DefectCategory::Degenerate) == 2);
+    REQUIRE(controller.rowCount(DefectCategory::Duplicates) == 2);
+    REQUIRE(ogun::categoryInfo(DefectCategory::Duplicates).hasFixAll);
+
+    // The collapsed face goes; the flat cap waits for the duplicates, which the healer cannot read
+    REQUIRE(controller.fixAllDegenerateFaces());
+    REQUIRE(controller.rowCount(DefectCategory::Degenerate) == 1);
+    REQUIRE(controller.lastRepairStatusMessage().find("Removed 1 collapsed face") != std::string::npos);
+    REQUIRE(controller.lastRepairStatusMessage().find("Fix the Duplicate faces row first") != std::string::npos);
+    REQUIRE(controller.rowCount(DefectCategory::Duplicates) == 2);
+    REQUIRE_FALSE(controller.fixAllDegenerateFaces()); // still blocked: no change, no undo entry
+    REQUIRE(controller.lastUndoActionLabel() == "Fix All Degenerate Faces");
+
+    REQUIRE(controller.fixAllDuplicateFaces());
+    REQUIRE(controller.lastUndoActionLabel() == "Fix All Duplicate Faces");
+    REQUIRE(controller.lastRepairStatusMessage() == "Removed 2 duplicate faces (1 same, 1 opposite winding).");
+    REQUIRE(controller.rowCount(DefectCategory::Duplicates) == 0);
+    REQUIRE(controller.rowCount(DefectCategory::NonManifoldEdges) == 0);
+    REQUIRE(controller.rowCount(DefectCategory::FlippedNormals) == 0);
+    REQUIRE_FALSE(controller.fixAllDuplicateFaces());
+
+    REQUIRE(controller.fixAllDegenerateFaces());
+    REQUIRE(controller.rowCount(DefectCategory::Degenerate) == 0);
+    REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 0);
+    REQUIRE(controller.rowCount(DefectCategory::NonManifoldEdges) == 0);
+
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.rowCount(DefectCategory::Degenerate) == 1);
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.rowCount(DefectCategory::Duplicates) == 2);
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().V == before.V);
+    REQUIRE(controller.mesh().F == before.F);
+    REQUIRE(controller.rowCount(DefectCategory::Degenerate) == 2);
+    REQUIRE_FALSE(controller.canUndo());
+}
+
+TEST_CASE("AppController Fix All Duplicate and Degenerate Faces respect the shell scope",
+          "[app][controller][repair][duplicates][degenerate][shells]") {
+    using ogun::DefectCategory;
+    ogun::Mesh mesh = doubledFacesCube();
+    appendShell(mesh, doubledFacesCube(), {20.0, 0.0, 0.0});
+    ogun::AppController controller;
+    controller.setMesh(std::move(mesh), "two_cubes.stl");
+    REQUIRE(controller.shells().size() == 2);
+    REQUIRE(controller.rowCount(DefectCategory::Duplicates) == 4);
+
+    const auto faceRowsOfShell = [&](std::size_t s) {
+        std::vector<std::array<double, 9>> rows;
+        for (const Eigen::Index f : controller.shells().shell(s).faces) {
+            std::array<double, 9> row{};
+            for (int c = 0; c < 3; ++c) {
+                for (int k = 0; k < 3; ++k) {
+                    row[static_cast<std::size_t>(3 * c + k)] = controller.mesh().V(controller.mesh().F(f, c), k);
+                }
+            }
+            rows.push_back(row);
+        }
+        std::sort(rows.begin(), rows.end());
+        return rows;
+    };
+    const auto shellAt = [&](double x) {
+        for (std::size_t s = 0; s < controller.shells().size(); ++s) {
+            if (controller.shells().shell(s).bbox.min.x() == x) {
+                return s;
+            }
+        }
+        return controller.shells().size();
+    };
+
+    const std::vector<std::array<double, 9>> farBefore = faceRowsOfShell(shellAt(20.0));
+    controller.clickShell(shellAt(0.0), false, false, {});
+    REQUIRE(controller.fixAllDuplicateFaces());
+    REQUIRE(controller.lastUndoActionLabel() == "Fix All Duplicate Faces (1 shells)");
+    REQUIRE(controller.rowCount(DefectCategory::Duplicates) == 0); // in scope
+    REQUIRE(faceRowsOfShell(shellAt(20.0)) == farBefore);
+    controller.selectShellsWhere([](std::size_t) { return false; });
+    REQUIRE(controller.rowCount(DefectCategory::Duplicates) == 2);
+
+    // Dedupe the far cube too. A face that repeats a vertex belongs to the shell of its vertices
+    REQUIRE(controller.fixAllDuplicateFaces());
+    REQUIRE(controller.rowCount(DefectCategory::Degenerate) == 4);
+    const std::vector<std::array<double, 9>> farDeduped = faceRowsOfShell(shellAt(20.0));
+    controller.clickShell(shellAt(0.0), false, false, {});
+    REQUIRE(controller.fixAllDegenerateFaces());
+    REQUIRE(controller.lastUndoActionLabel() == "Fix All Degenerate Faces (1 shells)");
+    // Only the near collapsed face goes; the far one would make the healer tear the mesh, so the cap waits
+    REQUIRE(controller.lastRepairStatusMessage().find("Removed 1 collapsed face") != std::string::npos);
+    REQUIRE(controller.lastRepairStatusMessage().find("shells outside the scope have faces with a repeated vertex") !=
+            std::string::npos);
+    REQUIRE(faceRowsOfShell(shellAt(20.0)) == farDeduped);
+
+    // The far cube: its collapsed face goes and, with none left anywhere, its cap is healed
+    const std::vector<std::array<double, 9>> nearBefore = faceRowsOfShell(shellAt(0.0));
+    controller.selectShellsWhere([](std::size_t) { return false; });
+    controller.clickShell(shellAt(20.0), false, false, {});
+    REQUIRE(controller.fixAllDegenerateFaces());
+    REQUIRE(controller.lastRepairStatusMessage().find("Healed 1 of 1 zero-area face") != std::string::npos);
+    REQUIRE(faceRowsOfShell(shellAt(0.0)) == nearBefore);
+    controller.selectShellsWhere([](std::size_t) { return false; });
+    REQUIRE(controller.rowCount(DefectCategory::Degenerate) == 1); // the near cube's cap
+    REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 0);
 }

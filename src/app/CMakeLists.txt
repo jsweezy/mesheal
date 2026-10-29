@@ -3,6 +3,7 @@ find_package(Threads REQUIRED)
 add_library(ogun_app_controller STATIC
     AboutInfo.cpp
     AppController.cpp
+    AppControllerCleanup.cpp
     AppControllerHoles.cpp
     AppControllerIntersections.cpp
     AppControllerMerge.cpp

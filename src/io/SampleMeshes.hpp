@@ -160,6 +160,21 @@ struct SampleMeshes {
     /// 3 shells. File > Load Sample > "Box with cavity, hole, slivers, and intersections".
     [[nodiscard]] static Mesh createCavityHoleSliversIntersectionsMesh(Unit unit = Unit::Millimeter);
 
+    /// Faces of `createDoubledFacesCubeMesh()`; faces 0 to 13 alone are a closed cube.
+    static constexpr Eigen::Index kFlatCapFaceIndex = 13;
+    static constexpr Eigen::Index kSameWindingCopyFaceIndex = 14;
+    static constexpr Eigen::Index kOppositeWindingCopyFaceIndex = 15;
+    static constexpr Eigen::Index kRepeatedVertexFaceIndex = 16;
+
+    /// The cube [0, 10]^3 (closed, outward) with its bottom triangle at the front edge split in two at
+    /// the edge's midpoint (5, 0, 0) (faces 0 and 12) and the T-junction closed by a flat cap (0, 8, 1)
+    /// lying along that edge (face 13: zero area, three distinct vertices). Then three faces that are
+    /// defects only: a copy of top face 2 wound the same way (14), a copy of back face 6 wound the other
+    /// way (15) and a face that repeats top corner 6 (16). Degenerate faces: 2 (13, 16); duplicate
+    /// faces: 2 (14, 15).
+    /// File > Load Sample > "Cube with doubled and collapsed faces".
+    [[nodiscard]] static Mesh createDoubledFacesCubeMesh(Unit unit = Unit::Millimeter);
+
     /// Generates a clean 12-triangle cube mesh injected with 3 known defective triangles:
     ///   - Face 12 (`kZeroAreaFaceIndex`): collinear zero-area triangle (A = 0, h_min = 0)
     ///   - Face 13 (`kMicroscopicFaceIndex`): microscopic-area triangle (A = 5e-9, h_min ~ 7.07e-5; well

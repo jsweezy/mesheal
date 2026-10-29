@@ -916,6 +916,19 @@ public:
     /// Splits the selected non-manifold vertices (one undo step).
     bool fixSelectedNonManifoldVertices();
 
+    /// Degenerate faces in the shell scope, one undo step (AppControllerCleanup.cpp): removes the faces
+    /// that repeat a vertex (they bound nothing, so no edge count changes), then heals zero-area faces
+    /// with the sliver healer (edge flip or collapse), never by deleting them, which would open a crack.
+    /// Zero-area faces are left when the mesh still has duplicate faces or collapsed faces outside the
+    /// scope (the healer would rebuild the mesh as a soup and tear those apart); the status says so.
+    /// Returns false (mesh unchanged, no undo entry) when nothing changed.
+    bool fixAllDegenerateFaces();
+
+    /// Duplicate faces in the shell scope, one undo step: `removeDuplicateFaces` (copies wound the same
+    /// way keep one; copies wound both ways keep the winding their neighbours agree with, else the
+    /// majority, and equal counts go). Returns false (no undo entry) when nothing was removed.
+    bool fixAllDuplicateFaces();
+
     /// Outcome of the most recent single-face commit or batch repair.
     [[nodiscard]] const std::string& lastRepairStatusMessage() const noexcept {
         return lastRepairStatusMessage_;

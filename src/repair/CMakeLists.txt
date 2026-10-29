@@ -8,6 +8,7 @@ add_library(ogun_repair STATIC
     ShellMerge.cpp
     SliverHealer.cpp
     SurfaceRebuild.cpp
+    TopologyCleanup.cpp
 )
 add_library(ogun::repair ALIAS ogun_repair)
 

@@ -72,6 +72,10 @@ bool toCgalSurfaceMesh(const Mesh& mesh, CgalSurfaceMesh& outSurfaceMesh) {
                             static_cast<std::size_t>(mesh.F(f, 2))});
     }
     PMP::orient_polygon_soup(points, polygons);
+    // A face that repeats a vertex cannot be a polygon-mesh face (CGAL's precondition)
+    if (!PMP::is_polygon_soup_a_polygon_mesh(polygons)) {
+        return false;
+    }
     PMP::polygon_soup_to_polygon_mesh(points, polygons, outSurfaceMesh);
     return outSurfaceMesh.number_of_faces() > 0;
 }

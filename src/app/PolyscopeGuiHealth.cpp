@@ -117,7 +117,9 @@ void PolyscopeGui::checkMesh() {
 void PolyscopeGui::fixAll(DefectCategory category) {
     if ((category == DefectCategory::ThinFaces && controller_.fixAllThinFaces()) ||
         (category == DefectCategory::NonManifoldEdges && controller_.fixAllNonManifoldEdges()) ||
-        (category == DefectCategory::NonManifoldVertices && controller_.fixAllNonManifoldVertices())) {
+        (category == DefectCategory::NonManifoldVertices && controller_.fixAllNonManifoldVertices()) ||
+        (category == DefectCategory::Degenerate && controller_.fixAllDegenerateFaces()) ||
+        (category == DefectCategory::Duplicates && controller_.fixAllDuplicateFaces())) {
         requestSync(true);
     } else if (category == DefectCategory::Intersections) {
         // Several methods with very different trade-offs: open the operator to compare them first
@@ -473,6 +475,17 @@ void PolyscopeGui::drawCategorySettings(DefectCategory category) {
         ImGui::TextDisabled("A face is degenerate when it repeats a vertex or has no reliable normal: its smallest "
                             "height is under 1e-10 of its longest edge, or under 2^-40 of its largest coordinate "
                             "(rounding noise). No settings.");
+        ImGui::TextDisabled("Fix All removes the faces that repeat a vertex (they bound nothing), then heals "
+                            "zero-area faces with an edge flip or collapse. It never deletes a zero-area face, "
+                            "which would open a crack: one it cannot heal safely is left and reported.");
+        ImGui::PopTextWrapPos();
+        break;
+    case DefectCategory::Duplicates:
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("Fix All keeps one face of each set of copies. Copies wound the same way: the first "
+                            "stays. Copies wound both ways: the winding the faces around them agree with stays; if "
+                            "neither agrees more, the majority stays, and equal counts (a wall between two solids "
+                            "that touch across a face) are all removed. No settings.");
         ImGui::PopTextWrapPos();
         break;
     case DefectCategory::Intersections: {
@@ -547,6 +560,12 @@ void PolyscopeGui::drawCategoryActions(DefectCategory category) {
         ImGui::PopStyleColor();
         ImGui::EndDisabled();
         tooltip(!info.hasFixAll  ? "Fix All for this row is planned (P4)."
+                : category == DefectCategory::Degenerate
+                    ? "Remove the faces that repeat a vertex, then heal zero-area faces by an edge flip or collapse "
+                      "(never by deleting them), in one undoable step."
+                : category == DefectCategory::Duplicates
+                    ? "Keep one face of each set of copies (the winding its neighbours agree with), in one undoable "
+                      "step."
                 : category == DefectCategory::OpenEdges
                     ? "Compare whole-mesh repairs (fill each hole, winding-number rebuild, alpha wrap) with a preview "
                       "and before / after numbers, then apply one."
