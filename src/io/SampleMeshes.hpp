@@ -175,6 +175,24 @@ struct SampleMeshes {
     /// File > Load Sample > "Cube with doubled and collapsed faces".
     [[nodiscard]] static Mesh createDoubledFacesCubeMesh(Unit unit = Unit::Millimeter);
 
+    /// The corner tetrahedron `corner`, `corner` + `edge` along x, y and z (outward, 4 faces).
+    [[nodiscard]] static Mesh createTetrahedron(const Eigen::Vector3d& corner, double edge, Unit unit = Unit::Millimeter);
+
+    /// Debris around a cube, one shell each in this order (all 12-face boxes come first, so the Shells
+    /// panel numbers them #1 to #5): the cube [0, 10]^3; a cube [12, 12.5] x [0, 0.5]^2 (2.9 % of the
+    /// model's bounding-box diagonal, about 30); a cavity [5, 5.01]^3 inside the cube (wound inward);
+    /// a tetrahedron 0.01 across whose base lies on the cube's top at (3, 6, 10); and a tetrahedron 0.01
+    /// across at (20, 20, 0), far from everything (0.058 %). Only the last is a tiny floating shell.
+    /// File > Load Sample > "Cube with tiny floating pieces".
+    [[nodiscard]] static Mesh createTinyFloatingShellsMesh(Unit unit = Unit::Millimeter);
+
+    /// Two half-boxes [0, 1]^3 and [1, 2] x [0, 1]^2 meeting at x = 1, welded, with an internal wall: the
+    /// left box's own two x = 1 faces (20 faces: 10, 8, then the wall 18 and 19). The right half has no top, so the wall
+    /// and the left top are the only faces at the top seam edge: the wall holds that seam shut. The
+    /// bottom and the two upright seam edges have three faces each (*Fin / other*); the right top's
+    /// three far edges are open. Without the wall the seam opens and the top is one 4-edge hole.
+    [[nodiscard]] static Mesh createFinSeamBoxesMesh(Unit unit = Unit::Millimeter);
+
     /// Generates a clean 12-triangle cube mesh injected with 3 known defective triangles:
     ///   - Face 12 (`kZeroAreaFaceIndex`): collinear zero-area triangle (A = 0, h_min = 0)
     ///   - Face 13 (`kMicroscopicFaceIndex`): microscopic-area triangle (A = 5e-9, h_min ~ 7.07e-5; well

@@ -39,7 +39,7 @@ struct ShapeSample {
     Mesh (*make)(Unit unit);
 };
 
-constexpr std::array<ShapeSample, 10> kShapeSamples = {{
+constexpr std::array<ShapeSample, 11> kShapeSamples = {{
     {"Box with cavity, hole, slivers, and intersections",
      "Loaded a gridded box with a cavity, a hole, slivers, a fold and a peg through its side.",
      "A gridded box with a hollow inside (a cavity), a missing square (a hole), three thin faces, a top vertex "
@@ -76,6 +76,11 @@ constexpr std::array<ShapeSample, 10> kShapeSamples = {{
      "repeats a corner and a flat triangle lying along the bottom front edge (closing a T-junction). 2 degenerate "
      "and 2 duplicate faces.",
      [](Unit unit) { return SampleMeshes::createDoubledFacesCubeMesh(unit); }},
+    {"Cube with tiny floating pieces",
+     "Loaded a cube with a small cube apart, a tiny cavity inside, a tiny tetrahedron on top and one far away: 5 shells.",
+     "A cube, a small cube beside it, a tiny cavity inside it, a tiny tetrahedron resting on its top and a tiny "
+     "tetrahedron far from everything (0.06 % of the model's size, touching nothing): 5 shells.",
+     [](Unit unit) { return SampleMeshes::createTinyFloatingShellsMesh(unit); }},
 }};
 
 /// Menu item for a feature planned in a later phase: drawn disabled with a tooltip.

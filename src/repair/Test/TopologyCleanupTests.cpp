@@ -1,14 +1,23 @@
 #include "repair/TopologyCleanup.hpp"
 
+#include "diagnostics/HoleLoops.hpp"
 #include "diagnostics/MeshChecks.hpp"
 #include "diagnostics/MeshHealth.hpp"
 #include "io/SampleMeshes.hpp"
+#include "io/StlReader.hpp"
+#include "repair/HoleFiller.hpp"
+#include "repair/RepairMetrics.hpp"
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
 #include <array>
+#include <chrono>
+#include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <map>
 #include <vector>
 
 namespace {
@@ -256,4 +265,319 @@ TEST_CASE("The doubled faces cube sample has 2 degenerate and 2 duplicate faces 
     REQUIRE(count(DefectCategory::NonManifoldEdges, deduped.mesh) == 0);
     REQUIRE(count(DefectCategory::FlippedNormals, deduped.mesh) == 0);
     REQUIRE(count(DefectCategory::Degenerate, deduped.mesh) == 1); // the flat cap, left for the healer
+}
+
+namespace {
+
+std::filesystem::path examplePath(const char* name) {
+    return std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / name;
+}
+
+std::size_t openEdges(const Mesh& mesh) {
+    return ogun::checkOpenEdges(mesh).infoCount;
+}
+
+/// Non-manifold edges of one sub-type: 0 Touching, 1 Fin / other.
+std::size_t nonManifoldEdges(const Mesh& mesh, int subtype) {
+    const ogun::CategoryResult result = ogun::checkNonManifoldEdges(mesh);
+    return static_cast<std::size_t>(std::count_if(result.elements.begin(), result.elements.end(),
+                                                  [subtype](const ogun::DefectElement& e) { return e.subtype == subtype; }));
+}
+
+/// Welds the vertices of `mesh` that sit at exactly the same position (the STL reader's exact weld).
+Mesh weldExact(const Mesh& mesh) {
+    std::map<std::array<double, 3>, int> index;
+    std::vector<int> remap(static_cast<std::size_t>(mesh.numVertices()));
+    std::vector<Eigen::RowVector3d> points;
+    for (Eigen::Index v = 0; v < mesh.numVertices(); ++v) {
+        const auto [it, inserted] =
+            index.try_emplace({mesh.V(v, 0), mesh.V(v, 1), mesh.V(v, 2)}, static_cast<int>(points.size()));
+        if (inserted) {
+            points.push_back(mesh.V.row(v));
+        }
+        remap[static_cast<std::size_t>(v)] = it->second;
+    }
+    Mesh out;
+    out.fileUnit = mesh.fileUnit;
+    out.V.resize(static_cast<Eigen::Index>(points.size()), 3);
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        out.V.row(static_cast<Eigen::Index>(i)) = points[i];
+    }
+    out.F = mesh.F;
+    for (Eigen::Index f = 0; f < out.F.rows(); ++f) {
+        for (int c = 0; c < 3; ++c) {
+            out.F(f, c) = remap[static_cast<std::size_t>(mesh.F(f, c))];
+        }
+    }
+    out.recomputeNormals();
+    return out;
+}
+
+/// Faces of `mesh` whose centroid passes `keep`, optionally reversed.
+template <typename Keep>
+std::vector<std::array<Eigen::Vector3d, 3>> facesWhere(const Mesh& mesh, Keep keep, bool reversed = false) {
+    std::vector<std::array<Eigen::Vector3d, 3>> faces;
+    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+        std::array<Eigen::Vector3d, 3> t;
+        for (int c = 0; c < 3; ++c) {
+            t[static_cast<std::size_t>(c)] = mesh.V.row(mesh.F(f, c)).transpose();
+        }
+        if (keep((t[0] + t[1] + t[2]) / 3.0)) {
+            if (reversed) {
+                std::swap(t[1], t[2]);
+            }
+            faces.push_back(t);
+        }
+    }
+    return faces;
+}
+
+/// A welded mesh from triangles given by their corner positions.
+Mesh fromTriangles(const std::vector<std::array<Eigen::Vector3d, 3>>& triangles) {
+    Mesh mesh;
+    mesh.V.resize(static_cast<Eigen::Index>(3 * triangles.size()), 3);
+    mesh.F.resize(static_cast<Eigen::Index>(triangles.size()), 3);
+    for (std::size_t t = 0; t < triangles.size(); ++t) {
+        for (int c = 0; c < 3; ++c) {
+            const auto row = static_cast<Eigen::Index>(3 * t) + c;
+            mesh.V.row(row) = triangles[t][static_cast<std::size_t>(c)].transpose();
+            mesh.F(static_cast<Eigen::Index>(t), c) = static_cast<int>(row);
+        }
+    }
+    return weldExact(mesh);
+}
+
+bool onPlane(double a, double b) {
+    return std::abs(a - b) < 1.0e-12;
+}
+
+} // namespace
+
+TEST_CASE("Fin removal takes the fin off the touching cubes and keeps the touching contact", "[repair][topology][fins]") {
+    for (const bool loaded : {false, true}) {
+        const Mesh raw = SampleMeshes::createTouchingCubesMesh();
+        const Mesh mesh = loaded ? ogun::separateTouchingContacts(raw) : raw;
+        const std::size_t touchingBefore = nonManifoldEdges(mesh, 0);
+        REQUIRE(touchingBefore == (loaded ? 0u : 2u));
+        REQUIRE(nonManifoldEdges(mesh, 1) == 1);
+        REQUIRE(openEdges(mesh) == 2);
+
+        const ogun::FinRemovalResult result = ogun::removeFinFaces(mesh);
+        REQUIRE(result.removedFaces == std::vector<Eigen::Index>{mesh.numFaces() - 1}); // the fin triangle
+        REQUIRE(result.finFaces == 1);
+        REQUIRE(result.wallFaces == 0);
+        REQUIRE(result.finEdgesBefore == 1);
+        REQUIRE(result.finEdgesLeft == 0);
+        REQUIRE(result.seamEdgesOpened == 0);
+        REQUIRE(result.rounds == 1);
+        requireFaceMap(mesh, result.mesh, result.faceMap);
+        REQUIRE(nonManifoldEdges(result.mesh, 1) == 0);
+        REQUIRE(nonManifoldEdges(result.mesh, 0) == touchingBefore);
+        REQUIRE(openEdges(result.mesh) == 0);
+
+        // Nothing left to do
+        const ogun::FinRemovalResult again = ogun::removeFinFaces(result.mesh);
+        REQUIRE(again.removedFaces.empty());
+        REQUIRE(again.finEdgesBefore == 0);
+        REQUIRE(again.mesh.F == result.mesh.F);
+    }
+}
+
+TEST_CASE("A wall that holds a seam shut is removed, the seam opens and the fill closes it", "[repair][topology][fins]") {
+    const Mesh mesh = SampleMeshes::createFinSeamBoxesMesh();
+    REQUIRE(mesh.numFaces() == 20);
+    REQUIRE(nonManifoldEdges(mesh, 1) == 3);
+    REQUIRE(openEdges(mesh) == 3);
+
+    const ogun::FinRemovalResult result = ogun::removeFinFaces(mesh);
+    REQUIRE(result.removedFaces == std::vector<Eigen::Index>{18, 19}); // the wall
+    REQUIRE(result.wallFaces == 2);
+    REQUIRE(result.finFaces == 0);
+    REQUIRE(result.seamEdgesOpened == 1);
+    REQUIRE(result.finEdgesLeft == 0);
+    requireFaceMap(mesh, result.mesh, result.faceMap);
+    REQUIRE(nonManifoldEdges(result.mesh, 1) == 0);
+    REQUIRE(openEdges(result.mesh) == 4);
+    const std::vector<ogun::HoleLoop> holes = ogun::findHoleLoops(result.mesh);
+    REQUIRE(holes.size() == 1);
+
+    const ogun::HoleBatchResult filled = ogun::fillHoles(result.mesh, holes);
+    REQUIRE(filled.success);
+    REQUIRE(openEdges(filled.mesh) == 0);
+    REQUIRE(count(DefectCategory::NonManifoldEdges, filled.mesh) == 0);
+    REQUIRE(ogun::signedVolume(filled.mesh) == Catch::Approx(2.0));
+}
+
+TEST_CASE("Internal walls inside a closed box are removed and the box stays closed", "[repair][topology][fins]") {
+    const Mesh left = SampleMeshes::createBox({0, 0, 0}, {1, 1, 1});
+    const Mesh right = SampleMeshes::createBox({1, 0, 0}, {2, 1, 1});
+    const auto notWall = [](const Eigen::Vector3d& c) { return !onPlane(c.x(), 1.0); };
+    const auto wall = [](const Eigen::Vector3d& c) { return onPlane(c.x(), 1.0); };
+    auto halves = facesWhere(left, notWall);
+    const auto rightHalf = facesWhere(right, notWall);
+    halves.insert(halves.end(), rightHalf.begin(), rightHalf.end());
+
+    SECTION("one wall between two open halves") {
+        auto triangles = halves;
+        const auto w = facesWhere(left, wall);
+        triangles.insert(triangles.end(), w.begin(), w.end());
+        const Mesh mesh = fromTriangles(triangles);
+        REQUIRE(nonManifoldEdges(mesh, 1) == 4);
+        const ogun::FinRemovalResult result = ogun::removeFinFaces(mesh);
+        REQUIRE(result.wallFaces == 2);
+        REQUIRE(result.seamEdgesOpened == 0);
+        REQUIRE(openEdges(result.mesh) == 0);
+        REQUIRE(count(DefectCategory::NonManifoldEdges, result.mesh) == 0);
+        REQUIRE(ogun::signedVolume(result.mesh) == Catch::Approx(2.0));
+    }
+
+    SECTION("two shells welded face to face: the wall is a pair of opposite copies") {
+        auto triangles = halves;
+        const auto w = facesWhere(left, wall);
+        const auto back = facesWhere(left, wall, true);
+        triangles.insert(triangles.end(), w.begin(), w.end());
+        triangles.insert(triangles.end(), back.begin(), back.end());
+        const Mesh mesh = fromTriangles(triangles);
+        REQUIRE(count(DefectCategory::Duplicates, mesh) == 2);
+
+        // Duplicate removal first (Fix All's order) takes the wall away; fin removal then finds nothing
+        const ogun::DuplicateFacesResult deduped = ogun::removeDuplicateFaces(mesh);
+        REQUIRE(deduped.removedOppositeWinding == 4);
+        const ogun::FinRemovalResult afterDedupe = ogun::removeFinFaces(deduped.mesh);
+        REQUIRE(afterDedupe.finEdgesBefore == 0);
+        REQUIRE(afterDedupe.removedFaces.empty());
+        REQUIRE(openEdges(afterDedupe.mesh) == 0);
+
+        // Fin removal alone removes it too
+        const ogun::FinRemovalResult alone = ogun::removeFinFaces(mesh);
+        REQUIRE(alone.wallFaces == 4);
+        REQUIRE(alone.removedFaces == std::vector<Eigen::Index>{20, 21, 22, 23});
+        REQUIRE(openEdges(alone.mesh) == 0);
+        REQUIRE(count(DefectCategory::NonManifoldEdges, alone.mesh) == 0);
+        REQUIRE(ogun::signedVolume(alone.mesh) == Catch::Approx(2.0));
+    }
+
+    SECTION("two shells welded face to face, each with its own wall faces") {
+        auto triangles = halves;
+        const auto w = facesWhere(left, wall);
+        const auto w2 = facesWhere(right, wall);
+        triangles.insert(triangles.end(), w.begin(), w.end());
+        triangles.insert(triangles.end(), w2.begin(), w2.end());
+        const Mesh mesh = fromTriangles(triangles);
+        const ogun::DuplicateFacesResult deduped = ogun::removeDuplicateFaces(mesh);
+        const ogun::FinRemovalResult result = ogun::removeFinFaces(deduped.mesh);
+        REQUIRE(result.mesh.numFaces() == 20);
+        REQUIRE(openEdges(result.mesh) == 0);
+        REQUIRE(count(DefectCategory::NonManifoldEdges, result.mesh) == 0);
+        REQUIRE(ogun::signedVolume(result.mesh) == Catch::Approx(2.0));
+    }
+}
+
+TEST_CASE("Fin removal leaves a sheet as big as the body and sheets out of scope", "[repair][topology][fins][scope]") {
+    const Mesh cube = SampleMeshes::createCubeMesh(1.0);
+    const auto withFlap = [&](const Eigen::Vector3d& apex) {
+        auto triangles = facesWhere(cube, [](const Eigen::Vector3d&) { return true; });
+        triangles.push_back({Eigen::Vector3d(1, 1, 1), Eigen::Vector3d(0, 1, 1), apex});
+        return fromTriangles(triangles);
+    };
+
+    // A small flap on the top back edge goes; a flap larger than half the cube's area stays
+    const ogun::FinRemovalResult small = ogun::removeFinFaces(withFlap({0.5, 1.5, 1.5}));
+    REQUIRE(small.finFaces == 1);
+    REQUIRE(small.finEdgesLeft == 0);
+    const Mesh big = withFlap({0.5, 10.0, 10.0});
+    const ogun::FinRemovalResult kept = ogun::removeFinFaces(big);
+    REQUIRE(kept.removedFaces.empty());
+    REQUIRE(kept.finEdgesLeft == 1);
+    REQUIRE(kept.mesh.F == big.F);
+
+    // The touching cubes' fin out of scope stays, faces bit-identical
+    const Mesh touching = SampleMeshes::createTouchingCubesMesh();
+    std::vector<std::uint8_t> scope(static_cast<std::size_t>(touching.numFaces()), 1);
+    scope.back() = 0;
+    const ogun::FinRemovalResult outOfScope = ogun::removeFinFaces(touching, scope);
+    REQUIRE(outOfScope.removedFaces.empty());
+    REQUIRE(outOfScope.sheetsOutOfScope == 1);
+    REQUIRE(outOfScope.finEdgesLeft == 1);
+    REQUIRE(outOfScope.mesh.F == touching.F);
+    REQUIRE(outOfScope.mesh.V == touching.V);
+}
+
+TEST_CASE("Only the far tiny tetrahedron is a tiny floating shell", "[repair][topology][tiny]") {
+    const Mesh mesh = SampleMeshes::createTinyFloatingShellsMesh();
+    const auto shells = ogun::shellsLargestFirst(mesh);
+    REQUIRE(shells.size() == 5);
+
+    const ogun::TinyFloatingShellsResult found = ogun::findTinyFloatingShells(mesh);
+    REQUIRE(found.complete);
+    REQUIRE(found.modelDiagonal == Catch::Approx(std::sqrt(2.0 * 20.01 * 20.01 + 10.01 * 10.01)));
+    REQUIRE(found.shells.size() == 1);
+    REQUIRE(found.shells[0].shell == 4);
+    REQUIRE(found.shells[0].faces == shells[4]);
+    REQUIRE(found.shells[0].sizeFraction == Catch::Approx(0.01 * std::sqrt(3.0) / found.modelDiagonal));
+    REQUIRE(found.largestFraction() < 0.001);
+
+    // Fraction 0: none; 5 %: the 0.5 cube too (2.9 %), never the cavity or the touching tetrahedron
+    ogun::TinyShellSearch none;
+    none.fraction = 0.0;
+    REQUIRE(ogun::findTinyFloatingShells(mesh, none).shells.empty());
+    ogun::TinyShellSearch wide;
+    wide.fraction = 0.05;
+    const ogun::TinyFloatingShellsResult two = ogun::findTinyFloatingShells(mesh, wide);
+    REQUIRE(two.shells.size() == 2);
+    REQUIRE(two.shells[0].shell == 1);
+    REQUIRE(two.shells[1].shell == 4);
+
+    // Scope shells, and relations handed in, give the same answers
+    ogun::TinyShellSearch scoped;
+    scoped.scopeShells = {0, 1, 2, 3};
+    REQUIRE(ogun::findTinyFloatingShells(mesh, scoped).shells.empty());
+    const ogun::ShellRelations relations = ogun::computeShellRelations(mesh);
+    ogun::TinyShellSearch withRelations;
+    withRelations.relations = &relations;
+    const ogun::TinyFloatingShellsResult same = ogun::findTinyFloatingShells(mesh, withRelations);
+    REQUIRE(same.shells.size() == 1);
+    REQUIRE(same.shells[0].shell == 4);
+
+    // Removal: 4 faces go, the map marks them, the rest keep their rows
+    const ogun::TinyShellRemovalResult removed = ogun::removeTinyFloatingShells(mesh);
+    REQUIRE(removed.removedFaces == 4);
+    REQUIRE(removed.found.shells.size() == 1);
+    requireFaceMap(mesh, removed.mesh, removed.faceMap);
+    for (const Eigen::Index f : shells[4]) {
+        REQUIRE(removed.faceMap[static_cast<std::size_t>(f)] == -1);
+    }
+    REQUIRE(ogun::shellsLargestFirst(removed.mesh).size() == 4);
+
+    // A face scope without the tetrahedron: nothing goes
+    std::vector<std::uint8_t> scope(static_cast<std::size_t>(mesh.numFaces()), 1);
+    scope[static_cast<std::size_t>(shells[4].front())] = 0;
+    const ogun::TinyShellRemovalResult outOfScope = ogun::removeTinyFloatingShells(mesh, scope);
+    REQUIRE(outOfScope.removedFaces == 0);
+    REQUIRE(outOfScope.mesh.F == mesh.F);
+}
+
+TEST_CASE("The Turkey has no tiny floating shell and no fins", "[repair][topology][tiny][.slow]") {
+    const Mesh turkey = ogun::loadStl(examplePath("Turkey.stl"));
+    const auto start = std::chrono::steady_clock::now();
+    const ogun::TinyFloatingShellsResult found = ogun::findTinyFloatingShells(turkey);
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    REQUIRE(found.complete);
+    REQUIRE(found.shells.empty());
+
+    // The smallest shell (the 70-face cavity #28) is about 1.23 % of the model's size
+    const std::vector<ogun::ShellFacts> shells = ogun::describeShells(turkey, ogun::shellsLargestFirst(turkey));
+    double smallest = 1.0;
+    for (const ogun::ShellFacts& shell : shells) {
+        smallest = std::min(smallest, shell.box.diagonal() / found.modelDiagonal);
+    }
+    REQUIRE(smallest > 0.01);
+    WARN("Turkey findTinyFloatingShells: " << ms << " ms; smallest shell " << 100.0 * smallest << " % of the model");
+
+    const auto finStart = std::chrono::steady_clock::now();
+    const ogun::FinRemovalResult fins = ogun::removeFinFaces(turkey);
+    const double finMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - finStart).count();
+    WARN("Turkey removeFinFaces: " << finMs << " ms");
+    REQUIRE(fins.finEdgesBefore == 0);
+    REQUIRE(fins.removedFaces.empty());
 }

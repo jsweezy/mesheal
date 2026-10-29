@@ -559,6 +559,32 @@ Mesh SampleMeshes::createDoubledFacesCubeMesh(Unit unit) {
     return mesh;
 }
 
+Mesh SampleMeshes::createTetrahedron(const Eigen::Vector3d& corner, double edge, Unit unit) {
+    const std::vector<Eigen::Vector3d> points{corner, corner + Eigen::Vector3d(edge, 0.0, 0.0),
+                                              corner + Eigen::Vector3d(0.0, edge, 0.0), corner + Eigen::Vector3d(0.0, 0.0, edge)};
+    return meshFromFaces(points, {{0, 2, 1}, {0, 1, 3}, {0, 3, 2}, {1, 2, 3}}, unit);
+}
+
+Mesh SampleMeshes::createTinyFloatingShellsMesh(Unit unit) {
+    return combineMeshes({createBox({0.0, 0.0, 0.0}, {10.0, 10.0, 10.0}, false, unit),
+                          createBox({12.0, 0.0, 0.0}, {12.5, 0.5, 0.5}, false, unit),
+                          createBox({5.0, 5.0, 5.0}, {5.01, 5.01, 5.01}, true, unit),
+                          createTetrahedron({3.0, 6.0, 10.0}, 0.01, unit),
+                          createTetrahedron({20.0, 20.0, 0.0}, 0.01, unit)});
+}
+
+Mesh SampleMeshes::createFinSeamBoxesMesh(Unit unit) {
+    const auto on = [](double a, double b) { return std::abs(a - b) < 1.0e-12; };
+    const Mesh left = createBox({0.0, 0.0, 0.0}, {1.0, 1.0, 1.0}, false, unit);
+    const Mesh right = createBox({1.0, 0.0, 0.0}, {2.0, 1.0, 1.0}, false, unit);
+    std::vector<std::array<Eigen::Vector3d, 3>> soup;
+    appendSoup(soup, left, Eigen::Vector3d::Zero(), [&](const Eigen::Vector3d& c) { return on(c.x(), 1.0); });
+    appendSoup(soup, right, Eigen::Vector3d::Zero(),
+               [&](const Eigen::Vector3d& c) { return on(c.x(), 1.0) || on(c.z(), 1.0); });
+    appendSoup(soup, left, Eigen::Vector3d::Zero(), [&](const Eigen::Vector3d& c) { return !on(c.x(), 1.0); });
+    return weldSoup(soup, unit);
+}
+
 Mesh SampleMeshes::createSampleDefectiveMesh(Unit unit) {
     const Mesh cube = createCubeMesh(10.0, unit);
 
