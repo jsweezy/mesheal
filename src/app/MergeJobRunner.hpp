@@ -20,17 +20,20 @@ namespace ogun {
 struct MergeRequest {
     std::uint64_t meshGeneration = 0;
     std::shared_ptr<const Mesh> mesh;
-    std::vector<std::vector<Eigen::Index>> shells; ///< Faces of each shell to merge
-    std::vector<std::size_t> shellIds;             ///< ShellBrowser number of each, for messages
+    ShellMergeInput input;                 ///< Operands and cavities
+    std::vector<std::size_t> operandIds;   ///< ShellBrowser number of each operand, for messages
+    std::vector<std::size_t> cavityIds;    ///< ShellBrowser number of each cavity
 };
 
 struct FinishedMerge {
     std::uint64_t meshGeneration = 0;
-    std::vector<std::size_t> shellIds;
+    ShellMergeInput input;
+    std::vector<std::size_t> operandIds;
+    std::vector<std::size_t> cavityIds;
     ShellMergeResult result;
 };
 
-/// Runs `mergeShells` on a `std::jthread`. Manifold's boolean cannot be interrupted, so `discard()`
+/// Runs the cavity-safe `mergeShells` on a `std::jthread`. Manifold's boolean cannot be interrupted, so `discard()`
 /// lets the job finish and drops its result.
 class MergeJobRunner {
 public:

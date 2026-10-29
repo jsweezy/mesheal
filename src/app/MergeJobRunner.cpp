@@ -18,10 +18,11 @@ void MergeJobRunner::start(MergeRequest request) {
     discarded_ = false;
     running_ = true;
     worker_ = std::jthread([this](MergeRequest req) {
-        ShellMergeResult result = mergeShells(*req.mesh, req.shells);
+        ShellMergeResult result = mergeShells(*req.mesh, req.input);
         std::lock_guard lock(mutex_);
         if (!discarded_.load()) {
-            finished_ = FinishedMerge{req.meshGeneration, std::move(req.shellIds), std::move(result)};
+            finished_ = FinishedMerge{req.meshGeneration, std::move(req.input), std::move(req.operandIds),
+                                      std::move(req.cavityIds), std::move(result)};
         }
         running_ = false;
     }, std::move(request));

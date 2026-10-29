@@ -308,7 +308,8 @@ void PolyscopeGui::drawShellActionItems() {
 void PolyscopeGui::drawMergeShellsOperator() {
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextDisabled("Boolean union of the selected shells with Manifold. Faces where they cross are removed, and "
-                        "shells that overlap or touch become one. Shells that do not touch stay separate.");
+                        "shells that overlap or touch become one. Shells that do not touch stay separate. Cavities "
+                        "(shells wound inward inside a solid) are kept as they are, never filled.");
     ImGui::PopTextWrapPos();
     const MergeChecklist list = controller_.mergeChecklist();
     if (list.shells.size() < 2) {
@@ -367,16 +368,36 @@ void PolyscopeGui::drawMergeShellsOperator() {
         }
         ImGui::EndTable();
     }
-    if (!list.checks[3].failing.empty()) {
-        ImGui::PushTextWrapPos(0.0f);
+    const MergeCheck& selfCrossings = list.checks[MergeChecklist::kNoSelfCrossings];
+    ImGui::PushTextWrapPos(0.0f);
+    for (const std::string& problem : list.problems) {
+        ImGui::TextColored(gui::kDefectColor, "%s", problem.c_str());
+    }
+    if (!list.cavities.empty()) {
+        std::string kept;
+        for (std::size_t i = 0; i < list.cavities.size(); ++i) {
+            kept += (i == 0 ? "#" : (i + 1 == list.cavities.size() ? " and #" : ", #")) + std::to_string(list.cavities[i] + 1);
+        }
+        ImGui::TextDisabled("%s %s kept: %s.", withThousands(list.cavities.size()).c_str(),
+                            list.cavities.size() == 1 ? "cavity" : "cavities", kept.c_str());
+        tooltip("A cavity is a shell wound inward inside a solid: a hollow. The union leaves it out and keeps its "
+                "faces exactly as they are.");
+    }
+    for (const std::size_t island : list.islands) {
+        ImGui::TextDisabled("#%zu floats inside a kept cavity: left as it is.", island + 1);
+    }
+    if (list.problems.empty() && list.operands.size() < 2) {
+        ImGui::TextColored(gui::kDefectColor, "Fewer than two selected shells face outward: nothing to unite.");
+    }
+    if (!selfCrossings.failing.empty()) {
         ImGui::TextColored(gui::kDefectColor, "Shells that cross themselves can still be merged, but the union may "
                                                "be wrong where they do (Repair All Intersections fixes them first).");
-        ImGui::PopTextWrapPos();
     }
-    if (!list.checks[3].known) {
+    ImGui::PopTextWrapPos();
+    if (!selfCrossings.known) {
         ImGui::TextDisabled("Self-crossings are not checked: run Intersecting faces to see them.");
     }
-    if (list.checks[3].known) {
+    if (selfCrossings.known) {
         ImGui::TextDisabled("%s faces cross between these shells; the union removes them.",
                             withThousands(list.crossingsBetween).c_str());
     }
@@ -387,7 +408,7 @@ void PolyscopeGui::drawMergeShellsOperator() {
     const bool running = controller_.mergeRunning();
     ImGui::BeginDisabled(!list.canApply() || running);
     ImGui::PushStyleColor(ImGuiCol_Button, gui::kFixAllButtonColor);
-    const std::string label = "Merge " + withThousands(list.shells.size()) + " Shells";
+    const std::string label = "Merge " + withThousands(list.operands.size()) + " Shells";
     if (ImGui::Button(label.c_str()) && controller_.mergeSelectedShells()) {
         requestSync(true);
     }
@@ -397,7 +418,8 @@ void PolyscopeGui::drawMergeShellsOperator() {
         ImGui::SetTooltip("%s", running ? "A merge is running (see the status bar)."
                                 : list.canApply() ? "Union the selected shells as one undoable step."
                                                   : "Every selected shell must pass the checks above except the warning, "
-                                                    "and Mesh Health must have checked them. Use Show to find the ones that fail.");
+                                                    "and Mesh Health must have checked them; at least two must face "
+                                                    "outward. Use Show to find the ones that fail.");
     }
     ImGui::SameLine();
     if (ImGui::Button("Close")) {

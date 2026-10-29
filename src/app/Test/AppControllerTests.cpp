@@ -3,6 +3,7 @@
 #include "io/StlReader.hpp"
 #include "core/Settings.hpp"
 #include "mesh/Units.hpp"
+#include "repair/RepairMetrics.hpp"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -12,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <string>
 #include <vector>
 
 namespace {
@@ -1314,6 +1316,129 @@ TEST_CASE("AppController Merge Shells is blocked by a shell Manifold rejects", "
     REQUIRE_FALSE(controller.mergeSelectedShells());
     REQUIRE_FALSE(controller.canUndo());
     REQUIRE(controller.shells().size() == 3);
+}
+
+namespace {
+
+bool hasProblem(const ogun::MergeChecklist& list, const std::string& text) {
+    return std::any_of(list.problems.begin(), list.problems.end(),
+                       [&](const std::string& p) { return p.find(text) != std::string::npos; });
+}
+
+void selectAllShells(ogun::AppController& controller) {
+    controller.selectShellsWhere([](std::size_t) { return true; });
+}
+
+} // namespace
+
+TEST_CASE("AppController Merge Shells keeps a cavity, and undo restores it exactly",
+          "[app][controller][shells][merge][cavity][undo]") {
+    // A = [0, 4]^3 and B overlap; C = [1, 2] x [1, 3]^2 is a cavity of A that B does not reach
+    ogun::AppController controller;
+    controller.setMesh(ogun::SampleMeshes::createOverlapPlusCavityMesh(), "overlap_plus_cavity.stl");
+    const ogun::Mesh before = controller.mesh();
+    REQUIRE(controller.shells().size() == 3);
+    selectAllShells(controller);
+
+    const ogun::MergeChecklist list = controller.mergeChecklist();
+    REQUIRE(list.checks[ogun::MergeChecklist::kOutwardOrCavity].known);
+    REQUIRE(list.checks[ogun::MergeChecklist::kOutwardOrCavity].failing.empty());
+    REQUIRE(list.problems.empty());
+    REQUIRE(list.operands == std::vector<std::size_t>{0, 1});
+    REQUIRE(list.cavities == std::vector<std::size_t>{2});
+    REQUIRE(list.canApply());
+
+    REQUIRE(controller.mergeSelectedShells());
+    REQUIRE(controller.lastUndoActionLabel() == "Merge 2 Shells");
+    REQUIRE(controller.shells().size() == 2); // the union and the cavity
+    REQUIRE(ogun::signedVolume(controller.mesh()) == Catch::Approx(117.875));
+    const std::string& message = controller.lastRepairStatusMessage();
+    REQUIRE(message.find("Merged 2 shells into 1") != std::string::npos);
+    REQUIRE(message.find("volume 128 -> 121.875") != std::string::npos);
+    REQUIRE(message.find("1 cavity kept as it was: #2 (-4 mm^3).") != std::string::npos);
+    REQUIRE(controller.shells().selectedCount() == 1);
+
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().F == before.F);
+    REQUIRE(controller.mesh().V == before.V);
+    REQUIRE(controller.shells().size() == 3);
+    REQUIRE(controller.mergeChecklist().cavities == std::vector<std::size_t>{2});
+}
+
+TEST_CASE("AppController Merge Shells is blocked when a shell reaches into a cavity", "[app][controller][shells][merge][cavity]") {
+    using Variant = ogun::SampleMeshes::CavityReachedVariant;
+    ogun::AppController controller;
+    controller.setMesh(ogun::SampleMeshes::createCavityReachedMesh(Variant::WithSeparatePair), "cavity_reached.stl");
+    REQUIRE(controller.shells().size() == 5);
+
+    SECTION("the whole group selected") {
+        controller.selectShellsWhere([](std::size_t s) { return s < 3; });
+        const ogun::MergeChecklist list = controller.mergeChecklist();
+        REQUIRE(hasProblem(list, "#2 reaches into cavity #3 of #1: merge them by hand."));
+        REQUIRE(list.checks[ogun::MergeChecklist::kOutwardOrCavity].failing == std::vector<std::size_t>{0, 1, 2});
+        REQUIRE_FALSE(list.canApply());
+    }
+    SECTION("the cavity left out of the selection") {
+        controller.selectShellsWhere([](std::size_t s) { return s < 2; });
+        const ogun::MergeChecklist list = controller.mergeChecklist();
+        REQUIRE(hasProblem(list, "#2 reaches into cavity #3 of #1: merge them by hand."));
+        REQUIRE_FALSE(list.canApply());
+    }
+    REQUIRE_FALSE(controller.mergeSelectedShells());
+    REQUIRE_FALSE(controller.canUndo());
+    REQUIRE(controller.shells().size() == 5);
+
+    SECTION("the separate pair still merges") {
+        controller.selectShellsWhere([](std::size_t s) { return s >= 3; });
+        REQUIRE(controller.mergeChecklist().canApply());
+        REQUIRE(controller.mergeSelectedShells());
+        REQUIRE(controller.shells().size() == 4);
+    }
+}
+
+TEST_CASE("AppController Merge Shells blocks inside-out shells and needs two outward ones", "[app][controller][shells][merge][cavity]") {
+    ogun::AppController controller;
+    SECTION("a cavity box written inside out") {
+        controller.setMesh(ogun::SampleMeshes::createCavityBoxMesh(true), "cavity_box_inside_out.stl");
+        selectAllShells(controller);
+        const ogun::MergeChecklist list = controller.mergeChecklist();
+        REQUIRE(hasProblem(list, "#1 and its inner shell #2 look inside out together: fix orientation first."));
+        REQUIRE(list.checks[ogun::MergeChecklist::kOutwardOrCavity].failing == std::vector<std::size_t>{0, 1});
+        REQUIRE_FALSE(list.canApply());
+    }
+    SECTION("a free-standing inside-out box") {
+        ogun::Mesh mesh = ogun::SampleMeshes::createOverlapPlusCavityMesh();
+        ogun::appendMesh(mesh, ogun::SampleMeshes::createBox({20.0, 0.0, 0.0}, {22.0, 2.0, 2.0}, true));
+        controller.setMesh(mesh, "inside_out_box.stl");
+        selectAllShells(controller);
+        const ogun::MergeChecklist list = controller.mergeChecklist();
+        REQUIRE(hasProblem(list, "#4 is inside out: fix orientation first"));
+        REQUIRE_FALSE(list.canApply());
+    }
+    SECTION("a cavity box: one outward shell, nothing to unite") {
+        controller.setMesh(ogun::SampleMeshes::createCavityBoxMesh(), "cavity_box.stl");
+        selectAllShells(controller);
+        const ogun::MergeChecklist list = controller.mergeChecklist();
+        REQUIRE(list.problems.empty());
+        REQUIRE(list.cavities == std::vector<std::size_t>{1});
+        REQUIRE(list.operands.size() == 1);
+        REQUIRE_FALSE(list.canApply());
+    }
+    REQUIRE_FALSE(controller.mergeSelectedShells());
+    REQUIRE_FALSE(controller.canUndo());
+}
+
+TEST_CASE("AppController Merge Shells on the Turkey is blocked by its cavity", "[app][controller][shells][merge][cavity][.slow]") {
+    ogun::AppController controller;
+    controller.setMesh(ogun::loadStl(std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() /
+                                     "examples" / "Turkey.stl"),
+                       "Turkey.stl");
+    REQUIRE(controller.shells().size() == 28);
+    selectAllShells(controller);
+    const ogun::MergeChecklist list = controller.mergeChecklist();
+    REQUIRE(list.problems == std::vector<std::string>{"#6 and #9 reach into cavity #28 of #12: merge them by hand."});
+    REQUIRE(list.checks[ogun::MergeChecklist::kOutwardOrCavity].failing == std::vector<std::size_t>{5, 8, 11, 27});
+    REQUIRE_FALSE(list.canApply());
 }
 
 TEST_CASE("AppController merges in the background, can cancel, and drops a stale merge",

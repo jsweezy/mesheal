@@ -8,6 +8,7 @@
 #include "app/ShellBrowser.hpp"
 #include "core/Settings.hpp"
 #include "diagnostics/MeshHealth.hpp"
+#include "diagnostics/ShellRoles.hpp"
 #include "diagnostics/ThinFaceChecker.hpp"
 #include "io/SampleMeshes.hpp"
 #include "io/StlReader.hpp"
@@ -117,12 +118,23 @@ struct MergeCheck {
 
 /// What Merge Shells would do with the selected shells.
 struct MergeChecklist {
+    static constexpr std::size_t kClosed = 0;
+    static constexpr std::size_t kOriented = 1;
+    static constexpr std::size_t kNoFins = 2;
+    static constexpr std::size_t kOutwardOrCavity = 3;
+    static constexpr std::size_t kNoSelfCrossings = 4;
+
     std::vector<std::size_t> shells;     ///< Selected shells
     std::size_t faces = 0;
-    /// Closed (open edges), oriented (flipped normals), no Fin / other edges: blocking.
-    /// No self-crossings (intersecting faces within a shell): a warning, the result may be wrong there.
-    std::array<MergeCheck, 4> checks{};
+    /// Closed (open edges), oriented (flipped normals), no Fin / other edges, outward or a cavity nothing
+    /// reaches into (rule O): blocking. No self-crossings (intersecting faces within a shell): a warning,
+    /// the result may be wrong there.
+    std::array<MergeCheck, 5> checks{};
     std::size_t crossingsBetween = 0;    ///< Faces crossing another selected shell (the union removes them)
+    std::vector<std::size_t> operands;   ///< Selected shells the union takes (wound outward)
+    std::vector<std::size_t> cavities;   ///< Cavities kept as they are: selected, or hollows of a selected shell
+    std::vector<std::size_t> islands;    ///< Selected shells floating in a kept cavity: left as they are
+    std::vector<std::string> problems;   ///< Why `kOutwardOrCavity` fails, one line each ("#2 reaches into ...")
 
     /// Two or more shells and every blocking check known and passed.
     [[nodiscard]] bool canApply() const noexcept;
@@ -610,7 +622,8 @@ public:
     /// Opens "Operation: Merge Shells" in the Tool slot (deselects any row; keeps the shell selection).
     void openMergeShells();
 
-    /// Checklist for the selected shells, from the current Mesh Health results.
+    /// Checklist for the selected shells, from the current Mesh Health results and the shell roles
+    /// (rule O, computed once per mesh edit).
     [[nodiscard]] MergeChecklist mergeChecklist() const;
 
     /// Unions the selected shells with Manifold (one undo step), in the background when background
@@ -1257,6 +1270,17 @@ private:
     void finishMeshEdit(Mesh mesh, std::optional<ShellBrowser> shells = std::nullopt);
     /// Drops the Translate / Rotate fields and preview.
     void resetTransformTool() noexcept;
+    /// Relations (pairs involving the shells rule O needs) and roles of every shell, keyed on the mesh
+    /// generation and the intersection tolerance; empty roles when no closed shell is wound inward.
+    struct MergeRoles {
+        std::uint64_t generation = 0;
+        double tolerance = 0.0;
+        ShellRelations relations;
+        ShellRoles roles;
+    };
+    [[nodiscard]] const MergeRoles& mergeRoles() const;
+    /// Fills the checklist's rule-O check, operands, kept cavities and islands (`selected[s]` per shell).
+    void checkRoles(MergeChecklist& list, const std::vector<std::uint8_t>& selected) const;
     /// Applies a finished merge (one undo step), selects the merged shells and reports the numbers.
     bool applyMergeResult(FinishedMerge finished);
     /// Applies a finished background merge. Returns true if one arrived.
@@ -1373,6 +1397,7 @@ private:
     std::uint64_t healthRevision_ = 0; ///< Bumped whenever a row's result is replaced or dropped
     mutable std::optional<std::pair<FrameBoundsKey, BoundingBox>> frameBoundsCache_;
     mutable std::optional<std::pair<std::uint64_t, BoundingBox>> meshBoundsCache_; ///< Keyed on meshGeneration_
+    mutable std::optional<MergeRoles> mergeRolesCache_;
     /// operatorScopeFaceCount, keyed on the mesh generation, face selection, shells and active tool
     mutable std::optional<std::pair<std::array<std::uint64_t, 4>, std::size_t>> operatorScopeCountCache_;
     HealthCheckRunner checkRunner_;
