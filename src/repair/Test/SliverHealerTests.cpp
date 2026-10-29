@@ -14,8 +14,10 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <map>
+#include <stop_token>
 #include <vector>
 
 namespace {
@@ -541,4 +543,147 @@ TEST_CASE("The aspect-110 Small face is collapsed along its shortest edge", "[re
     CHECK(r.mesh.numFaces() == mesh.numFaces() - 2);
     CHECK(r.mesh.numVertices() == mesh.numVertices() - 1);
     CHECK(allNormalsAlign(r.mesh, Eigen::Vector3d::UnitZ(), 0.99));
+}
+
+namespace {
+
+/// A closed subdivided cube with one needle: a vertex 1e-5 from grid vertex `c` on the +X face.
+struct NeedleCube {
+    ogun::Mesh mesh;
+    int c = -1; ///< The grid vertex
+    int m = -1; ///< The vertex next to it
+};
+
+NeedleCube makeNeedleCube() {
+    NeedleCube out;
+    out.mesh = makeSubdividedCube(4, 10.0);
+    const Eigen::Index f = nearestFace(out.mesh, {10.0, 4.17, 3.33});
+    out.c = out.mesh.F(f, 2);
+    const Eigen::Vector3d c = vertexOf(out.mesh, f, 2);
+    const Eigen::Vector3d centroid = (vertexOf(out.mesh, f, 0) + vertexOf(out.mesh, f, 1) + c) / 3.0;
+    out.m = splitFace(out.mesh, f, c + 1e-5 * (centroid - c).normalized());
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("The batch sliver heals stop when asked and return the input", "[repair][batch][cancel]") {
+    const NeedleCube cube = makeNeedleCube();
+    std::stop_source stop;
+    stop.request_stop();
+    ogun::SliverHealOptions options;
+    options.stopToken = stop.get_token();
+
+    const ogun::RepairResults all = ogun::SliverHealer::healAllThinFaces(cube.mesh, {}, {}, options);
+    CHECK_FALSE(all.success);
+    CHECK(all.cancelled);
+    CHECK(all.statusMessage == "Cancelled.");
+    CHECK(all.mesh.V == cube.mesh.V);
+    CHECK(all.mesh.F == cube.mesh.F);
+    CHECK(all.faceMap.size() == static_cast<std::size_t>(cube.mesh.numFaces()));
+    CHECK(all.faceMap.back() == cube.mesh.numFaces() - 1);
+
+    const ogun::RepairResults some = ogun::SliverHealer::healFaces(cube.mesh, ogun::ThinFaceChecker::check(cube.mesh).faceIndices, {}, {}, options);
+    CHECK(some.cancelled);
+    CHECK(some.mesh.F == cube.mesh.F);
+
+    // Not stopped: healed as before
+    const ogun::RepairResults healed = ogun::SliverHealer::healAllThinFaces(cube.mesh);
+    CHECK_FALSE(healed.cancelled);
+    CHECK(healed.remainingThinFaces == 0);
+}
+
+TEST_CASE("Pinned vertices never move in the sliver healer", "[repair][batch][pinned]") {
+    const NeedleCube cube = makeNeedleCube();
+    const ogun::Mesh& mesh = cube.mesh;
+    REQUIRE(ogun::ThinFaceChecker::check(mesh).numDefects() >= 2);
+    std::vector<std::uint8_t> pinned(static_cast<std::size_t>(mesh.numVertices()), 0);
+    ogun::SliverHealOptions options;
+
+    const auto requirePinsKept = [&](const ogun::RepairResults& r) {
+        REQUIRE(r.vertexMap.size() == static_cast<std::size_t>(mesh.numVertices()));
+        for (std::size_t v = 0; v < pinned.size(); ++v) {
+            if (pinned[v] != 0) {
+                REQUIRE(r.vertexMap[v] >= 0);
+                REQUIRE(r.mesh.V.row(r.vertexMap[v]) == mesh.V.row(static_cast<Eigen::Index>(v)));
+            }
+        }
+    };
+
+    SECTION("The grid vertex pinned: the needle collapses onto it") {
+        // Without pins the collapse goes to the midpoint (the grid vertex moves by 5e-6)
+        const ogun::RepairResults free = ogun::SliverHealer::healAllThinFaces(mesh);
+        REQUIRE(free.remainingThinFaces == 0);
+        const Eigen::Index cAfter = free.vertexMap[static_cast<std::size_t>(cube.c)];
+        const Eigen::Index merged = cAfter >= 0 ? cAfter : free.vertexMap[static_cast<std::size_t>(cube.m)];
+        REQUIRE(merged >= 0);
+        REQUIRE(free.mesh.V.row(merged) != mesh.V.row(cube.c));
+
+        pinned[static_cast<std::size_t>(cube.c)] = 1;
+        options.pinnedVertices = pinned;
+        for (const ogun::RepairResults& r :
+             {ogun::SliverHealer::healAllThinFaces(mesh, {}, {}, options),
+              ogun::SliverHealer::healFaces(mesh, ogun::ThinFaceChecker::check(mesh).faceIndices, {}, {}, options)}) {
+            REQUIRE(r.success);
+            REQUIRE(r.edgeCollapses >= 1);
+            REQUIRE(r.remainingThinFaces == 0);
+            REQUIRE(r.vertexMap[static_cast<std::size_t>(cube.m)] == -1); // merged into the pinned vertex
+            requirePinsKept(r);
+            REQUIRE(isClosedManifold(r.mesh));
+        }
+    }
+
+    SECTION("Both ends of the short edge pinned: nothing moves") {
+        pinned[static_cast<std::size_t>(cube.c)] = 1;
+        pinned[static_cast<std::size_t>(cube.m)] = 1;
+        options.pinnedVertices = pinned;
+        const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(mesh, {}, {}, options);
+        requirePinsKept(r);
+    }
+
+    SECTION("Every vertex pinned: the surface is unchanged") {
+        std::fill(pinned.begin(), pinned.end(), std::uint8_t{1});
+        options.pinnedVertices = pinned;
+        const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(mesh, {}, {}, options);
+        REQUIRE(r.edgeCollapses == 0);
+        REQUIRE(r.edgeFlips == 0);
+        requirePinsKept(r);
+        REQUIRE(r.mesh.numFaces() == mesh.numFaces());
+    }
+
+    SECTION("A pin mask of the wrong size is refused") {
+        const std::vector<std::uint8_t> wrong(3, 1);
+        options.pinnedVertices = wrong;
+        const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(mesh, {}, {}, options);
+        REQUIRE_FALSE(r.success);
+        REQUIRE(r.mesh.F == mesh.F);
+    }
+}
+
+TEST_CASE("The batch sliver heals return face and vertex maps in input order", "[repair][batch][maps]") {
+    const NeedleCube cube = makeNeedleCube();
+    const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(cube.mesh);
+    REQUIRE(r.success);
+    REQUIRE(r.faceMap.size() == static_cast<std::size_t>(cube.mesh.numFaces()));
+    Eigen::Index next = 0;
+    for (const Eigen::Index g : r.faceMap) {
+        if (g >= 0) {
+            REQUIRE(g == next++); // kept faces stay in input order
+        }
+    }
+    REQUIRE(next == r.mesh.numFaces()); // the collapse added no face
+    REQUIRE(next == cube.mesh.numFaces() - 2);
+    // A face whose corners did not move maps to the same corners
+    for (Eigen::Index f = 0; f < cube.mesh.numFaces(); ++f) {
+        const Eigen::Index g = r.faceMap[static_cast<std::size_t>(f)];
+        bool untouched = g >= 0;
+        for (int k = 0; k < 3 && untouched; ++k) {
+            untouched = cube.mesh.F(f, k) != cube.c && cube.mesh.F(f, k) != cube.m;
+        }
+        if (untouched) {
+            for (int k = 0; k < 3; ++k) {
+                REQUIRE(r.mesh.F(g, k) == r.vertexMap[static_cast<std::size_t>(cube.mesh.F(f, k))]);
+            }
+        }
+    }
 }

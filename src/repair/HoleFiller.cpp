@@ -2,6 +2,7 @@
 
 #include "core/Constants.hpp"
 #include "diagnostics/SelfIntersections.hpp"
+#include "diagnostics/ShellRelations.hpp"
 #include "mesh/CgalMesh.hpp"
 
 #include <Eigen/Geometry>
@@ -15,9 +16,15 @@
 #include <chrono>
 #include <cmath>
 #include <exception>
+#include <functional>
+#include <limits>
+#include <map>
 #include <numeric>
+#include <optional>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 namespace ogun {
 
@@ -138,9 +145,13 @@ public:
 
     void moveVertex(int v, const Eigen::Vector3d& p) {
         if (v < input_.numVertices()) {
+            const auto it = moved_.find(v);
+            moveLog_.push_back({v, it != moved_.end(), it != moved_.end() ? it->second : Eigen::Vector3d::Zero()});
             moved_[v] = p;
         } else {
-            points_[static_cast<std::size_t>(v - input_.numVertices())] = p;
+            Eigen::Vector3d& slot = points_[static_cast<std::size_t>(v - input_.numVertices())];
+            moveLog_.push_back({v, true, slot});
+            slot = p;
         }
     }
 
@@ -159,6 +170,79 @@ public:
         } else {
             removedNew_.insert(f);
         }
+        removeLog_.push_back(f);
+    }
+
+    /// A point to roll the workspace back to (a fill tried and not kept).
+    struct Mark {
+        std::size_t points = 0;
+        std::size_t faces = 0;
+        std::size_t removes = 0;
+        std::size_t moves = 0;
+    };
+
+    [[nodiscard]] Mark mark() const noexcept {
+        return {points_.size(), faces_.size(), removeLog_.size(), moveLog_.size()};
+    }
+
+    /// Undoes every change made since `m`.
+    void rollback(const Mark& m) {
+        for (std::size_t k = moveLog_.size(); k > m.moves; --k) {
+            const Move& move = moveLog_[k - 1];
+            if (move.v < input_.numVertices()) {
+                if (move.had) {
+                    moved_[move.v] = move.previous;
+                } else {
+                    moved_.erase(move.v);
+                }
+            } else if (const auto i = static_cast<std::size_t>(move.v - input_.numVertices()); i < points_.size()) {
+                points_[i] = move.previous;
+            }
+        }
+        moveLog_.resize(m.moves);
+        for (std::size_t k = removeLog_.size(); k > m.removes; --k) {
+            const Eigen::Index f = removeLog_[k - 1];
+            if (f < input_.numFaces()) {
+                removed_[static_cast<std::size_t>(f)] = 0;
+            } else {
+                removedNew_.erase(f);
+            }
+        }
+        removeLog_.resize(m.removes);
+        for (std::size_t k = faces_.size(); k > m.faces; --k) {
+            for (const int v : faces_[k - 1]) {
+                extra_[v].pop_back(); // faces are appended in id order, so each vertex's last entry is this face
+            }
+        }
+        faces_.resize(m.faces);
+        points_.resize(m.points);
+    }
+
+    /// Input faces removed and input vertices moved since `m`.
+    void changesSince(const Mark& m, std::vector<Eigen::Index>& removedInput, std::vector<int>& movedInput) const {
+        for (std::size_t k = m.removes; k < removeLog_.size(); ++k) {
+            if (removeLog_[k] < input_.numFaces()) {
+                removedInput.push_back(removeLog_[k]);
+            }
+        }
+        for (std::size_t k = m.moves; k < moveLog_.size(); ++k) {
+            if (moveLog_[k].v < input_.numVertices()) {
+                movedInput.push_back(moveLog_[k].v);
+            }
+        }
+    }
+
+    /// Input vertices moved by any fill so far.
+    [[nodiscard]] const std::unordered_map<int, Eigen::Vector3d>& movedInputVertices() const noexcept {
+        return moved_;
+    }
+
+    [[nodiscard]] Eigen::Index totalFaces() const noexcept {
+        return input_.numFaces() + static_cast<Eigen::Index>(faces_.size());
+    }
+
+    [[nodiscard]] const Mesh& input() const noexcept {
+        return input_;
     }
 
     /// Live faces (input order, then appended) with unreferenced vertices dropped. `faceOf` receives
@@ -216,6 +300,14 @@ private:
     std::unordered_map<int, Eigen::Vector3d> moved_;
     std::vector<FaceKey> faces_;
     std::unordered_map<int, std::vector<Eigen::Index>> extra_;
+
+    struct Move {
+        int v = 0;
+        bool had = false; ///< An input vertex that had moved before (a new vertex always has a position)
+        Eigen::Vector3d previous = Eigen::Vector3d::Zero();
+    };
+    std::vector<Eigen::Index> removeLog_;
+    std::vector<Move> moveLog_;
 };
 
 /// Corner positions of a face, rotated so the smallest corner comes first (keeps the winding).
@@ -622,6 +714,247 @@ std::size_t countNewCrossings(const Mesh& mesh, const std::vector<Eigen::Index>&
     return count;
 }
 
+/// Uniform grid of the input faces' boxes, so the crossing test of a patch looks only at faces near it.
+class FaceGrid {
+public:
+    explicit FaceGrid(const Mesh& mesh) : stamp_(static_cast<std::size_t>(mesh.numFaces()), 0) {
+        const Eigen::Index nf = mesh.numFaces();
+        if (nf == 0) {
+            return;
+        }
+        for (Eigen::Index v = 0; v < mesh.numVertices(); ++v) {
+            if (mesh.V.row(v).allFinite()) {
+                bounds_.extend(Eigen::Vector3d(mesh.V.row(v).transpose()));
+            }
+        }
+        if (bounds_.isEmpty()) {
+            return;
+        }
+        const int perAxis = std::clamp(static_cast<int>(std::ceil(std::cbrt(static_cast<double>(nf)))), 1,
+                                       settings::kHoleCrossingGridMaxCellsPerAxis);
+        const Eigen::Vector3d extent = bounds_.sizes();
+        const double cell = std::max(extent.maxCoeff() / perAxis, std::numeric_limits<double>::min());
+        for (int a = 0; a < 3; ++a) {
+            cells_[static_cast<std::size_t>(a)] = std::clamp(static_cast<int>(std::ceil(extent[a] / cell)), 1, perAxis);
+            cellSize_[a] = extent[a] > 0.0 ? extent[a] / cells_[static_cast<std::size_t>(a)] : 1.0;
+        }
+        offsets_.assign(static_cast<std::size_t>(cells_[0]) * static_cast<std::size_t>(cells_[1]) * static_cast<std::size_t>(cells_[2]) + 1, 0);
+        std::vector<std::array<int, 6>> ranges(static_cast<std::size_t>(nf));
+        for (Eigen::Index f = 0; f < nf; ++f) {
+            Eigen::AlignedBox3d box;
+            for (int c = 0; c < 3; ++c) {
+                box.extend(Eigen::Vector3d(mesh.V.row(mesh.F(f, c)).transpose()));
+            }
+            auto& r = ranges[static_cast<std::size_t>(f)];
+            if (!box.min().allFinite() || !box.max().allFinite()) {
+                r = {0, -1, 0, -1, 0, -1};
+                large_.push_back(f);
+                continue;
+            }
+            r = cellRange(box);
+            const long count = static_cast<long>(r[1] - r[0] + 1) * (r[3] - r[2] + 1) * (r[5] - r[4] + 1);
+            if (count > settings::kHoleCrossingGridMaxCellsPerFace) {
+                large_.push_back(f);
+                r = {0, -1, 0, -1, 0, -1};
+                continue;
+            }
+            forEachCell(r, [&](std::size_t c) { ++offsets_[c + 1]; });
+        }
+        std::partial_sum(offsets_.begin(), offsets_.end(), offsets_.begin());
+        faces_.resize(offsets_.back());
+        std::vector<std::size_t> fill(offsets_.begin(), offsets_.end() - 1);
+        for (Eigen::Index f = 0; f < nf; ++f) {
+            forEachCell(ranges[static_cast<std::size_t>(f)], [&](std::size_t c) { faces_[fill[c]++] = f; });
+        }
+    }
+
+    /// Input faces whose (input) box may meet `region`, each once.
+    void query(const Eigen::AlignedBox3d& region, std::vector<Eigen::Index>& out) {
+        out.clear();
+        if (++generation_ == 0) {
+            std::fill(stamp_.begin(), stamp_.end(), 0);
+            generation_ = 1;
+        }
+        const auto take = [&](Eigen::Index f) {
+            std::uint32_t& s = stamp_[static_cast<std::size_t>(f)];
+            if (s != generation_) {
+                s = generation_;
+                out.push_back(f);
+            }
+        };
+        if (!offsets_.empty() && region.intersects(bounds_)) {
+            forEachCell(cellRange(region), [&](std::size_t c) {
+                for (std::size_t k = offsets_[c]; k < offsets_[c + 1]; ++k) {
+                    take(faces_[k]);
+                }
+            });
+        }
+        for (const Eigen::Index f : large_) {
+            take(f);
+        }
+    }
+
+private:
+    [[nodiscard]] std::array<int, 6> cellRange(const Eigen::AlignedBox3d& box) const {
+        std::array<int, 6> r{};
+        for (int a = 0; a < 3; ++a) {
+            const int n = cells_[static_cast<std::size_t>(a)];
+            const auto cellOf = [&](double x) {
+                const double t = std::floor((x - bounds_.min()[a]) / cellSize_[a]);
+                return static_cast<int>(std::clamp(t, 0.0, static_cast<double>(n - 1)));
+            };
+            r[static_cast<std::size_t>(2 * a)] = cellOf(box.min()[a]);
+            r[static_cast<std::size_t>(2 * a + 1)] = cellOf(box.max()[a]);
+        }
+        return r;
+    }
+
+    template <typename Fn>
+    void forEachCell(const std::array<int, 6>& r, Fn&& fn) const {
+        for (int z = r[4]; z <= r[5]; ++z) {
+            for (int y = r[2]; y <= r[3]; ++y) {
+                for (int x = r[0]; x <= r[1]; ++x) {
+                    fn((static_cast<std::size_t>(z) * static_cast<std::size_t>(cells_[1]) + static_cast<std::size_t>(y)) *
+                           static_cast<std::size_t>(cells_[0]) + static_cast<std::size_t>(x));
+                }
+            }
+        }
+    }
+
+    Eigen::AlignedBox3d bounds_;
+    std::array<int, 3> cells_{1, 1, 1};
+    Eigen::Vector3d cellSize_ = Eigen::Vector3d::Ones();
+    std::vector<std::size_t> offsets_;
+    std::vector<Eigen::Index> faces_;
+    std::vector<Eigen::Index> large_;
+    std::vector<std::uint32_t> stamp_;
+    std::uint32_t generation_ = 0;
+};
+
+/// Crossings of one fill, split by shell.
+struct FillCrossings {
+    std::size_t own = 0;
+    std::size_t other = 0;
+    std::map<int, std::size_t> perOtherShell;
+};
+
+/// Crossings between the fill's new faces (`added`, workspace ids) and every live face near them,
+/// including the earlier fills and the patch itself. `shellOf` gives the shell of a workspace face.
+FillCrossings countFillCrossings(
+    const Workspace& ws,
+    FaceGrid& grid,
+    const std::vector<Eigen::Index>& added,
+    const std::function<int(Eigen::Index)>& shellOf,
+    const std::vector<int>& ownShells,
+    double tolerance) {
+    FillCrossings out;
+    if (added.empty()) {
+        return out;
+    }
+    const auto faceBox = [&](Eigen::Index f) {
+        Eigen::AlignedBox3d box;
+        for (const int v : ws.face(f)) {
+            box.extend(ws.point(v));
+        }
+        return box;
+    };
+    Eigen::AlignedBox3d region;
+    for (const Eigen::Index f : added) {
+        region.extend(faceBox(f));
+    }
+    region.min().array() -= tolerance;
+    region.max().array() += tolerance;
+
+    // Candidates: input faces from the grid, faces around moved input vertices, and every appended face
+    std::vector<Eigen::Index> candidates;
+    grid.query(region, candidates);
+    std::vector<Eigen::Index> around;
+    for (const auto& [v, p] : ws.movedInputVertices()) {
+        ws.facesAround(v, around);
+        candidates.insert(candidates.end(), around.begin(), around.end());
+    }
+    for (Eigen::Index f = ws.inputFaces(); f < ws.totalFaces(); ++f) {
+        candidates.push_back(f);
+    }
+    std::sort(candidates.begin(), candidates.end());
+    candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+    const std::unordered_set<Eigen::Index> isNew(added.begin(), added.end());
+
+    std::vector<Eigen::Index> local(added.begin(), added.end());
+    for (const Eigen::Index f : candidates) {
+        if (!isNew.contains(f) && ws.alive(f) && region.intersects(faceBox(f))) {
+            local.push_back(f);
+        }
+    }
+    std::unordered_map<int, int> vertexOf;
+    std::vector<Eigen::Vector3d> points;
+    Mesh mesh;
+    mesh.F.resize(static_cast<Eigen::Index>(local.size()), 3);
+    for (std::size_t i = 0; i < local.size(); ++i) {
+        const FaceKey corners = ws.face(local[i]);
+        for (std::size_t c = 0; c < 3; ++c) {
+            const auto [it, inserted] = vertexOf.emplace(corners[c], static_cast<int>(points.size()));
+            if (inserted) {
+                points.push_back(ws.point(corners[c]));
+            }
+            mesh.F(static_cast<Eigen::Index>(i), static_cast<Eigen::Index>(c)) = it->second;
+        }
+    }
+    mesh.V.resize(static_cast<Eigen::Index>(points.size()), 3);
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        mesh.V.row(static_cast<Eigen::Index>(i)) = points[i].transpose();
+    }
+
+    // Each new face is its own group and the rest one group, so old pairs are not tested
+    std::vector<int> group(local.size(), 0);
+    std::vector<std::uint8_t> interest(added.size() + 1, 1);
+    interest[0] = 0;
+    for (std::size_t i = 0; i < added.size(); ++i) {
+        group[i] = static_cast<int>(i) + 1;
+    }
+    FacePairQuery query;
+    query.faceGroup = group;
+    query.groupOfInterest = interest;
+    const std::optional<std::vector<FacePairHit>> pairs = findFacePairs(mesh, tolerance, query, {}, nullptr, 1);
+    if (!pairs) {
+        return out;
+    }
+    for (const FacePairHit& p : *pairs) {
+        if (!p.hit) {
+            continue;
+        }
+        // a < b and the new faces come first, so b is the other face unless both are new
+        if (p.b < added.size()) {
+            ++out.own;
+            continue;
+        }
+        const int shell = shellOf(local[p.b]);
+        if (std::find(ownShells.begin(), ownShells.end(), shell) != ownShells.end()) {
+            ++out.own;
+        } else {
+            ++out.other;
+            ++out.perOtherShell[shell];
+        }
+    }
+    return out;
+}
+
+/// The fills a hole tries, in order: `first`, then the rest of Smooth, Refine and Flat.
+std::vector<HoleFillMethod> fillChain(HoleFillMethod first, HoleCrossingPolicy policy) {
+    std::vector<HoleFillMethod> chain;
+    if (first != HoleFillMethod::None) {
+        chain.push_back(first);
+    }
+    if (policy != HoleCrossingPolicy::IgnoreCrossings) {
+        for (const HoleFillMethod m : {HoleFillMethod::Smooth, HoleFillMethod::Refine, HoleFillMethod::Flat}) {
+            if (m != first) {
+                chain.push_back(m);
+            }
+        }
+    }
+    return chain;
+}
+
 /// Displaces each vertex along its area-weighted normal (keeps the preview off the base mesh).
 void offsetAlongNormals(Mesh& mesh, double offset) {
     Eigen::MatrixXd normals = Eigen::MatrixXd::Zero(mesh.numVertices(), 3);
@@ -746,6 +1079,22 @@ HoleFillPreview previewHoleFill(
     return preview;
 }
 
+const char* holeSkipReasonLabel(HoleSkipReason reason) noexcept {
+    switch (reason) {
+    case HoleSkipReason::OpenChain:
+        return "not a closed loop";
+    case HoleSkipReason::TooBig:
+        return "too big";
+    case HoleSkipReason::NoMethod:
+        return "no fill applies";
+    case HoleSkipReason::OutOfScope:
+        return "outside the scope";
+    case HoleSkipReason::None:
+        break;
+    }
+    return "";
+}
+
 HoleBatchResult fillHoles(
     const Mesh& mesh,
     std::span<const HoleLoop> holes,
@@ -753,62 +1102,264 @@ HoleBatchResult fillHoles(
     const HoleFillSettings& settings,
     std::stop_token stopToken,
     std::atomic<float>* progress) {
+    return fillHoles(mesh, holes, method, settings, HoleBatchOptions{}, std::move(stopToken), progress);
+}
+
+HoleBatchResult fillHoles(
+    const Mesh& mesh,
+    std::span<const HoleLoop> holes,
+    HoleFillMethod method,
+    const HoleFillSettings& settings,
+    const HoleBatchOptions& options,
+    std::stop_token stopToken,
+    std::atomic<float>* progress) {
     HoleBatchResult result;
     result.mesh = mesh;
     result.holesBefore = holes.size();
+    result.faceMap.resize(static_cast<std::size_t>(mesh.numFaces()));
+    std::iota(result.faceMap.begin(), result.faceMap.end(), Eigen::Index{0});
+    const bool scoped = !options.faceInScope.empty();
+    if (scoped && options.faceInScope.size() != static_cast<std::size_t>(mesh.numFaces())) {
+        result.statusMessage = "The scope does not match the mesh.";
+        return result;
+    }
+    const auto inScope = [&](Eigen::Index f) {
+        return !scoped || f >= mesh.numFaces() || options.faceInScope[static_cast<std::size_t>(f)] != 0;
+    };
+    const bool testCrossings = options.crossingPolicy != HoleCrossingPolicy::IgnoreCrossings;
+    result.crossingsTested = testCrossings;
+
     Workspace ws(mesh);
+
+    // Shell of every input face (Shells-panel order) and of every face a kept fill adds
+    std::vector<int> inputShell;
+    std::vector<int> newShell;
+    std::optional<FaceGrid> grid;
+    double tolerance = 0.0;
+    if (testCrossings) {
+        inputShell.assign(static_cast<std::size_t>(mesh.numFaces()), -1);
+        const std::vector<std::vector<Eigen::Index>> shells = shellsLargestFirst(mesh);
+        for (std::size_t s = 0; s < shells.size(); ++s) {
+            for (const Eigen::Index f : shells[s]) {
+                inputShell[static_cast<std::size_t>(f)] = static_cast<int>(s);
+            }
+        }
+        grid.emplace(mesh);
+        tolerance = options.checkParams.intersectionTolerance * mesh.boundingBox().diagonal();
+    }
+    const auto shellOf = [&](Eigen::Index f) {
+        if (f < mesh.numFaces()) {
+            return inputShell[static_cast<std::size_t>(f)];
+        }
+        const auto i = static_cast<std::size_t>(f - mesh.numFaces());
+        return i < newShell.size() ? newShell[i] : -1;
+    };
+
+    // A fill may not change a face outside the scope: a removed face or a moved vertex of one
+    std::vector<Eigen::Index> removedInput;
+    std::vector<int> movedInput;
+    std::vector<Eigen::Index> around;
+    const auto changedOutsideScope = [&](const Workspace::Mark& m) {
+        if (!scoped) {
+            return false;
+        }
+        removedInput.clear();
+        movedInput.clear();
+        ws.changesSince(m, removedInput, movedInput);
+        if (std::any_of(removedInput.begin(), removedInput.end(), [&](Eigen::Index f) { return !inScope(f); })) {
+            return true;
+        }
+        for (const int v : movedInput) {
+            ws.facesAround(v, around);
+            if (std::any_of(around.begin(), around.end(), [&](Eigen::Index f) { return !inScope(f); })) {
+                return true;
+            }
+        }
+        return false;
+    };
+
     std::vector<Eigen::Index> added;
     std::string lastFailure;
     bool changed = false;
+    std::set<int> crossedShells;
+    result.outcomes.reserve(holes.size());
     for (std::size_t i = 0; i < holes.size(); ++i) {
         if (stopToken.stop_requested()) {
-            result.statusMessage = "Cancelled.";
-            return result;
+            break;
         }
         const HoleLoop& hole = holes[i];
-        const HoleFillMethod chosen = method == HoleFillMethod::None ? recommendedHoleFill(hole.shape) : method;
+        HoleFillOutcome& outcome = result.outcomes.emplace_back();
+        outcome.hole = i;
+        const HoleFillMethod first = method == HoleFillMethod::None ? recommendedHoleFill(hole.shape) : method;
         const bool tooBig = settings.maxHoleEdges > 0 && hole.edgeCount() > static_cast<std::size_t>(settings.maxHoleEdges);
-        if (!hole.closed || chosen == HoleFillMethod::None || tooBig) {
+        outcome.skipped = !hole.closed                     ? HoleSkipReason::OpenChain
+                          : first == HoleFillMethod::None  ? HoleSkipReason::NoMethod
+                          : tooBig                         ? HoleSkipReason::TooBig
+                          : std::none_of(hole.faces.begin(), hole.faces.end(), inScope) ? HoleSkipReason::OutOfScope
+                                                                                         : HoleSkipReason::None;
+        if (outcome.skipped != HoleSkipReason::None) {
+            outcome.status = std::string("Skipped: ") + holeSkipReasonLabel(outcome.skipped) + ".";
             ++result.holesSkipped;
             continue;
         }
-        FillReport report = applyFill(ws, hole, chosen, settings, stopToken);
-        if (report.changed) {
-            changed = true;
-            added.insert(added.end(), report.added.begin(), report.added.end());
+
+        // The rim's shells: the most common one names the hole; any of them counts as its own shell
+        std::vector<int> ownShells;
+        if (testCrossings) {
+            std::map<int, std::size_t> votes;
+            for (const Eigen::Index f : hole.faces) {
+                ++votes[shellOf(f)];
+            }
+            outcome.shell = std::max_element(votes.begin(), votes.end(), [](const auto& a, const auto& b) { return a.second < b.second; })->first;
+            for (const auto& [s, n] : votes) {
+                ownShells.push_back(s);
+            }
         }
-        if (report.changed && report.openEdgesLeft == 0) {
-            ++result.holesClosed;
-        } else {
+
+        // Try the chain; keep the first fill that closes the hole and crosses nothing, else the best
+        const std::vector<HoleFillMethod> chain = fillChain(first, options.crossingPolicy);
+        std::optional<std::size_t> kept;
+        std::optional<std::size_t> best;
+        FillCrossings keptCrossings;
+        FillReport keptReport;
+        bool cancelled = false;
+        bool anyCrossing = false;
+        const auto rankOf = [](const HoleFillAttempt& a) {
+            return std::pair<int, std::size_t>(a.closed ? 0 : 1, a.crossingsOwnShell + a.crossingsOtherShells);
+        };
+        for (std::size_t k = 0; k < chain.size(); ++k) {
+            HoleFillAttempt& attempt = outcome.attempts.emplace_back();
+            attempt.method = chain[k];
+            const Workspace::Mark m = ws.mark();
+            FillReport report = applyFill(ws, hole, chain[k], settings, stopToken);
+            if (stopToken.stop_requested()) {
+                ws.rollback(m);
+                cancelled = true;
+                break;
+            }
+            attempt.status = report.status;
+            if (!report.changed) {
+                continue;
+            }
+            if (changedOutsideScope(m)) {
+                ws.rollback(m);
+                attempt.status = "It would change faces outside the scope.";
+                continue;
+            }
+            attempt.changed = true;
+            attempt.closed = report.openEdgesLeft == 0;
+            FillCrossings crossings;
+            if (testCrossings) {
+                crossings = countFillCrossings(ws, *grid, report.added, shellOf, ownShells, tolerance);
+                attempt.crossingsOwnShell = crossings.own;
+                attempt.crossingsOtherShells = crossings.other;
+            }
+            if (!testCrossings || (attempt.closed && crossings.own + crossings.other == 0)) {
+                kept = k;
+                keptCrossings = std::move(crossings);
+                keptReport = std::move(report);
+                break;
+            }
+            const bool crosses = crossings.own + crossings.other > 0;
+            anyCrossing = anyCrossing || crosses;
+            const bool candidate = options.crossingPolicy == HoleCrossingPolicy::AlwaysFillFewestCrossings || !crosses;
+            if (candidate && (!best || rankOf(attempt) < rankOf(outcome.attempts[*best]))) {
+                best = k;
+            }
+            ws.rollback(m);
+        }
+        if (cancelled) {
+            break;
+        }
+        if (!kept && best) {
+            // Fills are deterministic: re-applying gives the same patch that was measured
+            keptReport = applyFill(ws, hole, outcome.attempts[*best].method, settings, stopToken);
+            if (stopToken.stop_requested()) {
+                break;
+            }
+            if (keptReport.changed) {
+                kept = *best;
+                keptCrossings = countFillCrossings(ws, *grid, keptReport.added, shellOf, ownShells, tolerance);
+            }
+        }
+
+        if (!kept) {
             ++result.holesFailed;
-            lastFailure = report.status;
+            if (anyCrossing) {
+                outcome.status = "Every fill crosses other faces: left open.";
+            } else {
+                outcome.status = outcome.attempts.empty() ? "No fill found." : outcome.attempts.back().status;
+            }
+            lastFailure = outcome.status;
+        } else {
+            changed = true;
+            const HoleFillAttempt& a = outcome.attempts[*kept];
+            outcome.method = a.method;
+            outcome.closed = keptReport.openEdgesLeft == 0;
+            outcome.facesAdded = keptReport.added.size();
+            outcome.status = keptReport.status;
+            outcome.crossingsOwnShell = keptCrossings.own;
+            outcome.crossingsOtherShells = keptCrossings.other;
+            for (const auto& [s, n] : keptCrossings.perOtherShell) {
+                outcome.otherShells.push_back(s);
+                outcome.otherShellCrossings.push_back(n);
+                if (s >= 0) {
+                    crossedShells.insert(s);
+                }
+            }
+            if (keptCrossings.own + keptCrossings.other > 0) {
+                ++result.holesWithCrossings;
+                result.crossingsOwnShell += keptCrossings.own;
+                result.crossingsOtherShells += keptCrossings.other;
+            }
+            added.insert(added.end(), keptReport.added.begin(), keptReport.added.end());
+            newShell.resize(static_cast<std::size_t>(ws.totalFaces() - mesh.numFaces()), outcome.shell);
+            if (outcome.closed) {
+                ++result.holesClosed;
+            } else {
+                ++result.holesFailed;
+                lastFailure = keptReport.status;
+            }
         }
         if (progress != nullptr) {
             progress->store(static_cast<float>(i + 1) / static_cast<float>(holes.size()));
         }
     }
     if (stopToken.stop_requested()) {
-        result.statusMessage = "Cancelled.";
-        return result;
+        HoleBatchResult cancelled;
+        cancelled.mesh = mesh;
+        cancelled.holesBefore = holes.size();
+        cancelled.faceMap = std::move(result.faceMap);
+        cancelled.statusMessage = "Cancelled.";
+        return cancelled;
     }
     std::vector<Eigen::Index> faceOf;
     result.mesh = ws.build(&faceOf);
+    std::copy(faceOf.begin(), faceOf.begin() + mesh.numFaces(), result.faceMap.begin());
     for (const Eigen::Index f : added) {
         if (faceOf[static_cast<std::size_t>(f)] >= 0) {
             result.addedFaces.push_back(faceOf[static_cast<std::size_t>(f)]);
         }
     }
+    result.crossedShells.assign(crossedShells.begin(), crossedShells.end());
     result.facesAdded = result.addedFaces.size();
     result.success = changed;
     result.statusMessage = "Closed " + std::to_string(result.holesClosed) + " of " + std::to_string(result.holesBefore) +
                            (result.holesBefore == 1 ? " hole" : " holes") + " (" + std::to_string(result.facesAdded) + " new faces)";
     if (result.holesSkipped > 0) {
-        result.statusMessage += ", skipped " + std::to_string(result.holesSkipped) + " (too big or not a loop)";
+        result.statusMessage += ", skipped " + std::to_string(result.holesSkipped) +
+                                (scoped ? " (too big, not a loop or outside the scope)" : " (too big or not a loop)");
     }
     if (result.holesFailed > 0) {
         result.statusMessage += ", " + std::to_string(result.holesFailed) + " not closed: " + lastFailure;
     }
     result.statusMessage += ".";
+    if (result.holesWithCrossings > 0) {
+        result.statusMessage += " " + std::to_string(result.holesWithCrossings) +
+                                (result.holesWithCrossings == 1 ? " fill crosses" : " fills cross") + " other faces (" +
+                                std::to_string(result.crossingsOwnShell) + " in their own shell, " +
+                                std::to_string(result.crossingsOtherShells) + " with other shells).";
+    }
     return result;
 }
 

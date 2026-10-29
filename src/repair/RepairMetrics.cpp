@@ -2,6 +2,7 @@
 
 #include "diagnostics/MeshChecks.hpp"
 #include "diagnostics/SelfIntersections.hpp"
+#include "diagnostics/ShellRoles.hpp"
 #include "diagnostics/ThinFaceChecker.hpp"
 
 #include <Eigen/Geometry>
@@ -165,7 +166,18 @@ RepairMetrics computeRepairMetrics(
     m.shellsAfter = checkShells(after, stopToken).infoCount;
     m.openEdgesBefore = checkOpenEdges(before, stopToken).infoCount;
     m.openEdgesAfter = checkOpenEdges(after, stopToken).infoCount;
+    m.nonManifoldEdgesBefore = checkNonManifoldEdges(before, stopToken).size();
     m.nonManifoldEdgesAfter = checkNonManifoldEdges(after, stopToken).size();
+    m.nonManifoldVerticesBefore = checkNonManifoldVertices(before, stopToken).size();
+    m.nonManifoldVerticesAfter = checkNonManifoldVertices(after, stopToken).size();
+    m.flippedFacesBefore = checkFlippedNormals(before, stopToken).size();
+    m.flippedFacesAfter = checkFlippedNormals(after, stopToken).size();
+    m.degenerateFacesBefore = checkDegenerateFaces(before, stopToken).size();
+    m.degenerateFacesAfter = checkDegenerateFaces(after, stopToken).size();
+    m.duplicateFacesBefore = checkDuplicateFaces(before, stopToken).size();
+    m.duplicateFacesAfter = checkDuplicateFaces(after, stopToken).size();
+    m.invertedShellsBefore = checkInvertedShells(before, params, stopToken).size();
+    m.invertedShellsAfter = checkInvertedShells(after, params, stopToken).size();
     m.thinFacesBefore = ThinFaceChecker::check(before, params.thinThresholds).numDefects();
     m.thinFacesAfter = ThinFaceChecker::check(after, params.thinThresholds).numDefects();
     m.intersectingFacesBefore = checkSelfIntersections(before, params, stopToken).size();

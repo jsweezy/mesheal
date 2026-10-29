@@ -14,6 +14,9 @@
 #include <cmath>
 #include <exception>
 #include <limits>
+#include <numeric>
+#include <optional>
+#include <span>
 #include <vector>
 
 namespace ogun {
@@ -46,6 +49,20 @@ bool hasReliableNormal(const Triangle& t) {
 
 bool isLiveFace(const CgalSurfaceMesh& mesh, CgalFaceIndex f) {
     return f != CgalSurfaceMesh::null_face() && mesh.is_valid(f) && !mesh.is_removed(f);
+}
+
+using PinMap = CgalSurfaceMesh::Property_map<CgalVertexIndex, std::uint8_t>;
+using VertexOriginMap = CgalSurfaceMesh::Property_map<CgalVertexIndex, std::int64_t>;
+using FaceOriginMap = CgalSurfaceMesh::Property_map<CgalFaceIndex, std::int64_t>;
+constexpr const char* kVertexOriginProperty = "v:ogun_origin";
+constexpr const char* kFaceOriginProperty = "f:ogun_origin";
+
+std::optional<PinMap> pinMap(const CgalSurfaceMesh& mesh) {
+    return mesh.property_map<CgalVertexIndex, std::uint8_t>(SliverHealer::kPinnedVertexProperty);
+}
+
+bool isPinned(const std::optional<PinMap>& pins, CgalVertexIndex v) {
+    return pins && get(*pins, v) != 0;
 }
 
 std::array<CgalHalfedgeIndex, 3> faceHalfedges(const CgalSurfaceMesh& mesh, CgalFaceIndex f) {
@@ -139,6 +156,9 @@ bool canFlipEdge(
     if (a == o || mesh.halfedge(a, o) != CgalSurfaceMesh::null_halfedge()) {
         return fail("Flipped diagonal already exists; flipping would create a duplicate edge.");
     }
+    if (const std::optional<PinMap> pins = pinMap(mesh); isPinned(pins, s) && isPinned(pins, t)) {
+        return fail("Both ends of the longest edge are pinned (the edge of the scope); it stays as it is.");
+    }
 
     const Eigen::Vector3d ps = pointOf(mesh, s);
     const Eigen::Vector3d pt = pointOf(mesh, t);
@@ -222,22 +242,49 @@ bool collapseEdgeSafely(
         return false;
     }
 
+    // A pinned end stays where it is: only its own position is a candidate
+    const std::optional<PinMap> pins = pinMap(mesh);
+    const bool pinned0 = isPinned(pins, mesh.source(h));
+    const bool pinned1 = isPinned(pins, mesh.target(h));
+    if (pinned0 && pinned1) {
+        status = "Both ends of the edge are pinned (the edge of the scope); it stays as it is.";
+        return false;
+    }
+    const CgalVertexIndex pinnedEnd = pinned0 ? mesh.source(h) : mesh.target(h);
+    const Eigen::Vector3d pinnedPoint = pointOf(mesh, pinnedEnd);
+
     double bestDot = -std::numeric_limits<double>::infinity();
-    std::size_t best = 0;
+    std::size_t best = numCandidates;
     for (std::size_t i = 0; i < numCandidates; ++i) {
+        if ((pinned0 || pinned1) && candidates[i] != pinnedPoint) {
+            continue;
+        }
         const double d = worstNormalDot(mesh, h, candidates[i]);
-        if (d > bestDot + 1.0e-12) {
+        if (best == numCandidates || d > bestDot + 1.0e-12) {
             bestDot = d;
             best = i;
         }
+    }
+    if (best == numCandidates) {
+        status = "The collapse would move a pinned vertex (the edge of the scope).";
+        return false;
     }
     if (!(bestDot > settings.minNormalDot)) {
         status = "Collapse would invert or degenerate neighboring faces.";
         return false;
     }
 
+    // The pinned vertex may be the one CGAL removes: the kept one then takes over its pin and origin
+    const std::optional<VertexOriginMap> origin = mesh.property_map<CgalVertexIndex, std::int64_t>(kVertexOriginProperty);
+    const std::int64_t pinnedOrigin = (pinned0 || pinned1) && origin ? get(*origin, pinnedEnd) : -1;
     const CgalVertexIndex kept = CGAL::Euler::collapse_edge(e, mesh);
     mesh.point(kept) = toCgal(candidates[best]);
+    if (pinned0 || pinned1) {
+        put(*pins, kept, std::uint8_t{1});
+        if (origin) {
+            put(*origin, kept, pinnedOrigin);
+        }
+    }
     return true;
 }
 
@@ -305,6 +352,22 @@ bool removeDegenerateFace(CgalSurfaceMesh& mesh, CgalFaceIndex f, std::string& s
         status = "Removing this face would open a hole in the surface (it has fewer than two border edges).";
         return false;
     }
+    // A pinned vertex used by this face only would go with it
+    if (const std::optional<PinMap> pins = pinMap(mesh)) {
+        for (const CgalHalfedgeIndex h : faceHalfedges(mesh, f)) {
+            const CgalVertexIndex v = mesh.target(h);
+            if (isPinned(pins, v)) {
+                std::size_t faces = 0;
+                for (const CgalFaceIndex g : CGAL::faces_around_target(mesh.halfedge(v), mesh)) {
+                    faces += g != CgalSurfaceMesh::null_face() ? 1 : 0;
+                }
+                if (faces <= 1) {
+                    status = "Removing this face would remove a pinned vertex (the edge of the scope).";
+                    return false;
+                }
+            }
+        }
+    }
     CGAL::Euler::remove_face(mesh.halfedge(f), mesh);
     status = "Removed the dangling degenerate face.";
     return true;
@@ -361,6 +424,122 @@ bool toFaceIndex(const CgalSurfaceMesh& mesh, Eigen::Index faceIndex, CgalFaceIn
     }
     out = CgalFaceIndex(static_cast<CgalSurfaceMesh::size_type>(faceIndex));
     return isLiveFace(mesh, out);
+}
+
+std::vector<Eigen::Index> identityMap(Eigen::Index n) {
+    std::vector<Eigen::Index> map(static_cast<std::size_t>(n));
+    std::iota(map.begin(), map.end(), Eigen::Index{0});
+    return map;
+}
+
+/// Builds the halfedge mesh of a batch repair with origin and pin properties. False (with `status`)
+/// when it cannot be built, or when pins are given but the input had to be read as a polygon soup.
+bool buildTracked(const Mesh& mesh, std::span<const std::uint8_t> pinned, CgalSurfaceMesh& surface, bool& tracked, std::string& status) {
+    if (!pinned.empty() && pinned.size() != static_cast<std::size_t>(mesh.numVertices())) {
+        status = "The pinned-vertex mask does not match the mesh.";
+        return false;
+    }
+    bool soup = false;
+    if (!toCgalSurfaceMesh(mesh, surface, &soup)) {
+        status = "Mesh could not be converted to a halfedge mesh.";
+        return false;
+    }
+    const bool anyPinned = std::any_of(pinned.begin(), pinned.end(), [](std::uint8_t p) { return p != 0; });
+    if (soup && anyPinned) {
+        status = "The mesh could not be read without renumbering its vertices, so pinned vertices cannot be kept: "
+                 "fix its non-manifold edges and flipped faces first.";
+        return false;
+    }
+    tracked = !soup;
+    surface.set_recycle_garbage(false); // new elements get new indices, so their origin stays -1
+    if (tracked) {
+        VertexOriginMap vertexOrigin = surface.add_property_map<CgalVertexIndex, std::int64_t>(kVertexOriginProperty, -1).first;
+        FaceOriginMap faceOrigin = surface.add_property_map<CgalFaceIndex, std::int64_t>(kFaceOriginProperty, -1).first;
+        for (const CgalVertexIndex v : surface.vertices()) {
+            put(vertexOrigin, v, static_cast<std::int64_t>(v.idx()));
+        }
+        for (const CgalFaceIndex f : surface.faces()) {
+            put(faceOrigin, f, static_cast<std::int64_t>(f.idx()));
+        }
+    }
+    if (anyPinned) {
+        PinMap pins = surface.add_property_map<CgalVertexIndex, std::uint8_t>(SliverHealer::kPinnedVertexProperty, 0).first;
+        for (const CgalVertexIndex v : surface.vertices()) {
+            put(pins, v, pinned[v.idx()]);
+        }
+    }
+    return true;
+}
+
+/// The result mesh with the kept faces in input order, then new faces, plus the face and vertex maps.
+void finishTracked(const CgalSurfaceMesh& surface, const Mesh& input, bool tracked, RepairResults& results) {
+    results.mesh = fromCgalSurfaceMesh(surface, input.fileUnit);
+    if (!tracked) {
+        results.faceMap.clear();
+        results.vertexMap.clear();
+        return;
+    }
+    const FaceOriginMap faceOrigin = *surface.property_map<CgalFaceIndex, std::int64_t>(kFaceOriginProperty);
+    const VertexOriginMap vertexOrigin = *surface.property_map<CgalVertexIndex, std::int64_t>(kVertexOriginProperty);
+
+    // `fromCgalSurfaceMesh` writes live faces in index order and used vertices in index order
+    std::vector<std::int64_t> origin;
+    origin.reserve(surface.number_of_faces());
+    std::vector<std::uint8_t> used(surface.num_vertices() + surface.number_of_removed_vertices(), 0);
+    for (const CgalFaceIndex f : surface.faces()) {
+        origin.push_back(get(faceOrigin, f));
+        for (const CgalHalfedgeIndex h : faceHalfedges(surface, f)) {
+            used[surface.target(h).idx()] = 1;
+        }
+    }
+    std::vector<std::size_t> order(origin.size());
+    std::iota(order.begin(), order.end(), std::size_t{0});
+    std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+        const auto key = [&](std::size_t k) { return origin[k] < 0 ? std::numeric_limits<std::int64_t>::max() : origin[k]; };
+        return key(a) < key(b);
+    });
+    Eigen::MatrixXi faces(results.mesh.F.rows(), 3);
+    results.faceMap.assign(static_cast<std::size_t>(input.numFaces()), -1);
+    for (std::size_t k = 0; k < order.size(); ++k) {
+        faces.row(static_cast<Eigen::Index>(k)) = results.mesh.F.row(static_cast<Eigen::Index>(order[k]));
+        const std::int64_t o = origin[order[k]];
+        if (o >= 0 && o < input.numFaces()) {
+            results.faceMap[static_cast<std::size_t>(o)] = static_cast<Eigen::Index>(k);
+        }
+    }
+    results.mesh.F = std::move(faces);
+    results.mesh.recomputeNormals();
+
+    results.vertexMap.assign(static_cast<std::size_t>(input.numVertices()), -1);
+    Eigen::Index next = 0;
+    for (const CgalVertexIndex v : surface.vertices()) {
+        if (used[v.idx()] == 0) {
+            continue;
+        }
+        const std::int64_t o = get(vertexOrigin, v);
+        if (o >= 0 && o < input.numVertices()) {
+            results.vertexMap[static_cast<std::size_t>(o)] = next;
+        }
+        ++next;
+    }
+}
+
+/// The input back, unchanged.
+void leaveUnchanged(const Mesh& mesh, RepairResults& results) {
+    results.mesh = mesh;
+    results.faceMap = identityMap(mesh.numFaces());
+    results.vertexMap = identityMap(mesh.numVertices());
+    results.remainingThinFaces = results.initialThinFaces;
+    results.edgeFlips = 0;
+    results.edgeCollapses = 0;
+    results.facesRemoved = 0;
+    results.success = false;
+}
+
+void cancel(const Mesh& mesh, RepairResults& results) {
+    leaveUnchanged(mesh, results);
+    results.cancelled = true;
+    results.statusMessage = "Cancelled.";
 }
 
 } // namespace
@@ -614,15 +793,19 @@ RepairResults SliverHealer::healFaces(
     const Mesh& mesh,
     const std::vector<Eigen::Index>& faceIndices,
     const ThinFaceThresholds& thresholds,
-    const SliverHealerSettings& settings) {
+    const SliverHealerSettings& settings,
+    const SliverHealOptions& options) {
     RepairResults results;
-    results.mesh = mesh;
     results.initialThinFaces = ThinFaceChecker::check(mesh, thresholds).numDefects();
-    results.remainingThinFaces = results.initialThinFaces;
+    leaveUnchanged(mesh, results);
+    if (options.stopToken.stop_requested()) {
+        cancel(mesh, results);
+        return results;
+    }
 
     CgalSurfaceMesh surface;
-    if (!toCgalSurfaceMesh(mesh, surface)) {
-        results.statusMessage = "Mesh could not be converted to a halfedge mesh.";
+    bool tracked = false;
+    if (!buildTracked(mesh, options.pinnedVertices, surface, tracked, results.statusMessage)) {
         return results;
     }
 
@@ -638,6 +821,10 @@ RepairResults SliverHealer::healFaces(
 
     std::size_t healed = 0;
     for (const CgalFaceIndex f : faces) {
+        if (options.stopToken.stop_requested()) {
+            cancel(mesh, results);
+            return results;
+        }
         if (!isLiveFace(surface, f)) {
             continue;
         }
@@ -655,11 +842,12 @@ RepairResults SliverHealer::healFaces(
     }
 
     if (healed == 0) {
+        leaveUnchanged(mesh, results);
         results.statusMessage = "None of the " + std::to_string(faces.size()) + " selected faces could be repaired safely.";
         return results;
     }
     surface.collect_garbage();
-    results.mesh = fromCgalSurfaceMesh(surface, mesh.fileUnit);
+    finishTracked(surface, mesh, tracked, results);
     results.remainingThinFaces = ThinFaceChecker::check(results.mesh, thresholds).numDefects();
     results.success = true;
     results.statusMessage = "Repaired " + std::to_string(healed) + " of " + std::to_string(faces.size()) +
@@ -670,15 +858,20 @@ RepairResults SliverHealer::healFaces(
 RepairResults SliverHealer::healAllThinFaces(
     const Mesh& mesh,
     const ThinFaceThresholds& thresholds,
-    const SliverHealerSettings& settings) {
+    const SliverHealerSettings& settings,
+    const SliverHealOptions& options) {
     RepairResults results;
-    results.mesh = mesh;
     results.initialThinFaces = ThinFaceChecker::check(mesh, thresholds).numDefects();
-    results.remainingThinFaces = results.initialThinFaces;
+    leaveUnchanged(mesh, results);
+    const std::stop_token& stop = options.stopToken;
+    if (stop.stop_requested()) {
+        cancel(mesh, results);
+        return results;
+    }
 
     CgalSurfaceMesh surface;
-    if (!toCgalSurfaceMesh(mesh, surface)) {
-        results.statusMessage = "Mesh could not be converted to a halfedge mesh.";
+    bool tracked = false;
+    if (!buildTracked(mesh, options.pinnedVertices, surface, tracked, results.statusMessage)) {
         return results;
     }
 
@@ -687,6 +880,10 @@ RepairResults SliverHealer::healAllThinFaces(
 
         // Pass 1: flip coplanar caps and remove dangling flaps.
         for (const CgalFaceIndex f : collectThinFaces(surface, thresholds)) {
+            if (stop.stop_requested()) {
+                cancel(mesh, results);
+                return results;
+            }
             if (!isLiveFace(surface, f)) {
                 continue;
             }
@@ -701,6 +898,10 @@ RepairResults SliverHealer::healAllThinFaces(
 
         // Pass 2: collapse needles, creased caps and microscopic faces (with fallbacks).
         for (const CgalFaceIndex f : collectThinFaces(surface, thresholds)) {
+            if (stop.stop_requested()) {
+                cancel(mesh, results);
+                return results;
+            }
             if (!isLiveFace(surface, f)) {
                 continue;
             }
@@ -722,29 +923,77 @@ RepairResults SliverHealer::healAllThinFaces(
             break;
         }
     }
+    if (stop.stop_requested()) {
+        cancel(mesh, results);
+        return results;
+    }
 
-    // Pass 3: CGAL cleanup of whatever the local operators could not heal, protecting sharp creases.
+    // Pass 3: CGAL cleanup of whatever the local operators could not heal, protecting sharp creases
+    // (and pinned vertices, and edges between two of them).
     surface.collect_garbage();
     const std::vector<CgalFaceIndex> remaining = collectThinFaces(surface, thresholds);
     if (!remaining.empty()) {
+        const std::optional<PinMap> pins = pinMap(surface);
+        std::optional<CgalSurfaceMesh> beforeCleanup;
+        if (pins) {
+            beforeCleanup = surface;
+        }
         auto creaseMap = surface.add_property_map<CgalEdgeIndex, bool>("e:ogun_crease", false).first;
         PMP::detect_sharp_edges(surface, settings.creaseAngleDeg, creaseMap);
+        bool cleanupFailed = false;
         try {
-            PMP::remove_almost_degenerate_faces(
-                remaining,
-                surface,
-                CGAL::parameters::cap_threshold(std::cos(settings.capAngleDeg * kDegToRad))
-                    .needle_threshold(1.0 / settings.needleEdgeRatio)
-                    .edge_is_constrained_map(creaseMap));
+            if (pins) {
+                for (const CgalEdgeIndex e : surface.edges()) {
+                    const CgalHalfedgeIndex h = surface.halfedge(e);
+                    if (isPinned(pins, surface.source(h)) && isPinned(pins, surface.target(h))) {
+                        put(creaseMap, e, true);
+                    }
+                }
+                PMP::remove_almost_degenerate_faces(
+                    remaining,
+                    surface,
+                    CGAL::parameters::cap_threshold(std::cos(settings.capAngleDeg * kDegToRad))
+                        .needle_threshold(1.0 / settings.needleEdgeRatio)
+                        .edge_is_constrained_map(creaseMap)
+                        .vertex_is_constrained_map(*pins));
+            } else {
+                PMP::remove_almost_degenerate_faces(
+                    remaining,
+                    surface,
+                    CGAL::parameters::cap_threshold(std::cos(settings.capAngleDeg * kDegToRad))
+                        .needle_threshold(1.0 / settings.needleEdgeRatio)
+                        .edge_is_constrained_map(creaseMap));
+            }
         } catch (const std::exception&) {
-            // Leave the mesh as healed by passes 1-2.
+            cleanupFailed = true; // leave the mesh as healed by passes 1-2
         }
         surface.remove_property_map(creaseMap);
+
+        // CGAL keeps a constrained vertex but may not promise its position: undo the pass if one moved
+        if (pins && !cleanupFailed) {
+            const VertexOriginMap origin = *surface.property_map<CgalVertexIndex, std::int64_t>(kVertexOriginProperty);
+            const PinMap after = *pinMap(surface);
+            std::size_t pinnedLeft = 0;
+            bool moved = false;
+            for (const CgalVertexIndex v : surface.vertices()) {
+                if (get(after, v) == 0) {
+                    continue;
+                }
+                ++pinnedLeft;
+                const std::int64_t o = get(origin, v);
+                moved = moved || o < 0 || pointOf(surface, v) != Eigen::Vector3d(mesh.V.row(static_cast<Eigen::Index>(o)).transpose());
+            }
+            const auto pinnedBefore = static_cast<std::size_t>(
+                std::count_if(options.pinnedVertices.begin(), options.pinnedVertices.end(), [](std::uint8_t p) { return p != 0; }));
+            if (moved || pinnedLeft < pinnedBefore) {
+                surface = std::move(*beforeCleanup);
+            }
+        }
         surface.collect_garbage();
         results.usedPmpCleanup = true;
     }
 
-    results.mesh = fromCgalSurfaceMesh(surface, mesh.fileUnit);
+    finishTracked(surface, mesh, tracked, results);
     results.remainingThinFaces = ThinFaceChecker::check(results.mesh, thresholds).numDefects();
     results.success = results.remainingThinFaces < results.initialThinFaces || results.initialThinFaces == 0;
     results.statusMessage = "Healed " + std::to_string(results.initialThinFaces - std::min(results.initialThinFaces, results.remainingThinFaces)) +

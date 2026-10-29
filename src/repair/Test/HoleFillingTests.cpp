@@ -18,12 +18,17 @@
 
 #include <Eigen/Geometry>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <limits>
 #include <numbers>
+#include <span>
 #include <stdexcept>
+#include <stop_token>
 #include <vector>
 
 namespace {
@@ -692,5 +697,229 @@ TEST_CASE("Repair All Holes on the bunny", "[.holes-timing]") {
                                                    << ", open " << c.metrics.openEdgesAfter << ", dV " << c.metrics.volumeChangePercent()
                                                    << "%, max dev " << c.metrics.maxDeviation << ", lost " << c.metrics.maxLost
                                                    << ", unchanged " << c.metrics.unchangedFraction << ", faces " << c.metrics.facesAfter);
+    }
+}
+
+namespace {
+
+ogun::HoleBatchResult fillWithPolicy(const ogun::Mesh& mesh, ogun::HoleCrossingPolicy policy, std::span<const std::uint8_t> scope = {}) {
+    ogun::HoleBatchOptions options;
+    options.crossingPolicy = policy;
+    options.faceInScope = scope;
+    const std::vector<ogun::HoleLoop> holes = ogun::findHoleLoops(mesh);
+    return ogun::fillHoles(mesh, holes, ogun::HoleFillMethod::None, ogun::HoleFillSettings{}, options);
+}
+
+/// Every input face the map keeps has the same corners in the result, and the new faces come last.
+void requireFaceMapKeepsGeometry(const ogun::Mesh& before, const ogun::HoleBatchResult& r) {
+    REQUIRE(r.faceMap.size() == static_cast<std::size_t>(before.numFaces()));
+    Eigen::Index kept = 0;
+    for (Eigen::Index f = 0; f < before.numFaces(); ++f) {
+        const Eigen::Index g = r.faceMap[static_cast<std::size_t>(f)];
+        if (g < 0) {
+            continue;
+        }
+        REQUIRE(g == kept++);
+        REQUIRE(ogun::faceGeometryKey(before, f) == ogun::faceGeometryKey(r.mesh, g));
+    }
+    for (const Eigen::Index f : r.addedFaces) {
+        REQUIRE(f >= kept);
+    }
+}
+
+} // namespace
+
+TEST_CASE("The cup with a post: the batch keeps the first fill that crosses nothing", "[repair][holes][crossings]") {
+    const ogun::Mesh cup = ogun::SampleMeshes::createCupWithPostMesh();
+    const std::vector<ogun::HoleLoop> holes = ogun::findHoleLoops(cup);
+    REQUIRE(holes.size() == 1);
+    REQUIRE(holes.front().shape == ogun::HoleShape::Curved); // the rim faces slope at 45 degrees
+    REQUIRE(ogun::checkShells(cup).infoCount == 1);
+    REQUIRE(ogun::checkSelfIntersections(cup, ogun::CheckParams{}).empty());
+    REQUIRE(ogun::fillHole(cup, holes.front(), ogun::HoleFillMethod::Smooth).newCrossings > 0); // it sags onto the post
+    REQUIRE(ogun::fillHole(cup, holes.front(), ogun::HoleFillMethod::Flat).newCrossings == 0);
+
+    // Today's batch (no crossing test) keeps the recommended Smooth fill and its crossings
+    const ogun::HoleBatchResult plain = fillWithPolicy(cup, ogun::HoleCrossingPolicy::IgnoreCrossings);
+    REQUIRE_FALSE(plain.crossingsTested);
+    REQUIRE(plain.outcomes.size() == 1);
+    REQUIRE(plain.outcomes.front().method == ogun::HoleFillMethod::Smooth);
+    REQUIRE(plain.outcomes.front().attempts.size() == 1);
+    REQUIRE_FALSE(ogun::checkSelfIntersections(plain.mesh, ogun::CheckParams{}).empty());
+    REQUIRE(plain.mesh.F == ogun::fillHoles(cup, holes).mesh.F); // the old overload is the same call
+
+    // Both crossing policies try Smooth (crosses the post), then Refine: flat like Fill Flat, so it crosses nothing
+    for (const ogun::HoleCrossingPolicy policy :
+         {ogun::HoleCrossingPolicy::NeverCommitCrossing, ogun::HoleCrossingPolicy::AlwaysFillFewestCrossings}) {
+        const ogun::HoleBatchResult r = fillWithPolicy(cup, policy);
+        REQUIRE(r.crossingsTested);
+        REQUIRE(r.holesClosed == 1);
+        const ogun::HoleFillOutcome& o = r.outcomes.front();
+        REQUIRE(o.shell == 0);
+        REQUIRE(o.attempts.size() == 2);
+        REQUIRE(o.attempts[0].method == ogun::HoleFillMethod::Smooth);
+        REQUIRE(o.attempts[0].crossingsOwnShell > 0);
+        REQUIRE(o.attempts[0].crossingsOtherShells == 0);
+        REQUIRE(o.attempts[1].method == ogun::HoleFillMethod::Refine);
+        REQUIRE(o.method == ogun::HoleFillMethod::Refine);
+        REQUIRE(o.closed);
+        REQUIRE(o.crossingsOwnShell + o.crossingsOtherShells == 0);
+        REQUIRE(r.holesWithCrossings == 0);
+        REQUIRE(watertight(r.mesh));
+        REQUIRE(ogun::checkSelfIntersections(r.mesh, ogun::CheckParams{}).empty());
+        REQUIRE(ogun::signedVolume(r.mesh) > 0.0);
+        REQUIRE(r.mesh.V.col(2).maxCoeff() == 10.0); // nothing above the cup's top
+        requireFaceMapKeepsGeometry(cup, r);
+    }
+}
+
+TEST_CASE("A post through the opening: every fill crosses the hole's own shell", "[repair][holes][crossings]") {
+    const ogun::Mesh cup = ogun::SampleMeshes::createCupWithPostMesh(ogun::SampleMeshes::CupPost::ThroughOpening);
+
+    // Always fill: the fill with the fewest crossings is kept, with them listed as its own shell's
+    const ogun::HoleBatchResult r = fillWithPolicy(cup, ogun::HoleCrossingPolicy::AlwaysFillFewestCrossings);
+    REQUIRE(r.success);
+    REQUIRE(r.holesClosed == 1);
+    const ogun::HoleFillOutcome& o = r.outcomes.front();
+    REQUIRE(o.attempts.size() == 3); // Smooth, Refine, Flat: all cross
+    std::size_t fewest = std::numeric_limits<std::size_t>::max();
+    for (const ogun::HoleFillAttempt& a : o.attempts) {
+        REQUIRE(a.closed);
+        REQUIRE(a.crossingsOwnShell > 0);
+        REQUIRE(a.crossingsOtherShells == 0);
+        fewest = std::min(fewest, a.crossingsOwnShell);
+    }
+    REQUIRE(o.method == ogun::HoleFillMethod::Flat);
+    REQUIRE(o.crossingsOwnShell == fewest);
+    REQUIRE(o.crossingsOtherShells == 0);
+    REQUIRE(o.otherShells.empty());
+    REQUIRE(r.holesWithCrossings == 1);
+    REQUIRE(r.crossingsOwnShell == fewest);
+    REQUIRE(r.crossedShells.empty());
+    REQUIRE(watertight(r.mesh));
+    REQUIRE_FALSE(ogun::checkSelfIntersections(r.mesh, ogun::CheckParams{}).empty()); // left for the island step
+    REQUIRE(r.statusMessage.find("1 fill crosses other faces") != std::string::npos);
+    requireFaceMapKeepsGeometry(cup, r);
+
+    // Never commit a crossing: the hole stays open, the mesh is the input
+    const ogun::HoleBatchResult never = fillWithPolicy(cup, ogun::HoleCrossingPolicy::NeverCommitCrossing);
+    REQUIRE_FALSE(never.success);
+    REQUIRE(never.holesFailed == 1);
+    REQUIRE(never.outcomes.front().method == ogun::HoleFillMethod::None);
+    REQUIRE(never.outcomes.front().attempts.size() == 3);
+    REQUIRE(never.outcomes.front().status.find("crosses") != std::string::npos);
+    REQUIRE(never.mesh.F == cup.F);
+    REQUIRE(never.mesh.V == cup.V);
+}
+
+TEST_CASE("A hole whose every fill crosses another shell is filled, and the shell is named", "[repair][holes][crossings]") {
+    const ogun::Mesh cup = ogun::SampleMeshes::createCupWithPostMesh(ogun::SampleMeshes::CupPost::RodThroughOpening);
+    REQUIRE(ogun::checkShells(cup).infoCount == 2);
+    REQUIRE(ogun::checkSelfIntersections(cup, ogun::CheckParams{}).empty()); // the rod touches nothing
+
+    const ogun::HoleBatchResult r = fillWithPolicy(cup, ogun::HoleCrossingPolicy::AlwaysFillFewestCrossings);
+    REQUIRE(r.holesClosed == 1);
+    const ogun::HoleFillOutcome& o = r.outcomes.front();
+    REQUIRE(o.shell == 0);                                   // the cup: #1
+    REQUIRE(o.attempts.size() == 3);
+    REQUIRE(o.crossingsOwnShell == 0);
+    REQUIRE(o.crossingsOtherShells > 0);
+    REQUIRE(o.otherShells == std::vector<int>{1});           // the rod: #2
+    REQUIRE(o.otherShellCrossings == std::vector<std::size_t>{o.crossingsOtherShells});
+    REQUIRE(r.crossedShells == std::vector<int>{1});
+    REQUIRE(r.crossingsOtherShells == o.crossingsOtherShells);
+    REQUIRE(watertight(r.mesh));
+
+    // Never commit: open as before; no crossing test: today's Smooth fill
+    const ogun::HoleBatchResult never = fillWithPolicy(cup, ogun::HoleCrossingPolicy::NeverCommitCrossing);
+    REQUIRE(never.holesFailed == 1);
+    REQUIRE(never.mesh.F == cup.F);
+    const ogun::HoleBatchResult plain = fillWithPolicy(cup, ogun::HoleCrossingPolicy::IgnoreCrossings);
+    REQUIRE(plain.outcomes.front().method == ogun::HoleFillMethod::Smooth);
+    REQUIRE(plain.outcomes.front().otherShells.empty());
+}
+
+TEST_CASE("The batch fill leaves faces outside its scope bit-identical", "[repair][holes][crossings]") {
+    const ogun::Mesh sample = ogun::separateTouchingContacts(ogun::SampleMeshes::createHolesSampleMesh());
+    const std::vector<ogun::HoleLoop> holes = ogun::findHoleLoops(sample);
+    REQUIRE(holes.size() == 4);
+
+    // Scope = the sphere: its hole is filled, the other three are skipped as outside the scope
+    std::vector<std::uint8_t> sphere(static_cast<std::size_t>(sample.numFaces()), 0);
+    for (Eigen::Index f = 0; f < sample.numFaces(); ++f) {
+        sphere[static_cast<std::size_t>(f)] = sample.V(sample.F(f, 0), 0) > 11.0 && sample.V(sample.F(f, 0), 0) < 17.0 ? 1 : 0;
+    }
+    for (const ogun::HoleCrossingPolicy policy :
+         {ogun::HoleCrossingPolicy::IgnoreCrossings, ogun::HoleCrossingPolicy::AlwaysFillFewestCrossings}) {
+        const ogun::HoleBatchResult r = fillWithPolicy(sample, policy, sphere);
+        REQUIRE(r.holesClosed == 1);
+        REQUIRE(r.holesSkipped == 3);
+        std::size_t outOfScope = 0;
+        for (const ogun::HoleFillOutcome& o : r.outcomes) {
+            outOfScope += o.skipped == ogun::HoleSkipReason::OutOfScope ? 1 : 0;
+        }
+        REQUIRE(outOfScope == 3);
+        REQUIRE(ogun::checkOpenEdges(r.mesh).infoCount == 6 + 8 + 24);
+        requireFaceMapKeepsGeometry(sample, r);
+    }
+
+    // Scope = only the crack's rim faces: Close Crack would move vertices of faces outside it, so it is not used
+    const auto crack = std::find_if(holes.begin(), holes.end(), [](const ogun::HoleLoop& h) { return h.shape == ogun::HoleShape::Crack; });
+    REQUIRE(crack != holes.end());
+    std::vector<std::uint8_t> rim(static_cast<std::size_t>(sample.numFaces()), 0);
+    for (const Eigen::Index f : crack->faces) {
+        rim[static_cast<std::size_t>(f)] = 1;
+    }
+    const ogun::HoleBatchResult r = fillWithPolicy(sample, ogun::HoleCrossingPolicy::AlwaysFillFewestCrossings, rim);
+    const ogun::HoleFillOutcome& o = r.outcomes[static_cast<std::size_t>(crack - holes.begin())];
+    REQUIRE(o.method == ogun::HoleFillMethod::None);
+    REQUIRE(o.attempts.front().method == ogun::HoleFillMethod::CloseCrack);
+    REQUIRE(o.attempts.front().status == "It would change faces outside the scope.");
+    REQUIRE(r.mesh.V == sample.V);
+    REQUIRE(r.mesh.F == sample.F);
+
+    // A scope of the wrong size changes nothing
+    const std::vector<std::uint8_t> wrong(3, 1);
+    const ogun::HoleBatchResult bad = fillWithPolicy(sample, ogun::HoleCrossingPolicy::IgnoreCrossings, wrong);
+    REQUIRE_FALSE(bad.success);
+    REQUIRE(bad.mesh.F == sample.F);
+}
+
+TEST_CASE("A cancelled batch fill returns the input", "[repair][holes][crossings]") {
+    const ogun::Mesh cup = ogun::SampleMeshes::createCupWithPostMesh(ogun::SampleMeshes::CupPost::ThroughOpening);
+    const std::vector<ogun::HoleLoop> holes = ogun::findHoleLoops(cup);
+    std::stop_source stop;
+    stop.request_stop();
+    ogun::HoleBatchOptions options;
+    options.crossingPolicy = ogun::HoleCrossingPolicy::AlwaysFillFewestCrossings;
+    const ogun::HoleBatchResult r = ogun::fillHoles(cup, holes, ogun::HoleFillMethod::None, {}, options, stop.get_token());
+    REQUIRE_FALSE(r.success);
+    REQUIRE(r.statusMessage == "Cancelled.");
+    REQUIRE(r.mesh.F == cup.F);
+    REQUIRE(r.mesh.V == cup.V);
+}
+
+TEST_CASE("The bunny's holes fill the same way under the always-fill policy", "[repair][holes][crossings]") {
+    const ogun::Mesh bunny = ogun::loadStl(examplePath("stanford_bunny.stl"));
+    const ogun::HoleBatchResult plain = fillWithPolicy(bunny, ogun::HoleCrossingPolicy::IgnoreCrossings);
+    const ogun::HoleBatchResult always = fillWithPolicy(bunny, ogun::HoleCrossingPolicy::AlwaysFillFewestCrossings);
+    REQUIRE(always.holesClosed == 5);
+    for (const ogun::HoleFillOutcome& o : always.outcomes) {
+        REQUIRE(o.attempts.size() == 1); // the recommended fill crosses nothing
+        REQUIRE(o.crossingsOwnShell + o.crossingsOtherShells == 0);
+    }
+    REQUIRE(always.mesh.F == plain.mesh.F);
+    REQUIRE(always.mesh.V == plain.mesh.V);
+    requireFaceMapKeepsGeometry(bunny, always);
+}
+
+TEST_CASE("Batch fill crossing policy timings on the bunny", "[.benchmark]") {
+    const ogun::Mesh bunny = ogun::loadStl(examplePath("stanford_bunny.stl"));
+    for (const ogun::HoleCrossingPolicy policy :
+         {ogun::HoleCrossingPolicy::IgnoreCrossings, ogun::HoleCrossingPolicy::AlwaysFillFewestCrossings}) {
+        const auto start = std::chrono::steady_clock::now();
+        const ogun::HoleBatchResult r = fillWithPolicy(bunny, policy);
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        WARN("policy " << static_cast<int>(policy) << ": " << ms << " ms, closed " << r.holesClosed);
     }
 }

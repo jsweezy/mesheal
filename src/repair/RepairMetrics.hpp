@@ -31,7 +31,18 @@ struct RepairMetrics {
     std::size_t thinFacesAfter = 0;
     std::size_t openEdgesBefore = 0;
     std::size_t openEdgesAfter = 0;
+    std::size_t nonManifoldEdgesBefore = 0;
     std::size_t nonManifoldEdgesAfter = 0;
+    std::size_t nonManifoldVerticesBefore = 0;
+    std::size_t nonManifoldVerticesAfter = 0;
+    std::size_t flippedFacesBefore = 0;      ///< Faces wound against their shell's majority
+    std::size_t flippedFacesAfter = 0;
+    std::size_t invertedShellsBefore = 0;    ///< Inside-out closed shells (rule O, as the Inverted shells row)
+    std::size_t invertedShellsAfter = 0;
+    std::size_t degenerateFacesBefore = 0;   ///< Repeated vertex or no reliable normal
+    std::size_t degenerateFacesAfter = 0;
+    std::size_t duplicateFacesBefore = 0;
+    std::size_t duplicateFacesAfter = 0;
     double unchangedFraction = 0.0;  ///< Share of original faces that survive bit-identical
     double elapsedMs = 0.0;          ///< Run time of the repair itself (not of the metrics)
 

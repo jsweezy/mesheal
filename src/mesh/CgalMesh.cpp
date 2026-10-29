@@ -44,8 +44,11 @@ bool buildDirect(const Mesh& mesh, CgalSurfaceMesh& out) {
 
 } // namespace
 
-bool toCgalSurfaceMesh(const Mesh& mesh, CgalSurfaceMesh& outSurfaceMesh) {
+bool toCgalSurfaceMesh(const Mesh& mesh, CgalSurfaceMesh& outSurfaceMesh, bool* usedSoupFallback) {
     outSurfaceMesh.clear();
+    if (usedSoupFallback != nullptr) {
+        *usedSoupFallback = false;
+    }
     if (mesh.empty()) {
         return false;
     }
@@ -59,6 +62,9 @@ bool toCgalSurfaceMesh(const Mesh& mesh, CgalSurfaceMesh& outSurfaceMesh) {
 
     // Non-manifold or inconsistently wound input: repair as a polygon soup.
     outSurfaceMesh.clear();
+    if (usedSoupFallback != nullptr) {
+        *usedSoupFallback = true;
+    }
     std::vector<CgalPoint3> points;
     points.reserve(static_cast<std::size_t>(mesh.numVertices()));
     for (Eigen::Index i = 0; i < mesh.numVertices(); ++i) {

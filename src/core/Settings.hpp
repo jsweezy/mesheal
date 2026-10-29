@@ -106,6 +106,8 @@ inline constexpr std::size_t kDefaultMaxHolePatchFaces = 50000; // Refine / Smoo
 inline constexpr double kDefaultCrackSnapFactor       = 3.0;    // Close Crack: vertices move at most this many mean gap widths (a wedge is 2x its mean)
 inline constexpr double kMinCrackSnapEdgeShare        = 1.0e-3; // Close Crack: ... but at least this share of the mean rim edge (zero-width T-junctions)
 inline constexpr std::size_t kMaxCubicHoleFillEdges   = 400;    // Fill Flat / Refine / Smooth: bigger holes skip CGAL's O(n^3) fallback search (n = 600 takes ~1 s)
+inline constexpr int    kHoleCrossingGridMaxCellsPerAxis = 128;  // Batch fill crossing test: at most this many grid cells per axis for the faces near a patch
+inline constexpr int    kHoleCrossingGridMaxCellsPerFace = 64;   // Batch fill crossing test: a face over more cells than this is tested against every patch instead
 
 // -----------------------------------------------------------------------------
 // Mesh Health Checks & Large Defect Counts

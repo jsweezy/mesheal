@@ -21,8 +21,9 @@ using CgalFaceIndex = CgalSurfaceMesh::Face_index;
 
 /// Builds a halfedge mesh from `mesh`. Vertices and faces keep their indices when the
 /// input is 2-manifold; otherwise falls back to polygon-soup orientation/repair.
-/// Returns false if `mesh` is empty or the conversion fails.
-bool toCgalSurfaceMesh(const Mesh& mesh, CgalSurfaceMesh& outSurfaceMesh);
+/// Returns false if `mesh` is empty or the conversion fails. `usedSoupFallback` (optional) tells
+/// whether the soup path ran (then indices are not kept).
+bool toCgalSurfaceMesh(const Mesh& mesh, CgalSurfaceMesh& outSurfaceMesh, bool* usedSoupFallback = nullptr);
 
 /// Converts `surfaceMesh` into a contiguous `Mesh` (lazily deleted elements are skipped,
 /// so `collect_garbage()` is not required). Each vertex is displaced along its vertex

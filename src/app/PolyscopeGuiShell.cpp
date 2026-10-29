@@ -39,7 +39,7 @@ struct ShapeSample {
     Mesh (*make)(Unit unit);
 };
 
-constexpr std::array<ShapeSample, 12> kShapeSamples = {{
+constexpr std::array<ShapeSample, 13> kShapeSamples = {{
     {"Box with cavity, hole, slivers, and intersections",
      "Loaded a gridded box with a cavity, a hole, slivers, a fold and a peg through its side.",
      "A gridded box with a hollow inside (a cavity), a missing square (a hole), three thin faces, a top vertex "
@@ -86,6 +86,12 @@ constexpr std::array<ShapeSample, 12> kShapeSamples = {{
      "A cube [10, 20]^3 cut across at x = 15 into two open halves, the right half 0.000005 further right: a crack "
      "too wide for the weld done when loading (1.5e-8 there) but within Fix All's weld (1.5e-5 there).",
      [](Unit unit) { return SampleMeshes::createWeldSeamCubeMesh(5.0e-6, Eigen::Vector3d::Zero(), 1.0, unit); }},
+    {"Cup with a post",
+     "Loaded a cup with an open top and a post rising inside it to just below the opening: 1 shell, 1 hole.",
+     "A round cup whose lip slopes down into a round opening (a 32-edge hole), with a post pushed up from its "
+     "bottom to just below the opening. Fill Smooth follows the lip down and runs into the post; a flat fill "
+     "crosses nothing.",
+     [](Unit unit) { return SampleMeshes::createCupWithPostMesh(SampleMeshes::CupPost::BelowOpening, unit); }},
 }};
 
 /// Menu item for a feature planned in a later phase: drawn disabled with a tooltip.

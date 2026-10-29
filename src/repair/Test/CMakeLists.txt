@@ -4,6 +4,7 @@ add_executable(ogun_repair_tests
     MeshCleanupTests.cpp
     NonManifoldSplitTests.cpp
     OrientationTests.cpp
+    RepairMetricsTests.cpp
     ShellMergeTests.cpp
     SliverHealerTests.cpp
     TopologyCleanupTests.cpp

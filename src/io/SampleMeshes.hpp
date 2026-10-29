@@ -213,6 +213,23 @@ struct SampleMeshes {
         double scale = 1.0,
         Unit unit = Unit::Millimeter);
 
+    /// What stands inside the cup of `createCupWithPostMesh`.
+    enum class CupPost {
+        BelowOpening,      ///< A post of the cup's own surface rising to 0.5 below the opening
+        ThroughOpening,    ///< ... rising 1 above the opening: every fill of the opening crosses it
+        RodThroughOpening  ///< A low post, plus a separate box rod standing through the opening (a second shell)
+    };
+
+    /// A round cup (32 segments) made by turning a profile about the z axis: an outer wall of radius 5
+    /// from z = 0 to 10, a lip sloping down and in to the opening (radius 3 at z = 8, a 32-edge hole whose
+    /// rim faces slope at 45 degrees, so it is Curved and Fill Smooth is recommended), a bottom and a post
+    /// of radius 1 pushed up from the bottom (the same surface, so the same shell). Fill Smooth follows
+    /// the lip down into the cup; Fill Flat stays at z = 8. BelowOpening: the post's top is at 7.5, so
+    /// Smooth crosses it and Flat does not. ThroughOpening: the post's top is at 9. RodThroughOpening: the
+    /// post's top is at 2 and the box [-0.5, 0.5]^2 x [4, 12] stands through the opening, touching nothing.
+    /// File > Load Sample > "Cup with a post".
+    [[nodiscard]] static Mesh createCupWithPostMesh(CupPost post = CupPost::BelowOpening, Unit unit = Unit::Millimeter);
+
     /// Generates a clean 12-triangle cube mesh injected with 3 known defective triangles:
     ///   - Face 12 (`kZeroAreaFaceIndex`): collinear zero-area triangle (A = 0, h_min = 0)
     ///   - Face 13 (`kMicroscopicFaceIndex`): microscopic-area triangle (A = 5e-9, h_min ~ 7.07e-5; well

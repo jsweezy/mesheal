@@ -9,7 +9,10 @@
 #include <Eigen/Core>
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
+#include <span>
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -98,6 +101,22 @@ struct RepairResults {
 
     std::size_t initialThinFaces = 0;
     std::size_t remainingThinFaces = 0;
+
+    bool cancelled = false;  ///< Stopped through the stop token (`mesh` is the input)
+    /// Batch repairs: input face -> face of `mesh` (-1 removed; a flipped face keeps its entry), new faces
+    /// come after the kept ones. Input vertex -> vertex of `mesh` (-1 removed; a vertex collapsed into a
+    /// pinned one hands it its entry). Identity when nothing changed; empty when the input had to be read
+    /// as a polygon soup (indices not kept).
+    std::vector<Eigen::Index> faceMap;
+    std::vector<Eigen::Index> vertexMap;
+};
+
+/// Run controls of the batch repairs.
+struct SliverHealOptions {
+    std::stop_token stopToken;
+    /// One flag per input vertex (empty = none). A pinned vertex never moves and is never removed; an edge
+    /// between two pinned vertices is never flipped or collapsed (so a face scope's border stays put).
+    std::span<const std::uint8_t> pinnedVertices;
 };
 
 /// CGAL-powered thin / sliver face classification and repair.
@@ -118,7 +137,8 @@ public:
         const SliverHealerSettings& settings = {});
 
     /// Applies `action` to `face` in place. Returns false (leaving `mesh` unchanged) if the action is
-    /// unsafe (border, link condition, crease, non-convex quad or normal inversion); `statusOut` explains why.
+    /// unsafe (border, link condition, crease, non-convex quad, normal inversion or a pinned vertex, see
+    /// `SliverHealOptions`; pins are read from the vertex property `kPinnedVertexProperty`); `statusOut` explains why.
     static bool applyHealAction(
         CgalSurfaceMesh& mesh,
         CgalFaceIndex face,
@@ -157,7 +177,8 @@ public:
         const Mesh& mesh,
         const std::vector<Eigen::Index>& faceIndices,
         const ThinFaceThresholds& thresholds = {},
-        const SliverHealerSettings& settings = {});
+        const SliverHealerSettings& settings = {},
+        const SliverHealOptions& options = {});
 
     /// Batch repair: (1) flip coplanar caps and remove dangling flaps, (2) collapse needles,
     /// creased caps and microscopic faces, repeated until convergence, then (3) a
@@ -165,7 +186,11 @@ public:
     [[nodiscard]] static RepairResults healAllThinFaces(
         const Mesh& mesh,
         const ThinFaceThresholds& thresholds = {},
-        const SliverHealerSettings& settings = {});
+        const SliverHealerSettings& settings = {},
+        const SliverHealOptions& options = {});
+
+    /// Name of the per-vertex `std::uint8_t` property (1 = pinned) that `applyHealAction` honours.
+    static constexpr const char* kPinnedVertexProperty = "v:ogun_pinned";
 };
 
 } // namespace ogun

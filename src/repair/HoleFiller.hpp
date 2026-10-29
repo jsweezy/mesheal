@@ -10,6 +10,7 @@
 #include <array>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <stop_token>
 #include <string>
@@ -105,18 +106,79 @@ struct HoleFillPreview {
     const CheckParams& params = {},
     const HoleFillSettings& settings = {});
 
-/// Batch fill (Fix Selected, Repair All "Fill each hole"). Each hole gets `method`, or its recommended
-/// method when `method` is None; holes over `settings.maxHoleEdges` and open chains are skipped.
+/// What the batch fill does when a fill crosses other faces (a crossing = a new face and another face
+/// that the intersection check reports as a pair).
+enum class HoleCrossingPolicy {
+    IgnoreCrossings,           ///< One fill per hole, crossings not tested (Fix Selected, Repair All "Fill each hole")
+    NeverCommitCrossing,       ///< Try the fill chain; keep the first fill that crosses nothing, else leave the hole open
+    AlwaysFillFewestCrossings  ///< Try the fill chain; keep the first fill that crosses nothing, else the one that crosses least (Fix All)
+};
+
+/// Options of the batch fill beyond the per-hole settings.
+struct HoleBatchOptions {
+    HoleCrossingPolicy crossingPolicy = HoleCrossingPolicy::IgnoreCrossings;
+    CheckParams checkParams{};                 ///< Intersection tolerance of the crossing test (x the mesh's bbox diagonal)
+    std::span<const std::uint8_t> faceInScope; ///< One flag per input face; empty = every face. Faces outside stay bit-identical
+};
+
+/// Why the batch did not try to fill a hole.
+enum class HoleSkipReason : std::uint8_t {
+    None,
+    OpenChain,  ///< The open edges do not form a closed loop
+    TooBig,     ///< More rim edges than `HoleFillSettings::maxHoleEdges`
+    NoMethod,   ///< No fill method applies
+    OutOfScope  ///< No rim face is in the scope
+};
+
+[[nodiscard]] const char* holeSkipReasonLabel(HoleSkipReason reason) noexcept;
+
+/// One fill tried on a hole in the batch.
+struct HoleFillAttempt {
+    HoleFillMethod method = HoleFillMethod::None;
+    bool changed = false;               ///< The method produced a fill
+    bool closed = false;                ///< ... that closed every rim edge
+    std::size_t crossingsOwnShell = 0;  ///< Crossings with faces of the hole's own shell (incl. the patch itself)
+    std::size_t crossingsOtherShells = 0;
+    std::string status;                 ///< Why it failed, or what it added
+};
+
+/// What the batch did with one hole.
+struct HoleFillOutcome {
+    std::size_t hole = 0;           ///< Index into the `holes` passed in
+    int shell = -1;                 ///< Shell of the rim (`shellsLargestFirst` of the input: #(shell + 1)); -1 when not tested
+    HoleSkipReason skipped = HoleSkipReason::None;
+    HoleFillMethod method = HoleFillMethod::None; ///< The fill kept (None: the hole is still open)
+    bool closed = false;
+    std::size_t facesAdded = 0;
+    std::size_t crossingsOwnShell = 0;    ///< Of the fill kept
+    std::size_t crossingsOtherShells = 0; ///< Of the fill kept
+    std::vector<int> otherShells;         ///< Shells the kept fill crosses (input numbering, ascending; -1 = a face in no shell)
+    std::vector<std::size_t> otherShellCrossings; ///< Crossings with each of `otherShells`
+    std::vector<HoleFillAttempt> attempts;        ///< Every fill tried, in order (fallbacks tried = size - 1)
+    std::string status;
+};
+
+/// Batch fill (Fix Selected, Repair All "Fill each hole", Fix All). Each hole gets `method`, or its
+/// recommended method when `method` is None; holes over `settings.maxHoleEdges` and open chains are skipped.
+/// With a crossing policy other than IgnoreCrossings, a hole tries that method first, then the rest of
+/// Smooth, Refine and Flat (in that order).
 struct HoleBatchResult {
     bool success = false;  ///< True if any hole changed
     std::string statusMessage;
     Mesh mesh;
     std::size_t holesBefore = 0;
     std::size_t holesClosed = 0;
-    std::size_t holesSkipped = 0;   ///< Too big or not a loop
-    std::size_t holesFailed = 0;    ///< The method found no fill (or left edges open)
+    std::size_t holesSkipped = 0;   ///< Too big, not a loop or out of scope
+    std::size_t holesFailed = 0;    ///< No fill found (or edges left open, or every fill crossed under NeverCommitCrossing)
     std::size_t facesAdded = 0;
     std::vector<Eigen::Index> addedFaces;  ///< Faces of `mesh` that are new
+    std::vector<Eigen::Index> faceMap;     ///< Input face -> face of `mesh` (-1 removed by Close Crack); new faces come after
+    std::vector<HoleFillOutcome> outcomes; ///< One per hole, in the order of `holes`
+    bool crossingsTested = false;          ///< The policy tested crossings (the counts below are meaningful)
+    std::size_t holesWithCrossings = 0;    ///< Holes kept filled although their fill crosses something
+    std::size_t crossingsOwnShell = 0;
+    std::size_t crossingsOtherShells = 0;
+    std::vector<int> crossedShells;        ///< Other shells crossed by any kept fill (input numbering, ascending)
 };
 
 [[nodiscard]] HoleBatchResult fillHoles(
@@ -124,6 +186,17 @@ struct HoleBatchResult {
     std::span<const HoleLoop> holes,
     HoleFillMethod method = HoleFillMethod::None,
     const HoleFillSettings& settings = {},
+    std::stop_token stopToken = {},
+    std::atomic<float>* progress = nullptr);
+
+/// `fillHoles` with a crossing policy and a face scope. A fill that would change a face outside the
+/// scope (Close Crack moving its vertices) is not used.
+[[nodiscard]] HoleBatchResult fillHoles(
+    const Mesh& mesh,
+    std::span<const HoleLoop> holes,
+    HoleFillMethod method,
+    const HoleFillSettings& settings,
+    const HoleBatchOptions& options,
     std::stop_token stopToken = {},
     std::atomic<float>* progress = nullptr);
 

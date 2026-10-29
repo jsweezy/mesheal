@@ -611,6 +611,58 @@ Mesh SampleMeshes::createWeldSeamCubeMesh(double offset, const Eigen::Vector3d& 
     return mesh;
 }
 
+Mesh SampleMeshes::createCupWithPostMesh(CupPost post, Unit unit) {
+    constexpr int kSegments = 32;
+    constexpr double kOpeningRadius = 3.0;
+    constexpr double kOpeningHeight = 8.0;
+    constexpr double kOuterRadius = 5.0;
+    constexpr double kHeight = 10.0;
+    constexpr double kPostRadius = 1.0;
+    const double postHeight = post == CupPost::BelowOpening ? 7.5 : post == CupPost::ThroughOpening ? 9.0 : 2.0;
+
+    // Profile in (r, z) from the opening's rim to the post's top centre; the material lies to its left
+    std::vector<std::array<double, 2>> profile;
+    const auto segment = [&](double r0, double z0, double r1, double z1, int steps) {
+        for (int i = profile.empty() ? 0 : 1; i <= steps; ++i) {
+            const double t = static_cast<double>(i) / steps;
+            profile.push_back({r0 + t * (r1 - r0), z0 + t * (z1 - z0)});
+        }
+    };
+    segment(kOpeningRadius, kOpeningHeight, kOuterRadius, kHeight, 4); // lip
+    segment(kOuterRadius, kHeight, kOuterRadius, 0.0, 5);              // outer wall
+    segment(kOuterRadius, 0.0, kPostRadius, 0.0, 4);                   // bottom
+    segment(kPostRadius, 0.0, kPostRadius, postHeight, 5);             // post wall
+    segment(kPostRadius, postHeight, 0.0, postHeight, 1);              // post top (the last point is its centre)
+
+    std::vector<Eigen::Vector3d> points;
+    const int rings = static_cast<int>(profile.size()) - 1; // the last profile point is one vertex
+    for (int i = 0; i < rings; ++i) {
+        for (int j = 0; j < kSegments; ++j) {
+            const double a = 2.0 * std::numbers::pi * j / kSegments;
+            points.emplace_back(profile[static_cast<std::size_t>(i)][0] * std::cos(a),
+                                profile[static_cast<std::size_t>(i)][0] * std::sin(a), profile[static_cast<std::size_t>(i)][1]);
+        }
+    }
+    const int apex = static_cast<int>(points.size());
+    points.emplace_back(0.0, 0.0, postHeight);
+    const auto at = [&](int i, int j) { return i * kSegments + (j % kSegments); };
+    std::vector<std::array<int, 3>> faces;
+    for (int i = 0; i + 1 < rings; ++i) {
+        for (int j = 0; j < kSegments; ++j) {
+            faces.push_back({at(i, j), at(i + 1, j), at(i + 1, j + 1)});
+            faces.push_back({at(i, j), at(i + 1, j + 1), at(i, j + 1)});
+        }
+    }
+    for (int j = 0; j < kSegments; ++j) {
+        faces.push_back({at(rings - 1, j), apex, at(rings - 1, j + 1)});
+    }
+    Mesh cup = meshFromFaces(points, faces, unit);
+    if (post != CupPost::RodThroughOpening) {
+        return cup;
+    }
+    return combineMeshes({cup, createBox(Eigen::Vector3d(-0.5, -0.5, 4.0), Eigen::Vector3d(0.5, 0.5, 12.0), false, unit)});
+}
+
 Mesh SampleMeshes::createSampleDefectiveMesh(Unit unit) {
     const Mesh cube = createCubeMesh(10.0, unit);
 
