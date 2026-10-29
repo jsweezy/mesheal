@@ -1,5 +1,6 @@
 #include "diagnostics/ThinFaceChecker.hpp"
 #include "core/Constants.hpp"
+#include "diagnostics/ReliableNormal.hpp"
 
 #include <Eigen/Geometry>
 
@@ -102,6 +103,7 @@ ThinFaceDefect ThinFaceChecker::evaluateTriangle(
     bool hasDuplicateVertexIndices) {
     ThinFaceDefect defect;
     defect.hasDuplicateVertexIndices = hasDuplicateVertexIndices;
+    defect.reliableNormal = !hasDuplicateVertexIndices && hasReliableNormal(v0, v1, v2);
 
     const double e0 = (v1 - v0).norm();
     const double e1 = (v2 - v1).norm();
@@ -133,14 +135,15 @@ ThinFaceDefect ThinFaceChecker::evaluateTriangle(
         defect.aspectRatio = std::numeric_limits<double>::infinity();
     }
 
+    // The floors are off at 0 (nothing is below 0); a zero area or height is always flagged
     defect.belowMinArea =
         defect.hasDuplicateVertexIndices ||
-        (defect.area <= 0.0) ||
+        !(defect.area > 0.0) ||
         (defect.area < thresholds.minArea);
 
     defect.belowMinAltitude =
         defect.hasDuplicateVertexIndices ||
-        (defect.minAltitude <= 0.0) ||
+        !(defect.minAltitude > 0.0) ||
         (defect.minAltitude < thresholds.minAltitude);
 
     defect.aboveMaxAspectRatio =

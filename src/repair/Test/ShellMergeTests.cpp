@@ -2,6 +2,7 @@
 
 #include "diagnostics/MeshChecks.hpp"
 #include "diagnostics/MeshHealth.hpp"
+#include "diagnostics/ThinFaceChecker.hpp"
 #include "io/SampleMeshes.hpp"
 #include "io/StlReader.hpp"
 #include "repair/RepairMetrics.hpp"
@@ -9,6 +10,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
+#include <filesystem>
 #include <numeric>
 #include <vector>
 
@@ -124,4 +127,35 @@ TEST_CASE("Manifold rejects an open shell and the merge reports which one", "[re
 
     const std::vector<std::vector<Eigen::Index>> one = {faceRange(0, 12)};
     REQUIRE_FALSE(ogun::mergeShells(mesh, one).success);
+}
+
+TEST_CASE("Turkey thin faces after merging all shells at 100 to 1", "[repair][merge][thin-faces][.slow]") {
+    const ogun::Mesh turkey = ogun::loadStl(
+        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / "Turkey.stl");
+    const ogun::CategoryResult shellRows = ogun::checkShells(turkey);
+    REQUIRE(shellRows.infoCount == 28);
+    std::vector<std::vector<Eigen::Index>> parts;
+    for (std::size_t s = 0; s < shellRows.size(); ++s) {
+        const auto faces = shellRows.facesOf(s);
+        parts.emplace_back(faces.begin(), faces.end());
+    }
+
+    const ogun::ThinFaceThresholds legacy{ogun::settings::kLegacyThinFaceMinAltitude, ogun::settings::kLegacyThinFaceMinArea,
+                                          ogun::settings::kLegacyThinFaceMaxAspectRatio};
+    const std::size_t before = ogun::ThinFaceChecker::check(turkey).numDefects();
+    const ogun::ShellMergeResult r = ogun::mergeShells(turkey, parts);
+    REQUIRE(r.success);
+    const ogun::ThinFaceReport afterReport = ogun::ThinFaceChecker::check(r.mesh);
+    const std::size_t after = afterReport.numDefects();
+    const std::size_t afterLegacy = ogun::ThinFaceChecker::check(r.mesh, legacy).numDefects();
+    std::array<std::size_t, ogun::kThinFaceSubtypeCount> bySubtype{};
+    for (const ogun::ThinFaceDefect& defect : afterReport.defects) {
+        ++bySubtype[static_cast<std::size_t>(ogun::classifyThinDefect(defect))];
+    }
+    WARN("Turkey thin faces: " << before << " before the merge, " << after << " after it at 100 : 1 (zero-area "
+                               << bySubtype[0] << ", needle " << bySubtype[1] << ", cap " << bySubtype[2] << ", small "
+                               << bySubtype[3] << "; " << afterLegacy << " at the old thresholds); faces "
+                               << turkey.numFaces() << " -> " << r.mesh.numFaces() << ", shells " << r.shellsIn
+                               << " -> " << r.shellsOut);
+    CHECK(after > before);
 }

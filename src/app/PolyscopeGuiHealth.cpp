@@ -30,6 +30,23 @@ constexpr std::array<HealActionOption, 4> kHealActionOptions = {{
     {HealAction::RemoveDegenerateFace, "Remove Degenerate Flap (Isolated / Redundant Face)"},
 }};
 
+const char* thinSubtypeTooltip(ThinFaceSubtype subtype) {
+    switch (subtype) {
+    case ThinFaceSubtype::ZeroArea:
+        return "No reliable normal (flat, or smaller than rounding at its distance from the origin), or a "
+               "repeated vertex. The Degenerate faces row lists the same faces.";
+    case ThinFaceSubtype::Needle:
+        return "Shortest edge under 5 % of the longest. The healer collapses the short edge.";
+    case ThinFaceSubtype::Cap:
+        return "Largest angle over 170 degrees. The healer flips the long edge or snaps the far vertex onto it.";
+    case ThinFaceSubtype::Small:
+        return "Flagged but neither a Needle nor a Cap: below an advanced floor, or stretched just over the limit "
+               "(about 100 to 121 : 1 at the default 100, where the short edge is just over 5 % and the largest "
+               "angle just under 170 degrees). The healer collapses the shortest edge.";
+    }
+    return "";
+}
+
 const char* elementColumnName(ElementKind kind) {
     switch (kind) {
     case ElementKind::Face:
@@ -357,6 +374,9 @@ void PolyscopeGui::drawCategoryTool(DefectCategory category) {
                 controller_.setSubtypeFilter(static_cast<int>(t));
                 requestSync();
             }
+            if (category == DefectCategory::ThinFaces) {
+                tooltip(thinSubtypeTooltip(static_cast<ThinFaceSubtype>(t)));
+            }
         }
     }
 
@@ -412,44 +432,24 @@ void PolyscopeGui::drawCategoryTool(DefectCategory category) {
 }
 
 void PolyscopeGui::drawCategorySettings(DefectCategory category) {
-    const std::string sym(unitSymbol(controller_.fileUnit()));
     ImGui::PushItemWidth(110.0f);
     switch (category) {
     case DefectCategory::ThinFaces: {
         ThinFaceThresholds thresh = controller_.thresholds();
-        bool changed = false;
-        if (ImGui::InputDouble(("Min altitude h_min (" + sym + ")").c_str(), &thresh.minAltitude, 0.0, 0.0, "%.6g",
-                               ImGuiInputTextFlags_EnterReturnsTrue)) {
-            thresh.minAltitude = std::max(0.0, thresh.minAltitude);
-            changed = true;
-        }
-        if (ImGui::InputDouble(("Min area (" + sym + "^2)").c_str(), &thresh.minArea, 0.0, 0.0, "%.6g",
-                               ImGuiInputTextFlags_EnterReturnsTrue)) {
-            thresh.minArea = std::max(0.0, thresh.minArea);
-            changed = true;
-        }
-        if (ImGui::InputDouble("Max aspect ratio (l_max / h_min)", &thresh.maxAspectRatio, 0.0, 0.0, "%.6g",
-                               ImGuiInputTextFlags_EnterReturnsTrue)) {
-            thresh.maxAspectRatio = std::max(1.0, thresh.maxAspectRatio);
-            changed = true;
-        }
-        if (changed) {
+        if (gui::thinFaceThresholdFields(thresh, controller_.fileUnit(), 70.0f)) {
             controller_.setThresholds(thresh);
             requestSync();
         }
         ImGui::TextDisabled("Press Enter to apply. Auto re-checks immediately.");
         break;
     }
-    case DefectCategory::Degenerate: {
-        double eps = controller_.degenerateAreaEpsilon();
-        if (ImGui::InputDouble("Zero-area epsilon (x diag^2)", &eps, 0.0, 0.0, "%.6g",
-                               ImGuiInputTextFlags_EnterReturnsTrue)) {
-            controller_.setDegenerateAreaEpsilon(eps);
-            requestSync();
-        }
-        gui::helpMarker("A face counts as zero-area when its area is below epsilon times the squared bounding-box diagonal.");
+    case DefectCategory::Degenerate:
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("A face is degenerate when it repeats a vertex or has no reliable normal: its smallest "
+                            "height is under 1e-10 of its longest edge, or under 2^-40 of its largest coordinate "
+                            "(rounding noise). No settings.");
+        ImGui::PopTextWrapPos();
         break;
-    }
     case DefectCategory::Intersections: {
         double tolerance = controller_.intersectionTolerance();
         if (ImGui::InputDouble("Tolerance (x diagonal)", &tolerance, 0.0, 0.0, "%.6g",

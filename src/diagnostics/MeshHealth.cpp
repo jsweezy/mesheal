@@ -48,13 +48,13 @@ constexpr std::array<CategoryInfo, kDefectCategoryCount> kCategoryInfos = {{
      "Faces crossed", ValueDimension::None, false, false,
      {"Crossing", "Coplanar overlap", nullptr, nullptr}},
     {"Thin / sliver faces", "Thin / Sliver Faces", CategoryGroup::Geometry,
-     "Triangles with a tiny altitude, area, or a huge aspect ratio.",
+     "Triangles stretched more than the aspect limit (default 100 : 1), or with no reliable normal.",
      ElementKind::Face, "faces", true, false, true,
      {{{"h_min", ValueDimension::Length}, {"Area", ValueDimension::Area}, {"Aspect", ValueDimension::None}}},
      "h_min", ValueDimension::Length, true, true,
      {"Zero-area", "Needle", "Cap", "Small"}},
     {"Degenerate faces", "Degenerate Faces", CategoryGroup::Geometry,
-     "Triangles with exactly zero area or a repeated vertex index.",
+     "Triangles with a repeated vertex index or no reliable normal (flat, or below rounding at their position).",
      ElementKind::Face, "faces", true, false, false,
      {{{"Area", ValueDimension::Area}, {"Longest edge", ValueDimension::Length}, kNoColumn}},
      nullptr, ValueDimension::None, false, true,
@@ -129,7 +129,7 @@ CategoryResult runCategoryCheck(
         result = checkThinFaces(mesh, params, stopToken);
         break;
     case DefectCategory::Degenerate:
-        result = checkDegenerateFaces(mesh, params, stopToken);
+        result = checkDegenerateFaces(mesh, stopToken);
         break;
     case DefectCategory::Duplicates:
         result = checkDuplicateFaces(mesh, stopToken);

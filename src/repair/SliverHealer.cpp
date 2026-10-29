@@ -1,5 +1,6 @@
 #include "repair/SliverHealer.hpp"
 #include "core/Constants.hpp"
+#include "diagnostics/ReliableNormal.hpp"
 
 #include <CGAL/boost/graph/Euler_operations.h>
 #include <CGAL/boost/graph/iterator.h>
@@ -39,11 +40,8 @@ Eigen::Vector3d areaNormal(const Triangle& t) {
     return (t[1] - t[0]).cross(t[2] - t[0]);
 }
 
-bool hasReliableNormal(const Triangle& t, const Eigen::Vector3d& n) {
-    const double maxEdgeSq = std::max({(t[1] - t[0]).squaredNorm(),
-                                       (t[2] - t[1]).squaredNorm(),
-                                       (t[0] - t[2]).squaredNorm()});
-    return maxEdgeSq > 0.0 && n.norm() > kReliableNormalRatio * maxEdgeSq;
+bool hasReliableNormal(const Triangle& t) {
+    return ogun::hasReliableNormal(t[0], t[1], t[2]);
 }
 
 bool isLiveFace(const CgalSurfaceMesh& mesh, CgalFaceIndex f) {
@@ -149,14 +147,14 @@ bool canFlipEdge(
 
     const Triangle opp{pt, ps, po};
     const Eigen::Vector3d nOpp = areaNormal(opp);
-    if (!hasReliableNormal(opp, nOpp)) {
+    if (!hasReliableNormal(opp)) {
         return fail("Neighbor face across the longest edge is itself degenerate.");
     }
     const Eigen::Vector3d nOppHat = nOpp.normalized();
 
     const Triangle f0{ps, pt, pa};
     const Eigen::Vector3d n0 = areaNormal(f0);
-    if (hasReliableNormal(f0, n0) && n0.normalized().dot(nOppHat) < settings.coplanarDot) {
+    if (hasReliableNormal(f0) && n0.normalized().dot(nOppHat) < settings.coplanarDot) {
         return fail("Neighbor face lies across a sharp feature crease; flipping would distort the surface.");
     }
 
@@ -165,7 +163,7 @@ bool canFlipEdge(
     const Triangle t2{po, pt, pa};
     const Eigen::Vector3d n1 = areaNormal(t1);
     const Eigen::Vector3d n2 = areaNormal(t2);
-    if (!hasReliableNormal(t1, n1) || !hasReliableNormal(t2, n2)) {
+    if (!hasReliableNormal(t1) || !hasReliableNormal(t2)) {
         return fail("Flip would create a zero-area triangle.");
     }
     if (n1.normalized().dot(nOppHat) < settings.coplanarDot || n2.normalized().dot(nOppHat) < settings.coplanarDot) {
@@ -197,11 +195,11 @@ double worstNormalDot(const CgalSurfaceMesh& mesh, CgalHalfedgeIndex h, const Ei
                 after[k] = (vk == v0 || vk == v1) ? newPos : before[k];
             }
             const Eigen::Vector3d nOld = areaNormal(before);
-            if (!hasReliableNormal(before, nOld)) {
+            if (!hasReliableNormal(before)) {
                 continue; // Already degenerate: orientation cannot be judged.
             }
             const Eigen::Vector3d nNew = areaNormal(after);
-            if (!hasReliableNormal(after, nNew)) {
+            if (!hasReliableNormal(after)) {
                 return -std::numeric_limits<double>::infinity();
             }
             worst = std::min(worst, nOld.normalized().dot(nNew.normalized()));
@@ -449,7 +447,7 @@ SliverAnalysis SliverHealer::analyzeFace(
     }
 
     if (analysis.type != SliverType::Healthy) {
-        const bool zeroArea = !hasReliableNormal(tri, areaNormal(tri));
+        const bool zeroArea = !hasReliableNormal(tri);
         if (analysis.numBorderEdges == 3 || (analysis.numBorderEdges >= 2 && zeroArea)) {
             analysis.type = SliverType::DanglingFlap;
         }

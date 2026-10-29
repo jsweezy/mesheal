@@ -1,5 +1,6 @@
 #include "app/GuiWidgets.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 
@@ -112,6 +113,45 @@ bool unitCombo(const char* id, Unit& unit, float width) {
             }
         }
         ImGui::EndCombo();
+    }
+    return changed;
+}
+
+bool thinFaceThresholdFields(ThinFaceThresholds& thresholds, Unit unit, float width) {
+    const std::string sym(unitSymbol(unit));
+    bool changed = false;
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Flag faces stretched more than");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(width);
+    if (ImGui::InputDouble("##maxAspectRatio", &thresholds.maxAspectRatio, 0.0, 0.0, "%.6g",
+                           ImGuiInputTextFlags_EnterReturnsTrue)) {
+        thresholds.maxAspectRatio = std::max(1.0, thresholds.maxAspectRatio);
+        changed = true;
+    }
+    ImGui::SameLine();
+    ImGui::TextUnformatted(": 1");
+    helpMarker("Aspect ratio = longest edge / smallest height. It does not depend on the model's size or unit, "
+               "so a small part and a large one are judged alike. Faces with no reliable normal (flat, or "
+               "smaller than rounding at their distance from the origin) are always flagged as Zero-area.");
+    if (ImGui::TreeNode("Advanced: absolute floors (file units), 0 = off")) {
+        ImGui::SetNextItemWidth(width);
+        if (ImGui::InputDouble(("Min height h_min (" + sym + ")").c_str(), &thresholds.minAltitude, 0.0, 0.0, "%.6g",
+                               ImGuiInputTextFlags_EnterReturnsTrue)) {
+            thresholds.minAltitude = std::max(0.0, thresholds.minAltitude);
+            changed = true;
+        }
+        ImGui::SetNextItemWidth(width);
+        if (ImGui::InputDouble(("Min area (" + sym + "^2)").c_str(), &thresholds.minArea, 0.0, 0.0, "%.6g",
+                               ImGuiInputTextFlags_EnterReturnsTrue)) {
+            thresholds.minArea = std::max(0.0, thresholds.minArea);
+            changed = true;
+        }
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("Also flag faces lower or smaller than these, e.g. for a printer's resolution. "
+                            "Scale Mesh Coordinates rescales them.");
+        ImGui::PopTextWrapPos();
+        ImGui::TreePop();
     }
     return changed;
 }

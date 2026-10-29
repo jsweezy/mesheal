@@ -291,7 +291,8 @@ public:
     /// Loads an ASCII or binary STL file from disk using the active `fileUnit()` and `toleranceConfig()`.
     bool loadStlFile(const std::filesystem::path& filepath);
 
-    /// Loads the built-in sample cube mesh containing 3 known thin/degenerate triangles.
+    /// Loads the built-in sample cube with 3 injected triangles (zero-area, microscopic, needle; at the
+    /// default 100 : 1 aspect limit only the zero-area and needle faces are thin).
     void loadSampleDefectiveMesh();
 
     /// Path of `examples/<fileName>` in the working directory or the source tree (empty if not found).
@@ -381,12 +382,6 @@ public:
 
     /// Applies loaded or reset preferences; the live thin-face thresholds start from the saved defaults.
     void applyUserPreferences(const UserPreferences& prefs);
-
-    [[nodiscard]] double degenerateAreaEpsilon() const noexcept {
-        return degenerateAreaEpsilon_;
-    }
-
-    void setDegenerateAreaEpsilon(double epsilon);
 
     /// Intersection tolerance as a fraction of the bounding-box diagonal.
     [[nodiscard]] double intersectionTolerance() const noexcept {
@@ -1360,7 +1355,6 @@ private:
     ToleranceConfig toleranceConfig_{};
     PreferenceDefaults preferenceDefaults_{}; // declared before thresholds_, which starts from it
     ThinFaceThresholds thresholds_{};
-    double degenerateAreaEpsilon_ = settings::kDefaultDegenerateAreaEpsilon;
     double intersectionTolerance_ = settings::kDefaultIntersectionTolerance;
 
     MeshHealthReport health_{};

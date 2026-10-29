@@ -215,9 +215,13 @@ TEST_CASE("analyzeFace classifies Caps vs. Needles", "[repair][classify]") {
     }
 
     SECTION("isolated microscopic island is a DanglingFlap that recommends RemoveDegenerateFace") {
+        // Well shaped (aspect 2): only an advanced height floor flags it
         const ogun::Mesh sample = ogun::createSampleDefectiveMesh();
+        CHECK(ogun::SliverHealer::analyzeFace(sample, ogun::SampleMeshes::kMicroscopicFaceIndex).type ==
+              ogun::SliverType::Healthy);
+        const ogun::ThinFaceThresholds heightFloor{1.0e-4, 0.0, ogun::settings::kDefaultThinFaceMaxAspectRatio};
         const ogun::SliverAnalysis a =
-            ogun::SliverHealer::analyzeFace(sample, ogun::SampleMeshes::kMicroscopicFaceIndex);
+            ogun::SliverHealer::analyzeFace(sample, ogun::SampleMeshes::kMicroscopicFaceIndex, heightFloor);
         CHECK(a.numBorderEdges == 3);
         CHECK(a.type == ogun::SliverType::DanglingFlap);
         CHECK(a.recommendedAction == ogun::HealAction::RemoveDegenerateFace);
@@ -330,7 +334,7 @@ TEST_CASE("SnapCollinearCollapse snaps a creased cap onto its corner vertex", "[
 TEST_CASE("RemoveDegenerateFace removes only dangling faces", "[repair][remove]") {
     const ogun::Mesh sample = ogun::createSampleDefectiveMesh();
     const ogun::RepairResults removed = ogun::SliverHealer::healSingleFace(
-        sample, ogun::SampleMeshes::kMicroscopicFaceIndex, ogun::HealAction::RemoveDegenerateFace);
+        sample, ogun::SampleMeshes::kNeedleSliverFaceIndex, ogun::HealAction::RemoveDegenerateFace);
     REQUIRE(removed.success);
     CHECK(removed.mesh.numFaces() == sample.numFaces() - 1);
     CHECK(removed.remainingThinFaces == removed.initialThinFaces - 1);
@@ -392,20 +396,23 @@ TEST_CASE("previewSingleFaceRepair heals a 2-ring patch without touching the bas
 TEST_CASE("healAllThinFaces heals every thin face", "[repair][batch]") {
     SECTION("sample defective mesh") {
         const ogun::Mesh sample = ogun::createSampleDefectiveMesh();
-        REQUIRE(ogun::ThinFaceChecker::check(sample).numDefects() == 3);
+        // Zero-area and needle; the well-shaped microscopic face is not thin at 100 : 1
+        REQUIRE(ogun::ThinFaceChecker::check(sample).numDefects() == 2);
 
         const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(sample);
         CHECK(r.success);
-        CHECK(r.initialThinFaces == 3);
+        CHECK(r.initialThinFaces == 2);
         CHECK(r.remainingThinFaces == 0);
         CHECK(ogun::ThinFaceChecker::check(r.mesh).empty());
         CHECK(r.mesh.fileUnit == sample.fileUnit);
     }
 
     SECTION("subdivided manifold cube with injected Cap, Needle and Microscopic slivers") {
+        // The 1e-5-scale triangle is Microscopic only under an advanced height floor
+        const ogun::ThinFaceThresholds heightFloor{1.0e-4, 0.0, ogun::settings::kDefaultThinFaceMaxAspectRatio};
         ogun::Mesh cube = makeSubdividedCube(4, 10.0);
         REQUIRE(isClosedManifold(cube));
-        REQUIRE(ogun::ThinFaceChecker::check(cube).empty());
+        REQUIRE(ogun::ThinFaceChecker::check(cube, heightFloor).empty());
         const ogun::BoundingBox box = cube.boundingBox();
 
         // Cap: vertex 1e-5 off the midpoint of an interior grid edge on the top face.
@@ -437,13 +444,13 @@ TEST_CASE("healAllThinFaces heals every thin face", "[repair][batch]") {
         }
         REQUIRE(isClosedManifold(cube));
 
-        const ogun::ThinFaceReport before = ogun::ThinFaceChecker::check(cube);
+        const ogun::ThinFaceReport before = ogun::ThinFaceChecker::check(cube, heightFloor);
         REQUIRE(before.numDefects() >= 3);
         bool sawCap = false;
         bool sawNeedle = false;
         bool sawMicroscopic = false;
         for (const Eigen::Index f : before.faceIndices) {
-            const ogun::SliverType type = ogun::SliverHealer::analyzeFace(cube, f).type;
+            const ogun::SliverType type = ogun::SliverHealer::analyzeFace(cube, f, heightFloor).type;
             sawCap = sawCap || type == ogun::SliverType::Cap;
             sawNeedle = sawNeedle || type == ogun::SliverType::Needle;
             sawMicroscopic = sawMicroscopic || type == ogun::SliverType::Microscopic;
@@ -452,10 +459,10 @@ TEST_CASE("healAllThinFaces heals every thin face", "[repair][batch]") {
         CHECK(sawNeedle);
         CHECK(sawMicroscopic);
 
-        const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(cube);
+        const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(cube, heightFloor);
         CHECK(r.success);
         CHECK(r.remainingThinFaces == 0);
-        CHECK(ogun::ThinFaceChecker::check(r.mesh).empty());
+        CHECK(ogun::ThinFaceChecker::check(r.mesh, heightFloor).empty());
         CHECK(r.edgeFlips >= 1);
         CHECK(r.edgeCollapses >= 2);
         CHECK(isClosedManifold(r.mesh));
@@ -497,4 +504,41 @@ TEST_CASE("healFaces repairs only the listed faces with their recommended action
     const ogun::RepairResults none = ogun::SliverHealer::healFaces(cube, {});
     CHECK_FALSE(none.success);
     CHECK(none.mesh.numFaces() == cube.numFaces());
+}
+
+TEST_CASE("The aspect-110 Small face is collapsed along its shortest edge", "[repair][thin-faces]") {
+    // Planar patch around the Small face (p, q, r): aspect 110, short edge p-r 5.08 %, largest angle 169.2 deg
+    ogun::Mesh mesh;
+    mesh.V.resize(6, 3);
+    mesh.V << 0.0,   0.0,          0.0,  // p
+              1.0,   0.0,          0.0,  // q
+              0.05,  1.0 / 110.0,  0.0,  // r
+              0.5,  -1.0,          0.0,  // below p-q
+              0.5,   1.0,          0.0,  // above q-r
+             -0.5,   1.0,          0.0;  // above r-p
+    mesh.F.resize(5, 3);
+    mesh.F << 0, 1, 2,
+              1, 0, 3,
+              2, 1, 4,
+              0, 2, 5,
+              2, 4, 5;
+    mesh.recomputeNormals();
+
+    const ogun::ThinFaceReport before = ogun::ThinFaceChecker::check(mesh);
+    REQUIRE(before.faceIndices == std::vector<Eigen::Index>{0});
+    REQUIRE(ogun::classifyThinDefect(before.defects[0]) == ogun::ThinFaceSubtype::Small);
+
+    const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(mesh, 0);
+    CHECK(a.type == ogun::SliverType::Microscopic);
+    CHECK(a.recommendedAction == ogun::HealAction::CollapseShortestEdge);
+
+    const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(mesh);
+    REQUIRE(r.success);
+    CHECK(r.initialThinFaces == 1);
+    CHECK(r.remainingThinFaces == 0);
+    CHECK(r.edgeCollapses == 1);
+    // p and r merged: the Small face and its neighbour across p-r are gone
+    CHECK(r.mesh.numFaces() == mesh.numFaces() - 2);
+    CHECK(r.mesh.numVertices() == mesh.numVertices() - 1);
+    CHECK(allNormalsAlign(r.mesh, Eigen::Vector3d::UnitZ(), 0.99));
 }

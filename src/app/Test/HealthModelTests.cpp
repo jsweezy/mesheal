@@ -91,6 +91,13 @@ TEST_CASE("Edits re-run Auto rows and mark Auto-off rows Stale; Re-check clears 
 TEST_CASE("Threshold changes re-run the thin row; File Units re-interpret thresholds", "[app][health]") {
     ogun::AppController controller;
     controller.loadSampleDefectiveMesh();
+    // Zero-area and needle; the well-shaped microscopic face is not stretched
+    REQUIRE(controller.categoryHealth(DefectCategory::ThinFaces).result->size() == 2);
+
+    // An advanced height floor also flags it
+    ogun::ThinFaceThresholds floors = controller.thresholds();
+    floors.minAltitude = 1.0e-4;
+    controller.setThresholds(floors);
     REQUIRE(controller.categoryHealth(DefectCategory::ThinFaces).result->size() == 3);
 
     ogun::ThinFaceThresholds loose = controller.thresholds();
@@ -111,16 +118,16 @@ TEST_CASE("Fix Selected repairs only the selected thin faces and is undoable", "
     REQUIRE_FALSE(controller.fixSelectedThinFaces()); // nothing selected
 
     controller.selectCategory(DefectCategory::ThinFaces);
-    controller.focusDefect(1); // the microscopic face (second worst)
+    controller.focusDefect(1); // the needle face (second worst)
     REQUIRE(controller.browser().selectedCount() == 1);
     const ogun::Mesh before = controller.mesh();
     REQUIRE(controller.fixSelectedThinFaces());
-    REQUIRE(controller.categoryHealth(DefectCategory::ThinFaces).result->size() == 2);
+    REQUIRE(controller.categoryHealth(DefectCategory::ThinFaces).result->size() == 1);
     REQUIRE(controller.lastUndoActionLabel() == "Fix Selected Thin Faces (1)");
 
     REQUIRE(controller.undoLastModification());
     REQUIRE(controller.mesh().F == before.F);
-    REQUIRE(controller.categoryHealth(DefectCategory::ThinFaces).result->size() == 3);
+    REQUIRE(controller.categoryHealth(DefectCategory::ThinFaces).result->size() == 2);
 }
 
 TEST_CASE("Histogram bins select their defects and Next/Prev focus within them", "[app][health][selection]") {
@@ -150,8 +157,8 @@ TEST_CASE("The overlay cap limits tubes to the selected defects", "[app][health]
     ogun::AppController controller;
     controller.loadSampleDefectiveMesh();
     controller.selectCategory(DefectCategory::ThinFaces);
-    controller.setOverlayCap(2);
-    REQUIRE_FALSE(controller.buildHighlightOverlay().hasSelectionOverlay()); // 3 visible > cap: tint only
+    controller.setOverlayCap(1);
+    REQUIRE_FALSE(controller.buildHighlightOverlay().hasSelectionOverlay()); // 2 visible > cap: tint only
 
     controller.focusDefect(0);
     const ogun::HighlightOverlayGeometry overlay = controller.buildHighlightOverlay();

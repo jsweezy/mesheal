@@ -7,7 +7,9 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <stop_token>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -182,7 +184,7 @@ TEST_CASE("Degenerate faces: repeated vertex index and zero area", "[diagnostics
          a, 8, b;
     const ogun::Mesh mesh = withExtra(base, v, f);
 
-    const ogun::CategoryResult degenerate = ogun::checkDegenerateFaces(mesh, ogun::CheckParams{});
+    const ogun::CategoryResult degenerate = ogun::checkDegenerateFaces(mesh);
     REQUIRE(degenerate.size() == 2);
     REQUIRE(degenerate.elements[0].index == 12);
     REQUIRE(degenerate.elements[0].subtype == 0);
@@ -210,7 +212,7 @@ TEST_CASE("Duplicate faces report the later copies with their winding", "[diagno
 TEST_CASE("Thin faces are sorted worst first and bucketed by shape", "[diagnostics][mesh-checks]") {
     const ogun::Mesh mesh = ogun::SampleMeshes::createSampleDefectiveMesh(ogun::Unit::Millimeter);
     const ogun::CategoryResult thin = ogun::runCategoryCheck(ogun::DefectCategory::ThinFaces, mesh, ogun::CheckParams{});
-    REQUIRE(thin.size() == 3);
+    REQUIRE(thin.size() == 2); // zero-area and needle: the microscopic face is well shaped
     REQUIRE(thin.elements[0].index == ogun::SampleMeshes::kZeroAreaFaceIndex);
     REQUIRE(thin.elements[0].subtype == static_cast<int>(ogun::ThinFaceSubtype::ZeroArea));
     for (std::size_t i = 1; i < thin.size(); ++i) {
@@ -239,4 +241,54 @@ TEST_CASE("Every category has a descriptor with a name and columns", "[diagnosti
     REQUIRE(ogun::categorySubtypeCount(ogun::DefectCategory::OpenEdges) == ogun::kHoleShapeCount);
     REQUIRE(ogun::categoryInfo(ogun::DefectCategory::Shells).infoOnly);
     REQUIRE(ogun::categoryInfo(ogun::DefectCategory::ThinFaces).hasFixAll);
+}
+
+TEST_CASE("The Degenerate row and the Zero-area bucket agree", "[diagnostics][mesh-checks][thin-faces]") {
+    using ogun::SampleMeshes;
+    std::vector<std::pair<const char*, ogun::Mesh>> meshes = {
+        {"cube", SampleMeshes::createCubeMesh()},
+        {"self-intersecting box", SampleMeshes::createSelfIntersectingBoxMesh()},
+        {"grid cube", SampleMeshes::createGridCubeMesh()},
+        {"folded cube", SampleMeshes::createFoldedCubeMesh()},
+        {"touching cubes", SampleMeshes::createTouchingCubesMesh()},
+        {"sphere", SampleMeshes::createSphereMesh()},
+        {"cylinder", SampleMeshes::createCylinderMesh()},
+        {"cracked box", SampleMeshes::createCrackedBoxMesh()},
+        {"holes", SampleMeshes::createHolesSampleMesh()},
+        {"defective sample", SampleMeshes::createSampleDefectiveMesh()},
+    };
+    // The defective sample far from the origin, where its hairline faces are only rounding noise, plus
+    // repeated indices and a NaN vertex
+    ogun::Mesh shifted = SampleMeshes::createSampleDefectiveMesh();
+    shifted.V.rowwise() += Eigen::RowVector3d(1.0e9, 0.0, 0.0);
+    meshes.emplace_back("defective sample at 1e9", shifted);
+    Eigen::MatrixXd nanVertex(1, 3);
+    nanVertex << std::numeric_limits<double>::quiet_NaN(), 0.0, 0.0;
+    Eigen::MatrixXi bad(3, 3);
+    bad << 0, 0, 1,
+           5, 6, 5,
+           0, 1, 8;
+    meshes.emplace_back("bad faces", withExtra(cube(), nanVertex, bad));
+
+    for (const auto& [name, mesh] : meshes) {
+        INFO(name);
+        const ogun::CategoryResult degenerate = ogun::checkDegenerateFaces(mesh);
+        const ogun::CategoryResult thin = ogun::runCategoryCheck(ogun::DefectCategory::ThinFaces, mesh, ogun::CheckParams{});
+        std::vector<Eigen::Index> zeroArea;
+        for (const ogun::DefectElement& element : thin.elements) {
+            if (element.subtype == static_cast<int>(ogun::ThinFaceSubtype::ZeroArea)) {
+                zeroArea.push_back(element.index);
+            }
+        }
+        std::vector<Eigen::Index> degenerateFaces;
+        for (const ogun::DefectElement& element : degenerate.elements) {
+            degenerateFaces.push_back(element.index);
+        }
+        std::sort(zeroArea.begin(), zeroArea.end());
+        std::sort(degenerateFaces.begin(), degenerateFaces.end());
+        CHECK(zeroArea == degenerateFaces);
+    }
+    // Near the origin only the collinear face is degenerate; at 1e9 the two hairline faces are too
+    CHECK(ogun::checkDegenerateFaces(SampleMeshes::createSampleDefectiveMesh()).size() == 1);
+    CHECK(ogun::checkDegenerateFaces(shifted).size() == 3);
 }

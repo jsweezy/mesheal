@@ -46,9 +46,13 @@ inline constexpr float  kMaxMouseZoomSpeed       = 5.0f;          // Fastest zoo
 // -----------------------------------------------------------------------------
 // Thin Face Diagnostics Threshold Defaults (file units; the unit is only a label)
 // -----------------------------------------------------------------------------
-inline constexpr double kDefaultThinFaceMinAltitude     = 1.0e-4; // Minimum allowable triangle altitude h_min = 2A / l_max (file units)
-inline constexpr double kDefaultThinFaceMinArea         = 1.0e-8; // Minimum allowable triangle surface area A (file units^2)
-inline constexpr double kDefaultThinFaceMaxAspectRatio  = 1000.0;// Dimensionless maximum aspect ratio ceiling (l_max / h_min)
+inline constexpr double kDefaultThinFaceMaxAspectRatio  = 100.0;  // A face stretched more than this (l_max / h_min, unitless) is thin
+inline constexpr double kDefaultThinFaceMinAltitude     = 0.0;    // Advanced absolute floor: smallest height h_min = 2A / l_max (file units; 0 = off)
+inline constexpr double kDefaultThinFaceMinArea         = 0.0;    // Advanced absolute floor: smallest area A (file units^2; 0 = off)
+inline constexpr double kNormalFloorCoordinateFactor    = 0x1p-40; // No reliable normal when h_min <= this x the largest |coordinate| of the face (rounding noise)
+inline constexpr double kLegacyThinFaceMinAltitude      = 1.0e-4; // Old default height floor: saved preferences equal to it load as 0 (off)
+inline constexpr double kLegacyThinFaceMinArea          = 1.0e-8; // Old default area floor: saved preferences equal to it load as 0 (off)
+inline constexpr double kLegacyThinFaceMaxAspectRatio   = 1000.0; // Old default aspect limit: saved preferences equal to it load as the new default
 
 // -----------------------------------------------------------------------------
 // Sliver Healer Classification & Repair Defaults
@@ -106,7 +110,6 @@ inline constexpr std::size_t kMaxCubicHoleFillEdges   = 400;    // Fill Flat / R
 // -----------------------------------------------------------------------------
 // Mesh Health Checks & Large Defect Counts
 // -----------------------------------------------------------------------------
-inline constexpr double kDefaultDegenerateAreaEpsilon = 1.0e-14; // Face area <= eps * bbox_diag^2 counts as degenerate (relative, unitless)
 inline constexpr double kDefaultIntersectionTolerance = 1.0e-6;  // Intersection tolerance as a fraction of the bbox diagonal: box growth, on-plane snap, min crossing length
 inline constexpr unsigned kIntersectionMaxThreads     = 4;       // Max worker threads of the self-intersection BVH traversal (Blender uses 4)
 inline constexpr std::size_t kIntersectionSerialFaceCount = 1024; // Meshes with at most this many faces check intersections on one thread

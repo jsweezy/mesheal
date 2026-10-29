@@ -374,7 +374,7 @@ TEST_CASE("Selected faces show the selection color over defect tints", "[app][se
     const ogun::HighlightOverlayGeometry selected = controller.buildHighlightOverlay();
     REQUIRE(selected.faceColors[static_cast<std::size_t>(focused)].isApprox(appearance.faceSelectionColor));
     REQUIRE(selected.overlayFaces.empty());
-    REQUIRE(selected.overlayEdges.size() == 9);
+    REQUIRE(selected.overlayEdges.size() == 6); // tubes of both thin faces of the row
     controller.toggleFaceSelected(focused);
     REQUIRE(colorOf(focused).isApprox(appearance.selectedFaces.color));
     REQUIRE(controller.buildHighlightOverlay().overlayFaces.size() == 1);

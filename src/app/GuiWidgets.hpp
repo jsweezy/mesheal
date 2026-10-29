@@ -53,4 +53,8 @@ void statusDot(HealthStatus status, bool infoOnly);
 /// Combo over all units; returns true and updates `unit` when the user picks one.
 bool unitCombo(const char* id, Unit& unit, float width);
 
+/// Thin-face threshold fields (Thin faces tool and Preferences): "Flag faces stretched more than [N] : 1"
+/// first, the absolute floors under a collapsed "Advanced" node. A value applies on Enter; returns true then.
+bool thinFaceThresholdFields(ThinFaceThresholds& thresholds, Unit unit, float width);
+
 } // namespace ogun::gui

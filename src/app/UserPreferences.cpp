@@ -227,12 +227,12 @@ const std::vector<Field>& preferenceFields() {
         const char* tol = "Preferences > Units & Tolerance (file units)";
         f.push_back(realField(tol, "weld_floor", [](auto& p) -> auto& { return p.tolerance.absFloor; }, 0.0, kHuge));
         f.push_back(realField(tol, "relative_tolerance", [](auto& p) -> auto& { return p.tolerance.relTol; }, 0.0, kHuge));
-        f.push_back(realField(tol, "default_min_altitude",
-                              [](auto& p) -> auto& { return p.defaults.thinFace.minAltitude; }, 0.0, kHuge));
-        f.push_back(realField(tol, "default_min_area",
-                              [](auto& p) -> auto& { return p.defaults.thinFace.minArea; }, 0.0, kHuge));
-        f.push_back(realField(tol, "default_max_aspect_ratio",
+        f.push_back(realField(tol, "thin_max_aspect_ratio",
                               [](auto& p) -> auto& { return p.defaults.thinFace.maxAspectRatio; }, 1.0, kHuge));
+        f.push_back(realField(tol, "thin_min_height_floor",
+                              [](auto& p) -> auto& { return p.defaults.thinFace.minAltitude; }, 0.0, kHuge));
+        f.push_back(realField(tol, "thin_min_area_floor",
+                              [](auto& p) -> auto& { return p.defaults.thinFace.minArea; }, 0.0, kHuge));
 
         const char* diag = "Preferences > Diagnostics";
         f.push_back(boolField(diag, "check_mesh_after_load", [](auto& p) -> auto& { return p.checkMeshAfterLoad; }));
@@ -344,6 +344,25 @@ const std::vector<Field>& preferenceFields() {
     return fields;
 }
 
+/// Thin-face keys written before faces were judged by aspect ratio. Read only when the new key is
+/// absent; a value equal to the old default loads as the new default, any other value is kept.
+struct LegacyThinKey {
+    const char* oldKey;
+    const char* newKey;
+    double oldDefault;
+    double newDefault;
+    double ThinFaceThresholds::* member;
+};
+
+constexpr std::array<LegacyThinKey, 3> kLegacyThinKeys = {{
+    {"default_max_aspect_ratio", "thin_max_aspect_ratio", settings::kLegacyThinFaceMaxAspectRatio,
+     settings::kDefaultThinFaceMaxAspectRatio, &ThinFaceThresholds::maxAspectRatio},
+    {"default_min_altitude", "thin_min_height_floor", settings::kLegacyThinFaceMinAltitude,
+     settings::kDefaultThinFaceMinAltitude, &ThinFaceThresholds::minAltitude},
+    {"default_min_area", "thin_min_area_floor", settings::kLegacyThinFaceMinArea, settings::kDefaultThinFaceMinArea,
+     &ThinFaceThresholds::minArea},
+}};
+
 } // namespace
 
 std::array<bool, kDefectCategoryCount> builtInAutoCheckDefaults() noexcept {
@@ -389,6 +408,8 @@ std::vector<std::string> userPreferenceKeys() {
 UserPreferences parseUserPreferences(std::string_view text) {
     UserPreferences prefs;
     const std::vector<Field>& fields = preferenceFields();
+    std::vector<std::string_view> seenKeys;
+    std::array<std::optional<std::string_view>, kLegacyThinKeys.size()> legacyValues;
     while (!text.empty()) {
         const auto eol = text.find('\n');
         const std::string_view line = trim(text.substr(0, eol));
@@ -405,6 +426,25 @@ UserPreferences parseUserPreferences(std::string_view text) {
         const auto it = std::find_if(fields.begin(), fields.end(), [&](const Field& f) { return f.key == key; });
         if (it != fields.end()) {
             it->parse(prefs, value); // a malformed value keeps the default
+            seenKeys.push_back(key);
+        }
+        for (std::size_t i = 0; i < kLegacyThinKeys.size(); ++i) {
+            if (key == kLegacyThinKeys[i].oldKey) {
+                legacyValues[i] = value;
+            }
+        }
+    }
+    for (std::size_t i = 0; i < kLegacyThinKeys.size(); ++i) {
+        const LegacyThinKey& legacy = kLegacyThinKeys[i];
+        if (!legacyValues[i] || std::find(seenKeys.begin(), seenKeys.end(), legacy.newKey) != seenKeys.end()) {
+            continue;
+        }
+        const auto field = std::find_if(fields.begin(), fields.end(), [&](const Field& f) { return f.key == legacy.newKey; });
+        if (field != fields.end() && field->parse(prefs, *legacyValues[i])) {
+            double& value = prefs.defaults.thinFace.*legacy.member;
+            if (value == legacy.oldDefault) {
+                value = legacy.newDefault;
+            }
         }
     }
     applyMousePresetBindings(prefs.mouse);

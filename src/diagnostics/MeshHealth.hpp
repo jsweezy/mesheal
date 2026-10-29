@@ -145,7 +145,6 @@ struct CategoryResult {
 /// Thresholds and tolerances used by the checks.
 struct CheckParams {
     ThinFaceThresholds thinThresholds{};
-    double degenerateAreaEpsilon = settings::kDefaultDegenerateAreaEpsilon;
     double needleEdgeRatio = settings::kDefaultNeedleEdgeRatio;
     double capAngleDeg = settings::kDefaultCapAngleDeg;
     double intersectionTolerance = settings::kDefaultIntersectionTolerance; ///< Fraction of the bbox diagonal

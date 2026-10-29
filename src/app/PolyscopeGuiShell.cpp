@@ -1047,32 +1047,15 @@ void PolyscopeGui::drawPreferencesWindow(float top, float bottom, float rightCol
             ImGui::SeparatorText("Thin / sliver faces defaults");
             const ThinFaceThresholds stored = controller_.preferenceDefaults().thinFace;
             ThinFaceThresholds def = stored;
-            bool defChanged = false;
-            ImGui::PushItemWidth(110.0f);
-            if (ImGui::InputDouble(("Default min altitude h_min (" + sym + ")").c_str(), &def.minAltitude, 0.0, 0.0,
-                                   "%.6g",
-                                   ImGuiInputTextFlags_EnterReturnsTrue)) {
-                def.minAltitude = std::max(0.0, def.minAltitude);
-                defChanged = true;
-            }
-            if (ImGui::InputDouble(("Default min area (" + sym + "^2)").c_str(), &def.minArea, 0.0, 0.0, "%.6g",
-                                   ImGuiInputTextFlags_EnterReturnsTrue)) {
-                def.minArea = std::max(0.0, def.minArea);
-                defChanged = true;
-            }
-            if (ImGui::InputDouble("Default max aspect ratio", &def.maxAspectRatio, 0.0, 0.0, "%.6g",
-                                   ImGuiInputTextFlags_EnterReturnsTrue)) {
-                def.maxAspectRatio = std::max(1.0, def.maxAspectRatio);
-                defChanged = true;
-            }
-            ImGui::PopItemWidth();
-            gui::helpMarker("Editing a default (press Enter) also sets the Thin / sliver faces setting. Changing that setting "
-                            "later does not change the default.");
-            if (defChanged && (def.minAltitude != stored.minAltitude || def.minArea != stored.minArea ||
-                               def.maxAspectRatio != stored.maxAspectRatio)) {
+            if (gui::thinFaceThresholdFields(def, controller_.fileUnit(), 70.0f) &&
+                (def.minAltitude != stored.minAltitude || def.minArea != stored.minArea ||
+                 def.maxAspectRatio != stored.maxAspectRatio)) {
                 controller_.setThinFaceDefaults(def);
                 requestSync();
             }
+            ImGui::TextDisabled("Press Enter to apply.");
+            gui::helpMarker("Editing a default also sets the Thin / sliver faces setting. Changing that setting "
+                            "later does not change the default.");
             ImGui::TextDisabled("Active floor: %.0e %s (applies to the next load)",
                                 controller_.toleranceConfig().absFloor, sym.c_str());
             if (ImGui::Button("Reset default tolerances")) {

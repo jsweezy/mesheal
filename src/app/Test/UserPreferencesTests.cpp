@@ -153,9 +153,9 @@ TEST_CASE("Malformed or partial preference files fall back per key", "[app][pref
         "# comment\n"
         "weld_floor = 2e-6\n"                      // valid
         "relative_tolerance = abc\n"               // malformed: default
-        "  default_min_altitude=0.5  \r\n"         // spacing and CRLF are fine
-        "default_min_area = 1e-3 junk\n"           // trailing junk: default
-        "default_max_aspect_ratio = 0.5\n"         // below 1: clamped
+        "  thin_min_height_floor=0.5  \r\n"        // spacing and CRLF are fine
+        "thin_min_area_floor = 1e-3 junk\n"        // trailing junk: default
+        "thin_max_aspect_ratio = 0.5\n"            // below 1: clamped
         "check_mesh_after_load = maybe\n"          // malformed bool: default
         "base.color = 0.1 0.2\n"                   // too few components: default
         "defect.tint_color = 0.2 0.4 2.0\n"        // out of [0, 1]: clamped
@@ -189,6 +189,61 @@ TEST_CASE("Malformed or partial preference files fall back per key", "[app][pref
     // A truncated / binary file does not crash and gives defaults for what it cannot read
     const ogun::UserPreferences garbage = ogun::parseUserPreferences(std::string("\0\xff=\n= =\nweld_floor", 16));
     CHECK(ogun::sameUserPreferences(garbage, defaults));
+}
+
+TEST_CASE("Old thin-face defaults migrate to 100 : 1 with floors off", "[app][preferences]") {
+    // A file saved before thin faces were judged by aspect ratio, at the old built-in defaults
+    const ogun::UserPreferences prefs = ogun::parseUserPreferences(
+        "default_min_altitude = 0.0001\n"
+        "default_min_area = 1e-08\n"
+        "default_max_aspect_ratio = 1000\n");
+    CHECK(prefs.defaults.thinFace.maxAspectRatio == ogun::settings::kDefaultThinFaceMaxAspectRatio);
+    CHECK(prefs.defaults.thinFace.minAltitude == 0.0);
+    CHECK(prefs.defaults.thinFace.minArea == 0.0);
+    CHECK(ogun::sameUserPreferences(prefs, ogun::UserPreferences{}));
+
+    // Saving writes only the new keys, so the migration happens once
+    const std::string text = ogun::formatUserPreferences(prefs);
+    CHECK(text.find("default_max_aspect_ratio") == std::string::npos);
+    CHECK(text.find("thin_max_aspect_ratio = 100\n") != std::string::npos);
+    CHECK(text.find("thin_min_height_floor = 0\n") != std::string::npos);
+}
+
+TEST_CASE("Customised thin values are kept", "[app][preferences]") {
+    // Old keys with values the user changed keep them
+    const ogun::UserPreferences custom = ogun::parseUserPreferences(
+        "default_min_altitude = 0.02\n"
+        "default_min_area = 4e-05\n"
+        "default_max_aspect_ratio = 250\n");
+    CHECK(custom.defaults.thinFace.minAltitude == 0.02);
+    CHECK(custom.defaults.thinFace.minArea == 4.0e-5);
+    CHECK(custom.defaults.thinFace.maxAspectRatio == 250.0);
+
+    // Each value migrates on its own: a changed aspect stays, untouched floors turn off
+    const ogun::UserPreferences mixed = ogun::parseUserPreferences(
+        "default_min_altitude = 0.0001\n"
+        "default_min_area = 1e-08\n"
+        "default_max_aspect_ratio = 500\n");
+    CHECK(mixed.defaults.thinFace.maxAspectRatio == 500.0);
+    CHECK(mixed.defaults.thinFace.minAltitude == 0.0);
+    CHECK(mixed.defaults.thinFace.minArea == 0.0);
+
+    // A 1000 : 1 limit chosen after the migration is saved under the new key and kept
+    ogun::UserPreferences chosen;
+    chosen.defaults.thinFace.maxAspectRatio = 1000.0;
+    chosen.defaults.thinFace.minAltitude = 1.0e-4;
+    const ogun::UserPreferences reloaded = ogun::parseUserPreferences(ogun::formatUserPreferences(chosen));
+    CHECK(reloaded.defaults.thinFace.maxAspectRatio == 1000.0);
+    CHECK(reloaded.defaults.thinFace.minAltitude == 1.0e-4);
+
+    // The new key wins over an old one in the same file, in either order
+    const ogun::UserPreferences both = ogun::parseUserPreferences(
+        "default_max_aspect_ratio = 300\n"
+        "thin_max_aspect_ratio = 1000\n"
+        "thin_min_height_floor = 0.5\n"
+        "default_min_altitude = 0.25\n");
+    CHECK(both.defaults.thinFace.maxAspectRatio == 1000.0);
+    CHECK(both.defaults.thinFace.minAltitude == 0.5);
 }
 
 TEST_CASE("Unknown preference keys are ignored", "[app][preferences]") {

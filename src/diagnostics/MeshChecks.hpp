@@ -81,10 +81,9 @@ struct EdgeTopology {
     const CheckParams& params,
     std::stop_token stopToken = {});
 
-/// Faces with a repeated vertex index or area <= `degenerateAreaEpsilon * diag^2`.
+/// Faces with an invalid or repeated vertex index, or with no reliable normal (`hasReliableNormal`).
 [[nodiscard]] CategoryResult checkDegenerateFaces(
     const Mesh& mesh,
-    const CheckParams& params,
     std::stop_token stopToken = {});
 
 /// Faces with the same three vertices as an earlier face (the later copies are reported).

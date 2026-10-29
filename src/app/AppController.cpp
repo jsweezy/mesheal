@@ -268,7 +268,6 @@ void AppController::scaleMeshCoordinatesToUnit(Unit targetUnit) {
 CheckParams AppController::checkParams() const noexcept {
     CheckParams params;
     params.thinThresholds = thresholds_;
-    params.degenerateAreaEpsilon = degenerateAreaEpsilon_;
     params.intersectionTolerance = intersectionTolerance_;
     return params;
 }
@@ -328,14 +327,6 @@ void AppController::applyUserPreferences(const UserPreferences& prefs) {
     autoCheckDefaults_ = prefs.autoCheckDefaults;
     setListCap(prefs.listCap);
     setOverlayCap(prefs.overlayCap);
-}
-
-void AppController::setDegenerateAreaEpsilon(double epsilon) {
-    if (!std::isfinite(epsilon) || epsilon < 0.0 || epsilon == degenerateAreaEpsilon_) {
-        return;
-    }
-    degenerateAreaEpsilon_ = epsilon;
-    onCheckParamsChanged(DefectCategory::Degenerate);
 }
 
 void AppController::setIntersectionTolerance(double tolerance) {

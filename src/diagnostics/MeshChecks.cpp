@@ -1,6 +1,7 @@
 #include "diagnostics/MeshChecks.hpp"
 
 #include "diagnostics/HoleLoops.hpp"
+#include "diagnostics/ReliableNormal.hpp"
 
 #include <Eigen/Geometry>
 
@@ -619,13 +620,11 @@ CategoryResult checkThinFaces(const Mesh& mesh, const CheckParams& params, std::
     return builder.finish(SortOrder::LowMetricFirst);
 }
 
-CategoryResult checkDegenerateFaces(const Mesh& mesh, const CheckParams& params, std::stop_token stopToken) {
+CategoryResult checkDegenerateFaces(const Mesh& mesh, std::stop_token stopToken) {
     ResultBuilder builder(DefectCategory::Degenerate);
     if (mesh.empty()) {
         return builder.finish(SortOrder::ByIndex);
     }
-    const double diag = mesh.boundingBox().diagonal();
-    const double areaEps = params.degenerateAreaEpsilon * diag * diag;
     const Eigen::Index nv = mesh.numVertices();
 
     for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
@@ -643,8 +642,11 @@ CategoryResult checkDegenerateFaces(const Mesh& mesh, const CheckParams& params,
             builder.add(element, f);
             continue;
         }
-        const double area = faceArea(mesh, f);
-        if (area <= areaEps) {
+        const Eigen::Vector3d v0 = mesh.V.row(mesh.F(f, 0)).transpose();
+        const Eigen::Vector3d v1 = mesh.V.row(mesh.F(f, 1)).transpose();
+        const Eigen::Vector3d v2 = mesh.V.row(mesh.F(f, 2)).transpose();
+        if (!hasReliableNormal(v0, v1, v2)) {
+            const double area = faceArea(mesh, f);
             double longest = 0.0;
             for (int c = 0; c < 3; ++c) {
                 longest = std::max(longest, edgeLength(mesh, {mesh.F(f, c), mesh.F(f, (c + 1) % 3)}));

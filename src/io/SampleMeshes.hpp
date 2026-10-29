@@ -93,7 +93,8 @@ struct SampleMeshes {
 
     /// Generates a clean 12-triangle cube mesh injected with 3 known defective triangles:
     ///   - Face 12 (`kZeroAreaFaceIndex`): collinear zero-area triangle (A = 0, h_min = 0)
-    ///   - Face 13 (`kMicroscopicFaceIndex`): microscopic-area triangle (A = 5e-9, h_min ~ 7.07e-5)
+    ///   - Face 13 (`kMicroscopicFaceIndex`): microscopic-area triangle (A = 5e-9, h_min ~ 7.07e-5; well
+    ///     shaped, so thin only under an advanced height or area floor)
     ///   - Face 14 (`kNeedleSliverFaceIndex`): long needle/sliver triangle (h_min = 2e-4, AR = 50,000)
     [[nodiscard]] static Mesh createSampleDefectiveMesh(Unit unit = Unit::Millimeter);
 };

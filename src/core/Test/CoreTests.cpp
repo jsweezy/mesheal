@@ -51,9 +51,11 @@ TEST_CASE("Core default settings provide expected baseline values", "[core][sett
     }
 
     SECTION("Diagnostic and repair defaults") {
-        REQUIRE(ogun::settings::kDefaultThinFaceMinAltitude == Catch::Approx(1.0e-4));
-        REQUIRE(ogun::settings::kDefaultThinFaceMinArea == Catch::Approx(1.0e-8));
-        REQUIRE(ogun::settings::kDefaultThinFaceMaxAspectRatio == Catch::Approx(1000.0));
+        // Thin faces are judged by aspect ratio; the absolute floors are off by default
+        REQUIRE(ogun::settings::kDefaultThinFaceMaxAspectRatio == 100.0);
+        REQUIRE(ogun::settings::kDefaultThinFaceMinAltitude == 0.0);
+        REQUIRE(ogun::settings::kDefaultThinFaceMinArea == 0.0);
+        REQUIRE(ogun::settings::kNormalFloorCoordinateFactor == std::ldexp(1.0, -40));
         REQUIRE(ogun::settings::kDefaultCapAngleDeg == Catch::Approx(170.0));
         REQUIRE(ogun::settings::kDefaultNeedleEdgeRatio == Catch::Approx(0.05));
     }

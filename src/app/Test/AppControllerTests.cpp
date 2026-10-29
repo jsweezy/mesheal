@@ -70,29 +70,29 @@ TEST_CASE("AppController checks the mesh on load, toggles row vs single-face sel
     ogun::AppController controller;
     controller.loadSampleDefectiveMesh();
 
-    // Check Mesh runs after loading: every row is filled in, nothing is selected yet
+    // Check Mesh runs after loading: every row is filled in, nothing is selected yet. At the default
+    // 100 : 1 aspect limit the well-shaped microscopic face is not thin (the floors are off)
     REQUIRE(thinStatus(controller) == ogun::HealthStatus::Defects);
-    REQUIRE(thinCount(controller) == 3);
+    REQUIRE(thinCount(controller) == 2);
     REQUIRE_FALSE(controller.selectedCategory());
     REQUIRE(controller.highlightedFaceIndices().empty());
     REQUIRE_FALSE(controller.buildHighlightOverlay().hasSelectionOverlay());
 
     const std::vector<Eigen::Index> allExpectedDefects = {
         ogun::SampleMeshes::kZeroAreaFaceIndex,
-        ogun::SampleMeshes::kMicroscopicFaceIndex,
         ogun::SampleMeshes::kNeedleSliverFaceIndex
     };
 
-    // Selecting the row tints all 3 faces and draws tubes / spheres for them (under the overlay cap)
+    // Selecting the row tints both faces and draws tubes / spheres for them (under the overlay cap)
     controller.selectCategory(ogun::DefectCategory::ThinFaces);
     REQUIRE(controller.activeTool() == ogun::ToolSlot::DefectCategory);
     REQUIRE(controller.browsableResult());
-    REQUIRE(controller.browser().visibleRows().size() == 3);
+    REQUIRE(controller.browser().visibleRows().size() == 2);
     const ogun::HighlightOverlayGeometry categoryOverlay = controller.buildHighlightOverlay();
     REQUIRE(categoryOverlay.faceColors.size() == 15);
     REQUIRE(categoryOverlay.hasSelectionOverlay());
-    REQUIRE(categoryOverlay.overlayPoints.size() == 9);
-    REQUIRE(categoryOverlay.overlayEdges.size() == 9);
+    REQUIRE(categoryOverlay.overlayPoints.size() == 6);
+    REQUIRE(categoryOverlay.overlayEdges.size() == 6);
     REQUIRE(categoryOverlay.overlayFaces.empty());
     for (const Eigen::Index f : allExpectedDefects) {
         REQUIRE(categoryOverlay.faceColors[static_cast<std::size_t>(f)].isApprox(
@@ -108,8 +108,8 @@ TEST_CASE("AppController checks the mesh on load, toggles row vs single-face sel
 
     const ogun::HighlightOverlayGeometry singleOverlay = controller.buildHighlightOverlay();
     REQUIRE(singleOverlay.overlayFaces.size() == 1);
-    REQUIRE(singleOverlay.overlayPoints.size() == 9);
-    REQUIRE(singleOverlay.overlayEdges.size() == 9);
+    REQUIRE(singleOverlay.overlayPoints.size() == 6); // the row's tubes stay (under the overlay cap)
+    REQUIRE(singleOverlay.overlayEdges.size() == 6);
     REQUIRE_FALSE(singleOverlay.faceColors[0].isApprox(
         singleOverlay.faceColors[static_cast<std::size_t>(ogun::SampleMeshes::kNeedleSliverFaceIndex)], 1e-6));
 
@@ -127,7 +127,7 @@ TEST_CASE("AppController checks the mesh on load, toggles row vs single-face sel
     REQUIRE_FALSE(controller.escape());
 
     // With no row selected, clicking a defect opens its row; clicking a clean face just picks it
-    REQUIRE(controller.pickFace(ogun::SampleMeshes::kMicroscopicFaceIndex) == ogun::PickOutcome::SelectedRow);
+    REQUIRE(controller.pickFace(ogun::SampleMeshes::kZeroAreaFaceIndex) == ogun::PickOutcome::SelectedRow);
     REQUIRE(controller.selectedCategory() == ogun::DefectCategory::ThinFaces);
     controller.setMesh(ogun::SampleMeshes::createCubeMesh(), "Clean Cube");
     REQUIRE(controller.pickFace(0) == ogun::PickOutcome::PickedFace);
@@ -148,6 +148,8 @@ TEST_CASE("AppController computes 3D camera focus bounding box and look-at targe
     controller.selectCategory(ogun::DefectCategory::ThinFaces);
 
     SECTION("Focusing on a single microscopic defective face centers camera on that facet's centroid") {
+        // Only an advanced height floor flags the well-shaped microscopic face (h_min ~7.07e-5)
+        controller.setThresholds(ogun::ThinFaceThresholds{1.0e-4, 0.0, ogun::settings::kDefaultThinFaceMaxAspectRatio});
         controller.pickFace(ogun::SampleMeshes::kMicroscopicFaceIndex);
 
         const Eigen::Vector3d viewDir(0.0, 0.0, -1.0); // Looking straight down -Z
@@ -466,7 +468,7 @@ TEST_CASE("R commits the focused thin face's repair", "[app][controller][repair]
     controller.loadSampleDefectiveMesh();
     REQUIRE_FALSE(controller.commitFocusedRepair()); // no defect focused
     REQUIRE(controller.mesh().numFaces() == 15);
-    controller.pickFace(ogun::SampleMeshes::kMicroscopicFaceIndex);
+    controller.pickFace(ogun::SampleMeshes::kZeroAreaFaceIndex);
     REQUIRE(controller.commitFocusedRepair());
     REQUIRE(controller.mesh().numFaces() == 14);
     REQUIRE(controller.lastUndoActionLabel().rfind("Single-Face Repair", 0) == 0);
@@ -477,33 +479,33 @@ TEST_CASE("AppController commits a single-face repair, refreshes diagnostics, an
     ogun::AppController controller;
     controller.loadSampleDefectiveMesh();
     const ogun::Mesh before = controller.mesh();
-    REQUIRE(thinCount(controller) == 3);
+    REQUIRE(thinCount(controller) == 2);
     REQUIRE_FALSE(controller.isModified());
 
-    controller.pickFace(ogun::SampleMeshes::kMicroscopicFaceIndex);
+    controller.pickFace(ogun::SampleMeshes::kZeroAreaFaceIndex);
     REQUIRE(controller.selectedHealAction() == ogun::HealAction::RemoveDegenerateFace);
     REQUIRE(controller.repairPreview().valid);
 
     REQUIRE(controller.commitSelectedFaceRepair());
     REQUIRE(controller.mesh().numFaces() == before.numFaces() - 1);
     REQUIRE(controller.mesh().F.maxCoeff() < controller.mesh().numVertices());
-    REQUIRE(thinCount(controller) == 2);
+    REQUIRE(thinCount(controller) == 1);
     REQUIRE(controller.isModified());
     REQUIRE(controller.selectedCategory() == ogun::DefectCategory::ThinFaces);
     REQUIRE_FALSE(controller.inspectorActive());
     REQUIRE(controller.loadedSourceLabel() == "Sample Defective Mesh");
     REQUIRE(controller.canUndo());
-    REQUIRE(controller.lastUndoActionLabel() == "Single-Face Repair (Face #13)");
+    REQUIRE(controller.lastUndoActionLabel() == "Single-Face Repair (Face #12)");
 
     REQUIRE(controller.undoLastModification());
     REQUIRE_FALSE(controller.canUndo());
     REQUIRE(controller.lastUndoActionLabel().empty());
     REQUIRE(controller.mesh().V == before.V);
     REQUIRE(controller.mesh().F == before.F);
-    REQUIRE(thinCount(controller) == 3);
+    REQUIRE(thinCount(controller) == 2);
     REQUIRE_FALSE(controller.isModified());
     REQUIRE(controller.inspectorActive());
-    REQUIRE(controller.focusedFaceIndex() == ogun::SampleMeshes::kMicroscopicFaceIndex);
+    REQUIRE(controller.focusedFaceIndex() == ogun::SampleMeshes::kZeroAreaFaceIndex);
     REQUIRE(controller.selectedHealAction() == ogun::HealAction::RemoveDegenerateFace);
     REQUIRE(controller.repairPreview().valid);
 
@@ -534,7 +536,7 @@ TEST_CASE("AppController fixAllThinFaces heals the sample mesh and can be undone
     controller.loadSampleDefectiveMesh();
     controller.selectCategory(ogun::DefectCategory::ThinFaces);
     const ogun::Mesh before = controller.mesh();
-    REQUIRE(thinCount(controller) == 3);
+    REQUIRE(thinCount(controller) == 2);
 
     REQUIRE(controller.fixAllThinFaces());
     REQUIRE(thinCount(controller) == 0);
@@ -551,9 +553,9 @@ TEST_CASE("AppController fixAllThinFaces heals the sample mesh and can be undone
     REQUIRE(controller.undoLastModification());
     REQUIRE(controller.mesh().V == before.V);
     REQUIRE(controller.mesh().F == before.F);
-    REQUIRE(thinCount(controller) == 3);
+    REQUIRE(thinCount(controller) == 2);
     REQUIRE(controller.selectedCategory() == ogun::DefectCategory::ThinFaces);
-    REQUIRE(controller.browser().visibleRows().size() == 3);
+    REQUIRE(controller.browser().visibleRows().size() == 2);
     REQUIRE_FALSE(controller.canUndo());
 }
 
@@ -574,7 +576,30 @@ TEST_CASE("AppController records coordinate scaling on the undo stack",
     REQUIRE(controller.mesh().V == originalV);
     REQUIRE(controller.thresholds().minAltitude == originalThresholds.minAltitude);
     REQUIRE(controller.thresholds().minArea == originalThresholds.minArea);
-    REQUIRE(thinCount(controller) == 3);
+    REQUIRE(thinCount(controller) == 2);
+}
+
+TEST_CASE("Scale Mesh Coordinates rescales the thin-face floors when they are set", "[app][controller][units]") {
+    ogun::AppController controller;
+    controller.loadSampleDefectiveMesh();
+
+    // Off by default: the floors stay 0 and the aspect limit never changes
+    controller.scaleMeshCoordinatesToUnit(ogun::Unit::Centimeter);
+    CHECK(controller.thresholds().minAltitude == 0.0);
+    CHECK(controller.thresholds().minArea == 0.0);
+    CHECK(controller.thresholds().maxAspectRatio == ogun::settings::kDefaultThinFaceMaxAspectRatio);
+    CHECK(thinCount(controller) == 2);
+
+    // Set floors keep their physical size, so the same faces stay flagged
+    ogun::AppController withFloors;
+    withFloors.loadSampleDefectiveMesh();
+    withFloors.setThresholds(ogun::ThinFaceThresholds{1.0e-4, 1.0e-8, ogun::settings::kDefaultThinFaceMaxAspectRatio});
+    REQUIRE(thinCount(withFloors) == 3); // the microscopic face is below the height floor
+    withFloors.scaleMeshCoordinatesToUnit(ogun::Unit::Centimeter);
+    CHECK(withFloors.thresholds().minAltitude == Catch::Approx(1.0e-5));
+    CHECK(withFloors.thresholds().minArea == Catch::Approx(1.0e-10));
+    CHECK(withFloors.thresholds().maxAspectRatio == ogun::settings::kDefaultThinFaceMaxAspectRatio);
+    CHECK(thinCount(withFloors) == 3);
 }
 
 TEST_CASE("AppController undoes a sequence of modifications step by step and clears history on load",
@@ -586,7 +611,7 @@ TEST_CASE("AppController undoes a sequence of modifications step by step and cle
     controller.pickFace(ogun::SampleMeshes::kZeroAreaFaceIndex);
     REQUIRE(controller.commitSelectedFaceRepair());
     const ogun::Mesh afterSingle = controller.mesh();
-    REQUIRE(thinCount(controller) == 2);
+    REQUIRE(thinCount(controller) == 1);
 
     REQUIRE(controller.fixAllThinFaces());
     REQUIRE(thinCount(controller) == 0);
@@ -594,12 +619,12 @@ TEST_CASE("AppController undoes a sequence of modifications step by step and cle
 
     REQUIRE(controller.undoLastModification());
     REQUIRE(controller.mesh().F == afterSingle.F);
-    REQUIRE(thinCount(controller) == 2);
+    REQUIRE(thinCount(controller) == 1);
     REQUIRE(controller.lastUndoActionLabel() == "Single-Face Repair (Face #12)");
 
     REQUIRE(controller.undoLastModification());
     REQUIRE(controller.mesh().F == original.F);
-    REQUIRE(thinCount(controller) == 3);
+    REQUIRE(thinCount(controller) == 2);
     REQUIRE(controller.focusedFaceIndex() == ogun::SampleMeshes::kZeroAreaFaceIndex);
     REQUIRE_FALSE(controller.canUndo());
 
@@ -766,7 +791,7 @@ TEST_CASE("AppController cuts highlighted faces out of the base mesh display",
     controller.selectAllVisibleDefects();
     const ogun::BaseMeshDisplay all = controller.buildBaseMeshDisplay();
     REQUIRE(all.isCut);
-    REQUIRE(all.F.rows() == controller.mesh().numFaces() - 3);
+    REQUIRE(all.F.rows() == controller.mesh().numFaces() - 2);
     for (std::size_t row = 0; row < all.faceIndices.size(); ++row) {
         REQUIRE(all.F.row(static_cast<Eigen::Index>(row)) == controller.mesh().F.row(all.faceIndices[row]));
     }
@@ -779,10 +804,10 @@ TEST_CASE("AppController preview display modes control the base-mesh cutout and 
           "[app][controller][repair][preview]") {
     ogun::AppController controller;
     controller.loadSampleDefectiveMesh();
-    controller.pickFace(ogun::SampleMeshes::kMicroscopicFaceIndex);
+    controller.pickFace(ogun::SampleMeshes::kNeedleSliverFaceIndex);
     REQUIRE(controller.repairPreviewShown());
     REQUIRE(controller.repairPreview().sourceFaceIndices ==
-            std::vector<Eigen::Index>{ogun::SampleMeshes::kMicroscopicFaceIndex});
+            std::vector<Eigen::Index>{ogun::SampleMeshes::kNeedleSliverFaceIndex});
 
     // Cutout + Original Edges is the default
     REQUIRE(controller.previewDisplayMode() == ogun::PreviewDisplayMode::CutoutOriginalEdges);
@@ -888,13 +913,13 @@ TEST_CASE("AppController scopes Mesh Health to the selected shells, else the vis
     using ogun::DefectCategory;
     const std::size_t allCrossings = count(controller, DefectCategory::Intersections);
     REQUIRE(allCrossings > 0);
-    REQUIRE(count(controller, DefectCategory::ThinFaces) == 3);
+    REQUIRE(count(controller, DefectCategory::ThinFaces) == 2);
     REQUIRE(controller.shellHealthKnown());
     std::size_t sampleThin = 0;
     for (std::size_t s = 0; s < controller.shells().size(); ++s) {
         sampleThin += controller.shellHealth()[s].counts[ogun::categoryIndex(DefectCategory::ThinFaces)];
     }
-    REQUIRE(sampleThin == 3);
+    REQUIRE(sampleThin == 2);
     REQUIRE(controller.shellHealth()[sample].counts[ogun::categoryIndex(DefectCategory::ThinFaces)] == 1);
     REQUIRE(controller.shellHealth()[crossing].between > 0);
 
@@ -909,8 +934,8 @@ TEST_CASE("AppController scopes Mesh Health to the selected shells, else the vis
 
     // The sample alone: its thin faces, but not its crossings with the unselected cube
     controller.selectShellsWhere([&](std::size_t s) { return isSample(controller, s); });
-    REQUIRE(count(controller, DefectCategory::ThinFaces) == 3);
-    REQUIRE(controller.browser().visibleRows().size() == 3);
+    REQUIRE(count(controller, DefectCategory::ThinFaces) == 2);
+    REQUIRE(controller.browser().visibleRows().size() == 2);
     const std::size_t sampleOnly = count(controller, DefectCategory::Intersections);
     REQUIRE(sampleOnly < allCrossings);
 
@@ -1036,7 +1061,7 @@ TEST_CASE("AppController Fix All heals only the shells in scope and undo restore
 
     REQUIRE(controller.undoLastModification());
     REQUIRE(controller.mesh().F == before.F);
-    REQUIRE(controller.rowCount(ogun::DefectCategory::ThinFaces) == 3);
+    REQUIRE(controller.rowCount(ogun::DefectCategory::ThinFaces) == 2);
     REQUIRE(controller.shells().shell(sample).selected);
 }
 
@@ -1427,7 +1452,7 @@ TEST_CASE("Translate / Rotate previews without changing the mesh, applies as one
           "[app][controller][transform]") {
     ogun::AppController controller;
     controller.loadSampleDefectiveMesh();
-    REQUIRE(thinCount(controller) == 3);
+    REQUIRE(thinCount(controller) == 2);
     const ogun::Mesh original = controller.mesh();
 
     controller.openTransform();
@@ -1477,7 +1502,7 @@ TEST_CASE("Translate / Rotate previews without changing the mesh, applies as one
     REQUIRE_FALSE(controller.transformPreviewShown());
     // A rigid transform keeps the thin faces; the Auto rows ran again on the moved mesh
     REQUIRE(thinStatus(controller) == ogun::HealthStatus::Defects);
-    REQUIRE(thinCount(controller) == 3);
+    REQUIRE(thinCount(controller) == 2);
 
     REQUIRE(controller.undoLastModification());
     REQUIRE(controller.mesh().V == original.V);

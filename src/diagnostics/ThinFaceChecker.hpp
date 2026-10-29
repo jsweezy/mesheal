@@ -12,16 +12,16 @@
 
 namespace ogun {
 
-/// User-configurable thresholds for flagging thin, near-zero-area, and sliver triangles.
-/// Length and area thresholds are expressed in the active `mesh.fileUnit`.
+/// User-configurable thresholds for flagging thin triangles. The aspect ratio is the main,
+/// scale-free measure; the height and area floors are optional (0 = off), in the active `mesh.fileUnit`.
 struct ThinFaceThresholds {
-    /// Minimum allowable triangle altitude h_min = 2A / l_max (in `fileUnit`).
+    /// Advanced floor: smallest allowed height h_min = 2A / l_max (in `fileUnit`; 0 = off).
     double minAltitude = settings::kDefaultThinFaceMinAltitude;
 
-    /// Minimum allowable triangle surface area A (in `fileUnit^2`).
+    /// Advanced floor: smallest allowed area A (in `fileUnit^2`; 0 = off).
     double minArea = settings::kDefaultThinFaceMinArea;
 
-    /// Maximum allowable triangle aspect ratio l_max / h_min (dimensionless).
+    /// Faces stretched more than this aspect ratio l_max / h_min (dimensionless) are thin.
     double maxAspectRatio = settings::kDefaultThinFaceMaxAspectRatio;
 
     /// Converts length and area thresholds from `fromUnit` into `toUnit`.
@@ -37,7 +37,7 @@ struct ThinFaceThresholds {
         };
     }
 
-    /// Returns default thresholds expressed in the specified unit (referenced to 1e-4 mm, 1e-8 mm^2).
+    /// Returns default thresholds expressed in the specified unit (floors referenced to millimetres).
     [[nodiscard]] static constexpr ThinFaceThresholds defaultsForUnit(
         Unit unit = Unit::Millimeter) noexcept {
         return ThinFaceThresholds{}.convertedToUnit(Unit::Millimeter, unit);
@@ -59,24 +59,25 @@ struct ThinFaceDefect {
     bool belowMinAltitude = false;
     bool aboveMaxAspectRatio = false;
     bool hasDuplicateVertexIndices = false;
+    bool reliableNormal = false; ///< `hasReliableNormal` of the three vertices (ReliableNormal.hpp)
 
-    /// Returns true if the triangle has zero area, zero altitude, or repeated vertex indices.
+    /// Degenerate: a repeated vertex index, or no reliable normal (the Degenerate faces row agrees).
     [[nodiscard]] bool isZeroArea() const noexcept {
-        return hasDuplicateVertexIndices || !(area > 0.0) || !(minAltitude > 0.0);
+        return hasDuplicateVertexIndices || !reliableNormal;
     }
 
-    /// Returns true if any thin/degenerate/sliver threshold was violated.
+    /// Thin: degenerate, stretched over the aspect limit, or below an advanced floor that is set.
     [[nodiscard]] bool isDefective() const noexcept {
-        return hasDuplicateVertexIndices || belowMinArea || belowMinAltitude || aboveMaxAspectRatio;
+        return isZeroArea() || belowMinArea || belowMinAltitude || aboveMaxAspectRatio;
     }
 };
 
 /// Geometric shape bucket of a thin face, used by the Tool panel's sub-type filter.
 enum class ThinFaceSubtype {
-    ZeroArea, ///< Zero area / altitude or a repeated vertex index.
+    ZeroArea, ///< No reliable normal (ReliableNormal.hpp) or a repeated vertex index.
     Needle,   ///< One edge much shorter than the longest (l_min / l_max below the needle ratio).
     Cap,      ///< One interior angle close to 180 degrees.
-    Small     ///< Well shaped but below the area / altitude thresholds.
+    Small     ///< Flagged but neither: below a floor, or stretched just over the limit (aspect 100 to ~121).
 };
 
 inline constexpr int kThinFaceSubtypeCount = 4;
@@ -117,7 +118,7 @@ struct ThinFaceReport {
     [[nodiscard]] const ThinFaceDefect* findDefectForFace(Eigen::Index faceIdx) const noexcept;
 };
 
-/// Diagnostic checker that detects degenerate, near-zero-area, and high-aspect-ratio sliver faces.
+/// Diagnostic checker that detects degenerate faces and faces stretched over the aspect limit.
 class ThinFaceChecker {
 public:
     /// Computes geometric metrics and threshold flags for a single face `faceIndex` of `mesh`.
