@@ -389,6 +389,7 @@ void PolyscopeGui::drawCategoryTool(DefectCategory category) {
     if (info.infoOnly) {
         ImGui::Text("%s %s.", withThousands(result->infoCount).c_str(), info.elementNoun);
     }
+    drawCategoryWarnings(*result);
     if (browser.scopedCount() == 0) {
         ImGui::TextColored(gui::kOkColor, "No %s found%s.", info.name,
                            result->empty() ? "" : " in the shells in scope");
@@ -431,6 +432,30 @@ void PolyscopeGui::drawCategoryTool(DefectCategory category) {
     }
 }
 
+void PolyscopeGui::drawCategoryWarnings(const CategoryResult& result) {
+    const ShellBrowser& shells = controller_.shells();
+    for (std::size_t i = 0; i < result.warnings.size(); ++i) {
+        const CategoryWarning& warning = result.warnings[i];
+        // With part of the mesh out of scope, only warnings about a shell in scope
+        if (shells.scoped() && std::none_of(warning.shells.begin(), warning.shells.end(),
+                                            [&](int s) { return shells.inScope(s); })) {
+            continue;
+        }
+        ImGui::PushID(static_cast<int>(i));
+        ImGui::PushStyleColor(ImGuiCol_Text, gui::kDefectColor);
+        ImGui::TextWrapped("%s", warning.text.c_str());
+        ImGui::PopStyleColor();
+        if (ImGui::SmallButton("Show")) {
+            controller_.showShells(warning.shells);
+            requestSync();
+            focusCameraOnSelection(FocusNormalSide::PreserveViewDirection);
+        }
+        tooltip("Select these shells in the Shells panel and frame them. Not counted in the row: Ogun will not "
+                "guess which way they should face.");
+        ImGui::PopID();
+    }
+}
+
 void PolyscopeGui::drawCategorySettings(DefectCategory category) {
     ImGui::PushItemWidth(110.0f);
     switch (category) {
@@ -469,6 +494,14 @@ void PolyscopeGui::drawCategorySettings(DefectCategory category) {
         break;
     case DefectCategory::FlippedNormals:
         ImGui::TextDisabled("Faces wound against the majority of their shell are listed.");
+        break;
+    case DefectCategory::InvertedShells:
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("Each closed shell is judged by the sign of its volume and by what it lies inside (a ray "
+                            "test that ignores winding). Inward inside a solid: a cavity, kept and not counted. Inward "
+                            "in empty space with nothing inside it: inside out, counted. Inward with shells inside it, "
+                            "or touching or crossing another shell: a warning below, not counted. No settings.");
+        ImGui::PopTextWrapPos();
         break;
     case DefectCategory::NonManifoldEdges:
     case DefectCategory::NonManifoldVertices:

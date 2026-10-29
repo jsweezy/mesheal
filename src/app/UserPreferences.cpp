@@ -205,6 +205,7 @@ const char* categoryKey(DefectCategory category) noexcept {
     case DefectCategory::ThinFaces: return "thin_faces";
     case DefectCategory::Degenerate: return "degenerate";
     case DefectCategory::Duplicates: return "duplicates";
+    case DefectCategory::InvertedShells: return "inverted_shells";
     }
     return "unknown";
 }

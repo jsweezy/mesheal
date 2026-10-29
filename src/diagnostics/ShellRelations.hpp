@@ -28,6 +28,7 @@ struct ShellFacts {
     std::vector<Eigen::Index> faces;
     BoundingBox box;
     bool closed = false;        ///< Every edge is shared by exactly two of its faces (repeated-vertex faces ignored)
+    bool oriented = false;      ///< Closed, and the two faces at every edge run it in opposite directions
     double signedVolume = 0.0;  ///< Positive when its faces point outward; a cavity is negative
     int nestedIn = -1;          ///< Smallest shell it lies inside (-1: none, or nesting unsure)
     std::vector<int> containers; ///< Every shell it lies inside, smallest box first
@@ -70,6 +71,9 @@ struct ShellRelations {
     /// Shell pairs (low, high) whose faces cross or share an area (the pairs ruled out of nesting).
     [[nodiscard]] std::set<std::pair<int, int>> overlappingPairs() const;
 };
+
+/// Faces, box, closed / oriented flags and signed volume of each shell (no pairs, no nesting).
+[[nodiscard]] std::vector<ShellFacts> describeShells(const Mesh& mesh, std::span<const std::vector<Eigen::Index>> shellFaces);
 
 /// Edge-connected shells (`checkShells`) in the Shells panel's order: most faces first, then lowest
 /// first face. Faces with a repeated vertex index are not in any shell.

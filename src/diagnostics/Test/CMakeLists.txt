@@ -7,6 +7,7 @@ add_executable(ogun_diagnostics_tests
     HoleLoopsTests.cpp
     ShellNestingTests.cpp
     ShellRelationsTests.cpp
+    ShellRolesTests.cpp
 )
 
 target_link_libraries(ogun_diagnostics_tests

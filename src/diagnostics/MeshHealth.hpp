@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <span>
 #include <stop_token>
+#include <string>
 #include <vector>
 
 namespace ogun {
@@ -26,16 +27,19 @@ enum class DefectCategory : std::uint8_t {
     Intersections,
     ThinFaces,
     Degenerate,
-    Duplicates
+    Duplicates,
+    InvertedShells ///< Last in the enum (indices of saved arrays stay put); shown after Flipped normals
 };
 
-inline constexpr std::size_t kDefectCategoryCount = 9;
+inline constexpr std::size_t kDefectCategoryCount = 10;
 
+/// Every row in panel order.
 inline constexpr std::array<DefectCategory, kDefectCategoryCount> kAllDefectCategories = {
     DefectCategory::OpenEdges,
     DefectCategory::NonManifoldEdges,
     DefectCategory::NonManifoldVertices,
     DefectCategory::FlippedNormals,
+    DefectCategory::InvertedShells,
     DefectCategory::Shells,
     DefectCategory::Intersections,
     DefectCategory::ThinFaces,
@@ -53,7 +57,7 @@ enum class ElementKind { Face, Edge, Vertex, Shell, Hole };
 enum class CategoryGroup { Topology, Geometry };
 
 /// Physical dimension of a list column or metric, used to append the unit symbol.
-enum class ValueDimension { None, Length, Area };
+enum class ValueDimension { None, Length, Area, Volume };
 
 struct CategoryColumn {
     const char* name = nullptr; ///< nullptr: column unused
@@ -93,6 +97,12 @@ struct DefectElement {
     int subtype = -1;                  ///< Index into `CategoryInfo::subtypes` (-1: none)
 };
 
+/// A line a check shows in its Tool panel without counting it (Inverted shells: shells it will not judge).
+struct CategoryWarning {
+    std::string text;        ///< Names shells in the Shells panel's numbering ("#1 and its inner shell #2 ...")
+    std::vector<int> shells; ///< The shells it names (0-based, Shells-panel order): *Show* selects them
+};
+
 /// Result of one Mesh Health check. Elements are sorted worst first.
 struct CategoryResult {
     DefectCategory category = DefectCategory::ThinFaces;
@@ -108,6 +118,7 @@ struct CategoryResult {
     /// Edges of each element in CSR form (holes: the rim edges). Empty for other categories.
     std::vector<std::uint32_t> edgeOffsets;
     std::vector<std::array<int, 2>> edges;
+    std::vector<CategoryWarning> warnings; ///< Not in the count (Inverted shells)
     std::size_t infoCount = 0; ///< Open edges (holes) or shell count (shells)
     double elapsedMs = 0.0;
     bool cancelled = false;

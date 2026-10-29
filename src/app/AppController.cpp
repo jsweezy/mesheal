@@ -1416,6 +1416,19 @@ void AppController::selectShellsWhere(const std::function<bool(std::size_t)>& pr
     onShellsChanged();
 }
 
+void AppController::showShells(std::span<const int> shells) {
+    std::vector<std::uint8_t> wanted(shells_.size(), 0);
+    for (const int s : shells) {
+        if (s >= 0 && static_cast<std::size_t>(s) < wanted.size()) {
+            wanted[static_cast<std::size_t>(s)] = 1;
+            shells_.setVisible(static_cast<std::size_t>(s), true);
+        }
+    }
+    browser_.selectNone();
+    selectShellsWhere([&](std::size_t s) { return wanted[s] != 0; });
+    onFocusChanged();
+}
+
 void AppController::setShellVisible(std::size_t shell, bool visible) {
     shells_.setVisible(shell, visible);
     onShellsChanged();

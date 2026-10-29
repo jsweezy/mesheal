@@ -1,6 +1,7 @@
 #include "diagnostics/MeshHealth.hpp"
 #include "diagnostics/MeshChecks.hpp"
 #include "diagnostics/SelfIntersections.hpp"
+#include "diagnostics/ShellRoles.hpp"
 
 #include <chrono>
 
@@ -65,6 +66,13 @@ constexpr std::array<CategoryInfo, kDefectCategoryCount> kCategoryInfos = {{
      {{{"Copy of face", ValueDimension::None}, kNoColumn, kNoColumn}},
      nullptr, ValueDimension::None, false, true,
      {"Same winding", "Opposite winding", nullptr, nullptr}},
+    {"Inverted shells", "Inverted Shells", CategoryGroup::Topology,
+     "Closed shells wound inside out: facing inward with nothing around them and nothing inside them. "
+     "Cavities (inward shells inside a solid) are correct and not counted.",
+     ElementKind::Shell, "shells", true, false, false,
+     {{{"Faces", ValueDimension::None}, {"Volume", ValueDimension::Volume}, kNoColumn}},
+     nullptr, ValueDimension::None, false, false,
+     {nullptr, nullptr, nullptr, nullptr}},
 }};
 
 } // namespace
@@ -133,6 +141,9 @@ CategoryResult runCategoryCheck(
         break;
     case DefectCategory::Duplicates:
         result = checkDuplicateFaces(mesh, stopToken);
+        break;
+    case DefectCategory::InvertedShells:
+        result = checkInvertedShells(mesh, params, stopToken, progress);
         break;
     }
 

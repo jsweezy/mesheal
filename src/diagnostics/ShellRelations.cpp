@@ -43,7 +43,8 @@ void describeShell(const Mesh& mesh, ShellFacts& shell) {
     // Volume about the box centre, so far-from-origin shells keep their precision
     const Eigen::Vector3d centre = shell.box.center();
     double volume = 0.0;
-    std::vector<std::array<int, 2>> edges;
+    // (low, high, 1 when the face runs low -> high), so a pair can be checked for opposite directions
+    std::vector<std::array<int, 3>> edges;
     edges.reserve(3 * shell.faces.size());
     for (const Eigen::Index f : shell.faces) {
         if (repeatsVertex(mesh, f)) {
@@ -56,18 +57,20 @@ void describeShell(const Mesh& mesh, ShellFacts& shell) {
         for (int k = 0; k < 3; ++k) {
             const int u = mesh.F(f, k);
             const int v = mesh.F(f, (k + 1) % 3);
-            edges.push_back({std::min(u, v), std::max(u, v)});
+            edges.push_back({std::min(u, v), std::max(u, v), u < v ? 1 : 0});
         }
     }
     shell.signedVolume = volume / 6.0;
     std::sort(edges.begin(), edges.end());
     shell.closed = !edges.empty();
+    shell.oriented = shell.closed;
     for (std::size_t i = 0; i < edges.size() && shell.closed;) {
         std::size_t j = i;
-        while (j < edges.size() && edges[j] == edges[i]) {
+        while (j < edges.size() && edges[j][0] == edges[i][0] && edges[j][1] == edges[i][1]) {
             ++j;
         }
         shell.closed = j - i == 2;
+        shell.oriented = shell.closed && shell.oriented && edges[i][2] != edges[i + 1][2];
         i = j;
     }
 }
@@ -126,6 +129,15 @@ std::set<std::pair<int, int>> ShellRelations::overlappingPairs() const {
     return result;
 }
 
+std::vector<ShellFacts> describeShells(const Mesh& mesh, std::span<const std::vector<Eigen::Index>> shellFaces) {
+    std::vector<ShellFacts> shells(shellFaces.size());
+    for (std::size_t s = 0; s < shellFaces.size(); ++s) {
+        shells[s].faces = shellFaces[s];
+        describeShell(mesh, shells[s]);
+    }
+    return shells;
+}
+
 std::vector<std::vector<Eigen::Index>> shellsLargestFirst(const Mesh& mesh) {
     const CategoryResult result = checkShells(mesh);
     std::vector<std::size_t> order(result.size());
@@ -152,11 +164,7 @@ ShellRelations computeShellRelations(
     std::atomic<float>* progress) {
     ShellRelations result;
     const std::size_t n = shellFaces.size();
-    result.shells.resize(n);
-    for (std::size_t s = 0; s < n; ++s) {
-        result.shells[s].faces = shellFaces[s];
-        describeShell(mesh, result.shells[s]);
-    }
+    result.shells = describeShells(mesh, shellFaces);
     if (mesh.empty()) {
         return result;
     }

@@ -77,6 +77,8 @@ std::string dimensionSuffix(ValueDimension dimension, Unit unit) {
         return std::string(unitSymbol(unit));
     case ValueDimension::Area:
         return std::string(unitSymbol(unit)) + "^2";
+    case ValueDimension::Volume:
+        return std::string(unitSymbol(unit)) + "^3";
     case ValueDimension::None:
         break;
     }

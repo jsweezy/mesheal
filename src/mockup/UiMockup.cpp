@@ -54,7 +54,7 @@ const ImVec4 kDefectColor(1.00f, 0.62f, 0.20f, 1.0f);
 const ImVec4 kRunningColor(0.35f, 0.65f, 1.00f, 1.0f);
 const ImVec4 kMutedColor(0.55f, 0.55f, 0.55f, 1.0f);
 
-// Order matches the rows built in the UiMockup constructor
+// Order matches the rows built in the UiMockup constructor and the DefectCategory enum
 enum CategoryId : std::size_t {
     kOpenEdges,
     kNonManifoldEdges,
@@ -65,9 +65,10 @@ enum CategoryId : std::size_t {
     kSlivers,
     kDegenerate,
     kDuplicates,
+    kInvertedShells,
     kCategoryCount,
 };
-static_assert(kCategoryCount == kDefectCategoryCount, "mockup rows follow kAllDefectCategories");
+static_assert(kCategoryCount == kDefectCategoryCount, "mockup rows follow the DefectCategory enum");
 static_assert(kCategoryCount <= std::tuple_size_v<decltype(ShellHealth::counts)>);
 
 constexpr int kWithinShell = 0;
@@ -236,9 +237,11 @@ UiMockup::UiMockup(Mesh mesh, std::string sourceLabel, bool fakeDefects)
            "Triangles with exactly zero area or a repeated vertex.");
     define(kDuplicates, "Duplicate faces", "Geometry", "Copies", false,
            "Triangles that use the same three vertices as another triangle.");
+    define(kInvertedShells, "Inverted shells", "Topology", "Faces", false,
+           "Closed shells wound inside out (cavities inside a solid are correct and not counted).");
     categories_[kShells].infoOnly = true;
     const auto realSubtypes = [this](CategoryId id) {
-        for (const char* label : categoryInfo(kAllDefectCategories[id]).subtypes) {
+        for (const char* label : categoryInfo(static_cast<DefectCategory>(id)).subtypes) {
             if (label != nullptr) {
                 categories_[id].subtypes.push_back(label);
             }

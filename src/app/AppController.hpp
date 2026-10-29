@@ -580,6 +580,9 @@ public:
 
     void clickShell(std::size_t shell, bool toggle, bool range, std::span<const std::size_t> order);
     void selectShellsWhere(const std::function<bool(std::size_t)>& predicate);
+    /// *Show* on a Tool-panel warning: clears the defect selection, selects exactly these shells and shows
+    /// them, so framing (`.`) goes to them. Shells out of range are ignored.
+    void showShells(std::span<const int> shells);
     void setShellVisible(std::size_t shell, bool visible);
     void showAllShells();
     void hideAllShells();

@@ -1,10 +1,12 @@
 #include "app/AppController.hpp"
 #include "app/HealthCheckRunner.hpp"
+#include "app/UserPreferences.hpp"
 #include "io/SampleMeshes.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <memory>
 
@@ -313,4 +315,62 @@ TEST_CASE("The self-intersecting box example is watertight and only intersects i
         DefectCategory::Intersections, ogun::SampleMeshes::createSelfIntersectingBoxMesh(), ogun::CheckParams{});
     REQUIRE(intersections->size() == expected.size());
     REQUIRE_FALSE(controller.loadSampleFile("no_such_example.stl"));
+}
+
+TEST_CASE("Ten Mesh Health rows, each listed once; Inverted shells follows Flipped normals",
+          "[app][health][inverted-shells]") {
+    STATIC_REQUIRE(ogun::kDefectCategoryCount == 10);
+    std::array<bool, ogun::kDefectCategoryCount> seen{};
+    std::size_t flippedAt = 0;
+    std::size_t invertedAt = 0;
+    for (std::size_t i = 0; i < ogun::kAllDefectCategories.size(); ++i) {
+        const DefectCategory category = ogun::kAllDefectCategories[i];
+        REQUIRE_FALSE(seen[ogun::categoryIndex(category)]);
+        seen[ogun::categoryIndex(category)] = true;
+        flippedAt = category == DefectCategory::FlippedNormals ? i : flippedAt;
+        invertedAt = category == DefectCategory::InvertedShells ? i : invertedAt;
+    }
+    REQUIRE(invertedAt == flippedAt + 1);
+    const ogun::CategoryInfo& info = ogun::categoryInfo(DefectCategory::InvertedShells);
+    REQUIRE(info.kind == ogun::ElementKind::Shell);
+    REQUIRE(info.group == ogun::CategoryGroup::Topology);
+    REQUIRE_FALSE(info.infoOnly);
+    REQUIRE_FALSE(info.hasFixAll); // comes with orientation
+    REQUIRE(info.autoDefault);     // about 0.27 s on the Turkey in Release
+    REQUIRE(ogun::builtInAutoCheckDefaults()[ogun::categoryIndex(DefectCategory::InvertedShells)]);
+    REQUIRE(ogun::AppController{}.categoryHealth(DefectCategory::InvertedShells).autoCheck);
+}
+
+TEST_CASE("The Inverted shells row counts inside-out shells only; Show selects the shells of a warning",
+          "[app][health][inverted-shells]") {
+    ogun::AppController controller;
+    const auto row = [&] { return controller.categoryHealth(DefectCategory::InvertedShells); };
+
+    // A cavity is correct
+    controller.setMesh(ogun::SampleMeshes::createCavityBoxMesh(), "Box with cavity");
+    REQUIRE(status(controller, DefectCategory::InvertedShells) == HealthStatus::Ok);
+    REQUIRE(controller.rowCount(DefectCategory::InvertedShells) == 0);
+    REQUIRE(row().result->warnings.empty());
+    REQUIRE(controller.totalProblemCount() == 0);
+
+    // Written inside out: not counted, one warning naming both shells
+    controller.setMesh(ogun::SampleMeshes::createCavityBoxMesh(true), "Box with cavity, inside out");
+    REQUIRE(status(controller, DefectCategory::InvertedShells) == HealthStatus::Ok);
+    REQUIRE(controller.rowCount(DefectCategory::InvertedShells) == 0);
+    REQUIRE(controller.totalProblemCount() == 0);
+    REQUIRE(row().result->warnings.size() == 1);
+    controller.selectCategory(DefectCategory::InvertedShells);
+    const std::vector<int> shells = row().result->warnings[0].shells;
+    controller.showShells(shells);
+    REQUIRE(controller.shells().selectedCount() == 2);
+    REQUIRE(controller.browser().selectedCount() == 0);
+
+    // A lone inward box is inside out: counted, listed as a shell, its faces highlighted
+    controller.setMesh(ogun::SampleMeshes::createBox({0, 0, 0}, {2, 2, 2}, true), "inside-out box");
+    REQUIRE(status(controller, DefectCategory::InvertedShells) == HealthStatus::Defects);
+    REQUIRE(controller.rowCount(DefectCategory::InvertedShells) == 1);
+    REQUIRE(controller.totalProblemCount() == 1);
+    controller.selectCategory(DefectCategory::InvertedShells);
+    controller.focusDefect(0);
+    REQUIRE(controller.highlightedFaceIndices().size() == 12);
 }

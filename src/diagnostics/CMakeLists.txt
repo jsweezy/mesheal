@@ -8,6 +8,7 @@ add_library(ogun_diagnostics STATIC
     HoleLoops.cpp
     ShellNesting.cpp
     ShellRelations.cpp
+    ShellRoles.cpp
 )
 add_library(ogun::diagnostics ALIAS ogun_diagnostics)
 

@@ -121,6 +121,7 @@ private:
     void drawMeshInfo();
     void drawToolPanel();
     void drawCategoryTool(DefectCategory category);
+    void drawCategoryWarnings(const CategoryResult& result);
     void drawCategorySettings(DefectCategory category);
     void drawSplitRepairNote(DefectCategory category);
     void drawCategoryActions(DefectCategory category);
