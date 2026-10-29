@@ -585,6 +585,32 @@ Mesh SampleMeshes::createFinSeamBoxesMesh(Unit unit) {
     return weldSoup(soup, unit);
 }
 
+Mesh SampleMeshes::createSeamBoxMesh(const Eigen::Vector3d& min, const Eigen::Vector3d& max, int axis, double offset, Unit unit) {
+    const int a = std::clamp(axis, 0, 2);
+    const double cut = 0.5 * (min[a] + max[a]);
+    Eigen::Vector3d lowMax = max;
+    lowMax[a] = cut;
+    Eigen::Vector3d highMin = min;
+    highMin[a] = cut + offset;
+    const Mesh low = createBox(min, lowMax, false, unit);
+    const Mesh high = createBox(highMin, max, false, unit);
+    const double eps = 1.0e-6 * (max[a] - min[a]); // a centroid on the cut plane, up to rounding
+    std::vector<std::array<Eigen::Vector3d, 3>> soup;
+    appendSoup(soup, low, Eigen::Vector3d::Zero(), [&](const Eigen::Vector3d& c) { return std::abs(c[a] - cut) < eps; });
+    appendSoup(soup, high, Eigen::Vector3d::Zero(),
+               [&](const Eigen::Vector3d& c) { return std::abs(c[a] - highMin[a]) < eps; });
+    return weldSoup(soup, unit);
+}
+
+Mesh SampleMeshes::createWeldSeamCubeMesh(double offset, const Eigen::Vector3d& translate, double scale, Unit unit) {
+    Mesh mesh = createSeamBoxMesh({10.0, 10.0, 10.0}, {20.0, 20.0, 20.0}, 0, offset, unit);
+    for (Eigen::Index v = 0; v < mesh.numVertices(); ++v) {
+        mesh.V.row(v) = scale * mesh.V.row(v) + translate.transpose();
+    }
+    mesh.recomputeNormals();
+    return mesh;
+}
+
 Mesh SampleMeshes::createSampleDefectiveMesh(Unit unit) {
     const Mesh cube = createCubeMesh(10.0, unit);
 

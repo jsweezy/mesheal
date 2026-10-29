@@ -21,4 +21,10 @@ inline constexpr double kAlphaZ = std::numbers::sqrt2 - 1.0;
 // Numerical tolerances
 inline constexpr double kReliableNormalRatio = 1.0e-10;
 
+// Uniform search grids (mergeByDistance): a cell is at least this share of the largest |coordinate|, so
+// a cell index stays below 1e9 however large the coordinates, and is grown by this relative margin so
+// rounding in x / cell never puts two points one cell width apart into cells two apart.
+inline constexpr double kGridMinCellCoordinateShare = 1.0e-9;
+inline constexpr double kGridCellRoundingMargin = 1.0e-6;
+
 } // namespace ogun

@@ -39,7 +39,7 @@ struct ShapeSample {
     Mesh (*make)(Unit unit);
 };
 
-constexpr std::array<ShapeSample, 11> kShapeSamples = {{
+constexpr std::array<ShapeSample, 12> kShapeSamples = {{
     {"Box with cavity, hole, slivers, and intersections",
      "Loaded a gridded box with a cavity, a hole, slivers, a fold and a peg through its side.",
      "A gridded box with a hollow inside (a cavity), a missing square (a hole), three thin faces, a top vertex "
@@ -81,6 +81,11 @@ constexpr std::array<ShapeSample, 11> kShapeSamples = {{
      "A cube, a small cube beside it, a tiny cavity inside it, a tiny tetrahedron resting on its top and a tiny "
      "tetrahedron far from everything (0.06 % of the model's size, touching nothing): 5 shells.",
      [](Unit unit) { return SampleMeshes::createTinyFloatingShellsMesh(unit); }},
+    {"Cube with a hairline seam",
+     "Loaded a cube cut in two open halves with a 0.000005 gap between them: 2 shells, 8 open edges.",
+     "A cube [10, 20]^3 cut across at x = 15 into two open halves, the right half 0.000005 further right: a crack "
+     "too wide for the weld done when loading (1.5e-8 there) but within Fix All's weld (1.5e-5 there).",
+     [](Unit unit) { return SampleMeshes::createWeldSeamCubeMesh(5.0e-6, Eigen::Vector3d::Zero(), 1.0, unit); }},
 }};
 
 /// Menu item for a feature planned in a later phase: drawn disabled with a tooltip.

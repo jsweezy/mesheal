@@ -193,6 +193,26 @@ struct SampleMeshes {
     /// three far edges are open. Without the wall the seam opens and the top is one 4-edge hole.
     [[nodiscard]] static Mesh createFinSeamBoxesMesh(Unit unit = Unit::Millimeter);
 
+    /// The box `min` to `max` cut across `axis` (0 = x, 1 = y, 2 = z) at its middle into two open halves
+    /// (10 faces each, two shells), the upper half's side faces starting `offset` past the cut: a hairline
+    /// seam whose 4 vertex pairs differ by `offset` along `axis` only (offset 0 gives the closed box).
+    [[nodiscard]] static Mesh createSeamBoxMesh(
+        const Eigen::Vector3d& min,
+        const Eigen::Vector3d& max,
+        int axis,
+        double offset,
+        Unit unit = Unit::Millimeter);
+
+    /// The cube [10, 20]^3 cut at x = 15 with a seam `offset` wide (`createSeamBoxMesh`), then every point
+    /// p moved to `scale` x p + `translate` (offsets included). Fix All's weld closes the default 5e-6
+    /// seam (its tolerance is 1.5e-5 there); the load weld (1.5e-8 there) does not.
+    /// File > Load Sample > "Cube with a hairline seam".
+    [[nodiscard]] static Mesh createWeldSeamCubeMesh(
+        double offset = 5.0e-6,
+        const Eigen::Vector3d& translate = Eigen::Vector3d::Zero(),
+        double scale = 1.0,
+        Unit unit = Unit::Millimeter);
+
     /// Generates a clean 12-triangle cube mesh injected with 3 known defective triangles:
     ///   - Face 12 (`kZeroAreaFaceIndex`): collinear zero-area triangle (A = 0, h_min = 0)
     ///   - Face 13 (`kMicroscopicFaceIndex`): microscopic-area triangle (A = 5e-9, h_min ~ 7.07e-5; well

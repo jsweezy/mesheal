@@ -1,5 +1,6 @@
 #include "repair/MeshCleanup.hpp"
 
+#include "core/Constants.hpp"
 #include "mesh/CgalMesh.hpp"
 
 #include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/Bounded_normal_change_filter.h>
@@ -13,6 +14,7 @@
 #include <cmath>
 #include <cstdio>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace ogun {
@@ -23,8 +25,10 @@ bool inScope(std::span<const std::uint8_t> faceInScope, Eigen::Index f) noexcept
     return faceInScope.empty() || faceInScope[static_cast<std::size_t>(f)] != 0;
 }
 
-/// Mesh of `faces` over `V`, keeping only the vertices they use (in index order).
-Mesh compactMesh(const Eigen::MatrixXd& V, const std::vector<std::array<int, 3>>& faces, Unit unit) {
+/// Mesh of `faces` over `V`, keeping only the vertices they use (in index order). `remapOut` receives
+/// the old -> new vertex numbers (-1 = unused).
+Mesh compactMesh(const Eigen::MatrixXd& V, const std::vector<std::array<int, 3>>& faces, Unit unit,
+                 std::vector<int>* remapOut = nullptr) {
     std::vector<int> remap(static_cast<std::size_t>(V.rows()), -1);
     for (const auto& face : faces) {
         for (const int v : face) {
@@ -52,6 +56,9 @@ Mesh compactMesh(const Eigen::MatrixXd& V, const std::vector<std::array<int, 3>>
         }
     }
     out.recomputeNormals();
+    if (remapOut != nullptr) {
+        *remapOut = std::move(remap);
+    }
     return out;
 }
 
@@ -83,35 +90,70 @@ bool sameWinding(const std::array<int, 3>& a, const std::array<int, 3>& b) noexc
     return false;
 }
 
-} // namespace
-
-MergeByDistanceResult mergeByDistance(const Mesh& mesh, double distance, std::span<const std::uint8_t> faceInScope,
-                                      bool keepSurfacesApart) {
+/// The merge engine shared by both `mergeByDistance` forms. `widthFor(M)` gives the widest distance a
+/// matching pair can differ by on any axis when M is the largest |coordinate| of a candidate (the grid
+/// cell); `match(p, q)` decides a pair. `protectOutside`: pin every vertex of a face outside the scope
+/// and never remove such a face as a copy.
+template <typename WidthFor, typename Match>
+MergeByDistanceResult mergeVertices(const Mesh& mesh, WidthFor widthFor, Match match,
+                                    std::span<const std::uint8_t> faceInScope, bool keepSurfacesApart,
+                                    std::span<const std::uint8_t> pinned, bool protectOutside) {
     MergeByDistanceResult result;
-    if (mesh.empty() || !(distance > 0.0) || !std::isfinite(distance)) {
-        result.statusMessage = "Merge needs a mesh and a positive distance.";
+    const auto nv = static_cast<std::size_t>(mesh.numVertices());
+    const auto nf = static_cast<std::size_t>(mesh.numFaces());
+    if ((!faceInScope.empty() && faceInScope.size() != nf) || (!pinned.empty() && pinned.size() != nv)) {
+        result.statusMessage = "Merge needs one scope flag per face and one pin flag per vertex.";
         return result;
     }
 
-    // Candidates: the vertices of the faces in scope, bucketed in a grid of `distance` cells
-    const auto nv = static_cast<std::size_t>(mesh.numVertices());
+    // Candidates: the finite vertices of the faces in scope. Pins: the caller's, plus (protectOutside)
+    // every vertex of a face outside the scope
     std::vector<std::uint8_t> candidate(nv, 0);
+    std::vector<std::uint8_t> pin(nv, 0);
+    for (std::size_t v = 0; v < pinned.size(); ++v) {
+        pin[v] = pinned[v] != 0 ? 1 : 0;
+    }
     for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
-        if (inScope(faceInScope, f)) {
-            for (int c = 0; c < 3; ++c) {
-                candidate[static_cast<std::size_t>(mesh.F(f, c))] = 1;
+        const bool in = inScope(faceInScope, f);
+        for (int c = 0; c < 3; ++c) {
+            const auto v = static_cast<std::size_t>(mesh.F(f, c));
+            if (in) {
+                candidate[v] = 1;
+            } else if (protectOutside) {
+                pin[v] = 1;
             }
         }
     }
-    const auto cellOf = [&](Eigen::Index v) {
-        return CellKey{static_cast<std::int64_t>(std::floor(mesh.V(v, 0) / distance)),
-                       static_cast<std::int64_t>(std::floor(mesh.V(v, 1) / distance)),
-                       static_cast<std::int64_t>(std::floor(mesh.V(v, 2) / distance))};
+    double largest = 0.0;
+    for (std::size_t v = 0; v < nv; ++v) {
+        if (candidate[v] == 0) {
+            continue;
+        }
+        const auto row = mesh.V.row(static_cast<Eigen::Index>(v));
+        if (!row.allFinite()) {
+            candidate[v] = 0;
+            continue;
+        }
+        largest = std::max(largest, row.cwiseAbs().maxCoeff());
+    }
+
+    // Grid cells at least as wide as any matching pair's gap on an axis (exact 27-cell search), never
+    // so narrow that a cell index could overflow, and widened a little against rounding in x / cell
+    result.maxTolerance = widthFor(largest);
+    double cell = std::max(result.maxTolerance, largest * kGridMinCellCoordinateShare) * (1.0 + kGridCellRoundingMargin);
+    if (!(cell > 0.0)) {
+        cell = 1.0; // every candidate is at the origin
+    }
+    const auto cellOf = [&](std::size_t v) {
+        const auto i = static_cast<Eigen::Index>(v);
+        return CellKey{static_cast<std::int64_t>(std::floor(mesh.V(i, 0) / cell)),
+                       static_cast<std::int64_t>(std::floor(mesh.V(i, 1) / cell)),
+                       static_cast<std::int64_t>(std::floor(mesh.V(i, 2) / cell))};
     };
     std::unordered_map<CellKey, std::vector<int>, CellHash> grid;
     for (std::size_t v = 0; v < nv; ++v) {
         if (candidate[v] != 0) {
-            grid[cellOf(static_cast<Eigen::Index>(v))].push_back(static_cast<int>(v));
+            grid[cellOf(v)].push_back(static_cast<int>(v));
         }
     }
 
@@ -119,7 +161,7 @@ MergeByDistanceResult mergeByDistance(const Mesh& mesh, double distance, std::sp
     std::vector<std::pair<int, int>> edges;
     std::vector<std::uint8_t> onOpenEdge;
     if (keepSurfacesApart) {
-        edges.reserve(3 * static_cast<std::size_t>(mesh.numFaces()));
+        edges.reserve(3 * nf);
         for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
             for (int c = 0; c < 3; ++c) {
                 const int a = mesh.F(f, c);
@@ -150,23 +192,22 @@ MergeByDistanceResult mergeByDistance(const Mesh& mesh, double distance, std::sp
                (onOpenEdge[static_cast<std::size_t>(a)] != 0 && onOpenEdge[static_cast<std::size_t>(b)] != 0);
     };
 
-    // Each unmerged vertex, in index order, absorbs the unmerged ones within `distance` of it
+    // Each unmerged vertex (pinned ones first, then the rest, each in index order) absorbs the unmerged,
+    // unpinned ones that match it
     std::vector<int> target(nv);
     for (std::size_t v = 0; v < nv; ++v) {
         target[v] = static_cast<int>(v);
     }
     std::vector<std::uint8_t> assigned(nv, 0);
-    const double d2 = distance * distance;
-    for (std::size_t v = 0; v < nv; ++v) {
-        if (candidate[v] == 0 || assigned[v] != 0) {
-            continue;
-        }
+    const auto absorb = [&](std::size_t v) {
         assigned[v] = 1;
-        const CellKey cell = cellOf(static_cast<Eigen::Index>(v));
+        const auto iv = static_cast<Eigen::Index>(v);
+        const Eigen::Vector3d p = mesh.V.row(iv).transpose();
+        const CellKey key = cellOf(v);
         for (std::int64_t dx = -1; dx <= 1; ++dx) {
             for (std::int64_t dy = -1; dy <= 1; ++dy) {
                 for (std::int64_t dz = -1; dz <= 1; ++dz) {
-                    const auto it = grid.find(CellKey{cell.x + dx, cell.y + dy, cell.z + dz});
+                    const auto it = grid.find(CellKey{key.x + dx, key.y + dy, key.z + dz});
                     if (it == grid.end()) {
                         continue;
                     }
@@ -175,24 +216,39 @@ MergeByDistanceResult mergeByDistance(const Mesh& mesh, double distance, std::sp
                         if (assigned[un] != 0) {
                             continue;
                         }
-                        const double dist2 = (mesh.V.row(n) - mesh.V.row(static_cast<Eigen::Index>(v))).squaredNorm();
-                        if (dist2 <= d2 && mayMerge(static_cast<int>(v), n)) {
-                            assigned[un] = 1;
-                            target[un] = static_cast<int>(v);
-                            ++result.verticesMerged;
-                            result.maxMove = std::max(result.maxMove, std::sqrt(dist2));
+                        const Eigen::Vector3d q = mesh.V.row(n).transpose();
+                        if (!match(p, q) || !mayMerge(static_cast<int>(v), n)) {
+                            continue;
                         }
+                        if (pin[un] != 0) {
+                            ++result.pinnedPairsKept;
+                            continue;
+                        }
+                        assigned[un] = 1;
+                        target[un] = static_cast<int>(v);
+                        ++result.verticesMerged;
+                        result.maxMove = std::max(result.maxMove, (q - p).norm());
                     }
                 }
+            }
+        }
+    };
+    for (const std::uint8_t pass : {std::uint8_t{1}, std::uint8_t{0}}) {
+        for (std::size_t v = 0; v < nv; ++v) {
+            if (candidate[v] != 0 && assigned[v] == 0 && pin[v] == pass) {
+                absorb(v);
             }
         }
     }
 
     // Remap faces; drop the collapsed ones
     std::vector<std::array<int, 3>> faces;
+    std::vector<Eigen::Index> origin; // input face of each remapped face
     std::vector<std::uint8_t> touched;
-    faces.reserve(static_cast<std::size_t>(mesh.numFaces()));
-    touched.reserve(static_cast<std::size_t>(mesh.numFaces()));
+    faces.reserve(nf);
+    origin.reserve(nf);
+    touched.reserve(nf);
+    result.faceMap.assign(nf, -1);
     for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
         std::array<int, 3> face{};
         bool moved = false;
@@ -201,21 +257,25 @@ MergeByDistanceResult mergeByDistance(const Mesh& mesh, double distance, std::sp
             face[static_cast<std::size_t>(c)] = target[static_cast<std::size_t>(v)];
             moved = moved || face[static_cast<std::size_t>(c)] != v;
         }
-        if (face[0] == face[1] || face[1] == face[2] || face[0] == face[2]) {
+        const bool collapsed = face[0] == face[1] || face[1] == face[2] || face[0] == face[2];
+        if (collapsed && !(protectOutside && !inScope(faceInScope, f))) {
             ++result.degenerateRemoved;
             continue;
         }
         faces.push_back(face);
+        origin.push_back(f);
         touched.push_back(moved ? 1 : 0);
     }
 
-    // Faces that became copies: keep one of a same-winding group, drop folds (both windings) entirely
+    // Faces that became copies: keep one of a same-winding group, drop folds (both windings) entirely.
+    // Protected faces (outside the scope) always stay; the in-scope copies of one go
     std::unordered_map<std::array<int, 3>, std::vector<std::size_t>, TriangleKeyHash> copies;
     for (std::size_t f = 0; f < faces.size(); ++f) {
         std::array<int, 3> key = faces[f];
         std::sort(key.begin(), key.end());
         copies[key].push_back(f);
     }
+    const auto isProtected = [&](std::size_t f) { return protectOutside && !inScope(faceInScope, origin[f]); };
     std::vector<std::uint8_t> drop(faces.size(), 0);
     for (const auto& [key, group] : copies) {
         if (group.size() < 2 || std::none_of(group.begin(), group.end(), [&](std::size_t f) { return touched[f] != 0; })) {
@@ -223,26 +283,67 @@ MergeByDistanceResult mergeByDistance(const Mesh& mesh, double distance, std::sp
         }
         const bool fold = std::any_of(group.begin() + 1, group.end(),
                                       [&](std::size_t f) { return !sameWinding(faces[group.front()], faces[f]); });
-        for (std::size_t i = fold ? 0 : 1; i < group.size(); ++i) {
-            drop[group[i]] = 1;
-            ++result.duplicatesRemoved;
+        const auto protectedIt = std::find_if(group.begin(), group.end(), isProtected);
+        const std::size_t keep = fold ? faces.size() : (protectedIt != group.end() ? *protectedIt : group.front());
+        for (const std::size_t f : group) {
+            if (f != keep && !isProtected(f)) {
+                drop[f] = 1;
+                ++result.duplicatesRemoved;
+            }
         }
     }
     std::vector<std::array<int, 3>> kept;
     kept.reserve(faces.size());
     for (std::size_t f = 0; f < faces.size(); ++f) {
         if (drop[f] == 0) {
+            result.faceMap[static_cast<std::size_t>(origin[f])] = static_cast<Eigen::Index>(kept.size());
             kept.push_back(faces[f]);
         }
     }
 
-    result.mesh = compactMesh(mesh.V, kept, mesh.fileUnit);
+    std::vector<int> remap;
+    result.mesh = compactMesh(mesh.V, kept, mesh.fileUnit, &remap);
+    result.vertexMap.resize(nv);
+    for (std::size_t v = 0; v < nv; ++v) {
+        result.vertexMap[v] = remap[static_cast<std::size_t>(target[v])];
+    }
     result.success = true;
     std::array<char, 160> text{};
     std::snprintf(text.data(), text.size(), "Merged %zu vertices (moved at most %.3g); removed %zu collapsed and %zu duplicate faces.",
                   result.verticesMerged, result.maxMove, result.degenerateRemoved, result.duplicatesRemoved);
     result.statusMessage = text.data();
     return result;
+}
+
+} // namespace
+
+MergeByDistanceResult mergeByDistance(const Mesh& mesh, double distance, std::span<const std::uint8_t> faceInScope,
+                                      bool keepSurfacesApart, std::span<const std::uint8_t> pinned) {
+    if (mesh.empty() || !(distance > 0.0) || !std::isfinite(distance)) {
+        MergeByDistanceResult result;
+        result.statusMessage = "Merge needs a mesh and a positive distance.";
+        return result;
+    }
+    const double d2 = distance * distance;
+    return mergeVertices(
+        mesh, [distance](double) { return distance; },
+        [d2](const Eigen::Vector3d& p, const Eigen::Vector3d& q) { return (q - p).squaredNorm() <= d2; }, faceInScope,
+        keepSurfacesApart, pinned, false);
+}
+
+MergeByDistanceResult mergeByDistance(const Mesh& mesh, const ToleranceConfig& tol, std::span<const std::uint8_t> faceInScope,
+                                      bool keepSurfacesApart, std::span<const std::uint8_t> pinned) {
+    const bool valid = std::isfinite(tol.absFloor) && std::isfinite(tol.relTol) && tol.absFloor >= 0.0 && tol.relTol >= 0.0 &&
+                       (tol.absFloor > 0.0 || tol.relTol > 0.0);
+    if (mesh.empty() || !valid) {
+        MergeByDistanceResult result;
+        result.statusMessage = "Weld needs a mesh and a tolerance: floor and relative tolerance at least 0, not both 0.";
+        return result;
+    }
+    return mergeVertices(
+        mesh, [&tol](double largest) { return std::max(tol.absFloor, tol.relTol * largest); },
+        [&tol](const Eigen::Vector3d& p, const Eigen::Vector3d& q) { return tol.verticesMatchWithinTolerance(p, q); },
+        faceInScope, keepSurfacesApart, pinned, true);
 }
 
 DecimateResult decimate(const Mesh& mesh, double ratio, std::span<const std::uint8_t> faceInScope) {

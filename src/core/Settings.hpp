@@ -187,4 +187,9 @@ inline constexpr std::size_t kMaxUndoHistoryDepth    = 50;        // Max undo sn
 inline constexpr double kDefaultWeldAbsFloor = 1.0e-9;            // Absolute tolerance floor in file coordinates (unitless: the file unit never rescales it)
 inline constexpr double kDefaultWeldRelTol     = 1.0e-9;          // Coordinate-relative vertex welding tolerance
 
+// Fix All's own weld by distance (crack healing), separate from the load weld above: two vertices match
+// when on every axis |p_i - q_i| <= max(floor, rel x max(|p_i|, |q_i|)) (a ToleranceConfig of its own).
+inline constexpr double kDefaultFixAllWeldAbsFloor = 1.0e-6;      // Fix All weld: absolute per-axis floor in file coordinates (unitless)
+inline constexpr double kDefaultFixAllWeldRelTol   = 1.0e-6;      // Fix All weld: per-axis tolerance relative to the larger coordinate on that axis
+
 } // namespace ogun::settings
