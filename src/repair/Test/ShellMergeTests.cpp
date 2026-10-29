@@ -17,20 +17,14 @@
 
 namespace {
 
-ogun::Mesh cubeAt(const Eigen::RowVector3d& offset, double side = 2.0) {
-    ogun::Mesh cube = ogun::SampleMeshes::createCubeMesh(side);
-    cube.V.rowwise() += offset;
-    cube.recomputeNormals();
-    return cube;
+/// The 2 x 2 x 2 box with its min corner at `min` (12 faces).
+ogun::Mesh box2(const Eigen::Vector3d& min) {
+    return ogun::SampleMeshes::createBox(min, min + Eigen::Vector3d::Constant(2.0));
 }
 
-/// Unwelded shells side by side; each gets 12 consecutive faces.
+/// Unwelded shells side by side; each box gets 12 consecutive faces.
 ogun::Mesh shells(const std::vector<ogun::Mesh>& parts) {
-    ogun::Mesh mesh;
-    for (const ogun::Mesh& part : parts) {
-        appendMesh(mesh, part);
-    }
-    return mesh;
+    return ogun::SampleMeshes::combineMeshes(parts);
 }
 
 std::vector<Eigen::Index> faceRange(Eigen::Index first, Eigen::Index count) {
@@ -51,7 +45,7 @@ bool closedAndClean(const ogun::Mesh& mesh) {
 } // namespace
 
 TEST_CASE("Merging two overlapping cubes gives one closed shell without crossings", "[repair][merge]") {
-    const ogun::Mesh mesh = shells({cubeAt({0.0, 0.0, 0.0}), cubeAt({1.0, 1.0, 1.0})});
+    const ogun::Mesh mesh = shells({box2({0.0, 0.0, 0.0}), box2({1.0, 1.0, 1.0})});
     REQUIRE(count(ogun::DefectCategory::Intersections, mesh) > 0);
 
     const std::vector<std::vector<Eigen::Index>> parts = {faceRange(0, 12), faceRange(12, 12)};
@@ -69,8 +63,8 @@ TEST_CASE("Merging two overlapping cubes gives one closed shell without crossing
 }
 
 TEST_CASE("Shells left out of the merge are not touched", "[repair][merge]") {
-    const ogun::Mesh bystander = cubeAt({10.0, 0.0, 0.0});
-    const ogun::Mesh mesh = shells({cubeAt({0.0, 0.0, 0.0}), bystander, cubeAt({1.0, 1.0, 1.0})});
+    const ogun::Mesh bystander = box2({10.0, 0.0, 0.0});
+    const ogun::Mesh mesh = shells({box2({0.0, 0.0, 0.0}), bystander, box2({1.0, 1.0, 1.0})});
     std::vector<Eigen::Index> second = faceRange(24, 12);
     const std::vector<std::vector<Eigen::Index>> parts = {faceRange(0, 12), second};
 
@@ -83,7 +77,7 @@ TEST_CASE("Shells left out of the merge are not touched", "[repair][merge]") {
 }
 
 TEST_CASE("Merging shells that do not touch keeps them apart and unchanged", "[repair][merge]") {
-    const ogun::Mesh mesh = shells({cubeAt({0.0, 0.0, 0.0}), cubeAt({5.0, 0.0, 0.0})});
+    const ogun::Mesh mesh = shells({box2({0.0, 0.0, 0.0}), box2({5.0, 0.0, 0.0})});
     const std::vector<std::vector<Eigen::Index>> parts = {faceRange(0, 12), faceRange(12, 12)};
     const ogun::ShellMergeResult r = ogun::mergeShells(mesh, parts);
     REQUIRE(r.success);
@@ -114,9 +108,9 @@ TEST_CASE("Shells touching along an edge merge into valid topology", "[repair][m
 }
 
 TEST_CASE("Manifold rejects an open shell and the merge reports which one", "[repair][merge]") {
-    ogun::Mesh open = cubeAt({1.0, 1.0, 1.0});
+    ogun::Mesh open = box2({1.0, 1.0, 1.0});
     open.F.conservativeResize(11, 3);
-    const ogun::Mesh mesh = shells({cubeAt({0.0, 0.0, 0.0}), open});
+    const ogun::Mesh mesh = shells({box2({0.0, 0.0, 0.0}), open});
     const std::vector<std::vector<Eigen::Index>> parts = {faceRange(0, 12), faceRange(12, 11)};
 
     const ogun::ShellMergeResult r = ogun::mergeShells(mesh, parts);

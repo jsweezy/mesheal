@@ -91,6 +91,75 @@ struct SampleMeshes {
     /// Generates a binary STL byte buffer representing the 12-triangle cube (36 raw soup vertices).
     [[nodiscard]] static std::vector<std::uint8_t> createCubeBinaryStl(double sideLength = 10.0);
 
+    /// Generates the closed 12-triangle box from `min` to `max` (the `createCubeMesh` layout), its faces
+    /// pointing outward, or inward when `inward` (a cavity's winding, negative volume).
+    [[nodiscard]] static Mesh createBox(
+        const Eigen::Vector3d& min,
+        const Eigen::Vector3d& max,
+        bool inward = false,
+        Unit unit = Unit::Millimeter);
+
+    /// Concatenates `parts` in order without welding, so each part stays its own shell (as an STL load
+    /// leaves shells that only touch). The unit is the first part's.
+    [[nodiscard]] static Mesh combineMeshes(const std::vector<Mesh>& parts);
+
+    // Shell-interaction fixtures (boxes, one shell each, listed in shell order: largest first, then in
+    // the order given). Pass them through `separateTouchingContacts` like a file.
+
+    /// Box with a cavity: A = [0, 4]^3 outward (volume 64) holding C = [1, 3]^3 wound inward (-8), touching
+    /// nothing. `insideOut`: the whole file inside out (A inward, C outward).
+    /// File > Load Sample > "Box with cavity" / "Box with cavity, inside out".
+    [[nodiscard]] static Mesh createCavityBoxMesh(bool insideOut = false, Unit unit = Unit::Millimeter);
+
+    /// Overlapping boxes with a cavity: A = [0, 4]^3 and B = [3.5, 7.5] x [0.5, 4.5]^2 outward, overlapping
+    /// in [3.5, 4] x [0.5, 4]^2 with no coplanar faces; cavity C = [1, 2] x [1, 3]^2 inward inside A only.
+    /// File > Load Sample > "Overlapping boxes with cavity".
+    [[nodiscard]] static Mesh createOverlapPlusCavityMesh(Unit unit = Unit::Millimeter);
+
+    enum class CavityReachedVariant {
+        CrossesWall,   ///< Cavity [3, 3.8] x [1, 3]^2 (volume 3.2): B's wall x = 3.5 crosses it
+        InsideOverlap, ///< Cavity [3.6, 3.9] x [1, 2]^2 (volume 0.3), wholly inside A and B
+        WithSeparatePair ///< CrossesWall plus a separate pair of overlapping boxes 20 to the right
+    };
+
+    /// The boxes A and B of `createOverlapPlusCavityMesh` with a cavity of A that B reaches into.
+    /// File > Load Sample > "Overlapping boxes with cavity in the overlap" (CrossesWall).
+    [[nodiscard]] static Mesh createCavityReachedMesh(
+        CavityReachedVariant variant = CavityReachedVariant::CrossesWall,
+        Unit unit = Unit::Millimeter);
+
+    /// Box [0, 4]^3 holding a cavity [0.5, 1.5]^3 (inward) and a nested box [2.5, 3.5]^3 (outward, touching
+    /// nothing). `crossingVariant` adds a third inner box [3.2, 3.8] x [2.7, 3.3] x [2.8, 3.4] that crosses
+    /// the nested one. File > Load Sample > "Box with nested box and cavity".
+    [[nodiscard]] static Mesh createNestedSolidAndCavityMesh(bool crossingVariant = false, Unit unit = Unit::Millimeter);
+
+    /// Box [0, 6]^3 holding a cavity [1, 5]^3 (inward) with an island [2, 4]^3 floating in it (outward,
+    /// or inward when `islandInsideOut`).
+    [[nodiscard]] static Mesh createIslandInCavityMesh(bool islandInsideOut = false, Unit unit = Unit::Millimeter);
+
+    /// Boxes [0, 2]^3 and [2, 4] x [2, 4] x [0, 2] touching along the edge x = y = 2 only.
+    /// File > Load Sample > "Boxes touching along an edge".
+    [[nodiscard]] static Mesh createEdgeTouchingBoxesMesh(Unit unit = Unit::Millimeter);
+
+    /// Boxes [0, 2]^3 and [2, 4] x [0.5, 1.5]^2 sharing a 1 x 1 patch of the plane x = 2.
+    /// File > Load Sample > "Boxes touching across a face".
+    [[nodiscard]] static Mesh createFaceTouchingBoxesMesh(Unit unit = Unit::Millimeter);
+
+    /// A body box [0, 10] x [0, 6]^2, six thin feather boxes crossing its top y = 6, a small box
+    /// [3.2, 4.8] x [1.2, 2.8]^2 inside the body touching nothing (outward), and a separate box
+    /// [14, 16] x [0, 2]^2: 9 shells. File > Load Sample > "Turkey-like assembly".
+    [[nodiscard]] static Mesh createTurkeyLikeMesh(Unit unit = Unit::Millimeter);
+
+    /// The sample to try every repair on at once: a 4 x 4 grid box [0, 8]^3 with
+    ///   - a hole: one 2 x 2 cell missing from its front y = 0 (x in [4, 6], z in [2, 4]);
+    ///   - slivers on its left side x = 0: one Cap (a point 0.01 off a cell diagonal) and two Needles
+    ///     (a point 0.01 from a cell corner), each splitting one triangle in three;
+    ///   - a fold: top vertex (2, 2, 8) dragged to (5, 2.4, 8), so its faces cross their neighbours;
+    ///   - a cavity [1.5, 3.5]^3 (inward) touching nothing;
+    ///   - a peg box [6.6, 10.4] x [5.4, 6.6] x [5.3, 6.7] crossing its right side x = 8.
+    /// 3 shells. File > Load Sample > "Box with cavity, hole, slivers, and intersections".
+    [[nodiscard]] static Mesh createCavityHoleSliversIntersectionsMesh(Unit unit = Unit::Millimeter);
+
     /// Generates a clean 12-triangle cube mesh injected with 3 known defective triangles:
     ///   - Face 12 (`kZeroAreaFaceIndex`): collinear zero-area triangle (A = 0, h_min = 0)
     ///   - Face 13 (`kMicroscopicFaceIndex`): microscopic-area triangle (A = 5e-9, h_min ~ 7.07e-5; well

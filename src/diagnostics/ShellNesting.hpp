@@ -28,4 +28,18 @@ namespace ogun {
     std::span<const std::vector<Eigen::Index>> shellFaces,
     const std::set<std::pair<int, int>>& crossingPairs);
 
+/// The point of a shell that the inside test casts its ray from.
+enum class NestingProbe {
+    FirstVertex,      ///< Corner 0 of the shell's first face (`findNestedShells`)
+    FirstFaceCentroid ///< Centroid of the shell's first face
+};
+
+/// For each shell, every shell it lies inside by the rules of `findNestedShells` (box strictly inside,
+/// not crossing, odd ray-hit count from `probe`), smallest box first (ties: lower index first).
+[[nodiscard]] std::vector<std::vector<int>> findShellContainers(
+    const Mesh& mesh,
+    std::span<const std::vector<Eigen::Index>> shellFaces,
+    const std::set<std::pair<int, int>>& crossingPairs,
+    NestingProbe probe);
+
 } // namespace ogun

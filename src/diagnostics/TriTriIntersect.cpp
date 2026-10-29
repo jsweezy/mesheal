@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <utility>
 
 namespace ogun {
 
@@ -108,7 +110,146 @@ struct Interval {
     return true;
 }
 
+/// Strictly on both sides of the other plane, beyond the tolerance.
+[[nodiscard]] bool straddles(const std::array<double, 3>& d, double tol) noexcept {
+    const auto [lo, hi] = std::minmax({d[0], d[1], d[2]});
+    return lo < -tol && hi > tol;
+}
+
+/// Closest point on triangle (a, b, c) to `p` (Ericson, Real-Time Collision Detection, 5.1.5).
+[[nodiscard]] Eigen::Vector3d closestOnTriangle(const Eigen::Vector3d& p, const Triangle3d& t) {
+    const Eigen::Vector3d& a = t[0];
+    const Eigen::Vector3d& b = t[1];
+    const Eigen::Vector3d& c = t[2];
+    const Eigen::Vector3d ab = b - a;
+    const Eigen::Vector3d ac = c - a;
+    const Eigen::Vector3d ap = p - a;
+    const double d1 = ab.dot(ap);
+    const double d2 = ac.dot(ap);
+    if (d1 <= 0.0 && d2 <= 0.0) {
+        return a;
+    }
+    const Eigen::Vector3d bp = p - b;
+    const double d3 = ab.dot(bp);
+    const double d4 = ac.dot(bp);
+    if (d3 >= 0.0 && d4 <= d3) {
+        return b;
+    }
+    const double vc = d1 * d4 - d3 * d2;
+    if (vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 && d1 - d3 > 0.0) {
+        return a + ab * (d1 / (d1 - d3));
+    }
+    const Eigen::Vector3d cp = p - c;
+    const double d5 = ab.dot(cp);
+    const double d6 = ac.dot(cp);
+    if (d6 >= 0.0 && d5 <= d6) {
+        return c;
+    }
+    const double vb = d5 * d2 - d1 * d6;
+    if (vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 && d2 - d6 > 0.0) {
+        return a + ac * (d2 / (d2 - d6));
+    }
+    const double va = d3 * d6 - d5 * d4;
+    if (va <= 0.0 && d4 - d3 >= 0.0 && d5 - d6 >= 0.0 && (d4 - d3) + (d5 - d6) > 0.0) {
+        return b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6)));
+    }
+    const double sum = va + vb + vc;
+    if (!(std::abs(sum) > 0.0)) {
+        return a; // degenerate: the edge regions above already covered every closest point
+    }
+    return a + ab * (vb / sum) + ac * (vc / sum);
+}
+
+/// Squared distance between segments p1-q1 and p2-q2 (Ericson 5.1.9).
+[[nodiscard]] double segmentDistanceSquared(
+    const Eigen::Vector3d& p1, const Eigen::Vector3d& q1, const Eigen::Vector3d& p2, const Eigen::Vector3d& q2) {
+    const Eigen::Vector3d d1 = q1 - p1;
+    const Eigen::Vector3d d2 = q2 - p2;
+    const Eigen::Vector3d r = p1 - p2;
+    const double a = d1.squaredNorm();
+    const double e = d2.squaredNorm();
+    const double f = d2.dot(r);
+    double s = 0.0;
+    double t = 0.0;
+    if (a <= 0.0 && e <= 0.0) {
+        return r.squaredNorm();
+    }
+    if (a <= 0.0) {
+        t = std::clamp(f / e, 0.0, 1.0);
+    } else {
+        const double c = d1.dot(r);
+        if (e <= 0.0) {
+            s = std::clamp(-c / a, 0.0, 1.0);
+        } else {
+            const double b = d1.dot(d2);
+            const double denom = a * e - b * b;
+            s = denom > 0.0 ? std::clamp((b * f - c * e) / denom, 0.0, 1.0) : 0.0;
+            t = (b * s + f) / e;
+            if (t < 0.0) {
+                t = 0.0;
+                s = std::clamp(-c / a, 0.0, 1.0);
+            } else if (t > 1.0) {
+                t = 1.0;
+                s = std::clamp((b - c) / a, 0.0, 1.0);
+            }
+        }
+    }
+    return ((p1 + d1 * s) - (p2 + d2 * t)).squaredNorm();
+}
+
+/// True when segment p-q passes through the plane of `t` at a point inside `t` (a piercing edge).
+[[nodiscard]] bool segmentPiercesTriangle(const Eigen::Vector3d& p, const Eigen::Vector3d& q, const Triangle3d& t) {
+    const Plane plane = planeOf(t);
+    if (!plane.valid) {
+        return false;
+    }
+    const double dp = plane.normal.dot(p) + plane.offset;
+    const double dq = plane.normal.dot(q) + plane.offset;
+    if ((dp > 0.0 && dq > 0.0) || (dp < 0.0 && dq < 0.0) || dp == dq) {
+        return false; // one side, or lying in the plane (the corner and edge distances cover that)
+    }
+    const Eigen::Vector3d x = p + (q - p) * (dp / (dp - dq));
+    const Eigen::Vector3d n = (t[1] - t[0]).cross(t[2] - t[0]);
+    for (std::size_t i = 0; i < 3; ++i) {
+        if ((t[(i + 1) % 3] - t[i]).cross(x - t[i]).dot(n) < 0.0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
+
+double triangleDistance(const Triangle3d& a, const Triangle3d& b) {
+    for (std::size_t i = 0; i < 3; ++i) {
+        if (segmentPiercesTriangle(a[i], a[(i + 1) % 3], b) || segmentPiercesTriangle(b[i], b[(i + 1) % 3], a)) {
+            return 0.0;
+        }
+    }
+    double best = std::numeric_limits<double>::infinity();
+    for (std::size_t i = 0; i < 3; ++i) {
+        best = std::min(best, (a[i] - closestOnTriangle(a[i], b)).squaredNorm());
+        best = std::min(best, (b[i] - closestOnTriangle(b[i], a)).squaredNorm());
+        for (std::size_t j = 0; j < 3; ++j) {
+            best = std::min(best, segmentDistanceSquared(a[i], a[(i + 1) % 3], b[j], b[(j + 1) % 3]));
+        }
+    }
+    return std::sqrt(best);
+}
+
+bool trianglesWithin(const Triangle3d& a, const Triangle3d& b, double tol) {
+    // Every corner of one triangle beyond `tol` on one side of the other's plane: too far apart
+    for (const auto& [from, to] : {std::pair{&a, &b}, std::pair{&b, &a}}) {
+        const Plane plane = planeOf(*to);
+        if (plane.valid) {
+            const std::array<double, 3> d = planeDistances(plane, *from);
+            if ((d[0] > tol && d[1] > tol && d[2] > tol) || (d[0] < -tol && d[1] < -tol && d[2] < -tol)) {
+                return false;
+            }
+        }
+    }
+    return triangleDistance(a, b) <= tol;
+}
 
 TriTriHit intersectTriangles(const Triangle3d& a, const Triangle3d& b, int sharedVertices, double tol) {
     TriTriHit result;
@@ -163,6 +304,7 @@ TriTriHit intersectTriangles(const Triangle3d& a, const Triangle3d& b, int share
     const Interval ib = lineInterval(pb, db, loneVertex(db));
     const double overlap = (std::min(ia.hi, ib.hi) - std::max(ia.lo, ib.lo)) * dir.norm() / std::abs(dir[axis]);
     result.hit = overlap > tol;
+    result.touching = result.hit && (!straddles(da, tol) || !straddles(db, tol));
     return result;
 }
 

@@ -384,6 +384,161 @@ std::vector<std::uint8_t> SampleMeshes::createCubeBinaryStl(double sideLength) {
     return buffer;
 }
 
+Mesh SampleMeshes::createBox(const Eigen::Vector3d& min, const Eigen::Vector3d& max, bool inward, Unit unit) {
+    Mesh mesh = createCubeMesh(1.0, unit);
+    const Eigen::RowVector3d size = (max - min).transpose();
+    for (Eigen::Index v = 0; v < mesh.numVertices(); ++v) {
+        mesh.V.row(v) = min.transpose() + mesh.V.row(v).cwiseProduct(size);
+    }
+    if (inward) {
+        mesh.F.col(1).swap(mesh.F.col(2));
+    }
+    mesh.recomputeNormals();
+    return mesh;
+}
+
+Mesh SampleMeshes::combineMeshes(const std::vector<Mesh>& parts) {
+    Mesh mesh;
+    if (!parts.empty()) {
+        mesh.fileUnit = parts.front().fileUnit;
+    }
+    for (const Mesh& part : parts) {
+        appendMesh(mesh, part);
+    }
+    return mesh;
+}
+
+Mesh SampleMeshes::createCavityBoxMesh(bool insideOut, Unit unit) {
+    return combineMeshes({createBox({0.0, 0.0, 0.0}, {4.0, 4.0, 4.0}, insideOut, unit),
+                          createBox({1.0, 1.0, 1.0}, {3.0, 3.0, 3.0}, !insideOut, unit)});
+}
+
+Mesh SampleMeshes::createOverlapPlusCavityMesh(Unit unit) {
+    return combineMeshes({createBox({0.0, 0.0, 0.0}, {4.0, 4.0, 4.0}, false, unit),
+                          createBox({3.5, 0.5, 0.5}, {7.5, 4.5, 4.5}, false, unit),
+                          createBox({1.0, 1.0, 1.0}, {2.0, 3.0, 3.0}, true, unit)});
+}
+
+Mesh SampleMeshes::createCavityReachedMesh(CavityReachedVariant variant, Unit unit) {
+    std::vector<Mesh> parts{createBox({0.0, 0.0, 0.0}, {4.0, 4.0, 4.0}, false, unit),
+                            createBox({3.5, 0.5, 0.5}, {7.5, 4.5, 4.5}, false, unit)};
+    if (variant == CavityReachedVariant::InsideOverlap) {
+        parts.push_back(createBox({3.6, 1.0, 1.0}, {3.9, 2.0, 2.0}, true, unit));
+    } else {
+        parts.push_back(createBox({3.0, 1.0, 1.0}, {3.8, 3.0, 3.0}, true, unit));
+    }
+    if (variant == CavityReachedVariant::WithSeparatePair) {
+        parts.push_back(createBox({20.0, 0.0, 0.0}, {24.0, 4.0, 4.0}, false, unit));
+        parts.push_back(createBox({23.5, 0.5, 0.5}, {27.5, 4.5, 4.5}, false, unit));
+    }
+    return combineMeshes(parts);
+}
+
+Mesh SampleMeshes::createNestedSolidAndCavityMesh(bool crossingVariant, Unit unit) {
+    std::vector<Mesh> parts{createBox({0.0, 0.0, 0.0}, {4.0, 4.0, 4.0}, false, unit),
+                            createBox({0.5, 0.5, 0.5}, {1.5, 1.5, 1.5}, true, unit),
+                            createBox({2.5, 2.5, 2.5}, {3.5, 3.5, 3.5}, false, unit)};
+    if (crossingVariant) {
+        parts.push_back(createBox({3.2, 2.7, 2.8}, {3.8, 3.3, 3.4}, false, unit));
+    }
+    return combineMeshes(parts);
+}
+
+Mesh SampleMeshes::createIslandInCavityMesh(bool islandInsideOut, Unit unit) {
+    return combineMeshes({createBox({0.0, 0.0, 0.0}, {6.0, 6.0, 6.0}, false, unit),
+                          createBox({1.0, 1.0, 1.0}, {5.0, 5.0, 5.0}, true, unit),
+                          createBox({2.0, 2.0, 2.0}, {4.0, 4.0, 4.0}, islandInsideOut, unit)});
+}
+
+Mesh SampleMeshes::createEdgeTouchingBoxesMesh(Unit unit) {
+    return combineMeshes({createBox({0.0, 0.0, 0.0}, {2.0, 2.0, 2.0}, false, unit),
+                          createBox({2.0, 2.0, 0.0}, {4.0, 4.0, 2.0}, false, unit)});
+}
+
+Mesh SampleMeshes::createFaceTouchingBoxesMesh(Unit unit) {
+    return combineMeshes({createBox({0.0, 0.0, 0.0}, {2.0, 2.0, 2.0}, false, unit),
+                          createBox({2.0, 0.5, 0.5}, {4.0, 1.5, 1.5}, false, unit)});
+}
+
+Mesh SampleMeshes::createTurkeyLikeMesh(Unit unit) {
+    std::vector<Mesh> parts{createBox({0.0, 0.0, 0.0}, {10.0, 6.0, 6.0}, false, unit)};
+    for (const double x : {1.1, 2.6, 4.1, 5.6, 7.1, 8.6}) {
+        parts.push_back(createBox({x, 4.7, 1.7}, {x + 0.3, 9.3, 4.3}, false, unit));
+    }
+    parts.push_back(createBox({3.2, 1.2, 1.2}, {4.8, 2.8, 2.8}, false, unit));
+    parts.push_back(createBox({14.0, 0.0, 0.0}, {16.0, 2.0, 2.0}, false, unit));
+    return combineMeshes(parts);
+}
+
+Mesh SampleMeshes::createCavityHoleSliversIntersectionsMesh(Unit unit) {
+    Mesh body = createGridCubeMesh(4, 8.0, unit);
+    const auto findFace = [&](auto&& inCell) {
+        for (Eigen::Index f = 0; f < body.numFaces(); ++f) {
+            const Eigen::Vector3d c =
+                (body.V.row(body.F(f, 0)) + body.V.row(body.F(f, 1)) + body.V.row(body.F(f, 2))).transpose() / 3.0;
+            if (inCell(c)) {
+                return f;
+            }
+        }
+        return Eigen::Index{-1};
+    };
+    // Splits face f in three around a new point `p` inside it, keeping its winding
+    const auto splitAt = [&](Eigen::Index f, int k, const Eigen::Vector3d& p) {
+        const std::array<int, 3> t{body.F(f, k), body.F(f, (k + 1) % 3), body.F(f, (k + 2) % 3)};
+        const auto pi = static_cast<int>(body.numVertices());
+        body.V.conservativeResize(pi + 1, 3);
+        body.V.row(pi) = p.transpose();
+        const Eigen::Index nf = body.numFaces();
+        body.F.conservativeResize(nf + 2, 3);
+        body.F.row(f) << t[0], t[1], pi;
+        body.F.row(nf) << t[1], t[2], pi;
+        body.F.row(nf + 1) << t[2], t[0], pi;
+    };
+    const auto at = [&](Eigen::Index f, int c) -> Eigen::Vector3d { return body.V.row(body.F(f, c)).transpose(); };
+
+    // Cap: a point 0.01 off the middle of the longest edge, toward the opposite corner
+    const Eigen::Index capFace = findFace([](const Eigen::Vector3d& c) {
+        return c.x() < 1.0e-9 && c.y() > 4.0 && c.y() < 6.0 && c.z() > 2.0 && c.z() < 4.0;
+    });
+    int longest = 0;
+    for (int k = 1; k < 3; ++k) {
+        if ((at(capFace, (k + 1) % 3) - at(capFace, k)).norm() > (at(capFace, (longest + 1) % 3) - at(capFace, longest)).norm()) {
+            longest = k;
+        }
+    }
+    const Eigen::Vector3d mid = 0.5 * (at(capFace, longest) + at(capFace, (longest + 1) % 3));
+    splitAt(capFace, longest, mid + 0.01 * (at(capFace, (longest + 2) % 3) - mid).normalized());
+
+    // Needles: a point 0.01 from a corner, toward the centroid
+    const Eigen::Index needleFace = findFace([](const Eigen::Vector3d& c) {
+        return c.x() < 1.0e-9 && c.y() > 2.0 && c.y() < 4.0 && c.z() > 4.0 && c.z() < 6.0;
+    });
+    const Eigen::Vector3d centroid = (at(needleFace, 0) + at(needleFace, 1) + at(needleFace, 2)) / 3.0;
+    splitAt(needleFace, 0, at(needleFace, 0) + 0.01 * (centroid - at(needleFace, 0)).normalized());
+
+    // Fold: drag a top vertex 1.5 cells across its neighbours
+    for (Eigen::Index v = 0; v < body.numVertices(); ++v) {
+        if ((body.V.row(v) - Eigen::RowVector3d(2.0, 2.0, 8.0)).norm() < 1.0e-9) {
+            body.V.row(v) << 5.0, 2.4, 8.0;
+        }
+    }
+
+    // Hole: drop the two triangles of one front cell
+    std::vector<Eigen::Index> keep;
+    keep.reserve(static_cast<std::size_t>(body.numFaces()));
+    for (Eigen::Index f = 0; f < body.numFaces(); ++f) {
+        const Eigen::Vector3d c = (at(f, 0) + at(f, 1) + at(f, 2)) / 3.0;
+        if (!(c.y() < 1.0e-9 && c.x() > 4.0 && c.x() < 6.0 && c.z() > 2.0 && c.z() < 4.0)) {
+            keep.push_back(f);
+        }
+    }
+    Mesh holed = extractFaces(body, keep);
+    holed.fileUnit = unit;
+    return combineMeshes({holed,
+                          createBox({1.5, 1.5, 1.5}, {3.5, 3.5, 3.5}, true, unit),
+                          createBox({6.6, 5.4, 5.3}, {10.4, 6.6, 6.7}, false, unit)});
+}
+
 Mesh SampleMeshes::createSampleDefectiveMesh(Unit unit) {
     const Mesh cube = createCubeMesh(10.0, unit);
 

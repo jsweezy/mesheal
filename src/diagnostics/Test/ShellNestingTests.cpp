@@ -56,3 +56,18 @@ TEST_CASE("findNestedShells reports the smallest shell that contains another", "
     const std::vector<int> crossing = ogun::findNestedShells(mesh, shells, {{1, 2}});
     REQUIRE(crossing == std::vector<int>{-1, 0, 0, -1});
 }
+
+TEST_CASE("findShellContainers lists every container, smallest first, from either probe", "[diagnostics][shells]") {
+    std::vector<std::vector<Eigen::Index>> shells;
+    const ogun::Mesh mesh = cubes({{10.0, {0.0, 0.0, 0.0}},
+                                   {4.0, {3.0, 3.0, 3.0}},
+                                   {1.0, {4.5, 4.5, 4.5}},
+                                   {2.0, {20.0, 0.0, 0.0}}},
+                                  shells);
+    for (const ogun::NestingProbe probe : {ogun::NestingProbe::FirstVertex, ogun::NestingProbe::FirstFaceCentroid}) {
+        const std::vector<std::vector<int>> containers = ogun::findShellContainers(mesh, shells, {}, probe);
+        REQUIRE(containers == std::vector<std::vector<int>>{{}, {0}, {1, 0}, {}});
+        // A crossing pair is never nested
+        REQUIRE(ogun::findShellContainers(mesh, shells, {{1, 2}}, probe)[2] == std::vector<int>{0});
+    }
+}

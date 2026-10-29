@@ -1,6 +1,9 @@
 #include "diagnostics/TriTriIntersect.hpp"
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include <cmath>
 
 namespace {
 
@@ -96,4 +99,33 @@ TEST_CASE("Nearly parallel vertex neighbours that only touch are not reported", 
 TEST_CASE("Degenerate triangles never intersect", "[diagnostics][tritri]") {
     REQUIRE_FALSE(test(tri({0.5, 0.5, -1}, {0.5, 0.5, 1}, {0.5, 0.5, 0})).hit);
     REQUIRE_FALSE(ogun::intersectTriangles(tri({0, 0, 0}, {1, 0, 0}, {2, 0, 0}), kBase, 0, kTol).hit);
+}
+
+TEST_CASE("A face resting on another is a touching hit, a crossing is not", "[diagnostics][tritri]") {
+    // Edge resting on the base, the rest above it: reported by the check, but only touching
+    const ogun::TriTriHit resting = test(tri({0.2, 0.2, 0}, {0.6, 0.2, 0}, {0.4, 0.2, 1}));
+    REQUIRE(resting.hit);
+    REQUIRE(resting.touching);
+    // Passing through the base
+    const ogun::TriTriHit crossing = test(tri({0.25, 0.5, -1}, {0.75, 0.5, -1}, {0.5, 0.5, 1}));
+    REQUIRE(crossing.hit);
+    REQUIRE_FALSE(crossing.touching);
+    REQUIRE_FALSE(test(tri({0, 0, 0.5}, {2, 0, 0.5}, {0, 2, 0.5})).touching);
+}
+
+TEST_CASE("Triangle distance: apart, touching and crossing", "[diagnostics][tritri]") {
+    // Parallel, one unit above
+    REQUIRE(ogun::triangleDistance(kBase, tri({0, 0, 1}, {2, 0, 1}, {0, 2, 1})) == Catch::Approx(1.0));
+    // Corner above the base's interior
+    REQUIRE(ogun::triangleDistance(kBase, tri({0.5, 0.5, 0.25}, {0, 0.5, 1}, {1, 0.5, 1})) == Catch::Approx(0.25));
+    // Skew edges: the base's edge along x and an edge along y at height 2, beyond the base
+    REQUIRE(ogun::triangleDistance(kBase, tri({1, -1, 2}, {1, -3, 2}, {1, -2, 5})) == Catch::Approx(std::sqrt(5.0)));
+    // Touching at a point and crossing through the middle: both 0
+    REQUIRE(ogun::triangleDistance(kBase, tri({0.5, 0.5, 0}, {0, 0.5, 1}, {1, 0.5, 1})) == 0.0);
+    REQUIRE(ogun::triangleDistance(kBase, tri({0.25, 0.5, -1}, {0.75, 0.5, -1}, {0.5, 0.5, 1})) == 0.0);
+    // Edge piercing the interior while every corner and edge pair is apart
+    REQUIRE(ogun::triangleDistance(kBase, tri({0.3, 0.3, -1}, {0.4, 0.3, 1}, {5, 5, 5})) == 0.0);
+
+    REQUIRE(ogun::trianglesWithin(kBase, tri({2, 0, 1.0e-10}, {3, 0, 1}, {3, 1, 1}), kTol));
+    REQUIRE_FALSE(ogun::trianglesWithin(kBase, tri({2, 0, 1.0e-6}, {3, 0, 1}, {3, 1, 1}), kTol));
 }

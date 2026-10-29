@@ -67,12 +67,17 @@ bool rayHitsTriangle(
     return e2.dot(q) * inv > 0.0;
 }
 
-std::vector<int> findNestedShells(
+namespace {
+
+/// Shared body of `findNestedShells` (first container only) and `findShellContainers` (all).
+[[nodiscard]] std::vector<std::vector<int>> containersOf(
     const Mesh& mesh,
     std::span<const std::vector<Eigen::Index>> shellFaces,
-    const std::set<std::pair<int, int>>& crossingPairs) {
+    const std::set<std::pair<int, int>>& crossingPairs,
+    NestingProbe probe,
+    bool firstOnly) {
     const std::size_t n = shellFaces.size();
-    std::vector<int> nestedIn(n, -1);
+    std::vector<std::vector<int>> containers(n);
     std::vector<BoundingBox> boxes;
     boxes.reserve(n);
     for (const auto& faces : shellFaces) {
@@ -90,7 +95,10 @@ std::vector<int> findNestedShells(
         if (shellFaces[s].empty()) {
             continue;
         }
-        const Eigen::Vector3d probe = corner(mesh, shellFaces[s].front(), 0);
+        const Eigen::Index first = shellFaces[s].front();
+        const Eigen::Vector3d probePoint = probe == NestingProbe::FirstVertex
+                                               ? corner(mesh, first, 0)
+                                               : (corner(mesh, first, 0) + corner(mesh, first, 1) + corner(mesh, first, 2)) / 3.0;
         for (const std::size_t k : bySize) {
             const auto si = static_cast<int>(s);
             const auto ki = static_cast<int>(k);
@@ -100,15 +108,42 @@ std::vector<int> findNestedShells(
             }
             std::size_t hits = 0;
             for (const Eigen::Index f : shellFaces[k]) {
-                hits += rayHitsTriangle(probe, dir, corner(mesh, f, 0), corner(mesh, f, 1), corner(mesh, f, 2)) ? 1 : 0;
+                hits += rayHitsTriangle(probePoint, dir, corner(mesh, f, 0), corner(mesh, f, 1), corner(mesh, f, 2)) ? 1 : 0;
             }
             if (hits % 2 == 1) {
-                nestedIn[s] = ki;
-                break;
+                containers[s].push_back(ki);
+                if (firstOnly) {
+                    break;
+                }
             }
         }
     }
+    return containers;
+}
+
+} // namespace
+
+std::vector<int> findNestedShells(
+    const Mesh& mesh,
+    std::span<const std::vector<Eigen::Index>> shellFaces,
+    const std::set<std::pair<int, int>>& crossingPairs) {
+    const std::vector<std::vector<int>> containers =
+        containersOf(mesh, shellFaces, crossingPairs, NestingProbe::FirstVertex, true);
+    std::vector<int> nestedIn(containers.size(), -1);
+    for (std::size_t s = 0; s < containers.size(); ++s) {
+        if (!containers[s].empty()) {
+            nestedIn[s] = containers[s].front();
+        }
+    }
     return nestedIn;
+}
+
+std::vector<std::vector<int>> findShellContainers(
+    const Mesh& mesh,
+    std::span<const std::vector<Eigen::Index>> shellFaces,
+    const std::set<std::pair<int, int>>& crossingPairs,
+    NestingProbe probe) {
+    return containersOf(mesh, shellFaces, crossingPairs, probe, false);
 }
 
 } // namespace ogun

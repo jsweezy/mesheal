@@ -31,6 +31,47 @@ namespace {
 
 constexpr ImGuiWindowFlags kDockedFlags = ImGuiWindowFlags_NoMove;
 
+/// A built-in sample under File > Load Sample, named by its shape.
+struct ShapeSample {
+    const char* label;
+    const char* status;  ///< Status bar text after loading
+    const char* tooltip;
+    Mesh (*make)(Unit unit);
+};
+
+constexpr std::array<ShapeSample, 9> kShapeSamples = {{
+    {"Box with cavity, hole, slivers, and intersections",
+     "Loaded a gridded box with a cavity, a hole, slivers, a fold and a peg through its side.",
+     "A gridded box with a hollow inside (a cavity), a missing square (a hole), three thin faces, a top vertex "
+     "folded over its neighbours and a peg box passing through its side: 3 shells with something for every repair.",
+     [](Unit unit) { return SampleMeshes::createCavityHoleSliversIntersectionsMesh(unit); }},
+    {"Box with cavity", "Loaded a box with a cavity: 2 shells, #2 inside #1 and wound inward.",
+     "A box holding a closed hollow: the inner box is wound inward, so it is a cavity, not material.",
+     [](Unit unit) { return SampleMeshes::createCavityBoxMesh(false, unit); }},
+    {"Box with cavity, inside out", "Loaded a box with a cavity, every face wound the wrong way.",
+     "The box with a cavity written wholly inside out: the outer box faces inward, the inner box outward.",
+     [](Unit unit) { return SampleMeshes::createCavityBoxMesh(true, unit); }},
+    {"Overlapping boxes with cavity", "Loaded two overlapping boxes, the first holding a cavity.",
+     "Two boxes that overlap; the first holds a cavity well clear of the second: 3 shells.",
+     [](Unit unit) { return SampleMeshes::createOverlapPlusCavityMesh(unit); }},
+    {"Overlapping boxes with cavity in the overlap", "Loaded two overlapping boxes whose cavity the second box reaches into.",
+     "Two boxes that overlap; the first box's cavity lies across the second box's wall, which passes through it.",
+     [](Unit unit) { return SampleMeshes::createCavityReachedMesh(SampleMeshes::CavityReachedVariant::CrossesWall, unit); }},
+    {"Box with nested box and cavity", "Loaded a box holding a cavity and a smaller solid box.",
+     "A box holding a cavity (wound inward) and a smaller solid box (wound outward) that touches nothing: 3 shells.",
+     [](Unit unit) { return SampleMeshes::createNestedSolidAndCavityMesh(false, unit); }},
+    {"Boxes touching along an edge", "Loaded two boxes that touch along one edge.",
+     "Two boxes that meet along one edge only, so they cannot become one proper solid.",
+     [](Unit unit) { return SampleMeshes::createEdgeTouchingBoxesMesh(unit); }},
+    {"Boxes touching across a face", "Loaded two boxes that share a patch of one face.",
+     "A small box pressed against a side of a larger one: they share a 1 x 1 patch of face.",
+     [](Unit unit) { return SampleMeshes::createFaceTouchingBoxesMesh(unit); }},
+    {"Turkey-like assembly", "Loaded a body box with six parts through it, one hidden inside and one apart: 9 shells.",
+     "A body box, six thin boxes poking through its top, a small box hidden inside it touching nothing and one "
+     "box apart from the rest: 9 shells.",
+     [](Unit unit) { return SampleMeshes::createTurkeyLikeMesh(unit); }},
+}};
+
 /// Menu item for a feature planned in a later phase: drawn disabled with a tooltip.
 void plannedMenuItem(const char* label, const char* when) {
     ImGui::MenuItem(label, nullptr, false, false);
@@ -464,6 +505,18 @@ void PolyscopeGui::drawFileMenu() {
         }
         tooltip("Four shells with one hole each: a box with a T-junction crack in its top, a box missing a square "
                 "of its top, a sphere missing its cap and a cylinder missing an end cap. Try the hole fills on them.");
+        ImGui::Separator();
+        for (const ShapeSample& sample : kShapeSamples) {
+            if (ImGui::MenuItem(sample.label)) {
+                // Loaded the way an STL file is, so shells that touch stay apart
+                controller_.setMesh(separateTouchingContacts(sample.make(controller_.fileUnit())), sample.label);
+                controller_.postStatusMessage(sample.status);
+                overwriteConfirmedFor_.clear();
+                syncMeshStructureToPolyscope(true);
+            }
+            tooltip(sample.tooltip);
+        }
+        ImGui::Separator();
         constexpr std::array<std::pair<const char*, const char*>, 3> kExampleFiles = {{
             {"Self-intersecting box", "self_intersecting_box.stl"},
             {"Stanford bunny", "stanford_bunny.stl"},

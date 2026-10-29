@@ -29,15 +29,11 @@ struct Node {
     }
 };
 
-struct FacePair {
-    std::uint32_t a = 0;
-    std::uint32_t b = 0;
-    bool coplanar = false;
+using FacePair = FacePairHit;
 
-    friend bool operator<(const FacePair& x, const FacePair& y) noexcept {
-        return x.a != y.a ? x.a < y.a : x.b < y.b;
-    }
-};
+[[nodiscard]] bool pairLess(const FacePair& x, const FacePair& y) noexcept {
+    return x.a != y.a ? x.a < y.a : x.b < y.b;
+}
 
 /// A unit of traversal work: `self(a)` when a == b, otherwise `cross(a, b)`.
 struct Task {
@@ -49,9 +45,13 @@ struct Task {
 /// (like Blender's BLI_kdopbvh). Leaf boxes are grown by the tolerance.
 class TriangleTree {
 public:
-    TriangleTree(const Mesh& mesh, double tol) {
+    TriangleTree(const Mesh& mesh, double tol, std::span<const int> faceGroup) {
         const Eigen::Index nv = mesh.numVertices();
         for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+            const int group = faceGroup.empty() ? 0 : faceGroup[static_cast<std::size_t>(f)];
+            if (group < 0) {
+                continue;
+            }
             std::array<int, 3> idx{mesh.F(f, 0), mesh.F(f, 1), mesh.F(f, 2)};
             if (std::any_of(idx.begin(), idx.end(), [nv](int v) { return v < 0 || v >= nv; }) ||
                 faceHasRepeatedVertex(mesh, f)) {
@@ -67,6 +67,7 @@ public:
             box.min().array() -= tol;
             box.max().array() += tol;
             faces_.push_back(static_cast<std::uint32_t>(f));
+            groups_.push_back(group);
             indices_.push_back(idx);
             triangles_.push_back(tri);
             boxes_.push_back(box);
@@ -99,6 +100,10 @@ public:
 
     [[nodiscard]] const Triangle3d& triangle(std::uint32_t slot) const noexcept {
         return triangles_[order_[slot]];
+    }
+
+    [[nodiscard]] int group(std::uint32_t slot) const noexcept {
+        return groups_[order_[slot]];
     }
 
     [[nodiscard]] const std::array<int, 3>& indices(std::uint32_t slot) const noexcept {
@@ -140,6 +145,7 @@ private:
     }
 
     std::vector<std::uint32_t> faces_;
+    std::vector<int> groups_;
     std::vector<std::array<int, 3>> indices_;
     std::vector<Triangle3d> triangles_;
     std::vector<Eigen::AlignedBox3d> boxes_;
@@ -181,8 +187,8 @@ bool splitTask(const TriangleTree& tree, const Task& task, std::vector<Task>& ou
 /// Runs traversal tasks on one thread and collects the intersecting face pairs.
 class Traverser {
 public:
-    Traverser(const TriangleTree& tree, double tol, const std::stop_token& stopToken)
-        : tree_(tree), tol_(tol), stopToken_(stopToken) {}
+    Traverser(const TriangleTree& tree, double tol, const FacePairQuery& query, const std::stop_token& stopToken)
+        : tree_(tree), tol_(tol), query_(query), stopToken_(stopToken) {}
 
     void run(const Task& task) {
         if (task.a == task.b) {
@@ -244,6 +250,14 @@ private:
         if (stopped_ || !tree_.box(i).intersects(tree_.box(j))) {
             return;
         }
+        if (!query_.faceGroup.empty()) {
+            const int gi = tree_.group(i);
+            const int gj = tree_.group(j);
+            if (gi == gj || (!query_.groupOfInterest.empty() && query_.groupOfInterest[static_cast<std::size_t>(gi)] == 0 &&
+                             query_.groupOfInterest[static_cast<std::size_t>(gj)] == 0)) {
+                return;
+            }
+        }
         const std::array<int, 3>& vi = tree_.indices(i);
         const std::array<int, 3>& vj = tree_.indices(j);
         int shared = 0;
@@ -251,15 +265,17 @@ private:
             shared += static_cast<int>(std::count(vj.begin(), vj.end(), v));
         }
         const TriTriHit hit = intersectTriangles(tree_.triangle(i), tree_.triangle(j), shared, tol_);
-        if (hit.hit) {
+        const bool contact = !hit.hit && query_.contacts && trianglesWithin(tree_.triangle(i), tree_.triangle(j), tol_);
+        if (hit.hit || contact) {
             const std::uint32_t fi = tree_.face(i);
             const std::uint32_t fj = tree_.face(j);
-            pairs_.push_back({std::min(fi, fj), std::max(fi, fj), hit.coplanar});
+            pairs_.push_back({std::min(fi, fj), std::max(fi, fj), hit.hit, hit.coplanar && hit.hit, hit.touching || contact});
         }
     }
 
     const TriangleTree& tree_;
     double tol_;
+    FacePairQuery query_;
     std::stop_token stopToken_;
     std::vector<FacePair> pairs_;
     std::uint32_t tests_ = 0;
@@ -272,9 +288,9 @@ private:
     directed.reserve(2 * pairs.size());
     for (const FacePair& p : pairs) {
         directed.push_back(p);
-        directed.push_back({p.b, p.a, p.coplanar});
+        directed.push_back({p.b, p.a, p.hit, p.coplanar, p.touching});
     }
-    std::sort(directed.begin(), directed.end());
+    std::sort(directed.begin(), directed.end(), pairLess);
     directed.erase(std::unique(directed.begin(), directed.end(),
                                [](const FacePair& x, const FacePair& y) { return x.a == y.a && x.b == y.b; }),
                    directed.end());
@@ -332,23 +348,23 @@ private:
 
 } // namespace
 
-CategoryResult checkSelfIntersections(
+std::optional<std::vector<FacePairHit>> findFacePairs(
     const Mesh& mesh,
-    const CheckParams& params,
+    double tol,
+    const FacePairQuery& query,
     std::stop_token stopToken,
     std::atomic<float>* progress,
     unsigned maxThreads) {
     if (stopToken.stop_requested()) {
-        return cancelled();
+        return std::nullopt;
     }
-    std::vector<FacePair> pairs;
+    std::vector<FacePairHit> pairs;
     if (mesh.empty()) {
-        return buildResult(pairs);
+        return pairs;
     }
-    const double tol = params.intersectionTolerance * mesh.boundingBox().diagonal();
-    const TriangleTree tree(mesh, tol);
+    const TriangleTree tree(mesh, tol, query.faceGroup);
     if (tree.empty()) {
-        return buildResult(pairs);
+        return pairs;
     }
 
     unsigned threads = std::max(1u, std::min(maxThreads, std::thread::hardware_concurrency()));
@@ -384,7 +400,7 @@ CategoryResult checkSelfIntersections(
         }
     };
 
-    std::vector<Traverser> traversers(threads, Traverser(tree, tol, stopToken));
+    std::vector<Traverser> traversers(threads, Traverser(tree, tol, query, stopToken));
     if (threads == 1) {
         work(traversers.front());
     } else {
@@ -396,12 +412,26 @@ CategoryResult checkSelfIntersections(
     }
 
     if (stopToken.stop_requested()) {
-        return cancelled();
+        return std::nullopt;
     }
     for (Traverser& traverser : traversers) {
         pairs.insert(pairs.end(), traverser.pairs().begin(), traverser.pairs().end());
     }
-    return buildResult(pairs);
+    return pairs;
+}
+
+CategoryResult checkSelfIntersections(
+    const Mesh& mesh,
+    const CheckParams& params,
+    std::stop_token stopToken,
+    std::atomic<float>* progress,
+    unsigned maxThreads) {
+    const double tol = mesh.empty() ? 0.0 : params.intersectionTolerance * mesh.boundingBox().diagonal();
+    std::optional<std::vector<FacePairHit>> pairs = findFacePairs(mesh, tol, {}, stopToken, progress, maxThreads);
+    if (!pairs) {
+        return cancelled();
+    }
+    return buildResult(*pairs);
 }
 
 } // namespace ogun
