@@ -335,7 +335,7 @@ TEST_CASE("Ten Mesh Health rows, each listed once; Inverted shells follows Flipp
     REQUIRE(info.kind == ogun::ElementKind::Shell);
     REQUIRE(info.group == ogun::CategoryGroup::Topology);
     REQUIRE_FALSE(info.infoOnly);
-    REQUIRE_FALSE(info.hasFixAll); // comes with orientation
+    REQUIRE(info.hasFixAll); // rule O reverses inside-out shells only
     REQUIRE(info.autoDefault);     // about 0.27 s on the Turkey in Release
     REQUIRE(ogun::builtInAutoCheckDefaults()[ogun::categoryIndex(DefectCategory::InvertedShells)]);
     REQUIRE(ogun::AppController{}.categoryHealth(DefectCategory::InvertedShells).autoCheck);

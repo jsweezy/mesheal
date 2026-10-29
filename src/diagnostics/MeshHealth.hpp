@@ -97,10 +97,18 @@ struct DefectElement {
     int subtype = -1;                  ///< Index into `CategoryInfo::subtypes` (-1: none)
 };
 
+/// Which flip buttons a warning line offers next to *Show*.
+enum class WarningKind : std::uint8_t {
+    Note,         ///< *Show* only
+    StoppedGroup, ///< An inward body holding shells, outer shell first: *Flip all* and *Flip outer only*
+    Unclassified  ///< One inward shell rule O will not judge: *Flip it*
+};
+
 /// A line a check shows in its Tool panel without counting it (Inverted shells: shells it will not judge).
 struct CategoryWarning {
     std::string text;        ///< Names shells in the Shells panel's numbering ("#1 and its inner shell #2 ...")
     std::vector<int> shells; ///< The shells it names (0-based, Shells-panel order): *Show* selects them
+    WarningKind kind = WarningKind::Note;
 };
 
 /// Result of one Mesh Health check. Elements are sorted worst first.

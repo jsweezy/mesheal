@@ -121,7 +121,7 @@ private:
     void drawMeshInfo();
     void drawToolPanel();
     void drawCategoryTool(DefectCategory category);
-    void drawCategoryWarnings(const CategoryResult& result);
+    bool drawCategoryWarnings(const CategoryResult& result); ///< True when a flip button changed the mesh
     void drawCategorySettings(DefectCategory category);
     void drawSplitRepairNote(DefectCategory category);
     void drawCategoryActions(DefectCategory category);

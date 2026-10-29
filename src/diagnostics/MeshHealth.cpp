@@ -32,7 +32,7 @@ constexpr std::array<CategoryInfo, kDefectCategoryCount> kCategoryInfos = {{
      {nullptr, nullptr, nullptr, nullptr}},
     {"Flipped normals", "Flipped Normals", CategoryGroup::Topology,
      "Triangles wound opposite to their neighbours (inconsistent orientation).",
-     ElementKind::Face, "faces", true, false, false,
+     ElementKind::Face, "faces", true, false, true,
      {{{"Shell", ValueDimension::None}, kNoColumn, kNoColumn}},
      nullptr, ValueDimension::None, false, false,
      {nullptr, nullptr, nullptr, nullptr}},
@@ -69,7 +69,7 @@ constexpr std::array<CategoryInfo, kDefectCategoryCount> kCategoryInfos = {{
     {"Inverted shells", "Inverted Shells", CategoryGroup::Topology,
      "Closed shells wound inside out: facing inward with nothing around them and nothing inside them. "
      "Cavities (inward shells inside a solid) are correct and not counted.",
-     ElementKind::Shell, "shells", true, false, false,
+     ElementKind::Shell, "shells", true, false, true,
      {{{"Faces", ValueDimension::None}, {"Volume", ValueDimension::Volume}, kNoColumn}},
      nullptr, ValueDimension::None, false, false,
      {nullptr, nullptr, nullptr, nullptr}},

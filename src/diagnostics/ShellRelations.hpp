@@ -7,6 +7,8 @@
 
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <set>
 #include <span>
 #include <stop_token>
@@ -100,5 +102,15 @@ struct ShellRelations {
     const ShellRelationParams& params = {},
     std::stop_token stopToken = {},
     std::atomic<float>* progress = nullptr);
+
+/// One flag per shell: 1 when shell `which[i]` has two faces that the intersection check reports
+/// (`findFacePairs` hits, absolute `tolerance`). Only the shells in `which` are tested, so the cost is
+/// one intersection check over their faces. std::nullopt when stopped.
+[[nodiscard]] std::optional<std::vector<std::uint8_t>> findSelfCrossingShells(
+    const Mesh& mesh,
+    std::span<const std::vector<Eigen::Index>> shellFaces,
+    std::span<const int> which,
+    double tolerance,
+    std::stop_token stopToken = {});
 
 } // namespace ogun

@@ -2036,3 +2036,126 @@ TEST_CASE("AppController Fix All Duplicate and Degenerate Faces respect the shel
     REQUIRE(controller.rowCount(DefectCategory::Degenerate) == 1); // the near cube's cap
     REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 0);
 }
+
+TEST_CASE("AppController Fix All Flipped Normals makes each shell agree with its majority, and undoes",
+          "[app][controller][repair][orientation][undo]") {
+    using ogun::DefectCategory;
+    const auto flipFaces = [](ogun::Mesh mesh, std::initializer_list<Eigen::Index> faces) {
+        for (const Eigen::Index f : faces) {
+            std::swap(mesh.F(f, 1), mesh.F(f, 2));
+        }
+        mesh.recomputeNormals();
+        return mesh;
+    };
+    const ogun::Mesh good = ogun::SampleMeshes::createBox({0, 0, 0}, {2, 2, 2});
+    ogun::AppController controller;
+    controller.setMesh(flipFaces(good, {0, 5, 9}), "cube with three flipped faces");
+    const ogun::Mesh before = controller.mesh();
+    REQUIRE(ogun::categoryInfo(DefectCategory::FlippedNormals).hasFixAll);
+    REQUIRE(controller.rowCount(DefectCategory::FlippedNormals) == 3);
+
+    REQUIRE(controller.fixAllFlippedNormals());
+    REQUIRE(controller.lastUndoActionLabel() == "Fix All Flipped Normals");
+    REQUIRE(controller.lastRepairStatusMessage() == "Flipped 3 faces in 1 shell to agree with their neighbours.");
+    REQUIRE(controller.rowCount(DefectCategory::FlippedNormals) == 0);
+    REQUIRE(controller.mesh().F == good.F);
+    REQUIRE_FALSE(controller.fixAllFlippedNormals());
+    REQUIRE(controller.lastRepairStatusMessage() == "No flipped faces to fix.");
+
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().F == before.F);
+    REQUIRE(controller.rowCount(DefectCategory::FlippedNormals) == 3);
+    REQUIRE_FALSE(controller.canUndo());
+
+    // Seven of twelve flipped: the majority wins, so the cube ends up inside out as a whole
+    controller.setMesh(flipFaces(good, {0, 1, 2, 3, 4, 5, 6}), "cube mostly flipped");
+    REQUIRE(controller.fixAllFlippedNormals());
+    REQUIRE(controller.lastRepairStatusMessage().find("#1 now faces inward as a whole") != std::string::npos);
+    REQUIRE(controller.rowCount(DefectCategory::FlippedNormals) == 0);
+    REQUIRE(controller.rowCount(DefectCategory::InvertedShells) == 1);
+    REQUIRE(controller.fixAllInvertedShells());
+    REQUIRE(controller.mesh().F == good.F);
+}
+
+TEST_CASE("AppController Fix All Inverted Shells reverses inside-out shells only, never a cavity, and undoes",
+          "[app][controller][repair][orientation][cavity][undo]") {
+    using ogun::DefectCategory;
+    using ogun::SampleMeshes;
+    ogun::AppController controller;
+    controller.setMesh(SampleMeshes::combineMeshes({SampleMeshes::createCavityBoxMesh(),
+                                                     SampleMeshes::createBox({10, 0, 0}, {12, 2, 2}, true)}),
+                       "cavity box and an inside-out cube");
+    const ogun::Mesh before = controller.mesh();
+    REQUIRE(ogun::categoryInfo(DefectCategory::InvertedShells).hasFixAll);
+    REQUIRE(controller.rowCount(DefectCategory::InvertedShells) == 1);
+
+    REQUIRE(controller.fixAllInvertedShells());
+    REQUIRE(controller.lastUndoActionLabel() == "Fix All Inverted Shells");
+    REQUIRE(controller.lastRepairStatusMessage() == "Reversed 1 inside-out shell: #3. Kept 1 cavity inward: #2.");
+    REQUIRE(controller.rowCount(DefectCategory::InvertedShells) == 0);
+    REQUIRE(controller.mesh().F.topRows(24) == before.F.topRows(24)); // the cavity box is untouched
+    REQUIRE(ogun::signedVolume(controller.mesh()) == Catch::Approx(64.0 - 8.0 + 8.0));
+    REQUIRE_FALSE(controller.fixAllInvertedShells());
+    REQUIRE(controller.lastRepairStatusMessage() == "No inside-out shells to reverse. Kept 1 cavity inward: #2.");
+
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().F == before.F);
+    REQUIRE(controller.rowCount(DefectCategory::InvertedShells) == 1);
+
+    // Scope: only the selected shell can be reversed
+    controller.clickShell(0, false, false, {});
+    REQUIRE_FALSE(controller.fixAllInvertedShells());
+    REQUIRE(controller.lastRepairStatusMessage().find("1 inside-out shell outside the scope was left") != std::string::npos);
+    controller.selectShellsWhere([](std::size_t) { return false; });
+
+    // A body written inside out with a shell inside: stop and report, nothing flipped
+    controller.setMesh(SampleMeshes::createCavityBoxMesh(true), "Box with cavity, inside out");
+    const ogun::Mesh stopped = controller.mesh();
+    REQUIRE_FALSE(controller.fixAllInvertedShells());
+    REQUIRE(controller.mesh().F == stopped.F);
+    REQUIRE(controller.lastRepairStatusMessage().find("#1 and its inner shell #2 look inside out together") !=
+            std::string::npos);
+    REQUIRE_FALSE(controller.canUndo());
+}
+
+TEST_CASE("AppController Flip shells: Flip all and Flip outer only on a box written inside out, each undoable",
+          "[app][controller][repair][orientation][cavity][undo]") {
+    using ogun::DefectCategory;
+    using ogun::SampleMeshes;
+    ogun::AppController controller;
+    controller.setMesh(SampleMeshes::createCavityBoxMesh(true), "Box with cavity, inside out");
+    const ogun::Mesh before = controller.mesh();
+    const auto warnings = [&] { return controller.categoryHealth(DefectCategory::InvertedShells).result->warnings; };
+    REQUIRE(warnings().size() == 1);
+    REQUIRE(warnings()[0].kind == ogun::WarningKind::StoppedGroup);
+    const std::vector<int> group = warnings()[0].shells;
+    REQUIRE(group == std::vector<int>{0, 1});
+
+    // Flip all: A outward, C inward, the correct cavity box
+    REQUIRE(controller.flipShells(group));
+    REQUIRE(controller.lastUndoActionLabel() == "Flip Shells #1 and #2");
+    REQUIRE(controller.lastRepairStatusMessage() == "Flipped #1 and #2 (24 faces): they now face the other way.");
+    REQUIRE(controller.mesh().F == SampleMeshes::createCavityBoxMesh().F);
+    REQUIRE(warnings().empty());
+    REQUIRE(controller.rowCount(DefectCategory::InvertedShells) == 0);
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().F == before.F);
+    REQUIRE(warnings().size() == 1);
+
+    // Flip outer only: A outward with C outward inside it, a nested solid
+    const std::vector<int> outer{group.front()};
+    REQUIRE(controller.flipShells(outer));
+    REQUIRE(controller.lastUndoActionLabel() == "Flip Shell #1");
+    REQUIRE(warnings().empty());
+    REQUIRE(controller.rowCount(DefectCategory::InvertedShells) == 0);
+    REQUIRE(ogun::signedVolume(controller.mesh()) == Catch::Approx(64.0 + 8.0));
+    REQUIRE(controller.shells().shell(1).nestedIn == 0);
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().F == before.F);
+    REQUIRE_FALSE(controller.canUndo());
+
+    // Nothing to flip without shells
+    const std::vector<int> none;
+    REQUIRE_FALSE(controller.flipShells(none));
+    REQUIRE_FALSE(controller.canUndo());
+}

@@ -428,13 +428,13 @@ CategoryResult checkInvertedShells(
         }
         result.warnings.push_back({label(group.front()) + " and its inner shell" + (group.size() > 2 ? "s " : " ") + inner +
                                        " look inside out together. Flip them by hand.",
-                                   group});
+                                   group, WarningKind::StoppedGroup});
     }
     for (std::size_t s = 0; s < roles.shells.size(); ++s) {
         const ShellRoleInfo& info = roles.shells[s];
         if (info.role == ShellRole::Unclassified && relations.shells[s].signedVolume < 0.0) {
             result.warnings.push_back({label(static_cast<int>(s)) + " " + formatShellRoleReason(info, label),
-                                       {static_cast<int>(s)}});
+                                       {static_cast<int>(s)}, WarningKind::Unclassified});
         }
     }
     return result;

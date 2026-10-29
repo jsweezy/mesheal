@@ -7,6 +7,7 @@ add_library(ogun_app_controller STATIC
     AppControllerHoles.cpp
     AppControllerIntersections.cpp
     AppControllerMerge.cpp
+    AppControllerOrientation.cpp
     AppControllerSelection.cpp
     AppControllerTransform.cpp
     DefectBrowser.cpp

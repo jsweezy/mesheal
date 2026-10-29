@@ -289,6 +289,7 @@ TEST_CASE("The Inverted shells check counts inside-out shells and warns about th
     REQUIRE(stopped.warnings.size() == 1);
     REQUIRE(stopped.warnings[0].shells == std::vector<int>{0, 1});
     REQUIRE(stopped.warnings[0].text == "#1 and its inner shell #2 look inside out together. Flip them by hand.");
+    REQUIRE(stopped.warnings[0].kind == ogun::WarningKind::StoppedGroup); // Flip all / Flip outer only
 
     const ogun::CategoryResult touching = invertedShells(SampleMeshes::combineMeshes(
         {box({0, 0, 0}, {4, 4, 4}), inwardOctahedron({1.5, 1.0, 2.5}, {1.5, 0.8, 0.8})}));
@@ -297,6 +298,7 @@ TEST_CASE("The Inverted shells check counts inside-out shells and warns about th
     REQUIRE(touching.warnings[0].shells == std::vector<int>{1});
     REQUIRE(touching.warnings[0].text ==
             "#2 is wound inward and touches #1: cavity or inside out? Left as it is.");
+    REQUIRE(touching.warnings[0].kind == ogun::WarningKind::Unclassified); // Flip it
 
     const ogun::CategoryResult island = invertedShells(SampleMeshes::createIslandInCavityMesh(true));
     REQUIRE(island.size() == 1);

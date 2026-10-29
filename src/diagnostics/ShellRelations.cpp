@@ -266,4 +266,38 @@ ShellRelations computeShellRelations(
     return computeShellRelations(mesh, shells, params, stopToken, progress);
 }
 
+std::optional<std::vector<std::uint8_t>> findSelfCrossingShells(
+    const Mesh& mesh,
+    std::span<const std::vector<Eigen::Index>> shellFaces,
+    std::span<const int> which,
+    double tolerance,
+    std::stop_token stopToken) {
+    std::vector<std::uint8_t> flags(shellFaces.size(), 0);
+    if (which.empty() || mesh.empty()) {
+        return flags;
+    }
+    // One group per face: every pair among the faces of the tested shells, and only those, is tested
+    std::vector<int> faceGroup(static_cast<std::size_t>(mesh.numFaces()), -1);
+    std::vector<int> shellOf(static_cast<std::size_t>(mesh.numFaces()), -1);
+    for (const int s : which) {
+        for (const Eigen::Index f : shellFaces[static_cast<std::size_t>(s)]) {
+            faceGroup[static_cast<std::size_t>(f)] = static_cast<int>(f);
+            shellOf[static_cast<std::size_t>(f)] = s;
+        }
+    }
+    FacePairQuery query;
+    query.faceGroup = faceGroup;
+    const std::optional<std::vector<FacePairHit>> pairs = findFacePairs(mesh, tolerance, query, stopToken);
+    if (!pairs) {
+        return std::nullopt;
+    }
+    for (const FacePairHit& p : *pairs) {
+        const int s = shellOf[p.a];
+        if (p.hit && s >= 0 && s == shellOf[p.b]) {
+            flags[static_cast<std::size_t>(s)] = 1;
+        }
+    }
+    return flags;
+}
+
 } // namespace ogun

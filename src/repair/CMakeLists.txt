@@ -4,6 +4,7 @@ add_library(ogun_repair STATIC
     IntersectionHealer.cpp
     MeshCleanup.cpp
     NonManifoldSplit.cpp
+    Orientation.cpp
     RepairMetrics.cpp
     ShellMerge.cpp
     SliverHealer.cpp

@@ -119,7 +119,9 @@ void PolyscopeGui::fixAll(DefectCategory category) {
         (category == DefectCategory::NonManifoldEdges && controller_.fixAllNonManifoldEdges()) ||
         (category == DefectCategory::NonManifoldVertices && controller_.fixAllNonManifoldVertices()) ||
         (category == DefectCategory::Degenerate && controller_.fixAllDegenerateFaces()) ||
-        (category == DefectCategory::Duplicates && controller_.fixAllDuplicateFaces())) {
+        (category == DefectCategory::Duplicates && controller_.fixAllDuplicateFaces()) ||
+        (category == DefectCategory::FlippedNormals && controller_.fixAllFlippedNormals()) ||
+        (category == DefectCategory::InvertedShells && controller_.fixAllInvertedShells())) {
         requestSync(true);
     } else if (category == DefectCategory::Intersections) {
         // Several methods with very different trade-offs: open the operator to compare them first
@@ -391,7 +393,9 @@ void PolyscopeGui::drawCategoryTool(DefectCategory category) {
     if (info.infoOnly) {
         ImGui::Text("%s %s.", withThousands(result->infoCount).c_str(), info.elementNoun);
     }
-    drawCategoryWarnings(*result);
+    if (drawCategoryWarnings(*result)) {
+        return; // a flip re-checked the mesh: `result` is stale until the next frame
+    }
     if (browser.scopedCount() == 0) {
         ImGui::TextColored(gui::kOkColor, "No %s found%s.", info.name,
                            result->empty() ? "" : " in the shells in scope");
@@ -434,8 +438,9 @@ void PolyscopeGui::drawCategoryTool(DefectCategory category) {
     }
 }
 
-void PolyscopeGui::drawCategoryWarnings(const CategoryResult& result) {
+bool PolyscopeGui::drawCategoryWarnings(const CategoryResult& result) {
     const ShellBrowser& shells = controller_.shells();
+    std::vector<int> pendingFlip; // applied after the loop: the flip re-checks the mesh and replaces `result`
     for (std::size_t i = 0; i < result.warnings.size(); ++i) {
         const CategoryWarning& warning = result.warnings[i];
         // With part of the mesh out of scope, only warnings about a shell in scope
@@ -454,8 +459,34 @@ void PolyscopeGui::drawCategoryWarnings(const CategoryResult& result) {
         }
         tooltip("Select these shells in the Shells panel and frame them. Not counted in the row: Ogun will not "
                 "guess which way they should face.");
+        const auto flipButton = [&](const char* label, std::span<const int> flipped, const std::string& help) {
+            ImGui::SameLine();
+            if (ImGui::SmallButton(label)) {
+                pendingFlip.assign(flipped.begin(), flipped.end());
+            }
+            tooltip(help.c_str());
+        };
+        const std::string outer = warning.shells.empty() ? std::string() : "#" + std::to_string(warning.shells.front() + 1);
+        if (warning.kind == WarningKind::StoppedGroup && warning.shells.size() >= 2) {
+            flipButton("Flip all", warning.shells,
+                       "Reverse every shell named here, as one undoable step: right when the whole part was written "
+                       "inside out (the outer shell faces outward again and the inner ones become cavities).");
+            flipButton("Flip outer only", std::span<const int>(warning.shells.data(), 1),
+                       "Reverse only " + outer + ", as one undoable step: right when " + outer +
+                           " alone is mis-wound around real inner parts (they stay as they are, e.g. nested "
+                           "solids).");
+        } else if (warning.kind == WarningKind::Unclassified && !warning.shells.empty()) {
+            flipButton("Flip it", warning.shells,
+                       "Reverse " + outer + ", as one undoable step, if you know it is inside out rather than a "
+                       "cavity.");
+        }
         ImGui::PopID();
     }
+    if (!pendingFlip.empty() && controller_.flipShells(pendingFlip)) {
+        requestSync(true);
+        return true;
+    }
+    return false;
 }
 
 void PolyscopeGui::drawCategorySettings(DefectCategory category) {
@@ -506,7 +537,12 @@ void PolyscopeGui::drawCategorySettings(DefectCategory category) {
         drawHoleFillSettings();
         break;
     case DefectCategory::FlippedNormals:
+        ImGui::PushTextWrapPos(0.0f);
         ImGui::TextDisabled("Faces wound against the majority of their shell are listed.");
+        ImGui::TextDisabled("Fix All flips them so each shell agrees with its majority (also on open shells). It "
+                            "never reverses a whole shell: that is the Inverted shells row. A shell with a twist "
+                            "(like a Mobius strip) cannot agree everywhere and is left as it is. No settings.");
+        ImGui::PopTextWrapPos();
         break;
     case DefectCategory::InvertedShells:
         ImGui::PushTextWrapPos(0.0f);
@@ -514,6 +550,8 @@ void PolyscopeGui::drawCategorySettings(DefectCategory category) {
                             "test that ignores winding). Inward inside a solid: a cavity, kept and not counted. Inward "
                             "in empty space with nothing inside it: inside out, counted. Inward with shells inside it, "
                             "or touching or crossing another shell: a warning below, not counted. No settings.");
+        ImGui::TextDisabled("Fix All reverses the inside-out shells only, never a cavity. For a warning, choose "
+                            "yourself: Flip all, Flip outer only or Flip it (each one undoable step).");
         ImGui::PopTextWrapPos();
         break;
     case DefectCategory::NonManifoldEdges:
@@ -566,6 +604,12 @@ void PolyscopeGui::drawCategoryActions(DefectCategory category) {
                 : category == DefectCategory::Duplicates
                     ? "Keep one face of each set of copies (the winding its neighbours agree with), in one undoable "
                       "step."
+                : category == DefectCategory::FlippedNormals
+                    ? "Flip the faces wound against the majority of their shell, in one undoable step. Whole shells "
+                      "are never reversed here."
+                : category == DefectCategory::InvertedShells
+                    ? "Reverse the shells that are inside out (wound inward with nothing around or inside them), in "
+                      "one undoable step. Cavities are never flipped."
                 : category == DefectCategory::OpenEdges
                     ? "Compare whole-mesh repairs (fill each hole, winding-number rebuild, alpha wrap) with a preview "
                       "and before / after numbers, then apply one."

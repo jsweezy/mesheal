@@ -929,6 +929,23 @@ public:
     /// majority, and equal counts go). Returns false (no undo entry) when nothing was removed.
     bool fixAllDuplicateFaces();
 
+    /// Flipped normals in the shell scope, one undo step (AppControllerOrientation.cpp): `orientShells`'
+    /// face pass flips the faces wound against the majority of their shell (majority wins, also on open
+    /// shells). Shells with a Mobius-like twist are left and named. Never reverses a whole shell; a
+    /// closed shell that now faces inward is named so the user can check Inverted shells. Returns false
+    /// (no undo entry) when no face was flipped.
+    bool fixAllFlippedNormals();
+
+    /// Inverted shells in the shell scope, one undo step: reverses the shells rule O calls inside out
+    /// (wholly in scope, not crossing themselves). Never flips a cavity, a nested solid, an island, an
+    /// inward body holding shells (stop and report) or an inward shell rule O cannot judge; the status
+    /// names them. Returns false (no undo entry) when nothing was reversed.
+    bool fixAllInvertedShells();
+
+    /// Reverses every face of the given shells (Shells-panel indices), one undo step: the user's choice
+    /// where Fix All will not guess (*Flip all*, *Flip outer only*, *Flip it* in Inverted shells).
+    bool flipShells(std::span<const int> shells);
+
     /// Outcome of the most recent single-face commit or batch repair.
     [[nodiscard]] const std::string& lastRepairStatusMessage() const noexcept {
         return lastRepairStatusMessage_;

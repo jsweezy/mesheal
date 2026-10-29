@@ -3,6 +3,7 @@ add_executable(ogun_repair_tests
     IntersectionHealerTests.cpp
     MeshCleanupTests.cpp
     NonManifoldSplitTests.cpp
+    OrientationTests.cpp
     ShellMergeTests.cpp
     SliverHealerTests.cpp
     TopologyCleanupTests.cpp
