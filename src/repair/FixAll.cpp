@@ -613,7 +613,8 @@ public:
             result_.passes.push_back(passReport);
             report(passFraction(pass, 1.0), passText(pass, "checking the result..."));
 
-            if (passReport.after.clean()) {
+            const bool clean = passReport.after.clean() && (!params_.healThinFaces || passReport.after.thin == 0);
+            if (clean) {
                 result_.stopReason = FixAllStopReason::Clean;
                 break;
             }

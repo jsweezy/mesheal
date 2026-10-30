@@ -746,10 +746,11 @@ TEST_CASE("Fix All fills a cup's opening with a fill that crosses nothing, else 
         const ogun::FixAllStepReport* islands = stepOf(result, FixAllStageId::Islands);
         REQUIRE(islands->accepted());
         REQUIRE(islands->detail == "Repaired 1 of 1 island");
-        REQUIRE(result.passesRun == 1);
+        REQUIRE(result.passesRun == 2);
         REQUIRE(result.stopReason == FixAllStopReason::Clean);
         REQUIRE(result.countsAfter.openEdges == 0);
         REQUIRE(result.countsAfter.intersectingFaces == 0);
+        REQUIRE(result.countsAfter.thinFaces == 0);
     }
 }
 
@@ -993,15 +994,16 @@ TEST_CASE("Fix All judges a pass at its end: closed but crossing is kept, the ne
         }
     };
     const ogun::FixAllResult result = run(SampleMeshes::createCupWithPostMesh(SampleMeshes::CupPost::ThroughOpening), {}, &hooks);
-    REQUIRE(result.passes.size() == 2);
+    REQUIRE(result.passes.size() == 3);
     REQUIRE(result.passes[0].after.closedManifold == 0);
     REQUIRE(result.passes[0].after.intersecting > 0);
     REQUIRE(result.passes[0].newBest); // closed comes first in the score
     REQUIRE(stepOf(result, FixAllStageId::Islands, 2)->accepted());
     REQUIRE(result.passes[1].newBest);
-    REQUIRE(result.bestPass == 2);
+    REQUIRE(result.bestPass == 3);
     REQUIRE(result.stopReason == FixAllStopReason::Clean);
     REQUIRE(result.countsAfter.intersectingFaces == 0);
+    REQUIRE(result.countsAfter.thinFaces == 0);
 }
 
 TEST_CASE("Fix All's hard guards refuse a step at once", "[repair][fixall]") {

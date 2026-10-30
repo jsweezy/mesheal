@@ -1134,3 +1134,44 @@ TEST_CASE("Cancel drops a result that arrives after the click: rebuild preview, 
     }
     controller.setBackgroundChecks(false);
 }
+
+TEST_CASE("Fix All on Turkey without shell 28 runs multiple passes to heal all thin faces", "[app][controller][fixall][turkey]") {
+    const std::filesystem::path turkeyStl =
+        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / "Turkey.stl";
+    if (!std::filesystem::exists(turkeyStl)) {
+        return;
+    }
+    ogun::AppController controller;
+    controller.setMesh(ogun::loadStl(turkeyStl), "Turkey.stl");
+    REQUIRE(controller.shells().size() == 28);
+
+    // 1. Remove shell #28 (index 27 in 0-based indexing)
+    controller.clickShell(27, false, false, {});
+    REQUIRE(controller.shells().selectedCount() == 1);
+    REQUIRE(controller.deleteSelectedShells());
+    REQUIRE(controller.shells().size() == 27);
+
+    // 2. Open Fix All with 3 passes and run it
+    controller.openFixAll(3);
+    controller.waitForFixAllPlan();
+    controller.previewFixAll(false);
+    controller.waitForFixAll();
+
+    const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+    REQUIRE(candidate != nullptr);
+    REQUIRE(candidate->success);
+    REQUIRE(candidate->fixAll != nullptr);
+
+    // Verify multiple passes were run and stopped clean with 0 thin faces
+    CHECK(candidate->fixAll->result.passesRun >= 2);
+    CHECK(candidate->fixAll->result.stopReason == ogun::FixAllStopReason::Clean);
+    CHECK(candidate->fixAll->result.countsAfter.thinFaces == 0);
+
+    // Apply Fix All and verify 0 defects remain on the mesh
+    REQUIRE(controller.applyFixAll());
+    REQUIRE(controller.rowCount(ogun::DefectCategory::ThinFaces) == 0);
+    REQUIRE(controller.rowCount(ogun::DefectCategory::OpenEdges) == 0);
+    REQUIRE(controller.rowCount(ogun::DefectCategory::NonManifoldEdges) == 0);
+    REQUIRE(controller.rowCount(ogun::DefectCategory::Intersections) == 0);
+    REQUIRE(controller.rowCount(ogun::DefectCategory::Degenerate) == 0);
+}
