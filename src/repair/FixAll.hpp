@@ -4,6 +4,8 @@
 #include "diagnostics/MeshHealth.hpp"
 #include "mesh/Mesh.hpp"
 #include "mesh/ToleranceConfig.hpp"
+#include "repair/HoleFiller.hpp"
+#include "repair/IntersectionHealer.hpp"
 
 #include <Eigen/Core>
 
@@ -80,6 +82,8 @@ struct FixAllParams {
     bool healThinFaces = settings::kDefaultFixAllHealThin;
     bool mergeShells = settings::kDefaultFixAllMergeShells;
     CheckParams checkParams{};
+    HoleFillSettings holeFill{};                ///< Close Crack and the hole fill (Holes tool settings)
+    IntersectionRepairSettings islandRepair{};  ///< The island step (Intersections tool settings)
 };
 
 /// The priority score of a mesh state, lexicographic, lower is better. The order follows the repair
@@ -89,7 +93,7 @@ struct FixAllPriority {
     std::size_t closedManifold = 0; ///< Open edges + non-manifold edges + non-manifold vertices
     std::size_t oriented = 0;       ///< Flipped faces + inside-out closed shells (rule O; cavities are not counted)
     std::size_t intersecting = 0;   ///< Faces in scope that cross another face (in scope or not)
-    std::size_t junk = 0;           ///< Degenerate + duplicate faces
+    std::size_t junk = 0;           ///< Degenerate + duplicate faces + tiny floating shells (when their removal is on)
     std::size_t thin = 0;           ///< Thin faces (aspect over the limit)
 
     [[nodiscard]] auto operator<=>(const FixAllPriority&) const = default;
@@ -110,6 +114,7 @@ struct FixAllCounts {
     std::size_t degenerateFaces = 0;
     std::size_t duplicateFaces = 0;
     std::size_t thinFaces = 0;
+    std::size_t tinyShells = 0;        ///< Tiny floating shells wholly in scope (0 when not counted)
     bool complete = true;              ///< False when stopped
 
     [[nodiscard]] FixAllPriority priority() const noexcept;
@@ -120,6 +125,12 @@ struct FixAllCounts {
 /// every rim edge of a hole with a rim face in scope).
 [[nodiscard]] FixAllCounts countFixAllDefects(const Mesh& mesh, const FixAllScope& scope, const CheckParams& params,
                                               std::stop_token stopToken = {});
+
+/// The same, also counting tiny floating shells (`findTinyFloatingShells` at `tinyShellFraction`, shells
+/// wholly in scope; none for a face scope or a fraction of 0) as junk, so a pass that deletes them is
+/// progress. The engine passes its fraction when the tiny-shell step is on.
+[[nodiscard]] FixAllCounts countFixAllDefects(const Mesh& mesh, const FixAllScope& scope, const CheckParams& params,
+                                              double tinyShellFraction, std::stop_token stopToken = {});
 
 /// A hash of the sorted face geometry keys (`faceGeometryKey`): the same surface gives the same hash
 /// whatever the vertex or face numbering. Used to notice a pass that returns to an earlier state.
@@ -144,7 +155,37 @@ enum class FixAllStageId : std::uint8_t {
     DropRepeated,  ///< Step 1: remove faces that repeat a vertex
     Dedupe,        ///< Step 2: remove duplicate faces
     SplitTouching, ///< Step 3: split touching edges and pinched vertices (geometry unchanged)
+    TinyShells,    ///< Step 4: delete tiny floating shells (whole shells only)
+    Fins,          ///< Step 5: remove fins and internal walls
+    Orient,        ///< Step 6: flip faces against their shell's majority; reverse inside-out shells (rule O)
+    CloseCracks,   ///< Step 7: Close Crack on the holes shaped like cracks
+    Slivers,       ///< Step 8: heal thin faces (flip / collapse, pinned vertices kept)
+    FillHoles,     ///< Step 9: fill every hole, the fill that crosses least when every fill crosses
+    Islands,       ///< Step 10: patch intersection islands within shells
+    OrientAgain,   ///< Step 11: step 6 again (shells closed this pass are judged by rule O here)
     Custom         ///< A stage a test inserts
+};
+
+/// A problem a step leaves for a later step (the deferral table).
+enum class FixAllDeferredKind : std::uint8_t {
+    OpenEdges,           ///< Left for the hole fill (this pass or the next)
+    NonManifoldEdges,    ///< Left for the split and fin steps of the next pass
+    CrossingsWithinShell,///< Left for the island step
+    CrossingsWithShell   ///< A fill's patch crosses another shell: left for the merge, or reported
+};
+
+struct FixAllDeferred {
+    FixAllDeferredKind kind = FixAllDeferredKind::OpenEdges;
+    std::size_t count = 0;
+    std::string text; ///< "opened 2 edges: left for the hole fill"
+};
+
+/// Shells a report line names, for the controller to number and show: each entry is the faces of one
+/// shell, in the numbering of the mesh the step returned (the step's input when it was not kept). The
+/// line itself numbers them `#k` in the Shells-panel order of that mesh (`shellsLargestFirst`).
+struct FixAllShellNote {
+    std::string text;                              ///< "#1 and its inner shell #2 look inside out together: left for you"
+    std::vector<std::vector<Eigen::Index>> shells; ///< Faces of each shell named, in the order the text names them
 };
 
 /// What a stage sees besides the mesh.
@@ -166,6 +207,12 @@ struct FixAllStageOutcome {
     double maxMove = 0.0;              ///< Farthest a vertex moved (straight line)
     std::string detail;                ///< Report line ("Removed 3 collapsed faces")
     std::string failure;               ///< Non-empty: the stage failed, nothing is kept
+    std::string skipped;               ///< Non-empty: the stage did not run on this mesh (why)
+    std::vector<FixAllDeferred> deferred; ///< Problems the change leaves for later steps (besides those the engine measures)
+    std::vector<FixAllShellNote> notes;   ///< Shells the report names (stopped, kept, crossed ...)
+    /// Input faces of shells the stage knows are not cavities and may reverse or delete (inside-out shells
+    /// it reversed, floating debris it deleted): the cavity guard does not protect them.
+    std::vector<Eigen::Index> notCavityFaces;
     bool cancelled = false;
 };
 
@@ -178,10 +225,25 @@ struct FixAllStage {
     /// Why the stage does not run (turned off, needs whole shells); empty (or no function) = it runs.
     std::function<std::string(const FixAllParams&, const FixAllScope&)> skipReason;
     std::function<FixAllStageOutcome(const Mesh&, const FixAllStageContext&)> run;
+    /// It moves vertices (weld, Close Crack, slivers, island patches): the dead-end guard applies. Hole
+    /// fills are exempt (a hole is always filled).
+    bool movesVertices = false;
 };
 
-/// Phase 1's stages in order (weld, drop repeated, dedupe, split touching).
+/// Phase 1's stages in order: weld, drop repeated, dedupe, split touching, tiny shells, fins, orient,
+/// close cracks, slivers, fill holes, islands, orient again.
 [[nodiscard]] std::vector<FixAllStage> fixAllRepairStages();
+
+/// The hard guard (or failure) that refused a step.
+enum class FixAllGuard : std::uint8_t {
+    None,
+    Failed,      ///< The stage threw or reported a failure
+    ValidResult, ///< Bad indices or face map
+    NoChurn,     ///< It did not lower its own target
+    Scope,       ///< It changed a face outside the scope
+    Cavity,      ///< It would lose, open, join or shrink a shell wound inward (a cavity)
+    DeadEnd      ///< It moved vertices into a crossing with a shell the merge cannot take
+};
 
 enum class FixAllStepStatus : std::uint8_t {
     Applied,   ///< Changed the mesh and was kept
@@ -197,9 +259,11 @@ struct FixAllStepReport {
     int pass = 0;
     FixAllPhase phase = FixAllPhase::Repair;
     FixAllStepStatus status = FixAllStepStatus::Unchanged;
+    FixAllGuard guard = FixAllGuard::None; ///< Refused: which guard
     std::string reason;                ///< Why refused or skipped
     std::string detail;                ///< What it did
-    std::vector<std::string> deferred; ///< Problems it left for a later step
+    std::vector<FixAllDeferred> deferred; ///< Problems it left for a later step
+    std::vector<FixAllShellNote> notes;   ///< Shells the step names
     std::size_t countBefore = 0;       ///< Its own target before / after
     std::size_t countAfter = 0;
     std::size_t facesAdded = 0;

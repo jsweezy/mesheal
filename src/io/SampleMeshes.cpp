@@ -1,5 +1,8 @@
 #include "io/SampleMeshes.hpp"
 
+#include "io/StlReader.hpp"
+#include "mesh/ToleranceConfig.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -661,6 +664,120 @@ Mesh SampleMeshes::createCupWithPostMesh(CupPost post, Unit unit) {
         return cup;
     }
     return combineMeshes({cup, createBox(Eigen::Vector3d(-0.5, -0.5, 4.0), Eigen::Vector3d(0.5, 0.5, 12.0), false, unit)});
+}
+
+Mesh SampleMeshes::createCrackedFlippedCubeSoup(Unit unit) {
+    constexpr double kOffset = 1.0e-7;
+    const Mesh grid = createGridCubeMesh(2, 1.0, unit);
+    const auto on = [](double a, double b) { return a == b; };
+    const auto uses = [&](Eigen::Index f, const Eigen::Vector3d& p) {
+        for (int c = 0; c < 3; ++c) {
+            if (grid.V.row(grid.F(f, c)).transpose() == p) {
+                return true;
+            }
+        }
+        return false;
+    };
+    const auto sideFaces = [&](int axis, double side) {
+        std::vector<Eigen::Index> faces;
+        for (Eigen::Index f = 0; f < grid.numFaces(); ++f) {
+            if (on(grid.V(grid.F(f, 0), axis), side) && on(grid.V(grid.F(f, 1), axis), side) && on(grid.V(grid.F(f, 2), axis), side)) {
+                faces.push_back(f);
+            }
+        }
+        return faces;
+    };
+    const auto first = [&](int axis, double side, const auto& accept) {
+        for (const Eigen::Index f : sideFaces(axis, side)) {
+            if (accept(f)) {
+                return f;
+            }
+        }
+        return Eigen::Index{-1};
+    };
+    const Eigen::Vector3d top(1.0, 1.0, 1.0);
+    const Eigen::Vector3d bottom(0.0, 0.0, 0.0);
+    const Eigen::Index topCrack = first(2, 1.0, [&](Eigen::Index f) { return uses(f, top); });
+    const Eigen::Index bottomCrack = first(2, 0.0, [&](Eigen::Index f) { return uses(f, bottom); });
+    const auto centroid = [&](Eigen::Index f) {
+        return Eigen::Vector3d((grid.V.row(grid.F(f, 0)) + grid.V.row(grid.F(f, 1)) + grid.V.row(grid.F(f, 2))).transpose() / 3.0);
+    };
+    // Missing: a triangle of the right side's lower front cell, away from both cracks
+    const Eigen::Index missing = first(0, 1.0, [&](Eigen::Index f) {
+        const Eigen::Vector3d c = centroid(f);
+        return c.y() < 0.5 && c.z() < 0.5;
+    });
+
+    Eigen::MatrixXd soup(3 * (grid.numFaces() - 1), 3);
+    Eigen::Index row = 0;
+    for (Eigen::Index f = 0; f < grid.numFaces(); ++f) {
+        if (f == missing) {
+            continue;
+        }
+        const Eigen::Vector3d c = centroid(f);
+        const bool backwards = c.x() == 0.0 && c.y() > 0.5 && c.z() > 0.5; // the left side's upper back cell
+        for (int k = 0; k < 3; ++k) {
+            Eigen::Vector3d p = grid.V.row(grid.F(f, backwards ? 2 - k : k)).transpose();
+            if (f == topCrack && p == top) {
+                p.y() -= kOffset;
+            } else if (f == bottomCrack && p == bottom) {
+                p.x() += kOffset;
+            }
+            soup.row(row++) = p.transpose();
+        }
+    }
+    return separateTouchingContacts(weldVerticesLocal(soup, unit, ToleranceConfig{}));
+}
+
+Mesh SampleMeshes::createCollinearCapCubeMesh(Unit unit) {
+    Mesh mesh = createGridCubeMesh(2, 2.0, unit);
+    const auto find = [&](const Eigen::Vector3d& p) {
+        for (Eigen::Index v = 0; v < mesh.numVertices(); ++v) {
+            if (mesh.V.row(v).transpose() == p) {
+                return static_cast<int>(v);
+            }
+        }
+        return -1;
+    };
+    const int a = find({1.0, 0.0, 2.0});
+    const int b = find({1.0, 1.0, 2.0});
+    // The face running a -> b is split at the edge's midpoint m; the cap (a, b, m) closes the T-junction
+    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+        for (int c = 0; c < 3; ++c) {
+            if (mesh.F(f, c) != a || mesh.F(f, (c + 1) % 3) != b) {
+                continue;
+            }
+            const int opposite = mesh.F(f, (c + 2) % 3);
+            const auto m = static_cast<int>(mesh.numVertices());
+            mesh.V.conservativeResize(m + 1, 3);
+            mesh.V.row(m) << 1.0, 0.5, 2.0;
+            const Eigen::Index n = mesh.numFaces();
+            mesh.F.conservativeResize(n + 2, 3);
+            mesh.F.row(f) << a, m, opposite;
+            mesh.F.row(n) << m, b, opposite;
+            mesh.F.row(n + 1) << a, b, m;
+            mesh.recomputeNormals();
+            return mesh;
+        }
+    }
+    return mesh;
+}
+
+Mesh SampleMeshes::createBoundaryCapPlateMesh(Unit unit) {
+    const double delta = std::tan(0.05 * std::numbers::pi / 180.0); // apex angle 179.9 degrees over a 2-long edge
+    const std::vector<Eigen::Vector3d> points{
+        {0.0, 0.0, 0.0}, {10.0, 0.0, 0.0}, {10.0, 10.0, 0.0}, {0.0, 10.0, 0.0},  // 0-3 bottom corners
+        {0.0, 0.0, 1.0}, {10.0, 0.0, 1.0}, {10.0, 10.0, 1.0}, {0.0, 10.0, 1.0},  // 4-7 top corners
+        {4.0, 4.0, 1.0}, {6.0, 4.0, 1.0}, {6.0, 6.0, 1.0}, {4.0, 6.0, 1.0},      // 8-11 hole corners
+        {5.0, 4.0 - delta, 1.0}};                                                // 12 cap apex
+    const std::vector<std::array<int, 3>> faces{
+        {0, 2, 1}, {0, 3, 2},                                  // bottom
+        {0, 1, 5}, {0, 5, 4}, {1, 2, 6}, {1, 6, 5},            // front, right
+        {2, 3, 7}, {2, 7, 6}, {3, 0, 4}, {3, 4, 7},            // back, left
+        {4, 5, 12}, {4, 12, 8}, {5, 9, 12}, {8, 12, 9},        // top front strip, the cap last
+        {5, 6, 10}, {5, 10, 9}, {6, 7, 11}, {6, 11, 10},       // top right and back strips
+        {7, 4, 8}, {7, 8, 11}};                                // top left strip
+    return meshFromFaces(points, faces, unit);
 }
 
 Mesh SampleMeshes::createSampleDefectiveMesh(Unit unit) {

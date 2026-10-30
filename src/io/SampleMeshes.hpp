@@ -230,6 +230,25 @@ struct SampleMeshes {
     /// File > Load Sample > "Cup with a post".
     [[nodiscard]] static Mesh createCupWithPostMesh(CupPost post = CupPost::BelowOpening, Unit unit = Unit::Millimeter);
 
+    /// A cube [0, 1]^3 with 2 x 2 grid sides (48 triangles) read the way a file is: a triangle soup welded
+    /// with the load weld (`weldVerticesLocal`, `ToleranceConfig{}`) and `separateTouchingContacts`. In
+    /// the soup the top corner (1, 1, 1) is 1e-7 off along y in one top triangle and the bottom corner
+    /// (0, 0, 0) 1e-7 off along x in one bottom triangle: two 4-edge cracks, wider than the load weld
+    /// (1e-9 here) and narrower than Fix All's weld (1e-6 per axis here). The two triangles of the left
+    /// side's upper back cell are wound backwards (2 flipped faces), and one triangle of the right side's
+    /// lower front cell is missing (a 3-edge hole away from both cracks). 47 faces, 1 shell.
+    /// File > Load Sample > "Cracked cube with flipped faces".
+    [[nodiscard]] static Mesh createCrackedFlippedCubeSoup(Unit unit = Unit::Millimeter);
+
+    /// The 2 x 2 grid cube [0, 2]^3 with the top face along the grid edge (1, 0, 2)-(1, 1, 2) split at the
+    /// edge's midpoint (1, 0.5, 2), and the T-junction closed by a zero-area cap with three distinct
+    /// vertices lying along that edge (the last face). Closed; deleting the cap opens a 3-edge crack.
+    [[nodiscard]] static Mesh createCollinearCapCubeMesh(Unit unit = Unit::Millimeter);
+
+    /// A plate [0, 10]^2 x [0, 1] with a square hole [4, 6]^2 in its top, whose rim edge (4, 4)-(6, 4) is the
+    /// long edge of a cap (apex (5, 4 - 8.7e-4, 1), angle 179.9 degrees, the 14th face). One 4-edge hole.
+    [[nodiscard]] static Mesh createBoundaryCapPlateMesh(Unit unit = Unit::Millimeter);
+
     /// Generates a clean 12-triangle cube mesh injected with 3 known defective triangles:
     ///   - Face 12 (`kZeroAreaFaceIndex`): collinear zero-area triangle (A = 0, h_min = 0)
     ///   - Face 13 (`kMicroscopicFaceIndex`): microscopic-area triangle (A = 5e-9, h_min ~ 7.07e-5; well

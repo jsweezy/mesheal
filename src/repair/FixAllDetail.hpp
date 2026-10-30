@@ -1,0 +1,41 @@
+#pragma once
+
+// Helpers shared by the Fix All engine (FixAll.cpp) and its stages (FixAllStages.cpp). Not a public API.
+
+#include "mesh/Mesh.hpp"
+#include "mesh/Units.hpp"
+
+#include <Eigen/Core>
+
+#include <cstddef>
+#include <span>
+#include <string>
+#include <vector>
+
+namespace ogun::fixall_detail {
+
+/// "1 face" / "3 faces".
+[[nodiscard]] std::string counted(std::size_t n, const char* one, const char* many);
+
+/// "0.003 mm" (3 significant digits).
+[[nodiscard]] std::string formatLength(double value, Unit unit);
+
+/// "#2", "#2 and #5", "#2, #3 and #5" for shell indices (0-based, Shells-panel order).
+[[nodiscard]] std::string shellList(std::span<const int> shells);
+
+/// Old face -> face of `after` with the same corner positions (winding kept, rotation ignored), -1 when
+/// none is left: the face map of a stage that re-numbers faces without reporting it.
+[[nodiscard]] std::vector<Eigen::Index> faceMapByGeometry(const Mesh& before, const Mesh& after);
+
+/// Shell index of every face (-1 for a face in no shell), from a shell list such as `shellsLargestFirst`.
+[[nodiscard]] std::vector<int> shellOfFaces(Eigen::Index faceCount, std::span<const std::vector<Eigen::Index>> shells);
+
+/// Open edges (one face) and non-manifold edges (three or more faces) of `mesh`.
+struct EdgeDefectCounts {
+    std::size_t open = 0;
+    std::size_t nonManifold = 0;
+};
+
+[[nodiscard]] EdgeDefectCounts countEdgeDefects(const Mesh& mesh);
+
+} // namespace ogun::fixall_detail

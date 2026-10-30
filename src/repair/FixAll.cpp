@@ -1,8 +1,9 @@
 #include "repair/FixAll.hpp"
+#include "repair/FixAllDetail.hpp"
 
 #include "diagnostics/MeshChecks.hpp"
+#include "diagnostics/SelfIntersections.hpp"
 #include "diagnostics/ShellRelations.hpp"
-#include "repair/MeshCleanup.hpp"
 #include "repair/RepairMetrics.hpp"
 #include "repair/TopologyCleanup.hpp"
 
@@ -12,8 +13,10 @@
 #include <cmath>
 #include <cstdio>
 #include <exception>
+#include <initializer_list>
 #include <limits>
 #include <optional>
+#include <span>
 #include <unordered_set>
 #include <utility>
 
@@ -25,16 +28,6 @@ using Clock = std::chrono::steady_clock;
 
 [[nodiscard]] double msSince(Clock::time_point start) {
     return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
-}
-
-[[nodiscard]] std::string counted(std::size_t n, const char* one, const char* many) {
-    return std::to_string(n) + " " + (n == 1 ? one : many);
-}
-
-[[nodiscard]] std::string formatLength(double value, Unit unit) {
-    std::array<char, 32> text{};
-    std::snprintf(text.data(), text.size(), "%.3g", value);
-    return std::string(text.data()) + " " + std::string(unitSymbol(unit));
 }
 
 [[nodiscard]] bool indicesValid(const Mesh& mesh) {
@@ -83,126 +76,267 @@ using Clock = std::chrono::steady_clock;
 }
 
 // ---------------------------------------------------------------------------------------------
-// Phase 1 stages
+// Hard guards
 // ---------------------------------------------------------------------------------------------
 
-[[nodiscard]] FixAllStageOutcome weldStage(const Mesh& mesh, const FixAllStageContext& context) {
-    FixAllStageOutcome outcome;
-    MergeByDistanceResult weld =
-        mergeByDistance(mesh, context.params.weldTolerance, context.scope.faceInScope, true, context.scope.pinned);
-    if (!weld.success) {
-        outcome.failure = weld.statusMessage;
-        return outcome;
+/// The stage's face map, or the identity when it kept every row (and only appended).
+[[nodiscard]] std::vector<Eigen::Index> fullFaceMap(const Mesh& before, const FixAllStageOutcome& outcome) {
+    if (!outcome.faceMap.empty()) {
+        return outcome.faceMap;
     }
-    outcome.targetBefore = weld.verticesMerged + weld.degenerateRemoved + weld.duplicatesRemoved;
-    if (outcome.targetBefore == 0) {
-        return outcome; // the weld would only drop unused vertices
+    std::vector<Eigen::Index> map(static_cast<std::size_t>(before.numFaces()));
+    for (Eigen::Index f = 0; f < before.numFaces(); ++f) {
+        map[static_cast<std::size_t>(f)] = f;
     }
-    outcome.changed = true;
-    outcome.mesh = std::move(weld.mesh);
-    outcome.faceMap = std::move(weld.faceMap);
-    outcome.maxMove = weld.maxMove;
-    outcome.detail = "Welded " + counted(weld.verticesMerged, "vertex", "vertices") + " (max move " +
-                     formatLength(weld.maxMove, mesh.fileUnit) + "; " +
-                     counted(weld.degenerateRemoved, "collapsed face", "collapsed faces") + " removed";
-    if (weld.duplicatesRemoved > 0) {
-        outcome.detail += ", " + counted(weld.duplicatesRemoved, "copy", "copies");
-    }
-    outcome.detail += ")";
-    return outcome;
+    return map;
 }
 
-[[nodiscard]] FixAllStageOutcome dropRepeatedStage(const Mesh& mesh, const FixAllStageContext& context) {
-    FixAllStageOutcome outcome;
-    RepeatedVertexFacesResult dropped = removeRepeatedVertexFaces(mesh, context.scope.faceInScope);
-    outcome.targetBefore = dropped.removed;
-    if (dropped.removed == 0) {
-        return outcome;
+/// Scope guard: every face outside the scope is still there with the same corners.
+[[nodiscard]] bool outsideScopeKept(const Mesh& before, const Mesh& after, std::span<const Eigen::Index> map,
+                                    const FixAllScope& scope) {
+    for (Eigen::Index f = 0; f < before.numFaces(); ++f) {
+        if (scope.inScope(f)) {
+            continue;
+        }
+        const Eigen::Index to = map[static_cast<std::size_t>(f)];
+        if (to < 0 || to >= after.numFaces() || faceGeometryKey(before, f) != faceGeometryKey(after, to)) {
+            return false;
+        }
     }
-    outcome.changed = true;
-    outcome.mesh = std::move(dropped.mesh);
-    outcome.faceMap = std::move(dropped.faceMap);
-    outcome.detail = "Removed " + counted(dropped.removed, "collapsed face", "collapsed faces");
-    return outcome;
+    return true;
 }
 
-[[nodiscard]] FixAllStageOutcome dedupeStage(const Mesh& mesh, const FixAllStageContext& context) {
-    FixAllStageOutcome outcome;
-    DuplicateFacesResult deduped = removeDuplicateFaces(mesh, context.scope.faceInScope);
-    outcome.targetBefore = deduped.removed();
-    if (deduped.removed() == 0) {
-        return outcome;
+/// A closed, consistently wound shell with a negative volume: a cavity, an inside-out shell or one rule O
+/// cannot judge. The cavity guard protects every one of them (the orient stage names the inside-out
+/// shells it reverses, and the tiny-shell stage the debris it deletes).
+struct InwardShell {
+    std::vector<Eigen::Index> faces;
+    double volume = 0.0;
+    int number = 0; ///< Index in `shellsLargestFirst`
+};
+
+[[nodiscard]] std::vector<InwardShell> inwardShells(const Mesh& mesh) {
+    const std::vector<std::vector<Eigen::Index>> shells = shellsLargestFirst(mesh);
+    const std::vector<ShellFacts> facts = describeShells(mesh, shells);
+    std::vector<InwardShell> inward;
+    for (std::size_t s = 0; s < facts.size(); ++s) {
+        if (facts[s].closed && facts[s].oriented && facts[s].signedVolume < 0.0) {
+            inward.push_back({shells[s], facts[s].signedVolume, static_cast<int>(s)});
+        }
     }
-    outcome.changed = true;
-    outcome.mesh = std::move(deduped.mesh);
-    outcome.faceMap = std::move(deduped.faceMap);
-    outcome.detail = "Removed " + counted(deduped.removed(), "duplicate face", "duplicate faces") + " (" +
-                     std::to_string(deduped.removedSameWinding) + " same, " +
-                     std::to_string(deduped.removedOppositeWinding) + " opposite winding)";
-    if (deduped.groupsSkipped > 0) {
-        outcome.detail += "; " + counted(deduped.groupsSkipped, "set of copies was", "sets of copies were") +
-                          " left: a copy outside the scope would have to go";
-    }
-    return outcome;
+    return inward;
 }
 
-[[nodiscard]] FixAllStageOutcome splitTouchingStage(const Mesh& mesh, const FixAllStageContext& context) {
-    // As the load does (`separateTouchingContacts`): with every touching edge paired, each vertex is
-    // split into its fans. Only vertices whose faces are all in scope are split.
-    FixAllStageOutcome outcome;
-    const EdgeTopology topo = buildEdgeTopology(mesh);
-    const std::vector<std::uint8_t> touching = touchingEdges(mesh, topo);
-    const std::vector<std::uint32_t> fans = cornerFans(mesh, topo, touching);
+/// Cavity guard: every inward shell of `before` (not named in `exempt`) is still its own closed,
+/// consistently wound shell with a negative volume, joined to no other shell's faces and not shrunk.
+[[nodiscard]] std::string cavityLoss(const Mesh& before, std::span<const InwardShell> inward, const Mesh& after,
+                                     std::span<const Eigen::Index> map, std::span<const Eigen::Index> exempt) {
+    if (inward.empty()) {
+        return {};
+    }
+    std::vector<int> owner(static_cast<std::size_t>(before.numFaces()), -1);
+    for (std::size_t i = 0; i < inward.size(); ++i) {
+        for (const Eigen::Index f : inward[i].faces) {
+            owner[static_cast<std::size_t>(f)] = static_cast<int>(i);
+        }
+    }
+    std::vector<std::uint8_t> exempted(inward.size(), 0);
+    for (const Eigen::Index f : exempt) {
+        if (f >= 0 && f < before.numFaces() && owner[static_cast<std::size_t>(f)] >= 0) {
+            exempted[static_cast<std::size_t>(owner[static_cast<std::size_t>(f)])] = 1;
+        }
+    }
+    std::vector<Eigen::Index> origin(static_cast<std::size_t>(after.numFaces()), -1);
+    for (std::size_t f = 0; f < map.size(); ++f) {
+        if (map[f] >= 0 && map[f] < after.numFaces()) {
+            origin[static_cast<std::size_t>(map[f])] = static_cast<Eigen::Index>(f);
+        }
+    }
+    const std::vector<std::vector<Eigen::Index>> afterShells = shellsLargestFirst(after);
+    const std::vector<int> shellOf = fixall_detail::shellOfFaces(after.numFaces(), afterShells);
+    std::optional<std::vector<ShellFacts>> facts;
 
-    const auto nv = static_cast<std::size_t>(mesh.numVertices());
-    std::vector<std::uint32_t> firstFan(nv, kNoFan);
-    std::vector<std::uint8_t> manyFans(nv, 0);
-    std::vector<std::uint8_t> outside(nv, 0);
-    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
-        const bool in = context.scope.inScope(f);
-        for (int c = 0; c < 3; ++c) {
-            const auto v = static_cast<std::size_t>(mesh.F(f, c));
-            outside[v] = static_cast<std::uint8_t>(outside[v] | (in ? 0 : 1));
-            const std::uint32_t fan = fans[static_cast<std::size_t>(f) * 3 + static_cast<std::size_t>(c)];
-            if (fan == kNoFan) {
+    for (std::size_t i = 0; i < inward.size(); ++i) {
+        if (exempted[i] != 0) {
+            continue;
+        }
+        const InwardShell& shell = inward[i];
+        const auto refuse = [&](const char* what) {
+            return "It would " + std::string(what) + " #" + std::to_string(shell.number + 1) +
+                   ", which is wound inward (a cavity, or a shell rule O cannot judge), so nothing was changed.";
+        };
+        int target = -1;
+        bool split = false;
+        for (const Eigen::Index f : shell.faces) {
+            const Eigen::Index to = map[static_cast<std::size_t>(f)];
+            if (to < 0) {
                 continue;
             }
-            if (firstFan[v] == kNoFan) {
-                firstFan[v] = fan;
-            } else if (firstFan[v] != fan) {
-                manyFans[v] = 1;
+            const int s = shellOf[static_cast<std::size_t>(to)];
+            split = split || s < 0 || (target >= 0 && s != target);
+            target = s;
+        }
+        if (target < 0 && !split) {
+            return refuse("remove");
+        }
+        if (split) {
+            return refuse("split");
+        }
+        if (!facts) {
+            facts = describeShells(after, afterShells);
+        }
+        const ShellFacts& now = (*facts)[static_cast<std::size_t>(target)];
+        if (!now.closed || !now.oriented) {
+            return refuse("open");
+        }
+        if (now.signedVolume >= 0.0) {
+            return refuse("turn outward");
+        }
+        for (const Eigen::Index f : afterShells[static_cast<std::size_t>(target)]) {
+            const Eigen::Index from = origin[static_cast<std::size_t>(f)];
+            if (from >= 0 && owner[static_cast<std::size_t>(from)] != static_cast<int>(i)) {
+                return refuse("join another shell to");
+            }
+        }
+        if (std::abs(now.signedVolume) < std::abs(shell.volume) * (1.0 - settings::kFixAllCavityShrinkShare)) {
+            return refuse("shrink");
+        }
+    }
+    return {};
+}
+
+/// Faces `query` pairs that cross (not only touch), between different shells.
+[[nodiscard]] std::optional<std::vector<FacePairHit>> crossingPairs(const Mesh& mesh, const CheckParams& params,
+                                                                   std::span<const int> group, std::size_t groups,
+                                                                   std::stop_token stop) {
+    std::vector<std::uint8_t> interest(groups, 0);
+    interest[0] = 1;
+    FacePairQuery query;
+    query.faceGroup = group;
+    query.groupOfInterest = interest;
+    const double tol = params.intersectionTolerance * mesh.boundingBox().diagonal();
+    std::optional<std::vector<FacePairHit>> hits = findFacePairs(mesh, tol, query, std::move(stop));
+    if (hits) {
+        std::erase_if(*hits, [](const FacePairHit& hit) { return !hit.hit || hit.touching; });
+    }
+    return hits;
+}
+
+/// Dead-end guard: the faces a step moved or made (`faceDiff`) cross a face of another shell that none
+/// of the faces it replaced crossed, and the merge cannot take that pair: merge off, a face scope, a
+/// shell not wholly in scope, or a shell that is not closed, consistently wound and outward.
+[[nodiscard]] std::string deadEnd(const Mesh& before, const Mesh& after, const FixAllScope& scopeAfter,
+                                  const FixAllParams& params, std::stop_token stop) {
+    const FaceDiff diff = faceDiff(before, after);
+    if (diff.added.empty()) {
+        return {};
+    }
+    const std::vector<std::vector<Eigen::Index>> shells = shellsLargestFirst(after);
+    if (shells.size() < 2) {
+        return {};
+    }
+    const std::vector<int> shellOf = fixall_detail::shellOfFaces(after.numFaces(), shells);
+    std::vector<int> group(static_cast<std::size_t>(after.numFaces()));
+    for (std::size_t f = 0; f < group.size(); ++f) {
+        group[f] = shellOf[f] < 0 ? -1 : shellOf[f] + 1;
+    }
+    for (const Eigen::Index f : diff.added) {
+        group[static_cast<std::size_t>(f)] = 0;
+    }
+    const auto hits = crossingPairs(after, params.checkParams, group, shells.size() + 1, stop);
+    if (!hits || hits->empty()) {
+        return {};
+    }
+
+    const std::vector<ShellFacts> facts = describeShells(after, shells);
+    const bool mergeOn = params.mergeShells && scopeAfter.kind != FixAllScopeKind::Faces;
+    const auto whyNot = [&](int s) -> std::string {
+        const std::string name = "#" + std::to_string(s + 1);
+        const auto& faces = shells[static_cast<std::size_t>(s)];
+        if (!std::all_of(faces.begin(), faces.end(), [&](Eigen::Index f) { return scopeAfter.inScope(f); })) {
+            return name + " is not selected";
+        }
+        const ShellFacts& fact = facts[static_cast<std::size_t>(s)];
+        if (!fact.closed || !fact.oriented) {
+            return name + " is not closed";
+        }
+        return fact.signedVolume > 0.0 ? std::string() : name + " is wound inward";
+    };
+    struct Candidate {
+        int moved;
+        int other;
+        FaceGeometryKey key;
+        std::string why;
+    };
+    std::vector<Candidate> candidates;
+    for (const FacePairHit& hit : *hits) {
+        const bool aMoved = group[hit.a] == 0;
+        const std::uint32_t moved = aMoved ? hit.a : hit.b;
+        const std::uint32_t other = aMoved ? hit.b : hit.a;
+        const int sm = shellOf[moved];
+        const int so = shellOf[other];
+        if (sm < 0 || so < 0 || sm == so || group[other] == 0) {
+            continue;
+        }
+        std::string why = !params.mergeShells                       ? std::string("the merge is off")
+                          : scopeAfter.kind == FixAllScopeKind::Faces ? std::string("the merge needs whole shells")
+                                                                     : std::string();
+        if (why.empty() && mergeOn) {
+            why = whyNot(sm);
+            if (why.empty()) {
+                why = whyNot(so);
+            }
+        }
+        if (!why.empty()) {
+            candidates.push_back({sm, so, faceGeometryKey(after, static_cast<Eigen::Index>(other)), std::move(why)});
+        }
+    }
+    if (candidates.empty()) {
+        return {};
+    }
+
+    // Crossings the replaced faces already had with other shells are not new
+    std::unordered_set<FaceGeometryKey, FaceGeometryKeyHash> crossedBefore;
+    if (!diff.removed.empty()) {
+        const std::vector<std::vector<Eigen::Index>> beforeShells = shellsLargestFirst(before);
+        const std::vector<int> beforeShellOf = fixall_detail::shellOfFaces(before.numFaces(), beforeShells);
+        std::vector<int> beforeGroup(static_cast<std::size_t>(before.numFaces()));
+        for (std::size_t f = 0; f < beforeGroup.size(); ++f) {
+            beforeGroup[f] = beforeShellOf[f] < 0 ? -1 : beforeShellOf[f] + 1;
+        }
+        for (const Eigen::Index f : diff.removed) {
+            beforeGroup[static_cast<std::size_t>(f)] = 0;
+        }
+        const auto beforeHits = crossingPairs(before, params.checkParams, beforeGroup, beforeShells.size() + 1, stop);
+        if (beforeHits) {
+            for (const FacePairHit& hit : *beforeHits) {
+                const bool aMoved = beforeGroup[hit.a] == 0;
+                const std::uint32_t moved = aMoved ? hit.a : hit.b;
+                const std::uint32_t other = aMoved ? hit.b : hit.a;
+                if (beforeShellOf[moved] != beforeShellOf[other] && beforeGroup[other] != 0) {
+                    crossedBefore.insert(faceGeometryKey(before, static_cast<Eigen::Index>(other)));
+                }
             }
         }
     }
-    std::vector<std::uint8_t> target(nv, 0);
-    for (std::size_t v = 0; v < nv; ++v) {
-        target[v] = static_cast<std::uint8_t>(manyFans[v] != 0 && outside[v] == 0 ? 1 : 0);
-    }
-    outcome.targetBefore = static_cast<std::size_t>(std::count(target.begin(), target.end(), std::uint8_t{1}));
-    if (outcome.targetBefore == 0) {
-        return outcome;
-    }
-    std::size_t edgesSplit = 0;
-    for (std::size_t e = 0; e < topo.numEdges(); ++e) {
-        if (touching[e] != 0 && target[static_cast<std::size_t>(topo.edges[e][0])] != 0 &&
-            target[static_cast<std::size_t>(topo.edges[e][1])] != 0) {
-            ++edgesSplit;
+    for (const Candidate& candidate : candidates) {
+        if (crossedBefore.count(candidate.key) == 0) {
+            return "It would move faces of #" + std::to_string(candidate.moved + 1) + " through #" +
+                   std::to_string(candidate.other + 1) + ", and the merge cannot take them (" + candidate.why +
+                   "), so nothing was changed.";
         }
     }
-
-    VertexSplit split = splitVerticesByFan(mesh, fans, target);
-    const std::size_t shellsBefore = shellsLargestFirst(mesh).size();
-    const std::size_t shellsAfter = shellsLargestFirst(split.mesh).size();
-    outcome.changed = true;
-    outcome.mesh = std::move(split.mesh);
-    outcome.detail = "Split " + counted(edgesSplit, "touching edge", "touching edges") + " and " +
-                     counted(split.verticesSplit, "pinched vertex", "pinched vertices") + "; shells " +
-                     std::to_string(shellsBefore) + " to " + std::to_string(shellsAfter);
-    return outcome;
+    return {};
 }
 
-[[nodiscard]] std::string weldSkipReason(const FixAllParams& params, const FixAllScope&) {
-    return params.weld ? std::string() : std::string("Turned off in the options.");
+/// True when a stage after `index` has one of `ids`.
+[[nodiscard]] bool laterStage(std::span<const FixAllStage> stages, std::size_t index, std::initializer_list<FixAllStageId> ids) {
+    for (std::size_t i = index + 1; i < stages.size(); ++i) {
+        if (std::find(ids.begin(), ids.end(), stages[i].id) != ids.end()) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -265,7 +399,7 @@ public:
 
         // Step 0: the input is pass 0
         report(0.0f, "checking the mesh...");
-        const FixAllCounts baseline = countFixAllDefects(input_, scope, params_.checkParams, stop_);
+        const FixAllCounts baseline = countFixAllDefects(input_, scope, params_.checkParams, tinyFraction(), stop_);
         if (!baseline.complete || stop_.stop_requested()) {
             return cancelled();
         }
@@ -292,7 +426,7 @@ public:
                 return cancelled();
             }
             report(passFraction(pass, checkStart_), passText(pass, "checking the result..."));
-            const FixAllCounts counts = countFixAllDefects(mesh_, scope_, params_.checkParams, stop_);
+            const FixAllCounts counts = countFixAllDefects(mesh_, scope_, params_.checkParams, tinyFraction(), stop_);
             if (!counts.complete || stop_.stop_requested()) {
                 return cancelled();
             }
@@ -380,6 +514,11 @@ private:
         return "pass " + std::to_string(pass) + " of " + std::to_string(passes_) + ", " + what;
     }
 
+    /// Tiny floating shells count as junk while the step that deletes them is on.
+    [[nodiscard]] double tinyFraction() const noexcept {
+        return params_.removeTinyShells ? params_.tinyShellFraction : 0.0;
+    }
+
     [[nodiscard]] bool mergeRuns() const noexcept {
         return params_.mergeShells && scope_.kind != FixAllScopeKind::Faces;
     }
@@ -401,15 +540,15 @@ private:
         double done = 0.0;
 
         // ---- Phase 1: repair each shell ----
-        for (const FixAllStage& stage : stages) {
+        for (std::size_t i = 0; i < stages.size(); ++i) {
             if (stop_.stop_requested()) {
                 return false;
             }
-            report(passFraction(pass, done / total), passText(pass, std::string("phase 1, ") + stage.activity + "..."));
-            if (!applyStep(stage, pass, FixAllPhase::Repair)) {
+            report(passFraction(pass, done / total), passText(pass, std::string("phase 1, ") + stages[i].activity + "..."));
+            if (!applyStep(stages, i, pass, FixAllPhase::Repair)) {
                 return false;
             }
-            done += std::max(0.0, stage.progressWeight);
+            done += std::max(0.0, stages[i].progressWeight);
         }
 
         // ---- Phase 2: merge the shells (not built yet: nothing is merged, so phase 3 never runs) ----
@@ -421,9 +560,10 @@ private:
         return true;
     }
 
-    /// Runs `stage` on a copy of `mesh_`, checks the guards, and keeps or discards the result. False
-    /// when cancelled.
-    bool applyStep(const FixAllStage& stage, int pass, FixAllPhase phase) {
+    /// Runs `stages[index]` on a copy of `mesh_`, checks the hard guards, and keeps or discards the
+    /// result. False when cancelled.
+    bool applyStep(std::span<const FixAllStage> stages, std::size_t index, int pass, FixAllPhase phase) {
+        const FixAllStage& stage = stages[index];
         FixAllStepReport step;
         step.stage = stage.id;
         step.label = stage.label;
@@ -449,42 +589,102 @@ private:
             outcome = FixAllStageOutcome{};
             outcome.failure = "It failed.";
         }
-        step.elapsedMs = msSince(stepStart);
         if (outcome.cancelled || stop_.stop_requested()) {
             return false;
         }
         step.countBefore = outcome.targetBefore;
         step.countAfter = outcome.changed ? outcome.targetAfter : outcome.targetBefore;
         step.detail = outcome.detail;
+        step.notes = std::move(outcome.notes);
 
-        if (!outcome.failure.empty()) {
+        const auto refuse = [&](FixAllGuard guard, std::string reason) {
             step.status = FixAllStepStatus::Refused;
-            step.reason = outcome.failure;
+            step.guard = guard;
+            step.reason = std::move(reason);
             step.countAfter = step.countBefore;
+            step.notes.clear(); // they named shells of the mesh that was not kept
+        };
+        if (!outcome.failure.empty()) {
+            refuse(FixAllGuard::Failed, outcome.failure);
+        } else if (!outcome.skipped.empty()) {
+            step.status = FixAllStepStatus::Skipped;
+            step.reason = outcome.skipped;
         } else if (!outcome.changed) {
             step.status = FixAllStepStatus::Unchanged;
         } else if (std::string invalid = invalidResultReason(mesh_, outcome); !invalid.empty()) {
-            // Hard guard: valid result
-            step.status = FixAllStepStatus::Refused;
-            step.reason = std::move(invalid);
-            step.countAfter = step.countBefore;
+            refuse(FixAllGuard::ValidResult, std::move(invalid));
         } else if (outcome.targetAfter >= outcome.targetBefore) {
-            // Hard guard: no churn (a step that does not lower its own target changes nothing)
-            step.status = FixAllStepStatus::Refused;
-            step.reason = "It did not reduce what it repairs (" + std::to_string(outcome.targetBefore) + " -> " +
-                          std::to_string(outcome.targetAfter) + "), so nothing was changed.";
-            step.countAfter = step.countBefore;
+            // A step that does not lower its own target changes nothing
+            refuse(FixAllGuard::NoChurn, "It did not reduce what it repairs (" + std::to_string(outcome.targetBefore) +
+                                             " -> " + std::to_string(outcome.targetAfter) + "), so nothing was changed.");
         } else {
-            step.status = FixAllStepStatus::Applied;
-            step.facesRemoved = removedFaceCount(outcome);
-            const auto kept = static_cast<std::size_t>(mesh_.numFaces()) - step.facesRemoved;
-            step.facesAdded = static_cast<std::size_t>(outcome.mesh.numFaces()) - kept;
-            step.maxMove = outcome.maxMove;
-            scope_.carry(outcome.faceMap, outcome.mesh);
-            mesh_ = std::move(outcome.mesh);
+            keepIfGuardsPass(stages, index, outcome, step, refuse);
+        }
+        step.elapsedMs = msSince(stepStart);
+        if (stop_.stop_requested()) {
+            return false;
         }
         result_.steps.push_back(std::move(step));
         return true;
+    }
+
+    /// The scope, cavity and dead-end guards; keeps the stage's mesh when they pass.
+    template <typename Refuse>
+    void keepIfGuardsPass(std::span<const FixAllStage> stages, std::size_t index, FixAllStageOutcome& outcome,
+                          FixAllStepReport& step, const Refuse& refuse) {
+        const FixAllStage& stage = stages[index];
+        const std::vector<Eigen::Index> map = fullFaceMap(mesh_, outcome);
+        if (!scope_.everyFace() && !outsideScopeKept(mesh_, outcome.mesh, map, scope_)) {
+            refuse(FixAllGuard::Scope, "It would change faces outside the scope, so nothing was changed.");
+            return;
+        }
+        if (!inward_) {
+            inward_ = inwardShells(mesh_);
+        }
+        if (std::string lost = cavityLoss(mesh_, *inward_, outcome.mesh, map, outcome.notCavityFaces); !lost.empty()) {
+            refuse(FixAllGuard::Cavity, std::move(lost));
+            return;
+        }
+        FixAllScope carried = scope_;
+        carried.carry(outcome.faceMap, outcome.mesh);
+        if (stage.movesVertices) {
+            if (std::string dead = deadEnd(mesh_, outcome.mesh, carried, params_, stop_); !dead.empty()) {
+                refuse(FixAllGuard::DeadEnd, std::move(dead));
+                return;
+            }
+        }
+
+        // Kept: note what it leaves for later steps (the deferral table)
+        if (!edges_) {
+            edges_ = fixall_detail::countEdgeDefects(mesh_);
+        }
+        const fixall_detail::EdgeDefectCounts after = fixall_detail::countEdgeDefects(outcome.mesh);
+        step.deferred = std::move(outcome.deferred);
+        if (after.open > edges_->open) {
+            const std::size_t more = after.open - edges_->open;
+            const bool fillLater = laterStage(stages, index, {FixAllStageId::FillHoles});
+            step.deferred.push_back({FixAllDeferredKind::OpenEdges, more,
+                                     fixall_detail::counted(more, "more open edge", "more open edges") +
+                                         (fillLater ? ": left for the hole fill" : ": left for the next pass's hole fill")});
+        }
+        if (after.nonManifold > edges_->nonManifold) {
+            const std::size_t more = after.nonManifold - edges_->nonManifold;
+            const bool splitLater = laterStage(stages, index, {FixAllStageId::SplitTouching, FixAllStageId::Fins});
+            step.deferred.push_back({FixAllDeferredKind::NonManifoldEdges, more,
+                                     fixall_detail::counted(more, "more non-manifold edge", "more non-manifold edges") +
+                                         (splitLater ? ": left for the split and fin steps"
+                                                     : ": left for the next pass's split and fin steps")});
+        }
+
+        step.status = FixAllStepStatus::Applied;
+        step.facesRemoved = removedFaceCount(outcome);
+        const auto kept = static_cast<std::size_t>(mesh_.numFaces()) - step.facesRemoved;
+        step.facesAdded = static_cast<std::size_t>(outcome.mesh.numFaces()) - kept;
+        step.maxMove = outcome.maxMove;
+        scope_ = std::move(carried);
+        mesh_ = std::move(outcome.mesh);
+        edges_ = after;
+        inward_.reset();
     }
 
     const Mesh& input_;
@@ -498,6 +698,8 @@ private:
     FixAllScope scope_;
     FixAllScope inputScope_;
     double checkStart_ = 0.0; ///< Where the closing check starts within the pass (0..1)
+    std::optional<std::vector<InwardShell>> inward_;            ///< Of `mesh_`, worked out when a guard needs it
+    std::optional<fixall_detail::EdgeDefectCounts> edges_;      ///< Of `mesh_`
     FixAllResult result_;
 };
 
@@ -593,13 +795,18 @@ FixAllPriority FixAllCounts::priority() const noexcept {
     p.closedManifold = openEdges + nonManifoldEdges + nonManifoldVertices;
     p.oriented = flippedFaces + invertedShells;
     p.intersecting = intersectingFaces;
-    p.junk = degenerateFaces + duplicateFaces;
+    p.junk = degenerateFaces + duplicateFaces + tinyShells;
     p.thin = thinFaces;
     return p;
 }
 
 FixAllCounts countFixAllDefects(const Mesh& mesh, const FixAllScope& scope, const CheckParams& params,
                                 std::stop_token stopToken) {
+    return countFixAllDefects(mesh, scope, params, 0.0, std::move(stopToken));
+}
+
+FixAllCounts countFixAllDefects(const Mesh& mesh, const FixAllScope& scope, const CheckParams& params,
+                                double tinyShellFraction, std::stop_token stopToken) {
     struct Item {
         DefectCategory category;
         std::size_t FixAllCounts::*field;
@@ -629,6 +836,19 @@ FixAllCounts countFixAllDefects(const Mesh& mesh, const FixAllScope& scope, cons
             return counts;
         }
         counts.*item.field = countInScope(result, scope, everyFace);
+    }
+    if (tinyShellFraction > 0.0 && scope.kind != FixAllScopeKind::Faces) {
+        TinyShellSearch search;
+        search.fraction = tinyShellFraction;
+        search.intersectionTolerance = params.intersectionTolerance;
+        const TinyFloatingShellsResult tiny = findTinyFloatingShells(mesh, search, stopToken);
+        if (!tiny.complete) {
+            counts.complete = false;
+            return counts;
+        }
+        for (const TinyFloatingShell& shell : tiny.shells) {
+            counts.tinyShells += std::all_of(shell.faces.begin(), shell.faces.end(), [&](Eigen::Index f) { return scope.inScope(f); }) ? 1 : 0;
+        }
     }
     return counts;
 }
@@ -708,20 +928,6 @@ FixAllWeldPlan planFixAllWeld(const Mesh& mesh, const FixAllScope& scope, const 
 // ---------------------------------------------------------------------------------------------
 // Stages, progress, run
 // ---------------------------------------------------------------------------------------------
-
-std::vector<FixAllStage> fixAllRepairStages() {
-    std::vector<FixAllStage> stages;
-    stages.reserve(4);
-    stages.push_back({FixAllStageId::Weld, "Weld by distance", "welding", settings::kFixAllQuickStageProgressWeight,
-                      weldSkipReason, weldStage});
-    stages.push_back({FixAllStageId::DropRepeated, "Remove collapsed faces", "removing collapsed faces",
-                      settings::kFixAllQuickStageProgressWeight, {}, dropRepeatedStage});
-    stages.push_back({FixAllStageId::Dedupe, "Remove duplicate faces", "removing duplicate faces",
-                      settings::kFixAllQuickStageProgressWeight, {}, dedupeStage});
-    stages.push_back({FixAllStageId::SplitTouching, "Split touching contacts", "splitting touching contacts",
-                      settings::kFixAllQuickStageProgressWeight, {}, splitTouchingStage});
-    return stages;
-}
 
 const char* fixAllStopReasonLabel(FixAllStopReason reason) noexcept {
     switch (reason) {

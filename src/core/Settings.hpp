@@ -217,5 +217,6 @@ inline constexpr double kFixAllHealStageProgressWeight  = 11.25;  // Progress we
 inline constexpr double kFixAllMergeProgressWeight      = 20.0;   // Progress weight within a pass of phase 2 (merge), when it runs
 inline constexpr double kFixAllCleanupProgressWeight    = 10.0;   // Progress weight within a pass of phase 3 (clean up the merge), when the merge is on
 inline constexpr double kFixAllPassCheckProgressWeight  = 15.0;   // Progress weight within a pass of the check that judges it
+inline constexpr double kFixAllCavityShrinkShare = 1.0e-3;         // Cavity guard: a step may not shrink a shell wound inward by more than this share of its volume
 
 } // namespace ogun::settings
