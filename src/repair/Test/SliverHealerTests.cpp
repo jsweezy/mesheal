@@ -3,6 +3,7 @@
 #include "core/Constants.hpp"
 #include "diagnostics/ThinFaceChecker.hpp"
 #include "io/SampleMeshes.hpp"
+#include "io/StlReader.hpp"
 #include "mesh/CgalMesh.hpp"
 
 #include <catch2/catch_approx.hpp>
@@ -15,6 +16,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <limits>
 #include <map>
 #include <stop_token>
@@ -701,4 +703,24 @@ TEST_CASE("The batch sliver heals return face and vertex maps in input order", "
             }
         }
     }
+}
+
+TEST_CASE("SliverHealer heals micro-cluster needles on Turkey_left_with_needles", "[repair][needle][cluster]") {
+    const std::filesystem::path needleStl =
+        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "build" / "examples" / "Turkey_left_with_needles.stl";
+    if (!std::filesystem::exists(needleStl)) {
+        return;
+    }
+    const ogun::Mesh mesh = ogun::loadStl(needleStl);
+    const ogun::ThinFaceReport before = ogun::ThinFaceChecker::check(mesh, {});
+    REQUIRE(before.numDefects() == 8);
+
+    const ogun::RepairResults rAll = ogun::SliverHealer::healAllThinFaces(mesh);
+    REQUIRE(rAll.success);
+    CHECK(rAll.remainingThinFaces == 0);
+    CHECK(rAll.edgeCollapses > 0);
+
+    const ogun::RepairResults rScoped = ogun::SliverHealer::healFaces(mesh, before.faceIndices);
+    REQUIRE(rScoped.success);
+    CHECK(rScoped.remainingThinFaces <= 1);
 }

@@ -65,6 +65,9 @@ inline constexpr double kDefaultCreaseAngleDeg       = 60.0;      // Dihedral an
 inline constexpr double kDefaultPreviewOffsetFactor  = 1.0e-4;    // Patch normal offset factor along bbox diagonal (prevents Z-fighting)
 inline constexpr int    kDefaultPreviewRings         = 2;         // Adjacent topological vertex rings extracted for preview
 inline constexpr int    kDefaultMaxBatchIterations   = 10;        // Max iterative flip/collapse sweeps before PMP cleanup
+inline constexpr double kDefaultClusterMinNormalDot  = 0.5;       // Micro-cluster collapse: minimum n_old . n_new over significant surviving faces
+inline constexpr double kDefaultTinyFaceAreaFraction = 1.0e-3;    // Micro-cluster collapse: faces below this fraction of the largest neighbor area ignore the normal test (noise)
+inline constexpr int    kDefaultMaxMicroClusterSize  = 64;        // Micro-cluster collapse: maximum vertices gathered around a needle's short edge
 
 // -----------------------------------------------------------------------------
 // Intersecting-Face Repair (per island and Repair All)

@@ -57,6 +57,12 @@ struct SliverHealerSettings {
     int previewRings = settings::kDefaultPreviewRings;
     /// Maximum number of flip / collapse sweeps in `healAllThinFaces` before the PMP cleanup pass.
     int maxBatchIterations = settings::kDefaultMaxBatchIterations;
+    /// Micro-cluster collapse: minimum n_old . n_new over the significant faces around a collapsed edge.
+    double clusterMinNormalDot = settings::kDefaultClusterMinNormalDot;
+    /// Micro-cluster collapse: faces smaller than this fraction of the largest neighbor are ignored by the normal test.
+    double tinyFaceAreaFraction = settings::kDefaultTinyFaceAreaFraction;
+    /// Micro-cluster collapse: maximum number of vertices gathered around a needle's short edge.
+    int maxMicroClusterSize = settings::kDefaultMaxMicroClusterSize;
 };
 
 /// Geometric and topological analysis of a single face.

@@ -600,6 +600,28 @@ TEST_CASE("AppController fixAllThinFaces on isolated Turkey shell 27 heals all s
     REQUIRE(thinCount(controller) == 78);
 }
 
+TEST_CASE("AppController fixAllThinFaces heals 8 needles on Turkey_left_with_needles",
+          "[app][controller][repair][batch][needles]") {
+    const std::filesystem::path needleStl =
+        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "build" / "examples" / "Turkey_left_with_needles.stl";
+    if (!std::filesystem::exists(needleStl)) {
+        return;
+    }
+    ogun::AppController controller;
+    controller.setMesh(ogun::loadStl(needleStl), "Turkey_left_with_needles.stl");
+    controller.selectCategory(ogun::DefectCategory::ThinFaces);
+    REQUIRE(controller.rowCount(ogun::DefectCategory::ThinFaces) == 8);
+
+    REQUIRE(controller.fixAllThinFaces());
+    REQUIRE(controller.rowCount(ogun::DefectCategory::ThinFaces) == 0);
+    REQUIRE(thinCount(controller) == 0);
+    REQUIRE(controller.canUndo());
+
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.rowCount(ogun::DefectCategory::ThinFaces) == 8);
+    REQUIRE(thinCount(controller) == 8);
+}
+
 TEST_CASE("AppController records coordinate scaling on the undo stack",
           "[app][controller][units][undo]") {
     ogun::AppController controller;

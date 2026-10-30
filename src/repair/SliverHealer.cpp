@@ -16,6 +16,7 @@
 #include <limits>
 #include <numeric>
 #include <optional>
+#include <set>
 #include <span>
 #include <vector>
 
@@ -293,22 +294,252 @@ bool collapseEdgeSafely(
     return true;
 }
 
+double vertexLocalScale(const CgalSurfaceMesh& mesh, CgalVertexIndex v) {
+    double maxLen = 0.0;
+    for (const CgalHalfedgeIndex h : CGAL::halfedges_around_target(mesh.halfedge(v), mesh)) {
+        maxLen = std::max(maxLen, (pointOf(mesh, mesh.source(h)) - pointOf(mesh, v)).norm());
+    }
+    return maxLen;
+}
+
+struct ClusterCollapseEval {
+    double worstNormalDot = 1.0;
+    int thinBefore = 0;
+    int thinAfter = 0;
+    bool valid = false;
+};
+
+ClusterCollapseEval evaluateClusterCollapse(
+    const CgalSurfaceMesh& mesh,
+    CgalHalfedgeIndex h,
+    const Eigen::Vector3d& newPos,
+    const ThinFaceThresholds& thresholds,
+    const SliverHealerSettings& settings) {
+    const CgalVertexIndex v0 = mesh.source(h);
+    const CgalVertexIndex v1 = mesh.target(h);
+    const CgalFaceIndex fA = mesh.face(h);
+    const CgalFaceIndex fB = mesh.face(mesh.opposite(h));
+
+    struct NeighborFace {
+        Triangle before;
+        Triangle after;
+        double areaBefore = 0.0;
+    };
+    std::vector<NeighborFace> faces;
+    std::set<CgalFaceIndex> seenFaces;
+    double maxArea = 0.0;
+
+    for (const CgalVertexIndex v : std::array<CgalVertexIndex, 2>{v0, v1}) {
+        for (const CgalFaceIndex f : CGAL::faces_around_target(mesh.halfedge(v), mesh)) {
+            if (f == CgalSurfaceMesh::null_face() || f == fA || f == fB) {
+                continue;
+            }
+            if (!seenFaces.insert(f).second) {
+                continue;
+            }
+            const auto hs = faceHalfedges(mesh, f);
+            NeighborFace nf;
+            for (std::size_t k = 0; k < 3; ++k) {
+                const CgalVertexIndex vk = mesh.target(hs[k]);
+                nf.before[k] = pointOf(mesh, vk);
+                nf.after[k] = (vk == v0 || vk == v1) ? newPos : nf.before[k];
+            }
+            const Eigen::Vector3d nOld = areaNormal(nf.before);
+            nf.areaBefore = 0.5 * nOld.norm();
+            maxArea = std::max(maxArea, nf.areaBefore);
+            faces.push_back(nf);
+        }
+    }
+
+    ClusterCollapseEval eval;
+    eval.valid = true;
+    const double significantAreaThreshold = settings.tinyFaceAreaFraction * maxArea;
+
+    for (const NeighborFace& nf : faces) {
+        if (ThinFaceChecker::evaluateTriangle(nf.before[0], nf.before[1], nf.before[2], thresholds).isDefective()) {
+            ++eval.thinBefore;
+        }
+
+        const Eigen::Vector3d nNew = areaNormal(nf.after);
+        if (!hasReliableNormal(nf.after)) {
+            ++eval.thinAfter;
+            if (nf.areaBefore >= significantAreaThreshold) {
+                eval.worstNormalDot = -std::numeric_limits<double>::infinity();
+                eval.valid = false;
+            }
+            continue;
+        }
+
+        if (ThinFaceChecker::evaluateTriangle(nf.after[0], nf.after[1], nf.after[2], thresholds).isDefective()) {
+            ++eval.thinAfter;
+        }
+
+        if (nf.areaBefore >= significantAreaThreshold && hasReliableNormal(nf.before)) {
+            const double dot = areaNormal(nf.before).normalized().dot(nNew.normalized());
+            eval.worstNormalDot = std::min(eval.worstNormalDot, dot);
+        }
+    }
+
+    if (eval.thinAfter > eval.thinBefore || eval.worstNormalDot < settings.clusterMinNormalDot) {
+        eval.valid = false;
+    }
+    return eval;
+}
+
+bool collapseMicroCluster(
+    CgalSurfaceMesh& mesh,
+    CgalFaceIndex f,
+    const ThinFaceThresholds& thresholds,
+    const SliverHealerSettings& settings,
+    std::string& status) {
+    if (!isLiveFace(mesh, f)) {
+        return false;
+    }
+    const CgalHalfedgeIndex hShort = shortestHalfedge(mesh, f);
+    const CgalVertexIndex s0 = mesh.source(hShort);
+    const CgalVertexIndex t0 = mesh.target(hShort);
+
+    std::set<CgalVertexIndex> cluster{s0, t0};
+    std::vector<CgalVertexIndex> queue{s0, t0};
+
+    for (std::size_t i = 0; i < queue.size() && static_cast<int>(cluster.size()) < settings.maxMicroClusterSize; ++i) {
+        const CgalVertexIndex v = queue[i];
+        const double scaleV = vertexLocalScale(mesh, v);
+        for (const CgalHalfedgeIndex h : CGAL::halfedges_around_target(mesh.halfedge(v), mesh)) {
+            const CgalVertexIndex w = mesh.source(h);
+            if (cluster.count(w)) {
+                continue;
+            }
+            const double scaleW = vertexLocalScale(mesh, w);
+            const double len = (pointOf(mesh, w) - pointOf(mesh, v)).norm();
+            if (len < settings.needleEdgeRatio * std::max(scaleV, scaleW)) {
+                cluster.insert(w);
+                queue.push_back(w);
+                if (static_cast<int>(cluster.size()) >= settings.maxMicroClusterSize) {
+                    break;
+                }
+            }
+        }
+    }
+
+    // Gather unique internal edges within the cluster
+    std::vector<std::pair<double, CgalHalfedgeIndex>> clusterEdges;
+    for (const CgalVertexIndex v : cluster) {
+        for (const CgalHalfedgeIndex h : CGAL::halfedges_around_target(mesh.halfedge(v), mesh)) {
+            const CgalVertexIndex w = mesh.source(h);
+            if (cluster.count(w) && v < w) {
+                clusterEdges.push_back({(pointOf(mesh, w) - pointOf(mesh, v)).norm(), h});
+            }
+        }
+    }
+    std::sort(clusterEdges.begin(), clusterEdges.end(), [](const auto& a, const auto& b) {
+        return a.first < b.first;
+    });
+
+    const std::optional<PinMap> pins = pinMap(mesh);
+    const std::optional<VertexOriginMap> origin = mesh.property_map<CgalVertexIndex, std::int64_t>(kVertexOriginProperty);
+
+    for (const auto& [len, h] : clusterEdges) {
+        const CgalEdgeIndex e = mesh.edge(h);
+        if (mesh.is_border(h) || mesh.is_border(mesh.opposite(h))) {
+            continue;
+        }
+        if (!CGAL::Euler::does_satisfy_link_condition(e, mesh)) {
+            continue;
+        }
+
+        const CgalVertexIndex vSrc = mesh.source(h);
+        const CgalVertexIndex vTgt = mesh.target(h);
+        const bool pinned0 = isPinned(pins, vSrc);
+        const bool pinned1 = isPinned(pins, vTgt);
+        if (pinned0 && pinned1) {
+            continue;
+        }
+
+        const Eigen::Vector3d pSrc = pointOf(mesh, vSrc);
+        const Eigen::Vector3d pTgt = pointOf(mesh, vTgt);
+
+        std::array<Eigen::Vector3d, 3> candidates;
+        std::size_t numCandidates = 0;
+        if (pinned0) {
+            candidates[0] = pSrc;
+            numCandidates = 1;
+        } else if (pinned1) {
+            candidates[0] = pTgt;
+            numCandidates = 1;
+        } else {
+            candidates = {0.5 * (pSrc + pTgt), pTgt, pSrc};
+            numCandidates = 3;
+        }
+
+        int bestIndex = -1;
+        double bestDot = -std::numeric_limits<double>::infinity();
+
+        for (std::size_t k = 0; k < numCandidates; ++k) {
+            const ClusterCollapseEval eval = evaluateClusterCollapse(mesh, h, candidates[k], thresholds, settings);
+            if (!eval.valid) {
+                continue;
+            }
+            if (eval.worstNormalDot > bestDot) {
+                bestDot = eval.worstNormalDot;
+                bestIndex = static_cast<int>(k);
+            }
+        }
+
+        if (bestIndex < 0) {
+            continue;
+        }
+
+        const CgalVertexIndex pinnedEnd = pinned0 ? vSrc : vTgt;
+        const std::int64_t pinnedOrigin = (pinned0 || pinned1) && origin ? get(*origin, pinnedEnd) : -1;
+        const CgalVertexIndex kept = CGAL::Euler::collapse_edge(e, mesh);
+        mesh.point(kept) = toCgal(candidates[static_cast<std::size_t>(bestIndex)]);
+        if (pinned0 || pinned1) {
+            put(*pins, kept, std::uint8_t{1});
+            if (origin) {
+                put(*origin, kept, pinnedOrigin);
+            }
+        }
+        status = "Collapsed micro-edge in needle cluster.";
+        return true;
+    }
+
+    return false;
+}
+
 bool flipLongestEdge(
     CgalSurfaceMesh& mesh,
     CgalFaceIndex f,
     const ThinFaceThresholds& thresholds,
     const SliverHealerSettings& settings,
     std::string& status) {
-    const CgalHalfedgeIndex h = longestHalfedge(mesh, f);
-    if (!canFlipEdge(mesh, h, thresholds, settings, &status)) {
-        return false;
+    const auto hs = faceHalfedges(mesh, f);
+    std::array<CgalHalfedgeIndex, 3> sortedHs = hs;
+    std::sort(sortedHs.begin(), sortedHs.end(), [&](CgalHalfedgeIndex a, CgalHalfedgeIndex b) {
+        return halfedgeLength(mesh, a) > halfedgeLength(mesh, b);
+    });
+
+    for (std::size_t i = 0; i < sortedHs.size(); ++i) {
+        std::string err;
+        if (canFlipEdge(mesh, sortedHs[i], thresholds, settings, &err)) {
+            CGAL::Euler::flip_edge(sortedHs[i], mesh);
+            status = i == 0 ? "Flipped the longest edge into the neighbor's opposite diagonal."
+                            : "Flipped edge into the neighbor's opposite diagonal.";
+            return true;
+        }
+        if (i == 0) {
+            status = err;
+        }
     }
-    CGAL::Euler::flip_edge(h, mesh);
-    status = "Flipped the longest edge into the neighbor's opposite diagonal.";
-    return true;
+    return false;
 }
 
-bool collapseShortestEdge(CgalSurfaceMesh& mesh, CgalFaceIndex f, const SliverHealerSettings& settings, std::string& status) {
+bool collapseShortestEdge(
+    CgalSurfaceMesh& mesh,
+    CgalFaceIndex f,
+    const ThinFaceThresholds& thresholds,
+    const SliverHealerSettings& settings,
+    std::string& status) {
     const CgalHalfedgeIndex h = shortestHalfedge(mesh, f);
     const CgalVertexIndex v0 = mesh.source(h);
     const CgalVertexIndex v1 = mesh.target(h);
@@ -324,11 +555,14 @@ bool collapseShortestEdge(CgalSurfaceMesh& mesh, CgalFaceIndex f, const SliverHe
         candidates[0] = border0 ? p0 : p1;
         count = 1;
     }
-    if (!collapseEdgeSafely(mesh, h, candidates, count, settings, status)) {
-        return false;
+    if (collapseEdgeSafely(mesh, h, candidates, count, settings, status)) {
+        status = "Collapsed the shortest edge.";
+        return true;
     }
-    status = "Collapsed the shortest edge.";
-    return true;
+    if (collapseMicroCluster(mesh, f, thresholds, settings, status)) {
+        return true;
+    }
+    return false;
 }
 
 bool snapCollinearCollapse(CgalSurfaceMesh& mesh, CgalFaceIndex f, const SliverHealerSettings& settings, std::string& status) {
@@ -633,6 +867,14 @@ SliverAnalysis SliverHealer::analyzeFace(
     analysis.numBorderEdges = countBorderEdges(mesh, face);
     analysis.longestEdgeIsBorder = mesh.is_border(mesh.opposite(hs[iLong]));
     analysis.longestEdgeFlippable = canFlipEdge(mesh, hs[iLong], thresholds, settings, nullptr);
+    if (!analysis.longestEdgeFlippable) {
+        for (const CgalHalfedgeIndex h : hs) {
+            if (h != hs[iLong] && canFlipEdge(mesh, h, thresholds, settings, nullptr)) {
+                analysis.longestEdgeFlippable = true;
+                break;
+            }
+        }
+    }
 
     if (analysis.edgeRatio < settings.needleEdgeRatio) {
         analysis.type = SliverType::Needle;
@@ -701,7 +943,7 @@ bool SliverHealer::applyHealAction(
             ok = flipLongestEdge(mesh, face, thresholds, settings, status);
             break;
         case HealAction::CollapseShortestEdge:
-            ok = collapseShortestEdge(mesh, face, settings, status);
+            ok = collapseShortestEdge(mesh, face, thresholds, settings, status);
             break;
         case HealAction::SnapCollinearCollapse:
             ok = snapCollinearCollapse(mesh, face, settings, status);
@@ -837,38 +1079,46 @@ RepairResults SliverHealer::healFaces(
         }
     }
 
+    const std::size_t initialCount = faces.size();
     std::size_t healed = 0;
-    for (const CgalFaceIndex f : faces) {
-        if (options.stopToken.stop_requested()) {
-            cancel(mesh, results);
-            return results;
-        }
-        if (!isLiveFace(surface, f)) {
-            continue;
-        }
-        const SliverAnalysis a = analyzeFace(surface, f, thresholds, settings);
-        if (a.recommendedAction == HealAction::None) {
-            continue;
-        }
-        for (const HealAction action : fallbackOrder(a.recommendedAction)) {
-            if (applyHealAction(surface, f, action, settings, nullptr, thresholds)) {
-                countAction(results, action);
-                ++healed;
-                break;
+    for (int iter = 0; iter < settings.maxBatchIterations; ++iter) {
+        bool changed = false;
+        for (const CgalFaceIndex f : faces) {
+            if (options.stopToken.stop_requested()) {
+                cancel(mesh, results);
+                return results;
             }
+            if (!isLiveFace(surface, f)) {
+                continue;
+            }
+            const SliverAnalysis a = analyzeFace(surface, f, thresholds, settings);
+            if (a.recommendedAction == HealAction::None) {
+                continue;
+            }
+            for (const HealAction action : fallbackOrder(a.recommendedAction)) {
+                if (applyHealAction(surface, f, action, settings, nullptr, thresholds)) {
+                    countAction(results, action);
+                    ++healed;
+                    changed = true;
+                    break;
+                }
+            }
+        }
+        if (!changed) {
+            break;
         }
     }
 
     if (healed == 0) {
         leaveUnchanged(mesh, results);
-        results.statusMessage = "None of the " + std::to_string(faces.size()) + " selected faces could be repaired safely.";
+        results.statusMessage = "None of the " + std::to_string(initialCount) + " selected faces could be repaired safely.";
         return results;
     }
     surface.collect_garbage();
     finishTracked(surface, mesh, tracked, results);
     results.remainingThinFaces = ThinFaceChecker::check(results.mesh, thresholds).numDefects();
     results.success = true;
-    results.statusMessage = "Repaired " + std::to_string(healed) + " of " + std::to_string(faces.size()) +
+    results.statusMessage = "Repaired " + std::to_string(healed) + " of " + std::to_string(initialCount) +
                             " selected faces (" + std::to_string(results.remainingThinFaces) + " thin faces remaining).";
     return results;
 }
