@@ -1,5 +1,6 @@
 // Intersecting faces: the per-island Inspector, and the Repair All operator for intersections and holes.
 
+#include "app/FixAllPanelModel.hpp"
 #include "app/GuiWidgets.hpp"
 #include "app/PolyscopeGui.hpp"
 #include "core/Settings.hpp"
@@ -464,6 +465,7 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
 
 void PolyscopeGui::drawGlobalCandidateTable() {
     const std::vector<RepairCandidate>& candidates = controller_.globalCandidates();
+    const std::vector<RepairCandidate>& rebuildRows = controller_.fixAllRebuilds(); // Fix All: *Rebuild shell #k...*
     if (candidates.empty()) {
         ImGui::TextDisabled("No previews yet.");
         return;
@@ -472,7 +474,7 @@ void PolyscopeGui::drawGlobalCandidateTable() {
     const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_ScrollX |
                                   ImGuiTableFlags_SizingFixedFit;
     // Sized to its rows: with ScrollX the table would otherwise fill the rest of the panel
-    const float height = ImGui::GetTextLineHeightWithSpacing() * static_cast<float>(candidates.size() + 1) +
+    const float height = ImGui::GetTextLineHeightWithSpacing() * static_cast<float>(candidates.size() + rebuildRows.size() + 1) +
                          ImGui::GetStyle().ScrollbarSize + 2.0f * ImGui::GetStyle().CellPadding.y;
     if (!ImGui::BeginTable("RepairCandidates", 10, flags, ImVec2(0.0f, height))) {
         return;
@@ -511,17 +513,23 @@ void PolyscopeGui::drawGlobalCandidateTable() {
 
     const RepairCandidate* shown = controller_.shownGlobalCandidate();
     std::optional<GlobalRepairMethod> clicked;
-    for (const RepairCandidate& c : candidates) {
+    bool clickedRebuild = false;
+    const auto drawRow = [&](const RepairCandidate& c, bool rebuildRow) {
         const RepairMetrics& m = c.metrics;
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::PushID(static_cast<int>(c.method));
+        ImGui::PushID(static_cast<int>(c.method) + (rebuildRow ? 1000 : 0));
         const bool current = controller_.candidateIsCurrent(c);
         if (!current || !c.success) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
         }
-        if (ImGui::Selectable(globalRepairMethodLabel(c.method), shown == &c, ImGuiSelectableFlags_SpanAllColumns)) {
+        if (ImGui::Selectable(rebuildRow ? fixAllRebuildRowLabel(c).c_str() : globalRepairMethodLabel(c.method), shown == &c,
+                              ImGuiSelectableFlags_SpanAllColumns)) {
             clicked = c.method;
+            clickedRebuild = rebuildRow;
+        }
+        if (rebuildRow && c.success && c.fixAll != nullptr && c.fixAll->rebuild) {
+            tooltip(c.fixAll->rebuild->note.c_str());
         }
         if (!c.success) {
             tooltip(c.statusMessage.c_str());
@@ -568,10 +576,20 @@ void PolyscopeGui::drawGlobalCandidateTable() {
             ImGui::PopStyleColor();
         }
         ImGui::PopID();
+    };
+    for (const RepairCandidate& c : candidates) {
+        drawRow(c, false);
+    }
+    for (const RepairCandidate& c : rebuildRows) {
+        drawRow(c, true);
     }
     ImGui::EndTable();
     if (clicked) {
-        controller_.showGlobalCandidate(*clicked);
+        if (clickedRebuild) {
+            controller_.showFixAllRebuild(*clicked);
+        } else {
+            controller_.showGlobalCandidate(*clicked);
+        }
         requestSync();
     }
 }

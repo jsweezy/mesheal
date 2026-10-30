@@ -396,6 +396,7 @@ bool AppController::applyGlobalRepair() {
     pushUndoEntry(activeTool_ == ToolSlot::AlphaWrap       ? std::string("Alpha Wrap")
                   : activeTool_ == ToolSlot::Decimate      ? std::string("Decimate")
                   : activeTool_ == ToolSlot::MergeVertices ? std::string("Merge Vertices")
+                  : activeTool_ == ToolSlot::FixAll        ? "Rebuild (" + label + ")"
                   : activeTool_ == ToolSlot::RepairAllHoles ? "Repair All Holes (" + label + ")"
                                                             : "Repair All Intersections (" + label + ")");
     finishMeshEdit(std::move(repaired));

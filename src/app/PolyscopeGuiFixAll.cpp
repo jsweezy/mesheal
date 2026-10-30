@@ -2,6 +2,7 @@
 #include "app/GuiWidgets.hpp"
 #include "app/PolyscopeGui.hpp"
 #include "core/Settings.hpp"
+#include "mesh/Units.hpp"
 
 #include <imgui.h>
 
@@ -32,12 +33,41 @@ void wrappedColored(const ImVec4& color, const std::string& text) {
     ImGui::PopStyleColor();
 }
 
+/// "0.006 mm" (the number is in file coordinates; the unit is a label).
+std::string lengthWithUnit(double value, Unit unit) {
+    char buffer[48];
+    std::snprintf(buffer, sizeof(buffer), "%.3g %s", value, std::string(unitSymbol(unit)).c_str());
+    return buffer;
+}
+
+struct RebuildMethodOption {
+    GlobalRepairMethod method;
+    const char* summary;
+    const char* help;
+};
+
+/// The Rebuild side's methods, the suggested one first.
+constexpr std::array<RebuildMethodOption, 3> kRebuildMethodOptions = {{
+    {GlobalRepairMethod::AlphaWrap, "always watertight; moves outward, fills small gaps",
+     "CGAL alpha wrap: a new closed surface wrapped around the input. Guaranteed watertight, 2-manifold and free of "
+     "crossings. Every face is new; pockets and cavities narrower than alpha are filled and the surface moves outward by "
+     "the offset. An open sheet becomes a thin closed skin."},
+    {GlobalRepairMethod::WindingRebuild, "closes holes; loses small detail",
+     "Marching cubes of the winding number on a regular grid: always closed, merges overlaps and closes holes, but every "
+     "face is new and detail smaller than a grid cell is lost."},
+    {GlobalRepairMethod::SelfUnion, "keeps uncrossed faces; needs closed shells",
+     "Exact cut along every crossing, then keeps only the outer surface. Faces that are not crossed are kept exactly. It "
+     "does not close holes, so open shells stay open."},
+}};
+
 } // namespace
 
-void PolyscopeGui::openFixAllPanel(bool fullRun) {
+void PolyscopeGui::openFixAllPanel(bool fullRun, bool rebuildSide) {
     if (!controller_.hasMesh()) {
         return;
     }
+    fixAllRebuildSide_ = rebuildSide;
+    fixAllCavityCache_.valid = false;
     controller_.openFixAll(fullRun ? controller_.preferenceDefaults().fixAll.passes : 1);
     requestSync();
 }
@@ -113,6 +143,12 @@ void PolyscopeGui::drawFixAllPlan() {
     tooltip("Fix All follows the selection: the selected faces, else the selected shells, else the whole mesh. Hidden shells "
             "are never changed. Everything outside the scope stays exactly as it is. Change the selection to change the scope.");
 
+    drawFixAllSwitch();
+    if (fixAllRebuildSide_) {
+        drawFixAllRebuildPlan();
+        return;
+    }
+
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
     ImGui::TextWrapped("Fixes each problem in place, in a safe order, and repeats the whole sequence until the mesh is "
                        "watertight and free of crossings. Faces that are not part of a problem stay exactly as they are.");
@@ -163,6 +199,17 @@ void PolyscopeGui::drawFixAllPlan() {
                 requestSync();
             }
             tooltip("Run the sequence once, whatever Passes says, so you can see each step's effect before the next pass.");
+        }
+        if (scope.kind != FixAllScopeKind::Faces) {
+            ImGui::SameLine();
+            if (ImGui::Button("Compare with rebuilds")) {
+                fixAllHintSeen_ = true;
+                controller_.setGlobalRepairMethod(GlobalRepairMethod::FixAll);
+                controller_.compareAllGlobalRepairs();
+                requestSync();
+            }
+            tooltip("Run Fix All and the three rebuilds (self-union, winding-number rebuild, alpha wrap) on the scope and list them "
+                    "side by side, so you can see what each keeps and what it costs. Nothing changes until Apply.");
         }
         ImGui::SameLine();
     }
@@ -521,6 +568,14 @@ void PolyscopeGui::drawFixAllLines(const FixAllResult& result, bool beforeApply)
         } else {
             ImGui::TextWrapped("%s", line.text.c_str());
         }
+        if (beforeApply && line.rebuildShell >= 0 && !controller_.fixAllRebuildRunning() && !controller_.globalRepairRunning()) {
+            if (ImGui::SmallButton(fixAllRebuildButtonLabel(line.rebuildShell).c_str())) {
+                controller_.rebuildFixAllShell(line.rebuildShell);
+                requestSync();
+            }
+            tooltip((fixAllRebuildTradeOffText() + "\n\nThis computes the rebuilds of this shell only (alpha wrap, self-union, "
+                     "winding-number rebuild) and adds them as rows below. The rest of the Fix All result is kept exactly.").c_str());
+        }
         // Selecting or flipping shells changes the mesh's selection, which would drop an unapplied preview
         const bool shellButtons = !beforeApply;
         switch (line.action) {
@@ -617,15 +672,54 @@ void PolyscopeGui::drawFixAllResult() {
         return;
     }
     const FixAllResult& result = candidate->fixAll->result;
+    const RepairCandidate* shown = controller_.shownGlobalCandidate();
+    const bool rebuildRowShown = shown != nullptr && shown->fixAll != nullptr && shown->fixAll->rebuild.has_value();
 
     ImGui::TextColored(gui::kInfoColor, "Preview ready. Nothing has changed yet.");
     drawGlobalCandidateTable();
+    drawFixAllShellRebuildRows();
+    drawFixAllRebuildJob();
     ImGui::Spacing();
-    drawFixAllLines(result, true);
-    ImGui::TextDisabled("Shell numbers are those of the result. Apply to get Show them and Flip buttons for the shells named.");
-    ImGui::Spacing();
-    drawFixAllSteps(result);
+    if (rebuildRowShown) {
+        // The row's own report describes the rebuilt mesh; the steps are those of the Fix All run it builds on
+        const FixAllShellRebuild& rebuild = *shown->fixAll->rebuild;
+        wrappedColored(rebuild.merged ? gui::kOkColor : gui::kDefectColor, fixAllRebuiltLine(rebuild));
+        drawFixAllLines(shown->fixAll->result, true);
+        ImGui::TextDisabled("Click the Fix All row to see the report of the repair alone.");
+        ImGui::Spacing();
+        if (rebuild.base != nullptr) {
+            drawFixAllSteps(rebuild.base->result);
+        }
+    } else if (shown != nullptr && shown->method != GlobalRepairMethod::FixAll) {
+        // A whole-scope rebuild row from Compare
+        if (shown->success) {
+            ImGui::TextWrapped("%s: a new surface. No original face is kept (see Kept in the table).", globalRepairMethodLabel(shown->method));
+            if (shown->method == GlobalRepairMethod::AlphaWrap) {
+                wrappedColored(gui::kMutedColor, fixAllRebuildTradeOffText());
+            }
+        }
+        if (!shown->statusMessage.empty()) {
+            wrappedColored(gui::kMutedColor, shown->statusMessage);
+        }
+    } else {
+        drawFixAllLines(result, true);
+        const std::vector<FixAllResultLine> lines = fixAllResultLines(result, true);
+        const bool offered = std::any_of(lines.begin(), lines.end(), [](const FixAllResultLine& l) { return l.rebuildShell >= 0; });
+        if (offered) {
+            ImGui::Spacing();
+            wrappedColored(gui::kMutedColor, fixAllRebuildTradeOffText());
+        }
+        ImGui::TextDisabled("Shell numbers are those of the result. Apply to get Show them and Flip buttons for the shells named.");
+        ImGui::Spacing();
+        drawFixAllSteps(result);
+    }
 
+    drawFixAllPreviewControls();
+    ImGui::Separator();
+    drawFixAllApplyRow(false);
+}
+
+void PolyscopeGui::drawFixAllPreviewControls() {
     ImGui::SeparatorText("Preview");
     int show = static_cast<int>(controller_.globalPreviewShow());
     bool showChanged = ImGui::RadioButton("Result", &show, static_cast<int>(GlobalPreviewShow::Result));
@@ -646,27 +740,199 @@ void PolyscopeGui::drawFixAllResult() {
         requestSync();
     }
     tooltip("Color the result by its distance from the original surface. Off: the changed faces are tinted.");
+}
 
-    ImGui::Separator();
-    ImGui::PushStyleColor(ImGuiCol_Button, gui::kFixAllButtonColor);
-    if (ImGui::Button("Apply Fix All") && controller_.applyFixAll()) {
-        requestSync(true);
+void PolyscopeGui::drawFixAllApplyRow(bool inPlan) {
+    const RepairCandidate* shown = controller_.shownGlobalCandidate();
+    const bool busy = controller_.globalRepairRunning() || controller_.fixAllRebuildRunning();
+    // No shown result (or a failed one, or one still being computed): no Apply button at all
+    if (shown != nullptr && shown->success && !busy) {
+        std::string label = "Apply Fix All";
+        std::string help = "Replace the mesh with the shown result. It is one undo step: Undo Fix All, or Ctrl/Cmd+Z, puts everything back.";
+        if (shown->fixAll != nullptr && shown->fixAll->rebuild) {
+            label = "Apply " + AppController::fixAllRebuildUndoLabel(*shown);
+            help = "Replace the mesh with the Fix All result in which this shell is rebuilt (and merged). One undo step: Ctrl/Cmd+Z "
+                   "puts everything back.";
+        } else if (shown->method != GlobalRepairMethod::FixAll) {
+            label = std::string("Apply ") + globalRepairMethodLabel(shown->method);
+            help = "Replace the mesh with this new surface. No original face is kept. One undo step: Ctrl/Cmd+Z puts everything back.";
+        }
+        ImGui::PushStyleColor(ImGuiCol_Button, gui::kFixAllButtonColor);
+        if (ImGui::Button(label.c_str()) && controller_.applyGlobalRepair()) {
+            requestSync(true);
+        }
+        ImGui::PopStyleColor();
+        tooltip(help.c_str());
+        ImGui::SameLine();
     }
-    ImGui::PopStyleColor();
-    tooltip("Replace the mesh with the shown result. It is one undo step: Undo Fix All, or Ctrl/Cmd+Z, puts everything back.");
-    ImGui::SameLine();
-    if (ImGui::Button("Back to plan")) {
-        controller_.backToFixAllPlan();
-        requestSync();
+    if (!inPlan) {
+        if (ImGui::Button("Back to plan")) {
+            controller_.backToFixAllPlan();
+            requestSync();
+        }
+        tooltip("Drop this preview and return to the plan to change settings. The mesh is unchanged.");
+        ImGui::SameLine();
     }
-    tooltip("Drop this preview and return to the plan to change settings. The mesh is unchanged.");
-    ImGui::SameLine();
     if (ImGui::Button("Close")) {
         controller_.closeTool();
         requestSync();
     }
     tooltip("Close without changing the mesh.  Key: Esc");
     ImGui::TextDisabled("Apply = 1 undo step.");
+}
+
+void PolyscopeGui::drawFixAllShellRebuildRows() {
+    const std::vector<RepairCandidate>& rows = controller_.fixAllRebuilds();
+    if (rows.empty()) {
+        return;
+    }
+    for (const RepairCandidate& row : rows) {
+        const std::string label = fixAllRebuildRowLabel(row);
+        if (!row.success) {
+            wrappedColored(gui::kDefectColor, label + ": " + row.statusMessage);
+        } else if (row.fixAll != nullptr && row.fixAll->rebuild) {
+            wrappedColored(gui::kMutedColor, label + ": " + row.fixAll->rebuild->note);
+        }
+    }
+}
+
+void PolyscopeGui::drawFixAllRebuildJob() {
+    const bool shellJob = controller_.fixAllRebuildRunning();
+    if (!shellJob && !controller_.globalRepairRunning()) {
+        return;
+    }
+    ImGui::AlignTextToFramePadding();
+    gui::statusDot(HealthStatus::Running, false);
+    ImGui::SameLine();
+    bool cancelling = false;
+    if (shellJob) {
+        const std::string text = controller_.fixAllRebuildStatusText();
+        cancelling = text.starts_with("Cancelling");
+        ImGui::TextColored(gui::kRunningColor, "%s", text.c_str());
+    } else {
+        const std::optional<GlobalRepairMethod> current = controller_.globalRepairCurrentMethod();
+        ImGui::TextColored(gui::kRunningColor, "%s...", current ? globalRepairMethodLabel(*current) : "Working");
+    }
+    ImGui::ProgressBar(controller_.globalRepairProgress(), ImVec2(-1.0f, 0.0f));
+    if (!cancelling) {
+        if (ImGui::Button("Cancel##rebuild")) {
+            controller_.cancelGlobalRepair();
+            requestSync();
+        }
+        tooltip("Stop and keep the mesh as it is. An alpha wrap stops at its next step; a union or a merge in progress finishes first.");
+    }
+}
+
+// -----------------------------------------------------------------------------
+// The Repair / Rebuild switch and the Rebuild side
+// -----------------------------------------------------------------------------
+
+void PolyscopeGui::drawFixAllSwitch() {
+    // Rebuilds wrap whole shells: a selection of faces has none, so the switch is not offered
+    if (controller_.fixAllScope().kind == FixAllScopeKind::Faces) {
+        fixAllRebuildSide_ = false;
+        return;
+    }
+    if (controller_.globalRepairRunning() || controller_.fixAllRebuildRunning()) {
+        return;
+    }
+    int side = fixAllRebuildSide_ ? 1 : 0;
+    bool changed = ImGui::RadioButton("Repair  keep my geometry", &side, 0);
+    tooltip("Fix each problem in place. Faces that are not part of a problem stay exactly as they are. Cavities are kept.");
+    ImGui::SameLine();
+    changed |= ImGui::RadioButton("Rebuild  new watertight surface", &side, 1);
+    tooltip("Replace the shells with a new surface (alpha wrap, winding-number rebuild or self-union). Alpha wrap is always "
+            "watertight, but no original face survives and small gaps and cavities are filled in. Compare the two before you choose.");
+    if (changed && (side == 1) != fixAllRebuildSide_) {
+        controller_.backToFixAllPlan(); // drops the other side's previews: the mesh is unchanged
+        fixAllRebuildSide_ = side == 1;
+        requestSync();
+    }
+}
+
+void PolyscopeGui::drawFixAllRebuildPlan() {
+    const FixAllScopeInfo scope = controller_.fixAllScope();
+    const Unit unit = controller_.fileUnit();
+    const bool running = controller_.globalRepairRunning();
+    GlobalRepairParams params = controller_.globalRepairParams();
+    const double alpha = alphaWrapAlpha(params, controller_.meshBounds().diagonal());
+    const double offset = alphaWrapOffset(params, alpha);
+    const FixAllRebuildCopy copy = fixAllRebuildCopy(lengthWithUnit(offset, unit), lengthWithUnit(alpha, unit));
+
+    ImGui::TextWrapped("%s", copy.headline.c_str());
+    ImGui::TextWrapped("%s", copy.guarantee.c_str());
+    for (const std::string& cost : copy.costs) {
+        ImGui::Bullet();
+        ImGui::TextWrapped("%s", cost.c_str());
+    }
+    wrappedColored(gui::kMutedColor, copy.advice);
+
+    // Cavities that an alpha wrap of the scope fills: worked out once per mesh and scope, not every frame
+    if (!running && (!fixAllCavityCache_.valid || fixAllCavityCache_.meshGeneration != controller_.meshGeneration() ||
+                     fixAllCavityCache_.scopeFaces != scope.faces || fixAllCavityCache_.scopeText != scope.text)) {
+        fixAllCavityCache_ = {true, controller_.meshGeneration(), scope.faces, scope.text, controller_.fixAllRebuildFilledCavities()};
+    }
+    const std::string cavityText = fixAllRebuildCavityText(fixAllCavityCache_.cavities);
+    if (!cavityText.empty()) {
+        wrappedColored(gui::kDefectColor, "(!) " + cavityText);
+        tooltip("A cavity is a hollow shell inside a solid (wound inward). Repair keeps it; an alpha wrap fills it in, because the "
+                "wrap closes over everything inside the outer surface.");
+    }
+
+    ImGui::SeparatorText("Method");
+    for (const RebuildMethodOption& option : kRebuildMethodOptions) {
+        const std::string label = std::string(globalRepairMethodLabel(option.method)) + "##rebuild";
+        if (ImGui::RadioButton(label.c_str(), fixAllRebuildMethod_ == option.method)) {
+            fixAllRebuildMethod_ = option.method;
+        }
+        tooltip(option.help);
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", option.summary);
+        if (fixAllRebuildMethod_ == option.method) {
+            ImGui::Indent();
+            drawGlobalMethodParams(option.method);
+            ImGui::Unindent();
+        }
+    }
+
+    if (running) {
+        drawFixAllRebuildJob();
+    } else if (scope.faces > 0) {
+        ImGui::PushStyleColor(ImGuiCol_Button, gui::kFixAllButtonColor);
+        if (ImGui::Button("Preview")) {
+            fixAllHintSeen_ = true;
+            controller_.setGlobalRepairMethod(fixAllRebuildMethod_);
+            controller_.previewGlobalRepair();
+            requestSync();
+        }
+        ImGui::PopStyleColor();
+        tooltip("Compute the chosen rebuild on a copy of the mesh, in the background, and show it. Nothing changes until you Apply.");
+        ImGui::SameLine();
+        if (ImGui::Button("Compare with Repair")) {
+            fixAllHintSeen_ = true;
+            controller_.setGlobalRepairMethod(GlobalRepairMethod::FixAll);
+            controller_.compareAllGlobalRepairs();
+            requestSync();
+        }
+        tooltip("Run Fix All and the three rebuilds on the scope and list them side by side: how much of your geometry each keeps "
+                "(Kept), how far it moves (Max dev) and what it fills in (Lost). Nothing changes until Apply.");
+    } else {
+        ImGui::TextDisabled("Nothing is in scope: every shell is hidden.");
+    }
+
+    if (!controller_.globalCandidates().empty()) {
+        drawGlobalCandidateTable();
+        const RepairCandidate* shown = controller_.shownGlobalCandidate();
+        if (shown != nullptr && !shown->statusMessage.empty()) {
+            wrappedColored(gui::kMutedColor, shown->statusMessage);
+        }
+        if (shown != nullptr && !controller_.candidateIsCurrent(*shown)) {
+            ImGui::TextColored(gui::kDefectColor, "Computed with other settings: Preview again to update.");
+        }
+        drawFixAllPreviewControls();
+    }
+    ImGui::Separator();
+    drawFixAllApplyRow(true);
 }
 
 void PolyscopeGui::drawFixAllReport() {
@@ -686,6 +952,9 @@ void PolyscopeGui::drawFixAllReport() {
     } else {
         ImGui::TextColored(gui::kOkColor, "Fix All applied (Ctrl/Cmd+Z to undo).");
     }
+    if (run->rebuild) {
+        ImGui::TextWrapped("%s", fixAllRebuiltLine(*run->rebuild).c_str());
+    }
     const bool current = applied->meshGeneration == controller_.meshGeneration();
     if (current) {
         drawFixAllLines(run->result, false);
@@ -699,8 +968,15 @@ void PolyscopeGui::drawFixAllReport() {
         }
         ImGui::TextDisabled("The mesh changed after Fix All, so the Show and Flip buttons are hidden. This report is as it was.");
     }
+    {
+        const std::vector<FixAllResultLine> lines = fixAllResultLines(run->result, false);
+        if (std::any_of(lines.begin(), lines.end(), [](const FixAllResultLine& l) { return l.rebuildShell >= 0; })) {
+            ImGui::TextDisabled("A shell is rebuilt in the preview, before Apply: undo, preview again and use Rebuild shell #k.... "
+                                "Mesh > Modify > Alpha Wrap... also wraps shells you select.");
+        }
+    }
     ImGui::Spacing();
-    drawFixAllSteps(run->result);
+    drawFixAllSteps(run->rebuild && run->rebuild->base != nullptr ? run->rebuild->base->result : run->result);
 
     ImGui::Separator();
     if (undoable) {

@@ -3,6 +3,7 @@
 #include "mesh/Units.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 
@@ -407,6 +408,9 @@ std::vector<FixAllResultLine> fixAllResultLines(const FixAllResult& result, bool
             shells = {r.shell};
         }
         add(r.reason, r.suggestion != FixAllSuggestion::None, std::move(shells), action);
+        if (r.suggestion == FixAllSuggestion::AlphaWrap) {
+            lines.back().rebuildShell = r.shell;
+        }
     }
     for (const FixAllCrossingLeft& left : report.crossingsLeft) {
         add(left.text, true, {left.a, left.b}, FixAllLineAction::ShowThem);
@@ -443,6 +447,79 @@ FixAllRunningText fixAllRunningText(const std::string& progressText) {
     }
     out.detail = progressText;
     return out;
+}
+
+std::string fixAllRebuildButtonLabel(int reportShell) {
+    return "Rebuild shell #" + std::to_string(reportShell + 1) + "...";
+}
+
+std::string fixAllRebuildRowLabel(const RepairCandidate& candidate) {
+    if (candidate.fixAll != nullptr && candidate.fixAll->rebuild) {
+        const FixAllShellRebuild& rebuild = *candidate.fixAll->rebuild;
+        return rebuild.label + (rebuild.suggested ? "  (suggested)" : "");
+    }
+    return globalRepairMethodLabel(candidate.method);
+}
+
+std::string fixAllRebuiltLine(const FixAllShellRebuild& rebuild) {
+    // The label is "+ Alpha wrap #12": the method is between "+ " and " #"
+    std::string method = rebuild.label;
+    if (method.starts_with("+ ")) {
+        method.erase(0, 2);
+    }
+    const std::size_t hash = method.rfind(" #");
+    if (hash != std::string::npos) {
+        method.erase(hash);
+    }
+    if (!method.empty()) {
+        method[0] = static_cast<char>(std::tolower(static_cast<unsigned char>(method[0])));
+    }
+    const std::string head = "Shell #" + std::to_string(rebuild.shell + 1) + " rebuilt by " + method;
+    if (rebuild.merged) {
+        return head + " and merged.";
+    }
+    return head + (rebuild.note.empty() ? "." : " (" + rebuild.note + ").");
+}
+
+std::string fixAllRebuildTradeOffText() {
+    return "Alpha wrap is another way to fix a shell: instead of repairing its faces, it wraps a new closed surface around it, "
+           "which is always watertight and free of crossings. The price: the new surface lies a little outside the old one "
+           "(the offset), gaps and pockets narrower than alpha are filled in, closed cavities inside the shell are filled in, "
+           "and none of the shell's original faces are kept. Nothing is applied until you pick a row and click Apply; "
+           "Cmd/Ctrl+Z undoes it in one step.";
+}
+
+FixAllRebuildCopy fixAllRebuildCopy(const std::string& offsetText, const std::string& alphaText) {
+    FixAllRebuildCopy copy;
+    copy.headline = "Replaces the shells in scope with a new surface.";
+    copy.guarantee = "With alpha wrap the result is always watertight, manifold and free of crossings, but no original face "
+                     "survives, and:";
+    copy.costs = {
+        "the surface moves outward by the offset (here " + offsetText + "),",
+        "gaps and pockets narrower than alpha (" + alphaText + ") are filled,",
+        "closed cavities inside a shell are filled in,",
+        "an open sheet becomes a thin closed skin.",
+    };
+    copy.advice = "Use it for scans, badly broken exports, or large objects whose detail does not matter. Use Repair to keep "
+                  "your original faces exactly.";
+    return copy;
+}
+
+std::string fixAllRebuildCavityText(const std::vector<int>& cavities) {
+    if (cavities.empty()) {
+        return {};
+    }
+    if (cavities.size() == 1) {
+        return "Closed cavity #" + std::to_string(cavities.front() + 1) + " will be filled in.";
+    }
+    std::string text = "Closed cavities ";
+    for (std::size_t i = 0; i < cavities.size(); ++i) {
+        if (i > 0) {
+            text += i + 1 == cavities.size() ? " and " : ", ";
+        }
+        text += "#" + std::to_string(cavities[i] + 1);
+    }
+    return text + " will be filled in.";
 }
 
 } // namespace ogun

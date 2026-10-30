@@ -1,11 +1,13 @@
 #include "app/AppController.hpp"
 #include "app/FixAllPanelModel.hpp"
+#include "core/Settings.hpp"
 #include "io/SampleMeshes.hpp"
 #include "repair/MergePlan.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -297,4 +299,102 @@ TEST_CASE("Fix All: Back to plan drops the preview and changes nothing", "[app][
     CHECK(controller.fixAllUndoAvailable());
     CHECK(controller.undoFixAll());
     CHECK(controller.mesh().numFaces() == faces);
+}
+
+TEST_CASE("Fix All Rebuild side: the copy carries the live numbers and the trade-offs", "[app][fixall][gui][rebuild]") {
+    const ogun::FixAllRebuildCopy copy = ogun::fixAllRebuildCopy("0.006 mm", "0.17 mm");
+    REQUIRE(copy.costs.size() == 4);
+    CHECK(copy.costs[0].find("0.006 mm") != std::string::npos);
+    CHECK(copy.costs[1].find("0.17 mm") != std::string::npos);
+    CHECK(copy.costs[2].find("cavities") != std::string::npos);
+    CHECK(copy.guarantee.find("no original face") != std::string::npos);
+    CHECK(copy.advice.find("Repair") != std::string::npos);
+    const std::string tradeOff = ogun::fixAllRebuildTradeOffText();
+    for (const char* word : {"offset", "narrower than alpha", "cavities", "original faces", "Apply"}) {
+        CHECK(tradeOff.find(word) != std::string::npos);
+    }
+    CHECK(ogun::fixAllRebuildButtonLabel(11) == "Rebuild shell #12...");
+    CHECK(ogun::fixAllRebuildCavityText({}).empty());
+    CHECK(ogun::fixAllRebuildCavityText({1}) == "Closed cavity #2 will be filled in.");
+    CHECK(ogun::fixAllRebuildCavityText({1, 4}) == "Closed cavities #2 and #5 will be filled in.");
+    CHECK(ogun::fixAllRebuildCavityText({1, 4, 6}) == "Closed cavities #2, #5 and #7 will be filled in.");
+}
+
+TEST_CASE("Fix All Rebuild side: a cavity box names the cavity an alpha wrap would fill", "[app][fixall][gui][rebuild]") {
+    AppController controller;
+    controller.setMesh(SampleMeshes::createCavityBoxMesh(false), "cavity box");
+    controller.openFixAll(3);
+    controller.waitForFixAllPlan();
+    const std::vector<int> cavities = controller.fixAllRebuildFilledCavities();
+    REQUIRE(cavities.size() == 1);
+    CHECK(ogun::fixAllRebuildCavityText(cavities) == "Closed cavity #" + std::to_string(cavities.front() + 1) + " will be filled in.");
+    // A face selection has no whole shells: the GUI hides the switch (the scope kind says so)
+    controller.selectFaces(std::vector<Eigen::Index>{0, 1, 2}, true);
+    CHECK(controller.fixAllScope().kind == ogun::FixAllScopeKind::Faces);
+}
+
+TEST_CASE("Fix All Rebuild: the residue line offers the button, the rows are tagged, the Report says what was rebuilt",
+          "[app][fixall][gui][rebuild]") {
+    AppController controller;
+    controller.setMesh(SampleMeshes::createOpenShellAmongCubesMesh(), "Overlapping boxes, one open");
+    auto hooks = std::make_shared<ogun::FixAllTestHooks>();
+    hooks->adjustStages = [](int, ogun::FixAllPhase, std::vector<ogun::FixAllStage>& stages) {
+        std::erase_if(stages, [](const ogun::FixAllStage& s) {
+            return s.id == ogun::FixAllStageId::FillHoles || s.id == ogun::FixAllStageId::CloseCracks;
+        });
+    };
+    controller.setFixAllTestHooks(hooks);
+    controller.openFixAll(3);
+    ogun::GlobalRepairParams params = controller.globalRepairParams();
+    params.alphaWrapDetail = ogun::settings::kMinAlphaWrapDetail;
+    params.windingResolution = ogun::settings::kMinWindingGridResolution;
+    controller.setGlobalRepairParams(params);
+    controller.previewFixAll();
+    REQUIRE(controller.fixAllCandidate() != nullptr);
+
+    // Before Apply the open shell's line carries the shell to rebuild; the Report's lines are the same
+    const std::vector<ogun::FixAllResultLine> lines = ogun::fixAllResultLines(controller.fixAllCandidate()->fixAll->result, true);
+    const auto it = std::find_if(lines.begin(), lines.end(), [](const ogun::FixAllResultLine& l) { return l.rebuildShell >= 0; });
+    REQUIRE(it != lines.end());
+    CHECK(it->warning);
+    CHECK(ogun::fixAllRebuildButtonLabel(it->rebuildShell) == "Rebuild shell #2...");
+
+    controller.rebuildFixAllShell(it->rebuildShell);
+    const std::vector<ogun::RepairCandidate>& rows = controller.fixAllRebuilds();
+    REQUIRE(rows.size() == ogun::kShellRebuildMethods.size());
+    CHECK(ogun::fixAllRebuildRowLabel(rows[0]) == "+ Alpha wrap #2  (suggested)");
+    CHECK(ogun::fixAllRebuildRowLabel(rows[1]) == "+ Self-union #2");
+    CHECK(ogun::fixAllRebuildRowLabel(*controller.fixAllCandidate()) == "Fix All");
+    REQUIRE(rows[0].success);
+    CHECK(ogun::fixAllRebuiltLine(*rows[0].fixAll->rebuild) == "Shell #2 rebuilt by alpha wrap and merged.");
+
+    // Show the row, Apply the shown row: one undo step "Fix All + Rebuild #2", the Report knows the rebuild
+    controller.showFixAllRebuild(ogun::GlobalRepairMethod::AlphaWrap);
+    REQUIRE(controller.applyGlobalRepair());
+    CHECK(controller.lastUndoActionLabel() == "Fix All + Rebuild #2");
+    REQUIRE(controller.fixAllShown() != nullptr);
+    REQUIRE(controller.fixAllShown()->rebuild.has_value());
+    CHECK(ogun::fixAllRebuiltLine(*controller.fixAllShown()->rebuild) == "Shell #2 rebuilt by alpha wrap and merged.");
+}
+
+TEST_CASE("Fix All Rebuild side: a whole-scope rebuild previews and applies as one undo step", "[app][fixall][gui][rebuild][undo]") {
+    AppController controller;
+    controller.setMesh(overlappingCubes(), "cubes");
+    controller.openFixAll(3);
+    controller.waitForFixAllPlan();
+    ogun::GlobalRepairParams params = controller.globalRepairParams();
+    params.alphaWrapDetail = ogun::settings::kMinAlphaWrapDetail;
+    controller.setGlobalRepairParams(params);
+    const Mesh before = controller.mesh();
+    controller.setGlobalRepairMethod(ogun::GlobalRepairMethod::AlphaWrap);
+    controller.previewGlobalRepair();
+    REQUIRE(controller.shownGlobalCandidate() != nullptr);
+    REQUIRE(controller.shownGlobalCandidate()->success);
+    CHECK(controller.fixAllState() == ogun::FixAllPanelState::Plan); // no Fix All row: the Rebuild side stays in the plan
+    CHECK(controller.mesh().F == before.F);
+    REQUIRE(controller.applyGlobalRepair());
+    CHECK(controller.lastUndoActionLabel() == "Rebuild (Alpha wrap)");
+    REQUIRE(controller.undoLastModification());
+    CHECK(controller.mesh().F == before.F);
+    CHECK(controller.mesh().V == before.V);
 }

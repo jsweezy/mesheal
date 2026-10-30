@@ -157,6 +157,12 @@ private:
     void drawFixAllRunning();
     void drawFixAllResult();
     void drawFixAllReport();
+    void drawFixAllSwitch();        ///< Repair / Rebuild radios (hidden for a face scope)
+    void drawFixAllRebuildPlan();   ///< The Rebuild side of the Plan state
+    void drawFixAllRebuildJob();    ///< Progress and Cancel of a rebuild job (whole scope or one shell)
+    void drawFixAllShellRebuildRows(); ///< Notes of the *Rebuild shell #k...* rows under the table
+    void drawFixAllApplyRow(bool inPlan); ///< Apply the shown row, Close
+    void drawFixAllPreviewControls();
     void drawFixAllSteps(const FixAllResult& result);
     void drawFixAllLines(const FixAllResult& result, bool beforeApply);
     /// The [Fix All...] and [One Pass...] buttons beside Check Mesh; returns after laying them out.
@@ -167,7 +173,7 @@ private:
     void fixAll(DefectCategory category);
     void checkMesh();
     /// Opens Operation: Fix All with the saved number of passes (`fullRun`), or with one pass (One Pass...).
-    void openFixAllPanel(bool fullRun);
+    void openFixAllPanel(bool fullRun, bool rebuildSide = false);
 
     // ---- Face selection tools: box (B), circle (C), Shift+click (PolyscopeGuiSelection.cpp) ----
     enum class FaceSelectMode { None, Box, Circle };
@@ -250,6 +256,16 @@ private:
     bool showMeshInfo_ = false;
     bool showPreferences_ = false;
     bool fixAllHintSeen_ = false; ///< The first-run line of the Fix All panel was shown once
+    bool fixAllRebuildSide_ = false; ///< The Fix All panel's switch is on Rebuild (reset when the panel opens)
+    GlobalRepairMethod fixAllRebuildMethod_ = GlobalRepairMethod::AlphaWrap; ///< The Rebuild side's method radio
+    /// The cavities an alpha wrap of the scope would fill, worked out once per mesh and scope (not every frame).
+    struct FixAllCavityCache {
+        bool valid = false;
+        std::uint64_t meshGeneration = 0;
+        std::size_t scopeFaces = 0;
+        std::string scopeText;
+        std::vector<int> cavities;
+    } fixAllCavityCache_;
     bool showNavigationHelpWindow_ = false;
     bool showAboutWindow_ = false;
     bool requestSaveConfirm_ = false;

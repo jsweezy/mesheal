@@ -94,6 +94,9 @@ struct FixAllResultLine {
     bool warning = false;           ///< Left for the user: orange
     std::vector<int> shells;        ///< `report.shells` indices the line names (outer shell first for FlipGroup)
     FixAllLineAction action = FixAllLineAction::None;
+    /// `report.shells` index of a shell Fix All left that alpha wrap is suggested for: the line gets the
+    /// *Rebuild shell #k...* button (before Apply). -1: no button.
+    int rebuildShell = -1;
 };
 
 /// The plan row number of a stage (0..11; phase 3 steps are row 11).
@@ -120,6 +123,37 @@ struct FixAllRunningText {
     std::string detail;
 };
 [[nodiscard]] FixAllRunningText fixAllRunningText(const std::string& progressText);
+
+// ---------------------------------------------------------------------------------------------
+// Rebuild side, rebuild rows and the *Rebuild shell #k...* button
+// ---------------------------------------------------------------------------------------------
+
+/// The button on a residue line: "Rebuild shell #12..." for `report.shells` index 11.
+[[nodiscard]] std::string fixAllRebuildButtonLabel(int reportShell);
+
+/// The table label of a rebuild row ("+ Alpha wrap #12", with "  (suggested)" on the suggested one), or the
+/// method's name for any other row.
+[[nodiscard]] std::string fixAllRebuildRowLabel(const RepairCandidate& candidate);
+
+/// "Shell #12 rebuilt by alpha wrap and merged." / "... rebuilt by self-union (still open: not merged)."
+/// for the Report after a rebuild row was applied.
+[[nodiscard]] std::string fixAllRebuiltLine(const FixAllShellRebuild& rebuild);
+
+/// The plain-language explanation shown beside *Rebuild shell #k...*: what alpha wrap is, and what it costs.
+[[nodiscard]] std::string fixAllRebuildTradeOffText();
+
+/// The Rebuild side's explanation with the live numbers (`offsetText`, `alphaText`: lengths with their unit).
+struct FixAllRebuildCopy {
+    std::string headline;               ///< "Replaces the shells in scope with a new surface."
+    std::string guarantee;              ///< What is always true of the result
+    std::vector<std::string> costs;     ///< The trade-offs, one bullet each
+    std::string advice;                 ///< When to use Rebuild, when Repair
+};
+[[nodiscard]] FixAllRebuildCopy fixAllRebuildCopy(const std::string& offsetText, const std::string& alphaText);
+
+/// "Closed cavity #2 will be filled in." / "Closed cavities #2 and #5 will be filled in." from
+/// 0-based shell indices; empty without cavities.
+[[nodiscard]] std::string fixAllRebuildCavityText(const std::vector<int>& cavities);
 
 /// "Phase 1: repair each shell" and so on (1 to 3).
 [[nodiscard]] const char* fixAllPhaseCaption(int phase) noexcept;
