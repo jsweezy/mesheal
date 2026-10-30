@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -89,21 +90,6 @@ using Clock = std::chrono::steady_clock;
         map[static_cast<std::size_t>(f)] = f;
     }
     return map;
-}
-
-/// Scope guard: every face outside the scope is still there with the same corners.
-[[nodiscard]] bool outsideScopeKept(const Mesh& before, const Mesh& after, std::span<const Eigen::Index> map,
-                                    const FixAllScope& scope) {
-    for (Eigen::Index f = 0; f < before.numFaces(); ++f) {
-        if (scope.inScope(f)) {
-            continue;
-        }
-        const Eigen::Index to = map[static_cast<std::size_t>(f)];
-        if (to < 0 || to >= after.numFaces() || faceGeometryKey(before, f) != faceGeometryKey(after, to)) {
-            return false;
-        }
-    }
-    return true;
 }
 
 /// A closed, consistently wound shell with a negative volume: a cavity, an inside-out shell or one rule O
@@ -523,39 +509,99 @@ private:
         return params_.mergeShells && scope_.kind != FixAllScopeKind::Faces;
     }
 
-    /// Runs one pass on `mesh_`; false when cancelled.
-    bool runPass(int pass) {
-        std::vector<FixAllStage> stages = fixAllRepairStages();
+    /// Lets a test edit a phase's stage list.
+    void adjust(int pass, FixAllPhase phase, std::vector<FixAllStage>& stages) const {
         if (hooks_ != nullptr && hooks_->adjustStages) {
-            hooks_->adjustStages(pass, FixAllPhase::Repair, stages);
+            hooks_->adjustStages(pass, phase, stages);
         }
+    }
 
-        // Progress layout of the pass: phase 1 stages, phase 2 and 3 (merge on), the closing check
-        double total = settings::kFixAllPassCheckProgressWeight;
-        for (const FixAllStage& stage : stages) {
-            total += std::max(0.0, stage.progressWeight);
-        }
-        const double mergeWeight = mergeRuns() ? settings::kFixAllMergeProgressWeight + settings::kFixAllCleanupProgressWeight : 0.0;
-        total += mergeWeight;
-        double done = 0.0;
-
-        // ---- Phase 1: repair each shell ----
+    /// Runs `stages` of `phase` in order, sharing `weight` of the pass's progress (phase 1: each stage's
+    /// own weight). Sets `changed` when a step was kept. False when cancelled.
+    bool runPhase(std::vector<FixAllStage>& stages, int pass, FixAllPhase phase, double total, double& done,
+                  double weight, bool& changed) {
+        const auto phaseName = "phase " + std::to_string(static_cast<int>(phase)) + ", ";
         for (std::size_t i = 0; i < stages.size(); ++i) {
             if (stop_.stop_requested()) {
                 return false;
             }
-            report(passFraction(pass, done / total), passText(pass, std::string("phase 1, ") + stages[i].activity + "..."));
-            if (!applyStep(stages, i, pass, FixAllPhase::Repair)) {
+            report(passFraction(pass, done / total), passText(pass, phaseName + stages[i].activity + "..."));
+            if (!applyStep(stages, i, pass, phase)) {
                 return false;
             }
-            done += std::max(0.0, stages[i].progressWeight);
+            changed = changed || result_.steps.back().status == FixAllStepStatus::Applied;
+            done += phase == FixAllPhase::Repair ? std::max(0.0, stages[i].progressWeight)
+                                                 : weight / static_cast<double>(stages.size());
+        }
+        if (phase != FixAllPhase::Repair && stages.empty()) {
+            done += weight;
+        }
+        return true;
+    }
+
+    /// Runs one pass on `mesh_`; false when cancelled.
+    bool runPass(int pass) {
+        std::vector<FixAllStage> repair = fixAllRepairStages();
+        adjust(pass, FixAllPhase::Repair, repair);
+        std::vector<FixAllStage> merge; // phase 2 is not built yet: only a test inserts a merge
+        adjust(pass, FixAllPhase::Merge, merge);
+
+        // Progress layout of the pass: phase 1 stages, phase 2 and 3 (merge on), the closing check
+        double total = settings::kFixAllPassCheckProgressWeight;
+        for (const FixAllStage& stage : repair) {
+            total += std::max(0.0, stage.progressWeight);
+        }
+        const bool mergeShare = mergeRuns() || !merge.empty();
+        const double mergeWeight = mergeShare ? settings::kFixAllMergeProgressWeight : 0.0;
+        const double cleanupWeight = mergeShare ? settings::kFixAllCleanupProgressWeight : 0.0;
+        total += mergeWeight + cleanupWeight;
+        double done = 0.0;
+
+        // ---- Phase 1: repair each shell ----
+        bool repaired = false;
+        if (!runPhase(repair, pass, FixAllPhase::Repair, total, done, 0.0, repaired)) {
+            return false;
         }
 
-        // ---- Phase 2: merge the shells (not built yet: nothing is merged, so phase 3 never runs) ----
+        // ---- Phase 2: merge the shells (whole shells only) ----
         if (stop_.stop_requested()) {
             return false;
         }
-        done += mergeWeight;
+        const Mesh preMerge = merge.empty() ? Mesh{} : mesh_;
+        bool merged = false;
+        if (scope_.kind == FixAllScopeKind::Faces) {
+            for (const FixAllStage& stage : merge) {
+                FixAllStepReport step;
+                step.stage = stage.id;
+                step.label = stage.label;
+                step.pass = pass;
+                step.phase = FixAllPhase::Merge;
+                step.status = FixAllStepStatus::Skipped;
+                step.reason = "Merge needs whole shells: select shells, or clear the selection.";
+                result_.steps.push_back(std::move(step));
+            }
+            done += mergeWeight;
+        } else if (!runPhase(merge, pass, FixAllPhase::Merge, total, done, mergeWeight, merged)) {
+            return false;
+        }
+
+        // ---- Phase 3: clean up the merged result (only when phase 2 changed the mesh) ----
+        if (merged) {
+            std::vector<FixAllStage> cleanup = fixAllCleanupStages();
+            adjust(pass, FixAllPhase::Cleanup, cleanup);
+            preMerge_ = &preMerge;
+            bool cleaned = false;
+            const bool finished = runPhase(cleanup, pass, FixAllPhase::Cleanup, total, done, cleanupWeight, cleaned);
+            preMerge_ = nullptr;
+            if (!finished) {
+                return false;
+            }
+        } else {
+            done += cleanupWeight;
+        }
+        if (stop_.stop_requested()) {
+            return false;
+        }
         checkStart_ = done / total;
         return true;
     }
@@ -564,6 +610,7 @@ private:
     /// result. False when cancelled.
     bool applyStep(std::span<const FixAllStage> stages, std::size_t index, int pass, FixAllPhase phase) {
         const FixAllStage& stage = stages[index];
+        assert(scope_.matches(mesh_)); // a stage that returns a wrong face map would make the scope drift
         FixAllStepReport step;
         step.stage = stage.id;
         step.label = stage.label;
@@ -581,7 +628,7 @@ private:
         const auto stepStart = Clock::now();
         FixAllStageOutcome outcome;
         try {
-            outcome = stage.run(mesh_, FixAllStageContext{params_, scope_, pass, phase, stop_});
+            outcome = stage.run(mesh_, FixAllStageContext{params_, scope_, pass, phase, stop_, preMerge_});
         } catch (const std::exception& error) {
             outcome = FixAllStageOutcome{};
             outcome.failure = std::string("It failed: ") + error.what();
@@ -633,8 +680,14 @@ private:
     void keepIfGuardsPass(std::span<const FixAllStage> stages, std::size_t index, FixAllStageOutcome& outcome,
                           FixAllStepReport& step, const Refuse& refuse) {
         const FixAllStage& stage = stages[index];
+        const auto guardStart = Clock::now();
+        struct GuardTimer {
+            FixAllStepReport& step;
+            Clock::time_point start;
+            ~GuardTimer() { step.guardMs = msSince(start); }
+        } timer{step, guardStart};
         const std::vector<Eigen::Index> map = fullFaceMap(mesh_, outcome);
-        if (!scope_.everyFace() && !outsideScopeKept(mesh_, outcome.mesh, map, scope_)) {
+        if (!scope_.everyFace() && !fixall_detail::outsideScopeKept(mesh_, outcome.mesh, map, scope_)) {
             refuse(FixAllGuard::Scope, "It would change faces outside the scope, so nothing was changed.");
             return;
         }
@@ -662,14 +715,15 @@ private:
         step.deferred = std::move(outcome.deferred);
         if (after.open > edges_->open) {
             const std::size_t more = after.open - edges_->open;
-            const bool fillLater = laterStage(stages, index, {FixAllStageId::FillHoles});
+            const bool fillLater = step.phase == FixAllPhase::Merge || laterStage(stages, index, {FixAllStageId::FillHoles});
             step.deferred.push_back({FixAllDeferredKind::OpenEdges, more,
                                      fixall_detail::counted(more, "more open edge", "more open edges") +
                                          (fillLater ? ": left for the hole fill" : ": left for the next pass's hole fill")});
         }
         if (after.nonManifold > edges_->nonManifold) {
             const std::size_t more = after.nonManifold - edges_->nonManifold;
-            const bool splitLater = laterStage(stages, index, {FixAllStageId::SplitTouching, FixAllStageId::Fins});
+            const bool splitLater = step.phase == FixAllPhase::Merge ||
+                                    laterStage(stages, index, {FixAllStageId::SplitTouching, FixAllStageId::Fins});
             step.deferred.push_back({FixAllDeferredKind::NonManifoldEdges, more,
                                      fixall_detail::counted(more, "more non-manifold edge", "more non-manifold edges") +
                                          (splitLater ? ": left for the split and fin steps"
@@ -685,6 +739,7 @@ private:
         mesh_ = std::move(outcome.mesh);
         edges_ = after;
         inward_.reset();
+        assert(scope_.matches(mesh_));
     }
 
     const Mesh& input_;
@@ -698,12 +753,27 @@ private:
     FixAllScope scope_;
     FixAllScope inputScope_;
     double checkStart_ = 0.0; ///< Where the closing check starts within the pass (0..1)
+    const Mesh* preMerge_ = nullptr; ///< Phase 3: the mesh before the merge
     std::optional<std::vector<InwardShell>> inward_;            ///< Of `mesh_`, worked out when a guard needs it
     std::optional<fixall_detail::EdgeDefectCounts> edges_;      ///< Of `mesh_`
     FixAllResult result_;
 };
 
 } // namespace
+
+bool fixall_detail::outsideScopeKept(const Mesh& before, const Mesh& after, std::span<const Eigen::Index> map,
+                                     const FixAllScope& scope) {
+    for (Eigen::Index f = 0; f < before.numFaces(); ++f) {
+        if (scope.inScope(f)) {
+            continue;
+        }
+        const Eigen::Index to = map.empty() ? f : map[static_cast<std::size_t>(f)];
+        if (to < 0 || to >= after.numFaces() || faceGeometryKey(before, f) != faceGeometryKey(after, to)) {
+            return false;
+        }
+    }
+    return true;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Scope

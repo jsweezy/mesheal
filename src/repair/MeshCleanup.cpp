@@ -110,6 +110,7 @@ MergeByDistanceResult mergeVertices(const Mesh& mesh, WidthFor widthFor, Match m
     // every vertex of a face outside the scope
     std::vector<std::uint8_t> candidate(nv, 0);
     std::vector<std::uint8_t> pin(nv, 0);
+    std::vector<std::uint8_t> usedOutside(nv, 0);
     for (std::size_t v = 0; v < pinned.size(); ++v) {
         pin[v] = pinned[v] != 0 ? 1 : 0;
     }
@@ -121,6 +122,45 @@ MergeByDistanceResult mergeVertices(const Mesh& mesh, WidthFor widthFor, Match m
                 candidate[v] = 1;
             } else if (protectOutside) {
                 pin[v] = 1;
+                usedOutside[v] = 1;
+            }
+        }
+    }
+    // Keeping surfaces apart: the edges (sorted vertex pairs) and the vertices on open edges
+    std::vector<std::pair<int, int>> edges;
+    std::vector<std::uint8_t> onOpenEdge;
+    if (keepSurfacesApart) {
+        edges.reserve(3 * nf);
+        for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+            for (int c = 0; c < 3; ++c) {
+                const int a = mesh.F(f, c);
+                const int b = mesh.F(f, (c + 1) % 3);
+                edges.emplace_back(std::min(a, b), std::max(a, b));
+            }
+        }
+        std::sort(edges.begin(), edges.end());
+        onOpenEdge.assign(nv, 0);
+        for (std::size_t i = 0; i < edges.size();) {
+            std::size_t j = i;
+            while (j < edges.size() && edges[j] == edges[i]) {
+                ++j;
+            }
+            if (j - i == 1) {
+                onOpenEdge[static_cast<std::size_t>(edges[i].first)] = 1;
+                onOpenEdge[static_cast<std::size_t>(edges[i].second)] = 1;
+            }
+            i = j;
+        }
+    }
+    // Protected (outside the scope): a vertex used only by faces outside the scope may still absorb an
+    // in-scope vertex, so a crack along the scope's edge closes onto the outside side. With surfaces kept
+    // apart only its open-edge vertices can (an edge to an in-scope vertex would make it in scope)
+    std::vector<std::uint8_t> outsideOnly(nv, 0);
+    if (protectOutside && !faceInScope.empty()) {
+        for (std::size_t v = 0; v < nv; ++v) {
+            if (candidate[v] == 0 && usedOutside[v] != 0 && (!keepSurfacesApart || onOpenEdge[v] != 0)) {
+                candidate[v] = 1;
+                outsideOnly[v] = 1;
             }
         }
     }
@@ -157,32 +197,6 @@ MergeByDistanceResult mergeVertices(const Mesh& mesh, WidthFor widthFor, Match m
         }
     }
 
-    // Keeping surfaces apart: the edges (sorted vertex pairs) and the vertices on open edges
-    std::vector<std::pair<int, int>> edges;
-    std::vector<std::uint8_t> onOpenEdge;
-    if (keepSurfacesApart) {
-        edges.reserve(3 * nf);
-        for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
-            for (int c = 0; c < 3; ++c) {
-                const int a = mesh.F(f, c);
-                const int b = mesh.F(f, (c + 1) % 3);
-                edges.emplace_back(std::min(a, b), std::max(a, b));
-            }
-        }
-        std::sort(edges.begin(), edges.end());
-        onOpenEdge.assign(nv, 0);
-        for (std::size_t i = 0; i < edges.size();) {
-            std::size_t j = i;
-            while (j < edges.size() && edges[j] == edges[i]) {
-                ++j;
-            }
-            if (j - i == 1) {
-                onOpenEdge[static_cast<std::size_t>(edges[i].first)] = 1;
-                onOpenEdge[static_cast<std::size_t>(edges[i].second)] = 1;
-            }
-            i = j;
-        }
-    }
     const auto mayMerge = [&](int a, int b) {
         if (!keepSurfacesApart) {
             return true;
@@ -213,8 +227,8 @@ MergeByDistanceResult mergeVertices(const Mesh& mesh, WidthFor widthFor, Match m
                     }
                     for (const int n : it->second) {
                         const auto un = static_cast<std::size_t>(n);
-                        if (assigned[un] != 0) {
-                            continue;
+                        if (assigned[un] != 0 || (outsideOnly[v] != 0 && outsideOnly[un] != 0)) {
+                            continue; // two outside vertices are none of the weld's business
                         }
                         const Eigen::Vector3d q = mesh.V.row(n).transpose();
                         if (!match(p, q) || !mayMerge(static_cast<int>(v), n)) {

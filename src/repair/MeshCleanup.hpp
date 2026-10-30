@@ -48,8 +48,9 @@ struct MergeByDistanceResult {
 /// sqrt(3) x it in a straight line). The search grid is T_max = max(absFloor, relTol x M) wide, M the
 /// largest |coordinate| of a candidate, which keeps the 27-cell search exact. Unlike the straight-line
 /// form, faces outside `faceInScope` stay bit-identical: every vertex they use is pinned (it may still
-/// absorb an in-scope vertex, closing a crack along the scope's edge), and such a face is never removed
-/// as a copy (the in-scope copies go instead). Needs absFloor, relTol >= 0, not both 0.
+/// absorb an in-scope vertex, closing a crack along the scope's edge, even when no in-scope face uses
+/// it; with surfaces kept apart, only its open-edge vertices), and such a face is never removed as a
+/// copy (the in-scope copies go instead). Needs absFloor, relTol >= 0, not both 0.
 [[nodiscard]] MergeByDistanceResult mergeByDistance(const Mesh& mesh, const ToleranceConfig& tol,
                                                     std::span<const std::uint8_t> faceInScope = {},
                                                     bool keepSurfacesApart = false,

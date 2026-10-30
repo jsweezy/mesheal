@@ -91,8 +91,10 @@ FixAllStage mockStage(std::function<bool(Mesh&, int pass)> change) {
 /// Hooks that run only `stage` in every pass's phase 1.
 ogun::FixAllTestHooks onlyStage(FixAllStage stage) {
     ogun::FixAllTestHooks hooks;
-    hooks.adjustStages = [stage = std::move(stage)](int, FixAllPhase, std::vector<FixAllStage>& stages) {
-        stages.assign(1, stage);
+    hooks.adjustStages = [stage = std::move(stage)](int, FixAllPhase phase, std::vector<FixAllStage>& stages) {
+        if (phase == FixAllPhase::Repair) {
+            stages.assign(1, stage);
+        }
     };
     return hooks;
 }
@@ -532,8 +534,10 @@ TEST_CASE("Fix All refuses a step that fails, returns a bad result or does not r
     };
 
     ogun::FixAllTestHooks hooks;
-    hooks.adjustStages = [&](int, FixAllPhase, std::vector<FixAllStage>& stages) {
-        stages.insert(stages.begin(), {throws, badIndices, churn, shortMap});
+    hooks.adjustStages = [&](int, FixAllPhase phase, std::vector<FixAllStage>& stages) {
+        if (phase == FixAllPhase::Repair) {
+            stages.insert(stages.begin(), {throws, badIndices, churn, shortMap});
+        }
     };
     ogun::FixAllParams params;
     params.passes = 1;
@@ -565,7 +569,10 @@ TEST_CASE("A cancelled Fix All returns the input unchanged", "[repair][fixall]")
     SECTION("Cancelled after a step changed the mesh") {
         std::stop_source source;
         ogun::FixAllTestHooks hooks;
-        hooks.adjustStages = [&](int, FixAllPhase, std::vector<FixAllStage>& stages) {
+        hooks.adjustStages = [&](int, FixAllPhase phase, std::vector<FixAllStage>& stages) {
+            if (phase != FixAllPhase::Repair) {
+                return;
+            }
             stages.insert(stages.begin() + 1, mockStage([&](Mesh&, int) {
                               source.request_stop();
                               return false;
@@ -661,8 +668,8 @@ std::size_t shellCount(const Mesh& mesh) {
 /// Hooks that move the stage `id` to just before `before` in pass `pass`.
 ogun::FixAllTestHooks moveStage(FixAllStageId id, FixAllStageId before, int pass) {
     ogun::FixAllTestHooks hooks;
-    hooks.adjustStages = [=](int p, FixAllPhase, std::vector<FixAllStage>& stages) {
-        if (p != pass) {
+    hooks.adjustStages = [=](int p, FixAllPhase phase, std::vector<FixAllStage>& stages) {
+        if (p != pass || phase != FixAllPhase::Repair) {
             return;
         }
         const auto from = std::find_if(stages.begin(), stages.end(), [&](const FixAllStage& s) { return s.id == id; });
@@ -677,8 +684,8 @@ ogun::FixAllTestHooks moveStage(FixAllStageId id, FixAllStageId before, int pass
 /// Hooks that insert `stage` at the front of pass 1 only.
 ogun::FixAllTestHooks firstInPassOne(FixAllStage stage) {
     ogun::FixAllTestHooks hooks;
-    hooks.adjustStages = [stage = std::move(stage)](int pass, FixAllPhase, std::vector<FixAllStage>& stages) {
-        if (pass == 1) {
+    hooks.adjustStages = [stage = std::move(stage)](int pass, FixAllPhase phase, std::vector<FixAllStage>& stages) {
+        if (pass == 1 && phase == FixAllPhase::Repair) {
             stages.insert(stages.begin(), stage);
         }
     };
@@ -970,8 +977,8 @@ TEST_CASE("Fix All judges a pass at its end: closed but crossing is kept, the ne
           "[repair][fixall]") {
     // The island step is off in pass 1 only
     ogun::FixAllTestHooks hooks;
-    hooks.adjustStages = [](int pass, FixAllPhase, std::vector<FixAllStage>& stages) {
-        if (pass == 1) {
+    hooks.adjustStages = [](int pass, FixAllPhase phase, std::vector<FixAllStage>& stages) {
+        if (pass == 1 && phase == FixAllPhase::Repair) {
             std::erase_if(stages, [](const FixAllStage& stage) { return stage.id == FixAllStageId::Islands; });
         }
     };

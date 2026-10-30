@@ -1,4 +1,5 @@
 add_executable(ogun_repair_tests
+    FixAllScopeTests.cpp
     FixAllTests.cpp
     HoleFillingTests.cpp
     IntersectionHealerTests.cpp

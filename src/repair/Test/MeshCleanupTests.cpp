@@ -625,6 +625,36 @@ TEST_CASE("Pinned seam vertices stay put while the other side welds onto them", 
     REQUIRE(none.pinnedPairsKept == 4);
 }
 
+TEST_CASE("A seam along the scope's edge closes onto the side outside the scope", "[repair][merge][weld][fixture]") {
+    // Only one half is in scope: the other half's open-edge vertices are used by no in-scope face, yet they
+    // absorb the in-scope side, so the seam closes and the outside half stays bit-identical
+    const ogun::Mesh seam = ogun::SampleMeshes::createWeldSeamCubeMesh(5.0e-6);
+    for (const bool lowerInScope : {true, false}) {
+        CAPTURE(lowerInScope);
+        std::vector<std::uint8_t> scope(static_cast<std::size_t>(seam.numFaces()), 0);
+        for (Eigen::Index f = 0; f < seam.numFaces(); ++f) {
+            const double x = (seam.V(seam.F(f, 0), 0) + seam.V(seam.F(f, 1), 0) + seam.V(seam.F(f, 2), 0)) / 3.0;
+            scope[static_cast<std::size_t>(f)] = (x < 15.0) == lowerInScope ? 1 : 0;
+        }
+        const ogun::MergeByDistanceResult r = ogun::mergeByDistance(seam, kFixAllWeld, scope, true);
+        REQUIRE(r.success);
+        REQUIRE(r.verticesMerged == 4);
+        REQUIRE(closedManifold(r.mesh));
+        for (Eigen::Index f = 0; f < seam.numFaces(); ++f) {
+            if (scope[static_cast<std::size_t>(f)] == 0) {
+                const Eigen::Index to = r.faceMap[static_cast<std::size_t>(f)];
+                REQUIRE(to >= 0);
+                for (int c = 0; c < 3; ++c) {
+                    REQUIRE(r.mesh.V.row(r.mesh.F(to, c)) == seam.V.row(seam.F(f, c)));
+                }
+            }
+        }
+        // Nothing in scope: the outside sides never weld to each other
+        const std::vector<std::uint8_t> nothing(scope.size(), 0);
+        REQUIRE(ogun::mergeByDistance(seam, kFixAllWeld, nothing, true).verticesMerged == 0);
+    }
+}
+
 TEST_CASE("Fix All's weld changes nothing on the bunny and the Turkey", "[repair][merge][weld][.slow]") {
     const std::filesystem::path examples =
         std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples";

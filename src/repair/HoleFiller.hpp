@@ -137,6 +137,7 @@ struct HoleFillAttempt {
     HoleFillMethod method = HoleFillMethod::None;
     bool changed = false;               ///< The method produced a fill
     bool closed = false;                ///< ... that closed every rim edge
+    bool outsideScope = false;          ///< It was undone: it would remove a face outside the scope or move one of its vertices
     std::size_t crossingsOwnShell = 0;  ///< Crossings with faces of the hole's own shell (incl. the patch itself)
     std::size_t crossingsOtherShells = 0;
     std::string status;                 ///< Why it failed, or what it added

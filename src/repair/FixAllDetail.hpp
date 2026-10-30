@@ -3,6 +3,7 @@
 // Helpers shared by the Fix All engine (FixAll.cpp) and its stages (FixAllStages.cpp). Not a public API.
 
 #include "mesh/Mesh.hpp"
+#include "repair/FixAll.hpp"
 #include "mesh/Units.hpp"
 
 #include <Eigen/Core>
@@ -26,6 +27,11 @@ namespace ogun::fixall_detail {
 /// Old face -> face of `after` with the same corner positions (winding kept, rotation ignored), -1 when
 /// none is left: the face map of a stage that re-numbers faces without reporting it.
 [[nodiscard]] std::vector<Eigen::Index> faceMapByGeometry(const Mesh& before, const Mesh& after);
+
+/// Scope guard: every face outside `scope` (which matches `before`) is still in `after` at `map[f]`
+/// (empty map = same row) with the same corners.
+[[nodiscard]] bool outsideScopeKept(const Mesh& before, const Mesh& after, std::span<const Eigen::Index> map,
+                                    const FixAllScope& scope);
 
 /// Shell index of every face (-1 for a face in no shell), from a shell list such as `shellsLargestFirst`.
 [[nodiscard]] std::vector<int> shellOfFaces(Eigen::Index faceCount, std::span<const std::vector<Eigen::Index>> shells);

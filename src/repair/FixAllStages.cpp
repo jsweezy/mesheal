@@ -442,11 +442,25 @@ using fixall_detail::shellList;
     const auto considered = static_cast<std::size_t>(std::count_if(
         closed.outcomes.begin(), closed.outcomes.end(),
         [](const HoleFillOutcome& hole) { return hole.skipped != HoleSkipReason::OutOfScope; }));
+    // Cracks whose closing would move a vertex the scope's edge pins (or a face outside the scope)
+    const auto pinnedCracks = static_cast<std::size_t>(std::count_if(
+        closed.outcomes.begin(), closed.outcomes.end(), [](const HoleFillOutcome& hole) {
+            return !hole.closed && std::any_of(hole.attempts.begin(), hole.attempts.end(),
+                                               [](const HoleFillAttempt& a) { return a.outsideScope; });
+        }));
+    const std::string pinnedText =
+        pinnedCracks == 0 ? std::string()
+                          : counted(pinnedCracks, "crack", "cracks") +
+                                (pinnedCracks == 1 ? " would move" : " would each move") +
+                                " a vertex on the selection's edge: left for the hole fill";
     outcome.targetBefore = considered;
     if (!closed.success || closed.holesClosed == 0) {
-        if (considered > 0) {
-            outcome.detail = counted(considered, "crack", "cracks") + " could not be closed: left for the hole fill";
-        }
+        const std::size_t failed = considered - pinnedCracks;
+        outcome.detail = capitalised(joined({failed > 0 ? counted(failed, "crack", "cracks") +
+                                                              " could not be closed: left for the hole fill"
+                                                        : std::string(),
+                                             pinnedText},
+                                            "; "));
         return outcome;
     }
     outcome.changed = true;
@@ -456,8 +470,11 @@ using fixall_detail::shellList;
     outcome.faceMap = std::move(closed.faceMap);
     outcome.detail = "Closed " + counted(closed.holesClosed, "crack", "cracks") + " (max vertex move " +
                      formatLength(outcome.maxMove, mesh.fileUnit) + ")";
-    if (outcome.targetAfter > 0) {
-        outcome.detail += "; " + std::to_string(outcome.targetAfter) + " left for the hole fill";
+    if (outcome.targetAfter > pinnedCracks) {
+        outcome.detail += "; " + std::to_string(outcome.targetAfter - pinnedCracks) + " left for the hole fill";
+    }
+    if (!pinnedText.empty()) {
+        outcome.detail += "; " + pinnedText;
     }
     return outcome;
 }
@@ -490,12 +507,26 @@ using fixall_detail::shellList;
         return outcome;
     }
     bool cancelled = false;
-    const std::vector<Eigen::Index> faces =
+    std::vector<Eigen::Index> faces =
         thinFacesInScope(mesh, context.scope, context.params.checkParams, context.stopToken, cancelled);
     if (cancelled) {
         outcome.cancelled = true;
         return outcome;
     }
+    // Phase 3: only the thin faces the merge made (the union's cut lines), by geometry
+    const auto madeByMerge = [&](const Mesh& now, std::vector<Eigen::Index>& list) {
+        if (context.preMerge == nullptr) {
+            return;
+        }
+        std::vector<std::uint8_t> added(static_cast<std::size_t>(now.numFaces()), 0);
+        for (const Eigen::Index f : faceDiff(*context.preMerge, now).added) {
+            added[static_cast<std::size_t>(f)] = 1;
+        }
+        std::erase_if(list, [&](Eigen::Index f) { return added[static_cast<std::size_t>(f)] == 0; });
+    };
+    madeByMerge(mesh, faces);
+    const char* one = context.preMerge != nullptr ? "cut sliver" : "thin face";
+    const char* many = context.preMerge != nullptr ? "cut slivers" : "thin faces";
     outcome.targetBefore = faces.size();
     if (faces.empty()) {
         return outcome;
@@ -513,7 +544,7 @@ using fixall_detail::shellList;
         return outcome;
     }
     if (!healed.success) {
-        outcome.detail = "None of the " + counted(faces.size(), "thin face", "thin faces") + " could be healed safely";
+        outcome.detail = "None of the " + counted(faces.size(), one, many) + " could be healed safely";
         return outcome;
     }
     if (healed.faceMap.empty()) {
@@ -522,12 +553,13 @@ using fixall_detail::shellList;
     }
     FixAllScope carried = context.scope;
     carried.carry(healed.faceMap, healed.mesh);
-    const std::vector<Eigen::Index> left =
+    std::vector<Eigen::Index> left =
         thinFacesInScope(healed.mesh, carried, context.params.checkParams, context.stopToken, cancelled);
     if (cancelled) {
         outcome.cancelled = true;
         return outcome;
     }
+    madeByMerge(healed.mesh, left);
     for (std::size_t v = 0; v < healed.vertexMap.size(); ++v) {
         const Eigen::Index to = healed.vertexMap[v];
         if (to >= 0) {
@@ -540,7 +572,7 @@ using fixall_detail::shellList;
     outcome.mesh = std::move(healed.mesh);
     outcome.faceMap = std::move(healed.faceMap);
     const std::size_t fixed = faces.size() - std::min(faces.size(), left.size());
-    outcome.detail = "Healed " + std::to_string(fixed) + " of " + counted(faces.size(), "thin face", "thin faces") + " (" +
+    outcome.detail = "Healed " + std::to_string(fixed) + " of " + counted(faces.size(), one, many) + " (" +
                      counted(static_cast<std::size_t>(healed.edgeFlips), "flip", "flips") + ", " +
                      counted(static_cast<std::size_t>(healed.edgeCollapses), "collapse", "collapses") + ")";
     return outcome;
@@ -645,7 +677,167 @@ using fixall_detail::shellList;
     return outcome;
 }
 
+/// Faces of `faces` plus `rings` rings of faces around them (sharing a vertex).
+[[nodiscard]] std::vector<Eigen::Index> withRings(const Mesh& mesh, const std::vector<std::vector<Eigen::Index>>& facesOfVertex,
+                                                 std::vector<Eigen::Index> faces, int rings) {
+    std::vector<std::uint8_t> in(static_cast<std::size_t>(mesh.numFaces()), 0);
+    for (const Eigen::Index f : faces) {
+        in[static_cast<std::size_t>(f)] = 1;
+    }
+    std::size_t front = 0;
+    for (int ring = 0; ring < rings; ++ring) {
+        const std::size_t end = faces.size();
+        for (std::size_t i = front; i < end; ++i) {
+            for (int c = 0; c < 3; ++c) {
+                for (const Eigen::Index g : facesOfVertex[static_cast<std::size_t>(mesh.F(faces[i], c))]) {
+                    if (in[static_cast<std::size_t>(g)] == 0) {
+                        in[static_cast<std::size_t>(g)] = 1;
+                        faces.push_back(g);
+                    }
+                }
+            }
+        }
+        front = end;
+    }
+    return faces;
+}
+
+/// Islands of crossing faces within shells, made of faces in `scope`.
+[[nodiscard]] std::vector<IntersectionIsland> islandsInScope(const Mesh& mesh, const FixAllScope& scope,
+                                                             const CheckParams& params, std::stop_token stopToken,
+                                                             bool& cancelled) {
+    const CategoryResult check = runCategoryCheck(DefectCategory::Intersections, mesh, params, std::move(stopToken));
+    cancelled = check.cancelled;
+    if (cancelled) {
+        return {};
+    }
+    return clusterIntersectionIslands(mesh, check, shellIdsOfFaces(mesh), scope.faceInScope);
+}
+
+[[nodiscard]] std::string islandName(const IntersectionIsland& island) {
+    return "island at face #" + std::to_string(*std::min_element(island.faces.begin(), island.faces.end()));
+}
+
+/// The island step on part of the mesh: an island whose cut (the island plus its rings) would leave the
+/// scope is skipped and reported; so is one whose repair would change a face outside the scope anyway
+/// (the region-growing and self-union fallbacks reach further than the rings).
+[[nodiscard]] FixAllStageOutcome scopedIslandsStage(const Mesh& mesh, const FixAllStageContext& context) {
+    FixAllStageOutcome outcome;
+    const CheckParams& params = context.params.checkParams;
+    const FixAllScope& scope = context.scope;
+    bool cancelled = false;
+    const std::vector<IntersectionIsland> islands = islandsInScope(mesh, scope, params, context.stopToken, cancelled);
+    if (cancelled || context.stopToken.stop_requested()) {
+        outcome.cancelled = true;
+        return outcome;
+    }
+    outcome.targetBefore = islands.size();
+    if (islands.empty()) {
+        return outcome;
+    }
+
+    std::vector<std::vector<Eigen::Index>> facesOfVertex(static_cast<std::size_t>(mesh.numVertices()));
+    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+        for (int c = 0; c < 3; ++c) {
+            facesOfVertex[static_cast<std::size_t>(mesh.F(f, c))].push_back(f);
+        }
+    }
+    std::vector<std::string> skipped;
+    std::vector<const IntersectionIsland*> eligible;
+    std::vector<Eigen::Index> seeds;
+    const int rings = std::max(context.params.islandRepair.dilationRings, 0);
+    for (const IntersectionIsland& island : islands) {
+        const std::vector<Eigen::Index> cut = withRings(mesh, facesOfVertex, island.faces, rings);
+        if (std::all_of(cut.begin(), cut.end(), [&](Eigen::Index f) { return scope.inScope(f); })) {
+            eligible.push_back(&island);
+            seeds.insert(seeds.end(), island.faces.begin(), island.faces.end());
+        } else {
+            skipped.push_back(islandName(island) + " extends beyond the selection");
+        }
+    }
+
+    Mesh current = mesh;
+    std::size_t notRepaired = 0; // eligible islands the healer could not repair
+    if (!eligible.empty()) {
+        IslandBatchResult healed = healIntersectionIslands(mesh, params, scope.faceInScope, seeds,
+                                                           context.params.islandRepair, context.stopToken);
+        if (context.stopToken.stop_requested()) {
+            outcome.cancelled = true;
+            return outcome;
+        }
+        if (!healed.success) {
+            notRepaired = eligible.size();
+        } else if (fixall_detail::outsideScopeKept(mesh, healed.mesh, fixall_detail::faceMapByGeometry(mesh, healed.mesh), scope)) {
+            current = std::move(healed.mesh);
+        } else {
+            // Island by island, keeping each repair that leaves the faces outside the scope alone
+            FixAllScope currentScope = scope;
+            for (const IntersectionIsland* island : eligible) {
+                std::unordered_map<FaceGeometryKey, Eigen::Index, FaceGeometryKeyHash> rowOf;
+                for (Eigen::Index f = 0; f < current.numFaces(); ++f) {
+                    rowOf.emplace(faceGeometryKey(current, f), f);
+                }
+                std::vector<Eigen::Index> faces;
+                for (const Eigen::Index f : island->faces) {
+                    if (const auto it = rowOf.find(faceGeometryKey(mesh, f)); it != rowOf.end()) {
+                        faces.push_back(it->second);
+                    }
+                }
+                if (faces.empty()) {
+                    continue; // repaired with an earlier island
+                }
+                IslandBatchResult one = healIntersectionIslands(current, params, currentScope.faceInScope, faces,
+                                                                context.params.islandRepair, context.stopToken);
+                if (context.stopToken.stop_requested()) {
+                    outcome.cancelled = true;
+                    return outcome;
+                }
+                if (!one.success) {
+                    continue;
+                }
+                const std::vector<Eigen::Index> map = fixall_detail::faceMapByGeometry(current, one.mesh);
+                if (!fixall_detail::outsideScopeKept(current, one.mesh, map, currentScope)) {
+                    skipped.push_back(islandName(*island) + ": its repair would change faces outside the selection");
+                    continue;
+                }
+                currentScope.carry(map, one.mesh);
+                current = std::move(one.mesh);
+            }
+        }
+    }
+
+    const std::string skippedText = joined(skipped, "; ");
+    const std::vector<Eigen::Index> map = fixall_detail::faceMapByGeometry(mesh, current);
+    if (current.numFaces() == mesh.numFaces() && std::find(map.begin(), map.end(), Eigen::Index{-1}) == map.end()) {
+        const std::string none = notRepaired == 0 ? std::string()
+                                                  : "no island could be repaired (" +
+                                                        counted(notRepaired, "island", "islands") + " left)";
+        outcome.detail = capitalised(joined({none, skippedText}, "; "));
+        return outcome;
+    }
+    FixAllScope carried = scope;
+    carried.carry(map, current);
+    const std::vector<IntersectionIsland> left = islandsInScope(current, carried, params, context.stopToken, cancelled);
+    if (cancelled || context.stopToken.stop_requested()) {
+        outcome.cancelled = true;
+        return outcome;
+    }
+    outcome.changed = true;
+    outcome.targetAfter = left.size();
+    outcome.faceMap = map;
+    outcome.mesh = std::move(current);
+    const std::size_t repaired = islands.size() - std::min(islands.size(), left.size());
+    outcome.detail = "Repaired " + std::to_string(repaired) + " of " + counted(islands.size(), "island", "islands");
+    if (!skippedText.empty()) {
+        outcome.detail += "; " + skippedText;
+    }
+    return outcome;
+}
+
 [[nodiscard]] FixAllStageOutcome islandsStage(const Mesh& mesh, const FixAllStageContext& context) {
+    if (!context.scope.everyFace()) {
+        return scopedIslandsStage(mesh, context);
+    }
     FixAllStageOutcome outcome;
     IslandBatchResult healed = healIntersectionIslands(mesh, context.params.checkParams, context.scope.faceInScope, {},
                                                        context.params.islandRepair, context.stopToken);
@@ -728,6 +920,26 @@ std::vector<FixAllStage> fixAllRepairStages() {
     stages.push_back({FixAllStageId::Islands, "Patch intersection islands", "patching intersection islands", heal, {},
                       islandsStage, true});
     stages.push_back({FixAllStageId::OrientAgain, "Orient again", "orienting again", heal, {}, orientStage, false});
+    return stages;
+}
+
+std::vector<FixAllStage> fixAllCleanupStages() {
+    // Progress weights are not used: phase 3 shares its own part of the pass
+    constexpr double quick = settings::kFixAllQuickStageProgressWeight;
+    constexpr double heal = settings::kFixAllHealStageProgressWeight;
+    std::vector<FixAllStage> stages;
+    stages.reserve(7);
+    stages.push_back({FixAllStageId::DropRepeated, "Remove collapsed faces", "removing collapsed faces", quick, {},
+                      dropRepeatedStage, false});
+    stages.push_back({FixAllStageId::Dedupe, "Remove duplicate faces", "removing duplicate faces", quick, {}, dedupeStage, false});
+    stages.push_back({FixAllStageId::SplitTouching, "Split touching contacts", "splitting touching contacts", quick, {},
+                      splitTouchingStage, false});
+    stages.push_back({FixAllStageId::Orient, "Orient", "orienting", quick, {}, orientStage, false});
+    stages.push_back({FixAllStageId::Slivers, "Heal cut slivers", "healing cut slivers", heal, sliversSkipReason,
+                      sliversStage, true});
+    stages.push_back({FixAllStageId::FillHoles, "Fill holes", "filling holes", heal, {}, fillHolesStage, false});
+    stages.push_back({FixAllStageId::Islands, "Patch intersection islands", "patching intersection islands", heal, {},
+                      islandsStage, true});
     return stages;
 }
 

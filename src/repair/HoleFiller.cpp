@@ -1243,6 +1243,7 @@ HoleBatchResult fillHoles(
             }
             if (changedOutsideScope(m)) {
                 ws.rollback(m);
+                attempt.outsideScope = true;
                 attempt.status = "It would change faces outside the scope.";
                 continue;
             }

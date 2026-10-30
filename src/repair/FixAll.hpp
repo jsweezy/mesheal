@@ -195,6 +195,9 @@ struct FixAllStageContext {
     int pass = 1;
     FixAllPhase phase = FixAllPhase::Repair;
     std::stop_token stopToken;
+    /// Phase 3 only: the mesh before the merge. The sliver step then heals only the thin faces the merge
+    /// made (faces not in it, by geometry).
+    const Mesh* preMerge = nullptr;
 };
 
 /// What a stage returns. The engine keeps `mesh` only when `changed` and every guard passes.
@@ -234,6 +237,10 @@ struct FixAllStage {
 /// close cracks, slivers, fill holes, islands, orient again.
 [[nodiscard]] std::vector<FixAllStage> fixAllRepairStages();
 
+/// Phase 3's stages in order, run when phase 2 changed the mesh: drop repeated, dedupe, split touching
+/// (the union's cut lines), orient, heal the thin faces the merge made, fill holes, islands.
+[[nodiscard]] std::vector<FixAllStage> fixAllCleanupStages();
+
 /// The hard guard (or failure) that refused a step.
 enum class FixAllGuard : std::uint8_t {
     None,
@@ -270,6 +277,7 @@ struct FixAllStepReport {
     std::size_t facesRemoved = 0;
     double maxMove = 0.0;
     double elapsedMs = 0.0;
+    double guardMs = 0.0;              ///< Of `elapsedMs`: the scope, cavity and dead-end guards and the deferral counts
 
     [[nodiscard]] bool accepted() const noexcept {
         return status == FixAllStepStatus::Applied;
@@ -339,7 +347,9 @@ private:
     std::string text_;
 };
 
-/// Test hooks: edit a phase's stage list before a pass runs it (remove, replace or insert stages).
+/// Test hooks: edit a phase's stage list before a pass runs it (remove, replace or insert stages). It is
+/// called for phase 1 (`fixAllRepairStages`), phase 2 (no stages yet: a test may insert a merge, e.g. one
+/// that calls `mergeShells`) and phase 3 (`fixAllCleanupStages`, only when phase 2 changed the mesh).
 struct FixAllTestHooks {
     std::function<void(int pass, FixAllPhase phase, std::vector<FixAllStage>& stages)> adjustStages;
 };
