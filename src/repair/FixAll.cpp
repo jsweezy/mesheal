@@ -828,9 +828,12 @@ private:
             report(passFraction(pass, done / total), passText(pass, "phase 2, planning the merge..."));
             MergePlanParams planParams;
             planParams.intersectionTolerance = params_.checkParams.intersectionTolerance;
-            const MergePlan plan = planMerge(mesh_, scope_, planParams, stop_);
+            MergePlan plan = planMerge(mesh_, scope_, planParams, stop_);
             if (!plan.complete || stop_.stop_requested()) {
                 return false;
+            }
+            if (hooks_ != nullptr && hooks_->adjustPlan) {
+                hooks_->adjustPlan(pass, plan);
             }
             planStep(plan, pass);
             merge = fixAllMergeStages(plan);

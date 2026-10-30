@@ -698,3 +698,155 @@ TEST_CASE("Fix All on the Turkey through the app: plan, preview, Apply and undo 
     WARN("Turkey Fix All in the app: plan " << planSeconds << " s, preview " << previewSeconds << " s (run " << runSeconds
                                             << " s), apply " << applySeconds << " s, undo " << undoSeconds << " s");
 }
+
+namespace {
+
+/// Fix All on three overlapping boxes, one of them open, whose hole Fix All may not fill (its fill steps
+/// are hooked off): the open box is left for *Rebuild shell #2...*. Coarse rebuild settings.
+void openFixAllOnOpenBox(AppController& controller) {
+    controller.setMesh(SampleMeshes::createOpenShellAmongCubesMesh(), "Overlapping boxes, one open");
+    auto hooks = std::make_shared<ogun::FixAllTestHooks>();
+    hooks->adjustStages = [](int, ogun::FixAllPhase, std::vector<ogun::FixAllStage>& stages) {
+        std::erase_if(stages, [](const ogun::FixAllStage& s) {
+            return s.id == FixAllStageId::FillHoles || s.id == FixAllStageId::CloseCracks;
+        });
+    };
+    controller.setFixAllTestHooks(hooks);
+    controller.openFixAll(3);
+    ogun::GlobalRepairParams params = controller.globalRepairParams();
+    params.alphaWrapDetail = ogun::settings::kMinAlphaWrapDetail;
+    params.windingResolution = ogun::settings::kMinWindingGridResolution;
+    controller.setGlobalRepairParams(params);
+}
+
+} // namespace
+
+TEST_CASE("Fix All + Rebuild: rows only when asked, Apply is one undo step, undo restores everything",
+          "[app][fixall][rebuild][undo]") {
+    AppController controller;
+    openFixAllOnOpenBox(controller);
+    const Mesh before = controller.mesh();
+    REQUIRE(controller.shells().size() == 3);
+    REQUIRE(controller.fixAllParams().mergeShells); // the boxes overlap: ticked by the plan
+
+    controller.previewFixAll();
+    REQUIRE(controller.fixAllState() == FixAllPanelState::Result);
+    const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+    REQUIRE(candidate != nullptr);
+    REQUIRE(candidate->success);
+    const ogun::FixAllFinalReport& report = candidate->fixAll->result.report;
+    REQUIRE(report.shells.size() == 2);
+    const auto open = std::find_if(report.residue.begin(), report.residue.end(),
+                                   [](const ogun::FixAllShellResidue& r) { return r.suggestion == ogun::FixAllSuggestion::AlphaWrap; });
+    REQUIRE(open != report.residue.end());
+    CHECK(open->shell == 1);
+    // Nothing is rebuilt unless asked
+    CHECK(controller.fixAllRebuilds().empty());
+    CHECK_FALSE(controller.fixAllRebuildShell().has_value());
+
+    controller.rebuildFixAllShell(1);
+    CHECK(controller.fixAllRebuildShell() == 1);
+    const std::vector<ogun::RepairCandidate>& rows = controller.fixAllRebuilds();
+    REQUIRE(rows.size() == ogun::kShellRebuildMethods.size());
+    const ogun::RepairCandidate& wrap = rows.front();
+    REQUIRE(wrap.method == ogun::GlobalRepairMethod::AlphaWrap);
+    REQUIRE(wrap.success);
+    CHECK(wrap.fixAll->rebuild->suggested);
+    CHECK(wrap.fixAll->rebuild->note == "wrapped, then merged");
+    CHECK(AppController::fixAllRebuildUndoLabel(wrap) == "Fix All + Rebuild #2");
+    CHECK(controller.fixAllCandidate() == candidate); // the Fix All row stays
+    // Showing a rebuild row draws it; the mesh is untouched until Apply
+    controller.showFixAllRebuild(ogun::GlobalRepairMethod::AlphaWrap);
+    CHECK(controller.shownGlobalCandidate() == &wrap);
+    controller.showGlobalCandidate(ogun::GlobalRepairMethod::FixAll);
+    CHECK(controller.shownGlobalCandidate() == candidate);
+    controller.showFixAllRebuild(ogun::GlobalRepairMethod::AlphaWrap);
+    CHECK(controller.mesh().F == before.F);
+    CHECK(controller.mesh().V == before.V);
+    CHECK_FALSE(controller.canUndo());
+
+    REQUIRE(controller.applyGlobalRepair()); // the shown row: the rebuild
+    CHECK(controller.lastUndoActionLabel() == "Fix All + Rebuild #2");
+    CHECK(controller.fixAllState() == FixAllPanelState::Report);
+    CHECK(controller.fixAllUndoAvailable());
+    CHECK(controller.shells().size() == 1);
+    CHECK(openEdges(controller.mesh()) == 0);
+    CHECK(controller.fixAllRebuilds().empty());
+    REQUIRE(controller.fixAllShown() != nullptr);
+    CHECK(controller.fixAllShown()->rebuild.has_value());
+    CHECK(controller.statusMessage().starts_with("Applied Fix All + Rebuild #2: Passes: "));
+    for (const DefectCategory category : ogun::kAllDefectCategories) {
+        INFO(ogun::categoryInfo(category).name);
+        const HealthStatus status = controller.healthReport()[category].status;
+        CHECK((status == HealthStatus::Ok || status == HealthStatus::Defects));
+    }
+
+    // One undo step restores the mesh exactly
+    REQUIRE(controller.undoFixAll());
+    CHECK_FALSE(controller.canUndo());
+    CHECK(controller.mesh().F == before.F);
+    CHECK(controller.mesh().V == before.V);
+    CHECK(controller.shells().size() == 3);
+}
+
+TEST_CASE("Fix All + Rebuild: going back to the plan or a new run drops the rebuild rows", "[app][fixall][rebuild]") {
+    AppController controller;
+    openFixAllOnOpenBox(controller);
+    controller.previewFixAll();
+    REQUIRE(controller.fixAllCandidate() != nullptr);
+    // A cavity or a shell that is not there gives a row that says why
+    controller.rebuildFixAllShell(5);
+    REQUIRE(controller.fixAllRebuilds().size() == ogun::kShellRebuildMethods.size());
+    CHECK_FALSE(controller.fixAllRebuilds().front().success);
+    CHECK(controller.fixAllRebuilds().front().statusMessage == "There is no shell #6 in Fix All's result.");
+    CHECK_FALSE(controller.applyFixAllRebuild(ogun::GlobalRepairMethod::AlphaWrap));
+    CHECK_FALSE(controller.canUndo());
+
+    controller.rebuildFixAllShell(1);
+    REQUIRE(controller.fixAllRebuilds().front().success);
+    controller.previewFixAll(); // a new run: its rows are gone
+    CHECK(controller.fixAllRebuilds().empty());
+    controller.rebuildFixAllShell(1);
+    REQUIRE_FALSE(controller.fixAllRebuilds().empty());
+    controller.backToFixAllPlan();
+    CHECK(controller.fixAllRebuilds().empty());
+    CHECK_FALSE(controller.fixAllRebuildShell().has_value());
+    // No Fix All candidate: nothing to rebuild
+    controller.rebuildFixAllShell(1);
+    CHECK(controller.fixAllRebuilds().empty());
+}
+
+TEST_CASE("Fix All + Rebuild in the background: Cancel stops the alpha wrap mid-run", "[app][fixall][rebuild][background]") {
+    AppController controller;
+    openFixAllOnOpenBox(controller);
+    controller.previewFixAll(); // inline
+    REQUIRE(controller.fixAllCandidate() != nullptr);
+    const Mesh before = controller.mesh();
+    controller.setBackgroundChecks(true);
+    // A wrap fine enough to take minutes in Debug; the stop is seen at the wrap's next step once CGAL's
+    // set-up (splitting the input to about 3 alpha, about 2 s here in Debug) is done
+    ogun::GlobalRepairParams params = controller.globalRepairParams();
+    params.alphaWrapDetail = 300.0;
+    controller.setGlobalRepairParams(params);
+
+    controller.rebuildFixAllShell(1);
+    CHECK(controller.fixAllRebuildRunning());
+    CHECK(controller.globalRepairRunning());
+    for (int i = 0; i < 20000 && controller.globalRepairProgress() <= 0.0f; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(200)); // inside the wrap
+    CHECK(controller.globalRepairCurrentMethod() == ogun::GlobalRepairMethod::AlphaWrap);
+    CHECK(controller.fixAllRebuildStatusText().starts_with("Rebuilding #2: alpha wrap (1 of 3)... "));
+
+    const auto start = std::chrono::steady_clock::now();
+    controller.cancelGlobalRepair(); // the status bar's Cancel
+    CHECK(controller.statusMessage() == "Rebuild cancelled: nothing was changed.");
+    controller.waitForFixAll();
+    CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(10));
+    CHECK_FALSE(controller.fixAllRebuildRunning());
+    CHECK(controller.fixAllRebuilds().empty());
+    CHECK(controller.fixAllState() == FixAllPanelState::Result); // the Fix All preview stays
+    CHECK(controller.mesh().F == before.F);
+    CHECK_FALSE(controller.canUndo());
+}

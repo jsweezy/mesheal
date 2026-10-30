@@ -3,6 +3,8 @@
 #include "mesh/Mesh.hpp"
 
 #include <cstddef>
+#include <functional>
+#include <stop_token>
 #include <string>
 
 namespace ogun {
@@ -19,8 +21,11 @@ namespace ogun {
 
 /// `CGAL::alpha_wrap_3` around the triangles: always watertight, 2-manifold and free of crossings,
 /// but a brand-new surface. `alpha` sets the detail (smaller = tighter), `offset` the distance of
-/// the wrap from the input; both in mesh units.
-[[nodiscard]] Mesh alphaWrap(const Mesh& mesh, double alpha, double offset, std::string* statusOut = nullptr);
+/// the wrap from the input; both in mesh units. Cancellable: `stopToken` is polled before every step of
+/// the wrap's flood fill (through CGAL's wrapping visitor); a stopped wrap returns an empty mesh with the
+/// status "Cancelled.". `onStep` (tests) is called with the step number before each poll.
+[[nodiscard]] Mesh alphaWrap(const Mesh& mesh, double alpha, double offset, std::string* statusOut = nullptr,
+                             std::stop_token stopToken = {}, const std::function<void(std::size_t)>& onStep = {});
 
 /// Marching cubes of the generalized winding number (w = 0.5) of the input on a regular grid with
 /// `resolution` cells along the longest side. A new surface that unions overlapping parts and

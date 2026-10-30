@@ -9,6 +9,7 @@
 #include "io/SampleMeshes.hpp"
 #include "io/StlReader.hpp"
 #include "repair/FixAll.hpp"
+#include "repair/GlobalRepair.hpp"
 #include "repair/RepairMetrics.hpp"
 #include "repair/ShellMerge.hpp"
 
@@ -1464,4 +1465,189 @@ TEST_CASE("Fix All on the Turkey with the merge on: its group is refused; withou
     for (const ogun::FixAllShellResidue& r : merged.report.residue) {
         CHECK(r.suggestion == ogun::FixAllSuggestion::None); // thin faces only
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Rebuild shell #k...: per-shell rebuild rows built on a Fix All result (never run unless asked)
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+
+using ogun::GlobalRepairMethod;
+using ogun::RepairCandidate;
+
+/// Fix All through the Repair All entry point (the candidate a rebuild row builds on).
+ogun::GlobalRepairParams rebuildParams(bool merge) {
+    ogun::GlobalRepairParams params;
+    params.fixAll.mergeShells = merge;
+    params.holeSettings.maxHoleEdges = 3; // the open box's 4-edge hole stays open
+    params.alphaWrapDetail = ogun::settings::kMinAlphaWrapDetail; // coarse rebuilds keep the tests fast
+    params.windingResolution = ogun::settings::kMinWindingGridResolution;
+    return params;
+}
+
+const RepairCandidate& row(const std::vector<RepairCandidate>& rows, GlobalRepairMethod method) {
+    const auto it = std::find_if(rows.begin(), rows.end(), [&](const RepairCandidate& c) { return c.method == method; });
+    REQUIRE(it != rows.end());
+    return *it;
+}
+
+} // namespace
+
+TEST_CASE("Rebuild shell: a shell Fix All left open is wrapped and merged; a rebuild that stays open is not",
+          "[repair][fixall][rebuild]") {
+    const Mesh mesh = SampleMeshes::createOpenShellAmongCubesMesh();
+    const ogun::GlobalRepairParams params = rebuildParams(true);
+    const RepairCandidate fixAll = ogun::runGlobalRepair(mesh, {}, GlobalRepairMethod::FixAll, params);
+    REQUIRE(fixAll.success);
+    REQUIRE(fixAll.fixAll != nullptr);
+    // No rebuild runs unless asked: Fix All leaves the open box as it was and only suggests a wrap
+    const ogun::FixAllFinalReport& report = fixAll.fixAll->result.report;
+    REQUIRE(report.shells.size() == 2);
+    CHECK_FALSE(fixAll.fixAll->rebuild.has_value());
+    CHECK(fixAll.metrics.openEdgesAfter == 4);
+    const auto open = std::find_if(report.residue.begin(), report.residue.end(),
+                                   [](const ogun::FixAllShellResidue& r) { return r.shell == 1; });
+    REQUIRE(open != report.residue.end());
+    CHECK(open->suggestion == FixAllSuggestion::AlphaWrap);
+    const Mesh body = withoutShells(fixAll.mesh, {1});
+
+    const std::vector<RepairCandidate> rows = ogun::computeShellRebuildCandidates(mesh, {}, fixAll, 1, params);
+    REQUIRE(rows.size() == ogun::kShellRebuildMethods.size());
+    CHECK(rows[0].method == GlobalRepairMethod::AlphaWrap);
+
+    {   // Alpha wrap (suggested): closes the box, merges it into the body and cleans up
+        const RepairCandidate& wrap = row(rows, GlobalRepairMethod::AlphaWrap);
+        REQUIRE(wrap.success);
+        REQUIRE(wrap.fixAll != nullptr);
+        REQUIRE(wrap.fixAll->rebuild.has_value());
+        const ogun::FixAllShellRebuild& rebuild = *wrap.fixAll->rebuild;
+        CHECK(rebuild.base == fixAll.fixAll);
+        CHECK(rebuild.shell == 1);
+        CHECK(rebuild.suggested);
+        CHECK(rebuild.closed);
+        CHECK(rebuild.merged);
+        CHECK(rebuild.label == "+ Alpha wrap #2");
+        CHECK(rebuild.note == "wrapped, then merged");
+        CHECK(shellCount(wrap.mesh) == 1);
+        CHECK(wrap.metrics.shellsBefore == 3);
+        CHECK(wrap.metrics.shellsAfter == 1);
+        CHECK(wrap.metrics.openEdgesBefore == fixAll.metrics.openEdgesBefore);
+        CHECK(wrap.metrics.openEdgesAfter == 0);
+        CHECK(wrap.metrics.nonManifoldEdgesAfter == 0);
+        CHECK(wrap.metrics.intersectingFacesAfter == 0);
+        CHECK(wrap.statusMessage.starts_with("Alpha wrap #2: wrapped, then merged. "));
+        CHECK(wrap.fixAll->faceShell.size() == static_cast<std::size_t>(wrap.mesh.numFaces()));
+        // Its pass merged only the wrapped shell's group, and phase 1 did not run
+        const ogun::FixAllResult& pass = wrap.fixAll->result;
+        CHECK(pass.passesRun == 1);
+        CHECK(std::none_of(pass.steps.begin(), pass.steps.end(),
+                           [](const FixAllStepReport& step) { return step.phase == FixAllPhase::Repair; }));
+        CHECK(mergeStepsKept(pass, 1) == 1);
+        CHECK(phaseSteps(pass, FixAllPhase::Cleanup, 1) > 0);
+    }
+    {   // Self-union of an open box stays open: not merged, the body kept exactly
+        const RepairCandidate& unite = row(rows, GlobalRepairMethod::SelfUnion);
+        if (unite.success) {
+            const ogun::FixAllShellRebuild& rebuild = *unite.fixAll->rebuild;
+            CHECK_FALSE(rebuild.suggested);
+            CHECK_FALSE(rebuild.closed);
+            CHECK_FALSE(rebuild.merged);
+            CHECK(rebuild.note.starts_with("still open ("));
+            CHECK(rebuild.note.ends_with("): not merged"));
+            CHECK(keeps(unite.mesh, body));
+            CHECK(unite.metrics.shellsAfter == 2);
+            CHECK(unite.metrics.openEdgesAfter > 0);
+        } else {
+            CHECK(unite.statusMessage.starts_with("Self-union of #2 produced no mesh"));
+        }
+    }
+    {   // Winding rebuild: closed, so merged too
+        const RepairCandidate& winding = row(rows, GlobalRepairMethod::WindingRebuild);
+        REQUIRE(winding.success);
+        const ogun::FixAllShellRebuild& rebuild = *winding.fixAll->rebuild;
+        CHECK(rebuild.closed);
+        CHECK(rebuild.merged);
+        CHECK(rebuild.note == "rebuilt, then merged");
+        CHECK(rebuild.label == "+ Winding-number rebuild #2");
+        CHECK(winding.metrics.shellsAfter == 1);
+    }
+    {   // A stopped rebuild returns nothing
+        std::stop_source source;
+        source.request_stop();
+        const RepairCandidate stopped =
+            ogun::computeShellRebuildCandidate(mesh, {}, fixAll, 1, GlobalRepairMethod::AlphaWrap, params, source.get_token());
+        CHECK(stopped.cancelled);
+        CHECK_FALSE(stopped.success);
+        CHECK(ogun::computeShellRebuildCandidates(mesh, {}, fixAll, 1, params, source.get_token()).empty());
+    }
+    {   // A shell that is not there, or a Fix All candidate that is not one, is refused
+        const RepairCandidate none = ogun::computeShellRebuildCandidate(mesh, {}, fixAll, 7, GlobalRepairMethod::AlphaWrap, params);
+        CHECK_FALSE(none.success);
+        CHECK(none.statusMessage == "There is no shell #8 in Fix All's result.");
+        const RepairCandidate notFixAll = ogun::runGlobalRepair(mesh, {}, GlobalRepairMethod::WindingRebuild, params);
+        CHECK(ogun::computeShellRebuildCandidate(mesh, {}, notFixAll, 0, GlobalRepairMethod::AlphaWrap, params).statusMessage ==
+              "Preview Fix All first: a rebuild row builds on its result.");
+    }
+}
+
+TEST_CASE("Rebuild shell: with the merge off, the wrapped shell is closed but not merged", "[repair][fixall][rebuild]") {
+    const Mesh mesh = SampleMeshes::createOpenShellAmongCubesMesh();
+    const ogun::GlobalRepairParams off = rebuildParams(false);
+    const RepairCandidate fixAllOff = ogun::runGlobalRepair(mesh, {}, GlobalRepairMethod::FixAll, off);
+    REQUIRE(fixAllOff.success);
+    const auto& shells = fixAllOff.fixAll->result.report.shells;
+    REQUIRE(shells.size() == 3);
+    // The open box is the smallest shell, #3
+    const RepairCandidate wrap =
+        ogun::computeShellRebuildCandidate(mesh, {}, fixAllOff, 2, GlobalRepairMethod::AlphaWrap, off);
+    REQUIRE(wrap.success);
+    CHECK(wrap.fixAll->rebuild->closed);
+    CHECK_FALSE(wrap.fixAll->rebuild->merged);
+    CHECK(wrap.fixAll->rebuild->note == "wrapped; the merge is off");
+    CHECK(wrap.metrics.shellsAfter == 3);
+    CHECK(wrap.metrics.openEdgesAfter == 0);
+    CHECK(keeps(wrap.mesh, withoutShells(fixAllOff.mesh, {2})));
+}
+
+TEST_CASE("Rebuild shell: a cavity is never in a rebuild's input and stays in every row", "[repair][fixall][rebuild][cavity]") {
+    // Fixture 2: A and B merged around the cavity of A
+    const Mesh mesh = SampleMeshes::createOverlapPlusCavityMesh();
+    const ogun::GlobalRepairParams params = rebuildParams(true);
+    const RepairCandidate fixAll = ogun::runGlobalRepair(mesh, {}, GlobalRepairMethod::FixAll, params);
+    REQUIRE(fixAll.success);
+    const ogun::FixAllFinalReport& report = fixAll.fixAll->result.report;
+    REQUIRE(report.shells.size() == 2);
+    REQUIRE(report.cavitiesKept == std::vector<int>{1});
+    const Mesh cavity = withoutShells(fixAll.mesh, {0});
+    REQUIRE(ogun::signedVolume(cavity) == Catch::Approx(-4.0));
+
+    // Rebuilding the merged body: the cavity, its own shell, is kept bit-identical in every row
+    for (const RepairCandidate& rebuilt : ogun::computeShellRebuildCandidates(mesh, {}, fixAll, 0, params)) {
+        INFO(ogun::globalRepairMethodLabel(rebuilt.method));
+        REQUIRE(rebuilt.success);
+        CHECK(keeps(rebuilt.mesh, cavity));
+        CHECK(shellCount(rebuilt.mesh) == 2);
+        CHECK(rebuilt.fixAll->result.report.cavitiesKept.size() == 1);
+        CHECK(rebuilt.fixAll->rebuild->note.ends_with("; it overlaps no other shell, so there is nothing to merge"));
+    }
+    // Rebuilding the cavity itself is refused: it would fill the hollow
+    const RepairCandidate refused = ogun::computeShellRebuildCandidate(mesh, {}, fixAll, 1, GlobalRepairMethod::AlphaWrap, params);
+    CHECK_FALSE(refused.success);
+    CHECK(refused.statusMessage == "#2 is a cavity, a hollow kept on purpose: rebuilding it would fill the hollow.");
+}
+
+TEST_CASE("Rebuild side: an alpha wrap of the scope would fill the cavities in it", "[repair][fixall][rebuild][cavity]") {
+    const Mesh cavityBox = SampleMeshes::createCavityBoxMesh();
+    CHECK(ogun::cavitiesFilledByRebuild(cavityBox, {}) == std::vector<int>{1});
+    // Only the outer box selected: the cavity is not in the scope
+    CHECK(ogun::cavitiesFilledByRebuild(cavityBox, shellScope(cavityBox, {0}).faceInScope)->empty());
+    CHECK(ogun::cavitiesFilledByRebuild(cavityBox, shellScope(cavityBox, {0, 1}).faceInScope) == std::vector<int>{1});
+    CHECK(ogun::cavitiesFilledByRebuild(SampleMeshes::createOverlapPlusCavityMesh(), {}) == std::vector<int>{2});
+    // Inside out, the inner box is no cavity; a plain box has none
+    CHECK(ogun::cavitiesFilledByRebuild(SampleMeshes::createCavityBoxMesh(true), {})->empty());
+    CHECK(ogun::cavitiesFilledByRebuild(box({0, 0, 0}, {1, 1, 1}), {})->empty());
+    std::stop_source source;
+    source.request_stop();
+    CHECK_FALSE(ogun::cavitiesFilledByRebuild(cavityBox, {}, ogun::settings::kDefaultIntersectionTolerance, source.get_token()));
 }

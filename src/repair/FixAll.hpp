@@ -502,12 +502,17 @@ private:
     std::string text_;
 };
 
-/// Test hooks: edit a phase's stage list before a pass runs it (remove, replace or insert stages). It is
-/// called for phase 1 (`fixAllRepairStages`), phase 2 (`fixAllMergeStages` of the pass's merge plan, or
-/// none when the merge is off: a test may insert its own) and phase 3 (`fixAllCleanupStages`, only when
-/// phase 2 changed the mesh).
+struct MergePlan;
+
+/// Hooks for tests and for the per-shell rebuild (which runs phases 2 and 3 only). `adjustStages` edits a
+/// phase's stage list before a pass runs it (remove, replace or insert stages). It is called for phase 1
+/// (`fixAllRepairStages`), phase 2 (`fixAllMergeStages` of the pass's merge plan, or none when the merge
+/// is off: a test may insert its own) and phase 3 (`fixAllCleanupStages`, only when phase 2 changed the
+/// mesh). `adjustPlan` edits the pass's merge plan (worked out on phase 1's result) before it is recorded
+/// and turned into phase 2's stages, e.g. to keep only the groups of some shells.
 struct FixAllTestHooks {
     std::function<void(int pass, FixAllPhase phase, std::vector<FixAllStage>& stages)> adjustStages;
+    std::function<void(int pass, MergePlan& plan)> adjustPlan;
 };
 
 /// Runs Fix All on `scope` of `mesh`. Never changes faces outside the scope. A cancelled run returns

@@ -10,6 +10,7 @@ add_executable(ogun_repair_tests
     RepairMetricsTests.cpp
     ShellMergeTests.cpp
     SliverHealerTests.cpp
+    SurfaceRebuildTests.cpp
     TopologyCleanupTests.cpp
 )
 

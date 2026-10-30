@@ -1391,6 +1391,44 @@ public:
     /// *Flip all / Flip it*: reverses those shells of the current mesh (one undo step; drops a candidate).
     bool fixAllFlipShells(std::span<const int> reportShells);
 
+    // *Rebuild shell #k...* (step 19; never run unless asked): rebuild rows built on the Fix All candidate
+
+    /// Computes, in the background, the rebuild rows of shell `reportShell` of the Fix All candidate's
+    /// result (`report.shells` index, #(reportShell + 1)): alpha wrap (suggested), self-union and the
+    /// winding rebuild of only that shell, each merged and cleaned up when the merge is on
+    /// (`computeShellRebuildCandidate`). The candidate's settings are used, with the rebuild settings of
+    /// the panel (alpha wrap detail and offset, winding grid, simplify). Replaces earlier rebuild rows.
+    /// Does nothing without a Fix All candidate or while a job runs.
+    void rebuildFixAllShell(int reportShell);
+    /// The rebuild rows of the current Fix All candidate, in `kShellRebuildMethods` order (alpha wrap first).
+    [[nodiscard]] const std::vector<RepairCandidate>& fixAllRebuilds() const noexcept {
+        return fixAllRebuilds_;
+    }
+    /// The shell the rebuild rows are for (report numbering), if any were asked for.
+    [[nodiscard]] std::optional<int> fixAllRebuildShell() const noexcept {
+        return fixAllRebuildShell_;
+    }
+    /// The rebuild rows are being computed (until the job has ended, also while cancelling).
+    [[nodiscard]] bool fixAllRebuildRunning() const noexcept {
+        return fixAllRebuildJob_ && repairRunner_.busy();
+    }
+    /// "Rebuilding #12: alpha wrap (1 of 3)... 40 %" (empty when not running).
+    [[nodiscard]] std::string fixAllRebuildStatusText() const;
+    /// Stops the rebuild job without waiting: an alpha wrap stops at its next step (CGAL's wrapping visitor),
+    /// a union or a merge finishes first; nothing it computes is kept.
+    void cancelFixAllRebuild();
+    /// Draws rebuild row `method` in 3D (`shownGlobalCandidate` returns it until another row is shown).
+    void showFixAllRebuild(GlobalRepairMethod method);
+    /// Applies rebuild row `method` (Fix All plus the rebuild of the shell and its merge) as **one** undo
+    /// step, "Fix All + Rebuild #12", the same way as `applyFixAll` (health, selection, Report). False
+    /// (nothing changed) without that row.
+    bool applyFixAllRebuild(GlobalRepairMethod method);
+    /// The undo label of rebuild row `candidate`: "Fix All + Rebuild #12" ("Fix All (one pass) + Rebuild #12").
+    [[nodiscard]] static std::string fixAllRebuildUndoLabel(const RepairCandidate& candidate);
+    /// The Rebuild side's warning: Shells-panel indices of the cavities (rule O) in Fix All's scope that an
+    /// alpha wrap of the whole scope would fill ("cavity #2 will be filled"). Worked out on the main thread.
+    [[nodiscard]] std::vector<int> fixAllRebuildFilledCavities() const;
+
     /// Tests: stage hooks for the next runs (null: none).
     void setFixAllTestHooks(std::shared_ptr<const FixAllTestHooks> hooks) {
         fixAllHooks_ = std::move(hooks);
@@ -1555,6 +1593,7 @@ private:
     bool pollRepairJobs();
     void queueGlobalRepairs(std::vector<GlobalRepairMethod> methods, bool fixAllOnePass = false);
     void storeCandidate(RepairCandidate candidate);
+    void storeFixAllRebuild(RepairCandidate candidate);
     /// Copies the tools' current settings (thresholds, holes, islands) into `globalParams_`.
     void refreshGlobalParams();
 
@@ -1572,6 +1611,10 @@ private:
     bool pollFixAll();
     /// Forgets the plan, the applied run, the user's merge click and the hooks' job (panel closed, new mesh).
     void resetFixAllState();
+    /// Apply of a Fix All or rebuild row: one undo step `label`, health, selection, Report.
+    bool applyFixAllRow(RepairCandidate& row, const std::string& label);
+    /// Drops the rebuild rows (and stops their job).
+    void clearFixAllRebuilds();
     /// Installs `results` as the Mesh Health rows of the current mesh (the rest re-run or turn Stale).
     void installHealthReport(std::vector<CategoryResult> results);
 
@@ -1695,6 +1738,10 @@ private:
     std::string fixAllCancelText_;
     std::optional<FixAllApplied> fixAllApplied_;
     std::shared_ptr<const FixAllTestHooks> fixAllHooks_;
+    std::vector<RepairCandidate> fixAllRebuilds_;     ///< Rebuild rows of the current Fix All candidate
+    std::optional<int> fixAllRebuildShell_;           ///< Their shell (report numbering)
+    std::optional<GlobalRepairMethod> shownRebuild_;  ///< A rebuild row is drawn instead of `shownCandidate_`
+    bool fixAllRebuildJob_ = false;                   ///< The repair runner's job computes rebuild rows
 
     // Mesh > Transform > Translate / Rotate
     MeshTransform transform_{};

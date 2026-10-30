@@ -22,6 +22,7 @@
 #include <cmath>
 #include <cstdio>
 #include <exception>
+#include <functional>
 #include <numeric>
 #include <unordered_map>
 #include <vector>
@@ -123,6 +124,24 @@ std::vector<std::size_t> soupPatches(const Soup& soup, std::size_t& numPatches) 
     return patch;
 }
 
+/// Lets a stop token end an alpha wrap: CGAL's wrapper asks its visitor `go_further()` before every step
+/// of its flood fill (`CGAL/Alpha_wrap_3/internal/Alpha_wrap_3.h`, `alpha_flood_fill`). After a stop
+/// the wrapper still makes its partial wrap manifold and extracts it (cheap); the caller drops it.
+struct AlphaWrapStopVisitor : CGAL::Alpha_wraps_3::internal::Wrapping_default_visitor {
+    std::stop_token stopToken;
+    const std::function<void(std::size_t)>* onStep = nullptr;
+    std::size_t steps = 0;
+
+    template <typename Wrapper>
+    bool go_further(const Wrapper&) {
+        if (onStep != nullptr && *onStep) {
+            (*onStep)(steps);
+        }
+        ++steps;
+        return !stopToken.stop_requested();
+    }
+};
+
 } // namespace
 
 Mesh selfUnion(const Mesh& mesh, std::string* statusOut) {
@@ -209,7 +228,8 @@ Mesh selfUnion(const Mesh& mesh, std::string* statusOut) {
     return result;
 }
 
-Mesh alphaWrap(const Mesh& mesh, double alpha, double offset, std::string* statusOut) {
+Mesh alphaWrap(const Mesh& mesh, double alpha, double offset, std::string* statusOut, std::stop_token stopToken,
+               const std::function<void(std::size_t)>& onStep) {
     if (mesh.empty() || !(alpha > 0.0) || !(offset > 0.0)) {
         setStatus(statusOut, "Alpha wrap needs a mesh and positive alpha / offset.");
         return {};
@@ -217,10 +237,17 @@ Mesh alphaWrap(const Mesh& mesh, double alpha, double offset, std::string* statu
     const std::vector<CgalPoint3> points = toPoints(mesh);
     const Soup soup = toSoup(mesh);
     CgalSurfaceMesh wrap;
+    AlphaWrapStopVisitor visitor;
+    visitor.stopToken = stopToken;
+    visitor.onStep = &onStep;
     try {
-        CGAL::alpha_wrap_3(points, soup, alpha, offset, wrap);
+        CGAL::alpha_wrap_3(points, soup, alpha, offset, wrap, CGAL::parameters::visitor(std::ref(visitor)));
     } catch (const std::exception& e) {
         setStatus(statusOut, std::string("Alpha wrap failed: ") + e.what());
+        return {};
+    }
+    if (stopToken.stop_requested()) {
+        setStatus(statusOut, "Cancelled.");
         return {};
     }
     std::array<char, 96> text{};

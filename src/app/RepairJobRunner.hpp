@@ -25,12 +25,17 @@ struct RepairRequest {
     GlobalRepairParams params{};
     FixAllScopeKind fixAllScopeKind = FixAllScopeKind::Whole; ///< Fix All: what `faceInScope` is (faces or whole shells)
     std::shared_ptr<const FixAllTestHooks> fixAllHooks;        ///< Fix All: tests only
+    /// *Rebuild shell #k...*: the Fix All candidate computed on `mesh` with `faceInScope`; each method is
+    /// then a rebuild row of shell `rebuildShell` (`computeShellRebuildCandidate`) instead of a whole-scope run.
+    std::shared_ptr<const RepairCandidate> rebuildBase;
+    int rebuildShell = -1;
 };
 
 /// A finished candidate with the mesh generation it was computed for.
 struct FinishedCandidate {
     std::uint64_t meshGeneration = 0;
     RepairCandidate candidate;
+    bool rebuildRow = false; ///< A row of *Rebuild shell #k...* (the request had a `rebuildBase`)
 };
 
 /// Runs global repairs on a `std::jthread` (the same pattern as `HealthCheckRunner`): finished

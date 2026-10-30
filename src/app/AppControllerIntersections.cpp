@@ -255,6 +255,7 @@ void AppController::queueGlobalRepairs(std::vector<GlobalRepairMethod> methods, 
     }
     if (backgroundChecks_) {
         repairRunner_.start(std::move(request));
+        fixAllRebuildJob_ = false;
         fixAllJobRunning_ = fixAll;
         fixAllCancelling_ = false;
         postStatusMessage(fixAll ? "Fix All: checking the mesh..." : "Computing Repair All preview...");
@@ -269,6 +270,10 @@ void AppController::queueGlobalRepairs(std::vector<GlobalRepairMethod> methods, 
 void AppController::cancelGlobalRepair() {
     if (fixAllJobRunning_) {
         cancelFixAll();
+        return;
+    }
+    if (fixAllRebuildJob_) {
+        cancelFixAllRebuild();
         return;
     }
     repairRunner_.cancel();
@@ -313,30 +318,47 @@ bool AppController::pollRepairJobs() {
     std::vector<FinishedCandidate> finished = repairRunner_.takeFinished();
     bool changed = false;
     for (FinishedCandidate& f : finished) {
-        if (f.meshGeneration == meshGeneration_ && repairAllOpen()) {
-            storeCandidate(std::move(f.candidate));
-            changed = true;
+        if (f.meshGeneration != meshGeneration_ || !repairAllOpen()) {
+            continue;
         }
+        if (f.rebuildRow) {
+            storeFixAllRebuild(std::move(f.candidate));
+        } else {
+            storeCandidate(std::move(f.candidate));
+        }
+        changed = true;
     }
     return changed;
 }
 
 void AppController::discardGlobalCandidates() {
-    if (fixAllJobRunning_ || repairRunner_.stopping()) {
-        // A Fix All run may be inside a Manifold union: do not wait for it, just drop what it finds
+    if (fixAllJobRunning_ || fixAllRebuildJob_ || repairRunner_.stopping()) {
+        // A Fix All run (or a rebuild row's merge) may be inside a Manifold union: do not wait for it,
+        // just drop what it finds
         repairRunner_.requestStop();
         fixAllJobRunning_ = false;
         fixAllCancelling_ = false;
     } else {
         repairRunner_.cancel();
     }
+    fixAllRebuildJob_ = false;
     fixAllPreviewQueued_.reset();
     (void)repairRunner_.takeFinished();
     globalCandidates_.clear();
     shownCandidate_.reset();
+    fixAllRebuilds_.clear();
+    fixAllRebuildShell_.reset();
+    shownRebuild_.reset();
 }
 
 const RepairCandidate* AppController::shownGlobalCandidate() const noexcept {
+    if (shownRebuild_) {
+        const auto it = std::find_if(fixAllRebuilds_.begin(), fixAllRebuilds_.end(),
+                                     [&](const RepairCandidate& c) { return c.method == *shownRebuild_; });
+        if (it != fixAllRebuilds_.end()) {
+            return &*it;
+        }
+    }
     if (!shownCandidate_) {
         return nullptr;
     }
@@ -346,6 +368,7 @@ const RepairCandidate* AppController::shownGlobalCandidate() const noexcept {
 }
 
 void AppController::showGlobalCandidate(GlobalRepairMethod method) {
+    shownRebuild_.reset();
     globalMethod_ = method;
     setGlobalRepairMethod(method);
 }
@@ -361,6 +384,9 @@ bool AppController::applyGlobalRepair() {
     if (candidate == nullptr || !candidate->success) {
         lastRepairStatusMessage_ = "Preview a Repair All method first.";
         return false;
+    }
+    if (candidate->fixAll != nullptr && candidate->fixAll->rebuild) {
+        return applyFixAllRebuild(candidate->method);
     }
     if (candidate->method == GlobalRepairMethod::FixAll) {
         return applyFixAll();

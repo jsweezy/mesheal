@@ -297,7 +297,8 @@ void AppController::runFixAllOneMorePass() {
 }
 
 void AppController::startFixAllRun(bool onePass) {
-    // The new run replaces the shown Fix All candidate
+    // The new run replaces the shown Fix All candidate and the rebuild rows built on it
+    clearFixAllRebuilds();
     globalCandidates_.erase(std::remove_if(globalCandidates_.begin(), globalCandidates_.end(),
                                            [](const RepairCandidate& c) { return c.method == GlobalRepairMethod::FixAll; }),
                             globalCandidates_.end());
@@ -368,6 +369,10 @@ bool AppController::pollFixAll() {
         const bool onePass = *fixAllPreviewQueued_;
         fixAllPreviewQueued_.reset();
         startFixAllRun(onePass);
+        changed = true;
+    }
+    if (fixAllRebuildJob_ && !repairRunner_.busy()) {
+        fixAllRebuildJob_ = false;
         changed = true;
     }
     if (fixAllJobRunning_ && !repairRunner_.busy()) {
@@ -465,6 +470,7 @@ bool AppController::applyFixAll() {
     const bool sameChecks = sameThresholds(it->params.checkParams, checkParams());
     if (!result.changed) {
         // Nothing to undo: keep the mesh, take the run's check as its report
+        clearFixAllRebuilds();
         globalCandidates_.erase(it);
         shownCandidate_.reset();
         if (sameChecks) {
@@ -476,10 +482,17 @@ bool AppController::applyFixAll() {
         postStatusMessage(lastRepairStatusMessage_);
         return true;
     }
-    Mesh repaired = std::move(it->mesh);
+    return applyFixAllRow(*it, label);
+}
+
+bool AppController::applyFixAllRow(RepairCandidate& row, const std::string& label) {
+    const std::shared_ptr<const FixAllCandidate> run = row.fixAll;
+    const FixAllResult& result = run->result;
+    const bool sameChecks = sameThresholds(row.params.checkParams, checkParams());
+    Mesh repaired = std::move(row.mesh);
 
     pushUndoEntry(label);
-    replaceMeshPreservingHistory(std::move(repaired)); // also drops the candidates
+    replaceMeshPreservingHistory(std::move(repaired)); // also drops the candidates (and `row`)
     modified_ = true;
     installHealthReport(sameChecks ? result.report.health : std::vector<CategoryResult>{});
 
@@ -530,7 +543,13 @@ bool AppController::applyFixAll() {
 
     fixAllApplied_ = FixAllApplied{run,       label, undoStack_.size(), meshGeneration_, run->scopeKind, shells_.revision(),
                                    faceSelectionGeneration_};
-    lastRepairStatusMessage_ = "Applied " + label + ": " + result.report.passesLine + ". " + result.report.shellsLine + ".";
+    if (run->rebuild) {
+        const FixAllShellRebuild& rebuild = *run->rebuild;
+        lastRepairStatusMessage_ = "Applied " + label + ": " + rebuild.base->result.report.passesLine + "; #" +
+                                   std::to_string(rebuild.shell + 1) + " " + rebuild.note + ". " + result.report.leftLine;
+    } else {
+        lastRepairStatusMessage_ = "Applied " + label + ": " + result.report.passesLine + ". " + result.report.shellsLine + ".";
+    }
     postStatusMessage(lastRepairStatusMessage_);
     return true;
 }
@@ -633,6 +652,151 @@ void AppController::fixAllShowShells(std::span<const int> reportShells) {
 bool AppController::fixAllFlipShells(std::span<const int> reportShells) {
     const std::vector<int> shells = fixAllShellsInCurrentMesh(reportShells);
     return !shells.empty() && flipShells(shells);
+}
+
+// -----------------------------------------------------------------------------
+// Rebuild shell #k...: rebuild rows built on the Fix All candidate
+// -----------------------------------------------------------------------------
+
+void AppController::clearFixAllRebuilds() {
+    if (fixAllRebuildJob_) {
+        repairRunner_.requestStop(); // a rebuild row's merge may be inside a Manifold union: do not wait
+        fixAllRebuildJob_ = false;
+    }
+    fixAllRebuilds_.clear();
+    fixAllRebuildShell_.reset();
+    shownRebuild_.reset();
+}
+
+void AppController::rebuildFixAllShell(int reportShell) {
+    const RepairCandidate* candidate = fixAllCandidate();
+    if (!fixAllOpen() || candidate == nullptr || !candidate->success || candidate->fixAll == nullptr ||
+        fixAllRunning() || fixAllRebuildRunning() || repairRunner_.busy()) {
+        return;
+    }
+    clearFixAllRebuilds();
+    fixAllRebuildShell_ = reportShell;
+    // The run's settings, with the panel's rebuild settings
+    GlobalRepairParams params = candidate->params;
+    params.alphaWrapDetail = globalParams_.alphaWrapDetail;
+    params.alphaWrapOffsetRatio = globalParams_.alphaWrapOffsetRatio;
+    params.windingResolution = globalParams_.windingResolution;
+    params.simplifyRebuild = globalParams_.simplifyRebuild;
+    FixAllScopeKind kind = FixAllScopeKind::Whole;
+    std::vector<std::uint8_t> mask = fixAllScopeMask(kind);
+
+    if (backgroundChecks_) {
+        RepairRequest request;
+        request.meshGeneration = meshGeneration_;
+        request.mesh = std::make_shared<const Mesh>(mesh_);
+        request.faceInScope = std::move(mask);
+        request.fixAllScopeKind = kind;
+        request.methods.assign(kShellRebuildMethods.begin(), kShellRebuildMethods.end());
+        request.params = params;
+        request.rebuildBase = std::make_shared<const RepairCandidate>(*candidate);
+        request.rebuildShell = reportShell;
+        repairRunner_.start(std::move(request));
+        fixAllRebuildJob_ = true;
+        postStatusMessage("Rebuilding #" + std::to_string(reportShell + 1) + "...");
+        return;
+    }
+    const RepairCandidate base = *candidate; // the rows are stored next to it
+    for (const GlobalRepairMethod method : kShellRebuildMethods) {
+        storeFixAllRebuild(computeShellRebuildCandidate(mesh_, mask, base, reportShell, method, params));
+    }
+}
+
+void AppController::storeFixAllRebuild(RepairCandidate candidate) {
+    const RepairCandidate* fixAll = fixAllCandidate();
+    if (fixAll == nullptr || !fixAllRebuildShell_) {
+        return; // the Fix All candidate is gone: its rebuild rows with it
+    }
+    if (candidate.success && (candidate.fixAll == nullptr || !candidate.fixAll->rebuild ||
+                              candidate.fixAll->rebuild->base != fixAll->fixAll)) {
+        return; // built on another Fix All run
+    }
+    const std::string number = "#" + std::to_string(*fixAllRebuildShell_ + 1);
+    if (candidate.success) {
+        postStatusMessage("Rebuild of " + number + " by " + globalRepairMethodLabel(candidate.method) + " ready.");
+    } else {
+        postStatusMessage(std::string(globalRepairMethodLabel(candidate.method)) + " of " + number + ": " + candidate.statusMessage,
+                          true);
+    }
+    const GlobalRepairMethod method = candidate.method;
+    const auto it = std::find_if(fixAllRebuilds_.begin(), fixAllRebuilds_.end(),
+                                 [&](const RepairCandidate& c) { return c.method == method; });
+    if (it != fixAllRebuilds_.end()) {
+        *it = std::move(candidate);
+        return;
+    }
+    fixAllRebuilds_.push_back(std::move(candidate));
+    const auto order = [](GlobalRepairMethod m) {
+        return std::find(kShellRebuildMethods.begin(), kShellRebuildMethods.end(), m) - kShellRebuildMethods.begin();
+    };
+    std::sort(fixAllRebuilds_.begin(), fixAllRebuilds_.end(),
+              [&](const RepairCandidate& a, const RepairCandidate& b) { return order(a.method) < order(b.method); });
+}
+
+std::string AppController::fixAllRebuildStatusText() const {
+    if (!fixAllRebuildRunning() || !fixAllRebuildShell_) {
+        return {};
+    }
+    const std::string number = "#" + std::to_string(*fixAllRebuildShell_ + 1);
+    if (repairRunner_.stopping()) {
+        return "Cancelling the rebuild of " + number + "...";
+    }
+    std::string text = "Rebuilding " + number;
+    if (const std::optional<GlobalRepairMethod> current = repairRunner_.currentMethod()) {
+        const auto index = std::find(kShellRebuildMethods.begin(), kShellRebuildMethods.end(), *current) - kShellRebuildMethods.begin();
+        std::string label = globalRepairMethodLabel(*current);
+        label[0] = static_cast<char>(std::tolower(static_cast<unsigned char>(label[0])));
+        text += ": " + label + " (" + std::to_string(index + 1) + " of " + std::to_string(kShellRebuildMethods.size()) + ")";
+    }
+    const int percent = static_cast<int>(std::lround(100.0 * static_cast<double>(repairRunner_.progress())));
+    return text + "... " + std::to_string(percent) + " %";
+}
+
+void AppController::cancelFixAllRebuild() {
+    if (!fixAllRebuildRunning() || repairRunner_.stopping()) {
+        return;
+    }
+    repairRunner_.requestStop();
+    postStatusMessage("Rebuild cancelled: nothing was changed.");
+}
+
+void AppController::showFixAllRebuild(GlobalRepairMethod method) {
+    const auto it = std::find_if(fixAllRebuilds_.begin(), fixAllRebuilds_.end(),
+                                 [&](const RepairCandidate& c) { return c.method == method; });
+    if (it != fixAllRebuilds_.end()) {
+        shownRebuild_ = method;
+    }
+}
+
+std::string AppController::fixAllRebuildUndoLabel(const RepairCandidate& candidate) {
+    if (candidate.fixAll == nullptr || !candidate.fixAll->rebuild) {
+        return {};
+    }
+    const FixAllShellRebuild& rebuild = *candidate.fixAll->rebuild;
+    const bool onePass = rebuild.base != nullptr && rebuild.base->result.onePass;
+    return std::string(onePass ? "Fix All (one pass)" : "Fix All") + " + Rebuild #" + std::to_string(rebuild.shell + 1);
+}
+
+bool AppController::applyFixAllRebuild(GlobalRepairMethod method) {
+    const auto it = std::find_if(fixAllRebuilds_.begin(), fixAllRebuilds_.end(),
+                                 [&](const RepairCandidate& c) { return c.method == method; });
+    if (it == fixAllRebuilds_.end() || !it->success || it->fixAll == nullptr || !it->fixAll->rebuild) {
+        lastRepairStatusMessage_ = "Rebuild the shell first: nothing changes until Apply.";
+        postStatusMessage(lastRepairStatusMessage_, true);
+        return false;
+    }
+    const std::string label = fixAllRebuildUndoLabel(*it);
+    return applyFixAllRow(*it, label);
+}
+
+std::vector<int> AppController::fixAllRebuildFilledCavities() const {
+    FixAllScopeKind kind = FixAllScopeKind::Whole;
+    const std::vector<std::uint8_t> mask = fixAllScopeMask(kind);
+    return cavitiesFilledByRebuild(mesh_, mask, intersectionTolerance_).value_or(std::vector<int>{});
 }
 
 } // namespace ogun

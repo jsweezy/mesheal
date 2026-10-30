@@ -13,6 +13,7 @@
 #include <array>
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <span>
 #include <stop_token>
 #include <string>
@@ -103,6 +104,30 @@ inline constexpr std::array<GlobalRepairMethod, 1> kMergeMethods = {GlobalRepair
     return method == GlobalRepairMethod::Decimate || method == GlobalRepairMethod::MergeVertices;
 }
 
+/// The rebuilds *Rebuild shell #k...* offers for one shell Fix All left, alpha wrap first (the suggested
+/// one, the only rebuild that always closes the shell and leaves no crossing within it).
+inline constexpr std::array<GlobalRepairMethod, 3> kShellRebuildMethods = {
+    GlobalRepairMethod::AlphaWrap,
+    GlobalRepairMethod::SelfUnion,
+    GlobalRepairMethod::WindingRebuild,
+};
+
+struct FixAllCandidate;
+
+/// A Fix All result with one of its shells rebuilt (and merged when the merge is on): what a rebuild row
+/// adds to the Fix All candidate it builds on.
+struct FixAllShellRebuild {
+    std::shared_ptr<const FixAllCandidate> base; ///< The Fix All run (its steps, passes and report)
+    int shell = -1;              ///< The shell rebuilt: `base->result.report.shells` index (#(shell + 1))
+    bool suggested = false;      ///< Alpha wrap: the row tagged *suggested*
+    bool closed = false;         ///< The rebuilt shell has no open and no non-manifold edge
+    bool merged = false;         ///< The rebuilt shell was merged (or deleted as a nested solid touching nothing)
+    std::size_t rebuiltFaces = 0;
+    std::string label;           ///< "+ Alpha wrap #12"
+    std::string note;            ///< "wrapped, then merged" / "still open: not merged" / "merge refused: ..."
+    double rebuildMs = 0.0;      ///< The rebuild alone (the row's time also has the merge and clean-up)
+};
+
 /// What a Fix All candidate carries besides the mesh.
 struct FixAllCandidate {
     /// The run. Its `mesh` is moved into `RepairCandidate::mesh` (left empty here); its `scope` and the
@@ -113,6 +138,10 @@ struct FixAllCandidate {
     /// Shell of each face of the candidate's mesh: an index into `result.report.shells`, which is the
     /// Shells-panel numbering of that mesh (#(k + 1)); -1 for a face in no shell.
     std::vector<int> faceShell;
+    /// A rebuild row (*Rebuild shell #k...*): `result` is then the merge and clean-up pass run on the Fix
+    /// All result with the shell rebuilt (its report describes the row's mesh), and the Fix All run itself
+    /// is `rebuild->base`.
+    std::optional<FixAllShellRebuild> rebuild;
 };
 
 /// Extra inputs of a Fix All run (method `FixAll` only).
@@ -149,5 +178,51 @@ struct RepairCandidate {
     std::stop_token stopToken = {},
     std::atomic<float>* progress = nullptr,
     const FixAllRunInput* fixAll = nullptr);
+
+/// Fix All's own parameters with the row tools' settings it shares (`checkParams`, `holeSettings`,
+/// `islandSettings`), as `runGlobalRepair` runs it.
+[[nodiscard]] FixAllParams fixAllRunParams(const GlobalRepairParams& params);
+
+/// One row of *Rebuild shell #k...* (step 19; never run unless asked). `fixAll` is the Fix All candidate
+/// computed on `input` (its `mesh` is the result; `fixAll.fixAll` its run) with the scope mask
+/// `faceInScope` (empty = whole). The shell `shell` (`report.shells` index of the result) is rebuilt on its
+/// own by `method` (alpha wrap with alpha = its diagonal / `alphaWrapDetail`, self-union, or the winding
+/// rebuild), so every other shell is kept exactly and a cavity, being its own shell, is never in the
+/// rebuild's input. Then one pass of phases 2 and 3 runs on the result with the rebuilt shell: with the
+/// merge on (and whole shells in scope) a closed rebuilt shell is merged with the shells it overlaps,
+/// under the same plan, cavity rules and merge guards as Fix All's merge (only its own groups), and the
+/// clean-up follows; a rebuilt shell that stays open is not merged, and a refused merge keeps it
+/// unmerged; the row says why (`FixAllShellRebuild::note`). The row's metrics are measured on the scope
+/// against `input`, its counts are the input's and the row's mesh's, its time is the rebuild plus the
+/// merge pass. Refused (`success` false, `statusMessage` says why) for a shell not wholly in scope or a
+/// kept cavity. Polls `stopToken` (alpha wrap stops mid-run; a union finishes first).
+[[nodiscard]] RepairCandidate computeShellRebuildCandidate(
+    const Mesh& input,
+    std::span<const std::uint8_t> faceInScope,
+    const RepairCandidate& fixAll,
+    int shell,
+    GlobalRepairMethod method,
+    const GlobalRepairParams& params,
+    std::stop_token stopToken = {},
+    std::atomic<float>* progress = nullptr);
+
+/// The three rows of `kShellRebuildMethods` for `shell` (stops early when stopped).
+[[nodiscard]] std::vector<RepairCandidate> computeShellRebuildCandidates(
+    const Mesh& input,
+    std::span<const std::uint8_t> faceInScope,
+    const RepairCandidate& fixAll,
+    int shell,
+    const GlobalRepairParams& params,
+    std::stop_token stopToken = {});
+
+/// The Rebuild side's cavity warning: rule O cavities (`shellsLargestFirst` indices of `mesh`) with a
+/// face in scope (`faceInScope` empty = whole). An alpha wrap of the scope fills them: CGAL purges the
+/// pockets its flood fill cannot reach from outside (`keep_inner_connected_components` is false), while
+/// a per-shell rebuild keeps them (a cavity is its own shell). std::nullopt when stopped.
+[[nodiscard]] std::optional<std::vector<int>> cavitiesFilledByRebuild(
+    const Mesh& mesh,
+    std::span<const std::uint8_t> faceInScope,
+    double intersectionTolerance = settings::kDefaultIntersectionTolerance,
+    std::stop_token stopToken = {});
 
 } // namespace ogun

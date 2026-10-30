@@ -93,15 +93,19 @@ void RepairJobRunner::run(std::stop_token stopToken, RepairRequest request, std:
         }
         current_ = static_cast<int>(method);
         const FixAllRunInput fixAll{request.fixAllScopeKind, fixAllProgress.get(), request.fixAllHooks.get()};
-        RepairCandidate candidate = runGlobalRepair(*request.mesh, request.faceInScope, method, request.params, stopToken,
-                                                    &methodProgress_, &fixAll);
+        RepairCandidate candidate =
+            request.rebuildBase != nullptr
+                ? computeShellRebuildCandidate(*request.mesh, request.faceInScope, *request.rebuildBase, request.rebuildShell,
+                                               method, request.params, stopToken, &methodProgress_)
+                : runGlobalRepair(*request.mesh, request.faceInScope, method, request.params, stopToken, &methodProgress_,
+                                  &fixAll);
         {
             // Checked under the lock: a `requestStop()` either sees this candidate (and drops it) or stops it here
             std::lock_guard lock(mutex_);
             if (candidate.cancelled || stopToken.stop_requested()) {
                 break;
             }
-            finished_.push_back({request.meshGeneration, std::move(candidate)});
+            finished_.push_back({request.meshGeneration, std::move(candidate), request.rebuildBase != nullptr});
         }
         methodProgress_ = 0.0f;
         ++done_;
