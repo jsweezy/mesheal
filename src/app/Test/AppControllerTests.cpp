@@ -563,6 +563,43 @@ TEST_CASE("AppController fixAllThinFaces heals the sample mesh and can be undone
     REQUIRE_FALSE(controller.canUndo());
 }
 
+TEST_CASE("AppController fixAllThinFaces on isolated Turkey shell 27 heals all slivers in one pass",
+          "[app][controller][repair][batch][turkey]") {
+    ogun::AppController controller;
+    const std::filesystem::path turkeyPath =
+        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / "Turkey.stl";
+    controller.setMesh(ogun::loadStl(turkeyPath), "Turkey.stl");
+    REQUIRE(controller.shells().size() == 28);
+
+    controller.selectCategory(ogun::DefectCategory::ThinFaces);
+    REQUIRE(thinCount(controller) == 78);
+
+    std::size_t shellWith50 = 28;
+    for (std::size_t s = 0; s < controller.shells().size(); ++s) {
+        controller.selectShellsWhere([s](std::size_t x) { return x == s; });
+        if (controller.rowCount(ogun::DefectCategory::ThinFaces) == 50) {
+            shellWith50 = s;
+            break;
+        }
+    }
+    REQUIRE(shellWith50 < 28);
+
+    controller.selectShellsWhere([shellWith50](std::size_t s) { return s == shellWith50; });
+    REQUIRE(controller.toggleIsolateShells());
+    REQUIRE(controller.shells().scoped());
+    REQUIRE(controller.rowCount(ogun::DefectCategory::ThinFaces) == 50);
+
+    REQUIRE(controller.fixAllThinFaces());
+    REQUIRE(controller.rowCount(ogun::DefectCategory::ThinFaces) == 0);
+    REQUIRE(thinCount(controller) == 28);
+    REQUIRE(controller.rowStatus(ogun::DefectCategory::ThinFaces) == ogun::HealthStatus::Ok);
+    REQUIRE(controller.canUndo());
+
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.rowCount(ogun::DefectCategory::ThinFaces) == 50);
+    REQUIRE(thinCount(controller) == 78);
+}
+
 TEST_CASE("AppController records coordinate scaling on the undo stack",
           "[app][controller][units][undo]") {
     ogun::AppController controller;

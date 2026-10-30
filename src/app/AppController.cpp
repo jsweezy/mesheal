@@ -442,7 +442,14 @@ void AppController::setBackgroundChecks(bool enabled) {
 
 void AppController::launchQueuedChecks() {
     std::vector<DefectCategory> queued;
+    // Prioritize the currently selected tool/category so active UI updates first
+    if (selectedCategory_ && health_[*selectedCategory_].status == HealthStatus::Running) {
+        queued.push_back(*selectedCategory_);
+    }
     for (const DefectCategory category : kAllDefectCategories) {
+        if (selectedCategory_ && category == *selectedCategory_) {
+            continue;
+        }
         if (health_[category].status == HealthStatus::Running) {
             queued.push_back(category);
         }

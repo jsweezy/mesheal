@@ -74,7 +74,7 @@ struct SliverAnalysis {
     int numBorderEdges = 0;
     bool violatesThresholds = false;  ///< True if `ThinFaceChecker` would flag this face.
     bool longestEdgeIsBorder = false;
-    bool longestEdgeFlippable = false;  ///< Neighbor across the longest edge is coplanar and forms a convex quad.
+    bool longestEdgeFlippable = false;  ///< Neighbor across the longest edge is coplanar, forms a convex quad, and post-flip triangles are healthy.
 };
 
 /// Live 2-ring preview of a single-face repair (the base mesh is never modified).
@@ -144,7 +144,8 @@ public:
         CgalFaceIndex face,
         HealAction action,
         const SliverHealerSettings& settings = {},
-        std::string* statusOut = nullptr);
+        std::string* statusOut = nullptr,
+        const ThinFaceThresholds& thresholds = {});
 
     /// Heals a copy of the 2-ring patch around `face` with `action` (or the recommended action).
     [[nodiscard]] static SingleFaceRepairPreview previewSingleFaceRepair(

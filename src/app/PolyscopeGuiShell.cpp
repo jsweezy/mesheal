@@ -1106,7 +1106,7 @@ void PolyscopeGui::drawStatusBar(float top, float height) {
         const float cancelWidth = ImGui::CalcTextSize("Cancel").x + 2.0f * ImGui::GetStyle().FramePadding.x;
         ImGui::SameLine(display.x - barWidth - cancelWidth - 3.0f * settings::kPanelMarginPx);
         const std::optional<DefectCategory> current = controller_.currentCheckCategory();
-        const std::string overlay = current ? std::string(categoryInfo(*current).name) + "..." : std::string("Checking...");
+        const std::string overlay = current ? "Check: " + std::string(categoryInfo(*current).name) + "..." : std::string("Checking...");
         ImGui::ProgressBar(controller_.checkProgress(), ImVec2(barWidth, 0.0f), overlay.c_str());
         ImGui::SameLine();
         if (ImGui::SmallButton("Cancel")) {

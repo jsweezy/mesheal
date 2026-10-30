@@ -277,6 +277,21 @@ TEST_CASE("FlipLongestEdge rejects creases and non-convex quads", "[repair][flip
             surface, ogun::CgalFaceIndex(0), ogun::HealAction::FlipLongestEdge, {}, &status));
         CHECK(status.find("non-convex") != std::string::npos);
     }
+
+    SECTION("neighbor flip would still leave a thin / sliver face") {
+        ogun::CgalSurfaceMesh surface;
+        // With opposite very close to the edge (y = -1e-4), post-flip triangles are slivers (aspect > 100)
+        REQUIRE(ogun::toCgalSurfaceMesh(makeCapMesh(apexY, {0.0, -1.0e-4, 0.0}), surface));
+        const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(surface, ogun::CgalFaceIndex(0));
+        CHECK(a.type == ogun::SliverType::Cap);
+        CHECK_FALSE(a.longestEdgeFlippable);
+        CHECK(a.recommendedAction == ogun::HealAction::SnapCollinearCollapse);
+
+        std::string status;
+        CHECK_FALSE(ogun::SliverHealer::applyHealAction(
+            surface, ogun::CgalFaceIndex(0), ogun::HealAction::FlipLongestEdge, {}, &status));
+        CHECK(status.find("still leave a thin") != std::string::npos);
+    }
 }
 
 TEST_CASE("CollapseShortestEdge dissolves needles and respects the link condition", "[repair][collapse]") {

@@ -136,6 +136,7 @@ std::size_t countThinFaces(const CgalSurfaceMesh& mesh, const ThinFaceThresholds
 bool canFlipEdge(
     const CgalSurfaceMesh& mesh,
     CgalHalfedgeIndex h,
+    const ThinFaceThresholds& thresholds,
     const SliverHealerSettings& settings,
     std::string* reason) {
     const auto fail = [reason](const char* msg) {
@@ -188,6 +189,10 @@ bool canFlipEdge(
     }
     if (n1.normalized().dot(nOppHat) < settings.coplanarDot || n2.normalized().dot(nOppHat) < settings.coplanarDot) {
         return fail("Cap and neighbor form a non-convex or non-planar quad; flipping would fold the surface.");
+    }
+    if (ThinFaceChecker::evaluateTriangle(t1[0], t1[1], t1[2], thresholds).isDefective() ||
+        ThinFaceChecker::evaluateTriangle(t2[0], t2[1], t2[2], thresholds).isDefective()) {
+        return fail("Flipping would still leave a thin / sliver triangle.");
     }
     return true;
 }
@@ -288,9 +293,14 @@ bool collapseEdgeSafely(
     return true;
 }
 
-bool flipLongestEdge(CgalSurfaceMesh& mesh, CgalFaceIndex f, const SliverHealerSettings& settings, std::string& status) {
+bool flipLongestEdge(
+    CgalSurfaceMesh& mesh,
+    CgalFaceIndex f,
+    const ThinFaceThresholds& thresholds,
+    const SliverHealerSettings& settings,
+    std::string& status) {
     const CgalHalfedgeIndex h = longestHalfedge(mesh, f);
-    if (!canFlipEdge(mesh, h, settings, &status)) {
+    if (!canFlipEdge(mesh, h, thresholds, settings, &status)) {
         return false;
     }
     CGAL::Euler::flip_edge(h, mesh);
@@ -392,6 +402,13 @@ void countAction(RepairResults& results, HealAction action) {
 
 // Recommended action first, followed by every other repair as a fallback.
 std::array<HealAction, 4> fallbackOrder(HealAction recommended) {
+    if (recommended == HealAction::FlipLongestEdge) {
+        return {
+            HealAction::FlipLongestEdge,
+            HealAction::SnapCollinearCollapse,
+            HealAction::CollapseShortestEdge,
+            HealAction::RemoveDegenerateFace};
+    }
     constexpr std::array<HealAction, 4> kAll{
         HealAction::CollapseShortestEdge,
         HealAction::SnapCollinearCollapse,
@@ -615,7 +632,7 @@ SliverAnalysis SliverHealer::analyzeFace(
 
     analysis.numBorderEdges = countBorderEdges(mesh, face);
     analysis.longestEdgeIsBorder = mesh.is_border(mesh.opposite(hs[iLong]));
-    analysis.longestEdgeFlippable = canFlipEdge(mesh, hs[iLong], settings, nullptr);
+    analysis.longestEdgeFlippable = canFlipEdge(mesh, hs[iLong], thresholds, settings, nullptr);
 
     if (analysis.edgeRatio < settings.needleEdgeRatio) {
         analysis.type = SliverType::Needle;
@@ -669,7 +686,8 @@ bool SliverHealer::applyHealAction(
     CgalFaceIndex face,
     HealAction action,
     const SliverHealerSettings& settings,
-    std::string* statusOut) {
+    std::string* statusOut,
+    const ThinFaceThresholds& thresholds) {
     std::string status;
     bool ok = false;
     if (!isLiveFace(mesh, face)) {
@@ -680,7 +698,7 @@ bool SliverHealer::applyHealAction(
             status = "No repair action selected.";
             break;
         case HealAction::FlipLongestEdge:
-            ok = flipLongestEdge(mesh, face, settings, status);
+            ok = flipLongestEdge(mesh, face, thresholds, settings, status);
             break;
         case HealAction::CollapseShortestEdge:
             ok = collapseShortestEdge(mesh, face, settings, status);
@@ -725,7 +743,7 @@ SingleFaceRepairPreview SliverHealer::previewSingleFaceRepair(
         preview.statusMessage = "Could not extract the local neighborhood patch around this face.";
         return preview;
     }
-    if (!applyHealAction(patch, center, preview.appliedAction, settings, &preview.statusMessage)) {
+    if (!applyHealAction(patch, center, preview.appliedAction, settings, &preview.statusMessage, thresholds)) {
         return preview;
     }
     const double offset = settings.previewOffsetFactor * boundingDiagonal(patch);
@@ -777,7 +795,7 @@ RepairResults SliverHealer::healSingleFace(
         results.statusMessage = "Face index is out of range for this mesh.";
         return results;
     }
-    if (!applyHealAction(surface, face, action, settings, &results.statusMessage)) {
+    if (!applyHealAction(surface, face, action, settings, &results.statusMessage, thresholds)) {
         return results;
     }
     countAction(results, action);
@@ -833,7 +851,7 @@ RepairResults SliverHealer::healFaces(
             continue;
         }
         for (const HealAction action : fallbackOrder(a.recommendedAction)) {
-            if (applyHealAction(surface, f, action, settings)) {
+            if (applyHealAction(surface, f, action, settings, nullptr, thresholds)) {
                 countAction(results, action);
                 ++healed;
                 break;
@@ -890,7 +908,7 @@ RepairResults SliverHealer::healAllThinFaces(
             const SliverAnalysis a = analyzeFace(surface, f, thresholds, settings);
             const bool pass1 = a.recommendedAction == HealAction::FlipLongestEdge ||
                                a.recommendedAction == HealAction::RemoveDegenerateFace;
-            if (pass1 && applyHealAction(surface, f, a.recommendedAction, settings)) {
+            if (pass1 && applyHealAction(surface, f, a.recommendedAction, settings, nullptr, thresholds)) {
                 countAction(results, a.recommendedAction);
                 changed = true;
             }
@@ -910,7 +928,7 @@ RepairResults SliverHealer::healAllThinFaces(
                 continue;
             }
             for (const HealAction action : fallbackOrder(a.recommendedAction)) {
-                if (applyHealAction(surface, f, action, settings)) {
+                if (applyHealAction(surface, f, action, settings, nullptr, thresholds)) {
                     countAction(results, action);
                     changed = true;
                     break;
