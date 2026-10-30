@@ -19,6 +19,7 @@ void RepairJobRunner::start(RepairRequest request) {
     {
         std::lock_guard lock(mutex_);
         fixAllProgress_ = fixAllProgress;
+        finished_.clear(); // results of the job this one replaces are never handed over
     }
     busy_ = true;
     worker_ = std::jthread(

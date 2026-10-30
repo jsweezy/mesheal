@@ -10,6 +10,7 @@
 #include <array>
 #include <cstdio>
 #include <string>
+#include <string_view>
 
 namespace ogun {
 
@@ -27,9 +28,33 @@ constexpr const char* kFixAllTooltipOnePass =
     "Run the Fix All sequence once and preview it, so you can see each step's effect. Run it again for the next pass. "
     "Nothing changes until Apply.  Key: Alt+Shift+F5";
 
+/// Text wrapped at the cell or panel edge, breaking only at spaces: never inside a number ("0." / "1 %", which
+/// ImGui's own wrapping allows after a full stop) and never next to a sign such as "%)" or ":".
+void wordWrapped(const std::string& text) {
+    const float width = std::max(ImGui::GetContentRegionAvail().x, 1.0f);
+    const auto measure = [](std::string_view part) { return ImGui::CalcTextSize(part.data(), part.data() + part.size()).x; };
+    std::string out;
+    std::size_t start = 0;
+    bool first = true;
+    while (start <= text.size()) {
+        const std::size_t end = std::min(text.find('\n', start), text.size());
+        for (const std::string& line : fixAllWrapLines(text.substr(start, end - start), width, measure)) {
+            if (!first) {
+                out += '\n';
+            }
+            first = false;
+            out += line;
+        }
+        start = end + 1;
+    }
+    ImGui::PushTextWrapPos(-1.0f); // already broken: ImGui must not wrap it again
+    ImGui::TextUnformatted(out.c_str(), out.c_str() + out.size());
+    ImGui::PopTextWrapPos();
+}
+
 void wrappedColored(const ImVec4& color, const std::string& text) {
     ImGui::PushStyleColor(ImGuiCol_Text, color);
-    ImGui::TextWrapped("%s", text.c_str());
+    wordWrapped(text);
     ImGui::PopStyleColor();
 }
 
@@ -46,9 +71,7 @@ void flowSameLine(const char* nextLabel) {
 
 /// Muted text that wraps at the cell or panel edge (words are never split unless one is wider than the line).
 void mutedWrapped(const std::string& text) {
-    ImGui::PushStyleColor(ImGuiCol_Text, gui::kMutedColor);
-    ImGui::TextWrapped("%s", text.c_str());
-    ImGui::PopStyleColor();
+    wrappedColored(gui::kMutedColor, text);
 }
 
 /// "0.006 mm" (the number is in file coordinates; the unit is a label).
@@ -133,12 +156,17 @@ void PolyscopeGui::drawFixAllOperator() {
         return;
     }
     // The body scrolls in a child region; the action buttons below it stay visible. The footer's height is the one
-    // measured on the previous frame.
+    // measured on the previous frame. In a short panel the body keeps a usable height and the whole panel scrolls
+    // down to the buttons instead.
     static float footerHeight = 60.0f;
     const FixAllPanelState state = controller_.fixAllState();
     const bool footer = state != FixAllPanelState::Running;
     if (footer) {
-        ImGui::BeginChild(("##fixAllBody" + std::to_string(static_cast<int>(state))).c_str(), ImVec2(0.0f, -footerHeight));
+        const float panel = ImGui::GetContentRegionAvail().y + ImGui::GetScrollY(); // as if not scrolled
+        const float minBody = std::max(settings::kFixAllBodyMinShare * panel,
+                                       settings::kFixAllBodyMinLines * ImGui::GetTextLineHeightWithSpacing());
+        const float body = std::max(panel - footerHeight, minBody);
+        ImGui::BeginChild(("##fixAllBody" + std::to_string(static_cast<int>(state))).c_str(), ImVec2(0.0f, body));
     }
     ImGui::PushTextWrapPos(0.0f); // long lines wrap at the panel edge
     switch (state) {
@@ -204,7 +232,7 @@ void PolyscopeGui::drawFixAllPlan() {
     }
 
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-    ImGui::TextWrapped("Fixes each problem in place, in a safe order, and repeats the whole sequence until the mesh is "
+    wordWrapped("Fixes each problem in place, in a safe order, and repeats the whole sequence until the mesh is "
                        "watertight and free of crossings. Faces that are not part of a problem stay exactly as they are.");
     ImGui::PopStyleColor();
 
@@ -340,7 +368,7 @@ void PolyscopeGui::drawFixAllPlanRows() {
                 ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
             }
             ImGui::SameLine();
-            ImGui::TextWrapped("%s  %s", number.c_str(), row.label.c_str());
+            wordWrapped(number + "  " + row.label);
             tooltip(tip.c_str());
             if (!row.hasBox() && row.sw != FixAllRowSwitch::Required && !row.note.empty() && row.note != row.found) {
                 // On its own line, under the label: never squeezed into what is left of the label's line
@@ -380,7 +408,7 @@ void PolyscopeGui::drawFixAllMergeNotes() {
     const FixAllScopeInfo scope = controller_.fixAllScope();
     ImGui::Indent();
     if (scope.kind == FixAllScopeKind::Faces) {
-        ImGui::TextWrapped("Merge needs whole shells: select shells, or clear the selection. Faces around the selection stay "
+        wordWrapped("Merge needs whole shells: select shells, or clear the selection. Faces around the selection stay "
                            "exactly as they are.");
         ImGui::Unindent();
         return;
@@ -394,14 +422,14 @@ void PolyscopeGui::drawFixAllMergeNotes() {
     const bool ticked = controller_.fixAllParams().mergeShells;
     if (plan->hasWork()) {
         if (ticked) {
-            ImGui::TextWrapped(controller_.fixAllMergeUserSet() ? "Ticked by you. Untick to keep the shells as separate parts."
+            wordWrapped(controller_.fixAllMergeUserSet() ? "Ticked by you. Untick to keep the shells as separate parts."
                                                                 : "Ticked because shells overlap. Untick to keep them as separate parts.");
         } else {
-            ImGui::TextWrapped("Not ticked: the shells stay separate parts. Tick it to merge those that overlap.");
+            wordWrapped("Not ticked: the shells stay separate parts. Tick it to merge those that overlap.");
         }
         ImGui::TextDisabled("Removes faces inside other shells; a nested solid touching nothing is deleted; cavities are kept.");
     } else if (ticked && plan->tickedByDefault) {
-        ImGui::TextWrapped("Ticked because shells overlap, but none of them can be merged (see below).");
+        wordWrapped("Ticked because shells overlap, but none of them can be merged (see below).");
     }
     for (std::size_t i = 0; i < plan->lines.size(); ++i) {
         const MergePlanLine& line = plan->lines[i];
@@ -494,7 +522,7 @@ void PolyscopeGui::drawFixAllSettingsUsed() {
     std::optional<DefectCategory> open;
     for (std::size_t i = 0; i < links.size(); ++i) {
         ImGui::PushID(static_cast<int>(i));
-        ImGui::TextWrapped("%s", links[i].text.c_str());
+        wordWrapped(links[i].text);
         ImGui::SameLine();
         if (ImGui::SmallButton("Edit in tool")) {
             open = links[i].category;
@@ -541,7 +569,7 @@ void PolyscopeGui::drawFixAllRunning() {
         ImGui::TextColored(gui::kRunningColor, "Running...");
     }
     if (!text.phase.empty() && !controller_.fixAllCancelling()) {
-        ImGui::TextWrapped("%s", text.phase.c_str());
+        wordWrapped(text.phase);
     }
     if (!text.detail.empty()) {
         wrappedColored(gui::kMutedColor, text.detail);
@@ -593,7 +621,7 @@ void PolyscopeGui::drawFixAllSteps(const FixAllResult& result) {
                 ImGui::SameLine();
                 gui::statusDot(dotStatus(step.dot), false);
                 ImGui::SameLine();
-                ImGui::TextWrapped("%d  %s", step.number, step.text.c_str());
+                wordWrapped(std::to_string(step.number) + "  " + step.text);
                 if (!step.time.empty()) {
                     ImGui::SameLine();
                     ImGui::TextColored(gui::kMutedColor, "%s", step.time.c_str());
@@ -666,7 +694,7 @@ void PolyscopeGui::drawFixAllLines(const FixAllResult& result, bool beforeApply)
         if (line.warning) {
             wrappedColored(gui::kDefectColor, "(!) " + line.text);
         } else {
-            ImGui::TextWrapped("%s", line.text.c_str());
+            wordWrapped(line.text);
         }
         if (beforeApply && line.rebuildShell >= 0 && !controller_.fixAllRebuildRunning() && !controller_.globalRepairRunning()) {
             if (ImGui::SmallButton(fixAllRebuildButtonLabel(line.rebuildShell).c_str())) {
@@ -782,7 +810,7 @@ void PolyscopeGui::drawFixAllResult() {
     } else if (shown != nullptr && shown->method != GlobalRepairMethod::FixAll) {
         // A whole-scope rebuild row from Compare
         if (shown->success) {
-            ImGui::TextWrapped("%s: a new surface. No original face is kept (see Kept in the table).", globalRepairMethodLabel(shown->method));
+            wordWrapped(std::string(globalRepairMethodLabel(shown->method)) + ": a new surface. No original face is kept (see Kept in the table).");
             if (shown->method == GlobalRepairMethod::AlphaWrap) {
                 wrappedColored(gui::kMutedColor, fixAllRebuildTradeOffText());
             }
@@ -920,6 +948,9 @@ void PolyscopeGui::drawFixAllRebuildJob() {
         const std::string text = controller_.fixAllRebuildStatusText();
         cancelling = text.starts_with("Cancelling");
         ImGui::TextColored(gui::kRunningColor, "%s", text.c_str());
+    } else if (controller_.globalRepairCancelling()) {
+        cancelling = true;
+        ImGui::TextColored(gui::kRunningColor, "Cancelling...");
     } else {
         const std::optional<GlobalRepairMethod> current = controller_.globalRepairCurrentMethod();
         ImGui::TextColored(gui::kRunningColor, "%s...", current ? globalRepairMethodLabel(*current) : "Working");
@@ -976,11 +1007,11 @@ void PolyscopeGui::drawFixAllRebuildPlan() {
     const double offset = alphaWrapOffset(params, alpha);
     const FixAllRebuildCopy copy = fixAllRebuildCopy(lengthWithUnit(offset, unit), lengthWithUnit(alpha, unit));
 
-    ImGui::TextWrapped("%s", copy.headline.c_str());
-    ImGui::TextWrapped("%s", copy.guarantee.c_str());
+    wordWrapped(copy.headline);
+    wordWrapped(copy.guarantee);
     for (const std::string& cost : copy.costs) {
         ImGui::Bullet();
-        ImGui::TextWrapped("%s", cost.c_str());
+        wordWrapped(cost);
     }
     wrappedColored(gui::kMutedColor, copy.advice);
 
@@ -1005,7 +1036,7 @@ void PolyscopeGui::drawFixAllRebuildPlan() {
         tooltip(option.help);
         ImGui::Indent();
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        ImGui::TextWrapped("%s", option.summary);
+        wordWrapped(option.summary);
         ImGui::PopStyleColor();
         if (fixAllRebuildMethod_ == option.method) {
             drawGlobalMethodParams(option.method);
@@ -1076,7 +1107,7 @@ void PolyscopeGui::drawFixAllReport() {
         ImGui::TextColored(gui::kOkColor, "Fix All applied (Ctrl/Cmd+Z to undo).");
     }
     if (run->rebuild) {
-        ImGui::TextWrapped("%s", fixAllRebuiltLine(*run->rebuild).c_str());
+        wordWrapped(fixAllRebuiltLine(*run->rebuild));
     }
     const bool current = applied->meshGeneration == controller_.meshGeneration();
     if (current) {
@@ -1086,7 +1117,7 @@ void PolyscopeGui::drawFixAllReport() {
             if (line.warning) {
                 wrappedColored(gui::kDefectColor, "(!) " + line.text);
             } else {
-                ImGui::TextWrapped("%s", line.text.c_str());
+                wordWrapped(line.text);
             }
         }
         ImGui::TextDisabled("The mesh changed after Fix All, so the Show and Flip buttons are hidden. This report is as it was.");

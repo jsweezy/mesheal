@@ -47,7 +47,7 @@ public:
     RepairJobRunner& operator=(const RepairJobRunner&) = delete;
     ~RepairJobRunner();
 
-    /// Cancels any running job (waiting for it) and starts `request`.
+    /// Cancels any running job (waiting for it), drops its uncollected results and starts `request`.
     void start(RepairRequest request);
 
     /// Requests a stop and waits for the worker to exit.

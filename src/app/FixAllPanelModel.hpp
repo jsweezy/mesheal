@@ -4,8 +4,10 @@
 #include "repair/MergePlan.hpp"
 
 #include <cstddef>
+#include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace ogun {
@@ -88,6 +90,9 @@ enum class FixAllLineAction : std::uint8_t {
     ShowRemoved    ///< Deleted / merged faces: *Show removed* (before Apply only)
 };
 
+/// What the lines of a group stand for: one crossing shell pair each, or one shell each.
+enum class FixAllLineGroupKind : std::uint8_t { ShellPairs, Shells };
+
 /// One line of the Result / Report state.
 struct FixAllResultLine {
     std::string text;
@@ -97,19 +102,24 @@ struct FixAllResultLine {
     /// `report.shells` index of a shell Fix All left that alpha wrap is suggested for: the line gets the
     /// *Rebuild shell #k...* button (before Apply). -1: no button.
     int rebuildShell = -1;
-    /// Lines with the same non-empty key are one repeated situation ("still cross ... because the merge was refused:
-    /// cavity #28"); `fixAllLineGroups` folds them into one summary. Empty: never grouped.
+    /// The reason shared by the lines of one repeated situation ("their group reaches into cavity #28 of #12, so it
+    /// is not merged ..."), never their full text; `fixAllLineGroups` folds lines with the same kind and key into
+    /// one summary. Empty: never grouped.
     std::string groupKey;
+    FixAllLineGroupKind groupKind = FixAllLineGroupKind::ShellPairs;
 };
 
 /// A repeated situation: `members` index into the lines, `summary` is the one line that stands for them.
 struct FixAllLineGroup {
-    std::string summary;           ///< "60 shell pairs still cross: their group reaches into cavity #28 ..."
+    /// "100 shell pairs among 27 shells still cross: their group reaches into cavity #28 of #12, ..." or
+    /// "27 shells still cross other shells: their group reaches ..."
+    std::string summary;
+    FixAllLineGroupKind kind = FixAllLineGroupKind::ShellPairs;
     std::vector<std::size_t> members;
     std::vector<int> shells;       ///< Every shell the members name, each once
 };
 
-/// Groups of at least `kFixAllMinGroup` lines sharing a `groupKey`, in order of first appearance.
+/// Groups of at least `kFixAllMinGroup` lines sharing a `groupKind` and `groupKey`, in order of first appearance.
 inline constexpr std::size_t kFixAllMinGroup = 3;
 [[nodiscard]] std::vector<FixAllLineGroup> fixAllLineGroups(const std::vector<FixAllResultLine>& lines);
 
@@ -126,7 +136,9 @@ inline constexpr std::size_t kFixAllMinGroup = 3;
 [[nodiscard]] std::string fixAllStepsSummary(const FixAllResult& result);
 
 /// The report in reading order with the action each line offers. `beforeApply` adds the *Show removed* line
-/// for the merge's removed faces (they exist only in the original).
+/// for the merge's removed faces (they exist only in the original). Each crossing shell pair is said once: a
+/// shell's "#1 still crosses #2: ..." line is left out when every pair it names has its own counted line.
+/// Repeated situations carry a `groupKey` (the reason) for `fixAllLineGroups`.
 [[nodiscard]] std::vector<FixAllResultLine> fixAllResultLines(const FixAllResult& result, bool beforeApply);
 
 /// "pass 2 of 3, phase 1, filling holes..." -> {"Pass 2 of 3", "Phase 1: repair each shell", "filling holes"}.
@@ -174,5 +186,12 @@ struct FixAllRebuildCopy {
 
 /// "1e-6" style number for labels.
 [[nodiscard]] std::string shortNumber(double value);
+
+/// Splits `text` into lines no wider than `width` (as `measure` says), breaking only at spaces, never inside a
+/// word or a number ("0.1"), and never next to a word without a letter or digit ("%)", ":", "(<"), so
+/// "(< 0.1 %)" and "100 : 1" stay together. A word wider than `width` gets a line of its own. Runs of spaces
+/// inside a line are kept; a line break swallows them.
+[[nodiscard]] std::vector<std::string> fixAllWrapLines(const std::string& text, float width,
+                                                       const std::function<float(std::string_view)>& measure);
 
 } // namespace ogun

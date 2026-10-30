@@ -589,7 +589,7 @@ TEST_CASE("Fix All in the background: progress, cancel, cancel during a merge, s
         controller.openFixAll();
         controller.setFixAllMergeShells(true);
         controller.previewFixAll();
-        while (controller.globalRepairRunning()) { // finished, not yet collected
+        while (controller.repairWorkerBusy()) { // finished, not yet collected
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         const std::vector<int> first = {0};
@@ -1012,4 +1012,125 @@ TEST_CASE("Fix All on the Turkey as the GUI drives it: background plan check, pr
                                                      << " s; " << frames << " frames polled, " << pollSeconds
                                                      << " s in all, slowest " << maxFrameSeconds << " s), result text "
                                                      << resultTextSeconds << " s");
+}
+
+namespace {
+
+/// Waits until the worker has ended without collecting its results (no poll): the frame in which a job
+/// finishes just after the user clicked Cancel.
+bool waitForWorkerEnd(const AppController& controller) {
+    for (int i = 0; i < 60000 && controller.repairWorkerBusy(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return !controller.repairWorkerBusy();
+}
+
+} // namespace
+
+TEST_CASE("Cancel drops a result that arrives after the click: rebuild preview, Fix All, rebuild rows, Compare",
+          "[app][fixall][background]") {
+    AppController controller;
+    SECTION("Rebuild side: alpha wrap finished but not collected when Cancel is clicked") {
+        controller.setMesh(overlappingCubes(), "cubes");
+        const Mesh before = controller.mesh();
+        controller.openFixAll(3);
+        controller.waitForFixAllPlan();
+        ogun::GlobalRepairParams params = controller.globalRepairParams();
+        params.alphaWrapDetail = ogun::settings::kMinAlphaWrapDetail;
+        controller.setGlobalRepairParams(params);
+        controller.setBackgroundChecks(true);
+        controller.setGlobalRepairMethod(ogun::GlobalRepairMethod::AlphaWrap);
+        controller.previewGlobalRepair();
+        REQUIRE(waitForWorkerEnd(controller));
+        CHECK(controller.globalRepairRunning()); // still drawn as running: the Cancel button is there
+        controller.cancelGlobalRepair();
+        CHECK(controller.globalRepairCancelling());
+        CHECK(controller.statusMessage() == "Preview cancelled: nothing was changed.");
+        controller.waitForGlobalRepair();
+        CHECK_FALSE(controller.globalRepairRunning());
+        CHECK(controller.globalCandidates().empty());
+        CHECK(controller.shownGlobalCandidate() == nullptr); // no Apply
+        CHECK_FALSE(controller.globalPreviewShown());        // the 3D view shows the mesh
+        CHECK(controller.fixAllState() == FixAllPanelState::Plan);
+        CHECK(controller.mesh().F == before.F);
+        CHECK(controller.mesh().V == before.V);
+        CHECK_FALSE(controller.canUndo());
+
+        // A preview cancelled while it computes: nothing either; the next one is kept
+        controller.previewGlobalRepair();
+        controller.cancelGlobalRepair();
+        controller.waitForGlobalRepair();
+        CHECK(controller.globalCandidates().empty());
+        controller.previewGlobalRepair();
+        controller.waitForGlobalRepair();
+        REQUIRE(controller.shownGlobalCandidate() != nullptr);
+        CHECK(controller.shownGlobalCandidate()->success);
+    }
+    SECTION("Fix All: the run ended but is not collected when Cancel is clicked") {
+        controller.setMesh(overlappingCubes(), "cubes");
+        const Mesh before = controller.mesh();
+        controller.openFixAll(3);
+        controller.waitForFixAllPlan();
+        controller.setBackgroundChecks(true);
+        controller.previewFixAll();
+        REQUIRE(waitForWorkerEnd(controller));
+        CHECK(controller.fixAllRunning());
+        CHECK(controller.fixAllState() == FixAllPanelState::Running);
+        controller.cancelFixAll();
+        CHECK(controller.fixAllCancelling());
+        controller.waitForFixAll();
+        CHECK_FALSE(controller.fixAllRunning());
+        CHECK(controller.fixAllCandidate() == nullptr);
+        CHECK(controller.shownGlobalCandidate() == nullptr);
+        CHECK(controller.fixAllState() == FixAllPanelState::Plan);
+        CHECK(controller.statusMessage() == "Fix All cancelled: nothing was changed.");
+        CHECK(controller.mesh().F == before.F);
+    }
+    SECTION("Rebuild shell #k: the rows ended but are not collected when Cancel is clicked") {
+        openFixAllOnOpenBox(controller);
+        controller.previewFixAll(); // inline
+        REQUIRE(controller.fixAllCandidate() != nullptr);
+        const Mesh before = controller.mesh();
+        controller.setBackgroundChecks(true);
+        controller.rebuildFixAllShell(1);
+        REQUIRE(waitForWorkerEnd(controller));
+        CHECK(controller.fixAllRebuildRunning());
+        controller.cancelGlobalRepair();
+        controller.waitForFixAll();
+        CHECK_FALSE(controller.fixAllRebuildRunning());
+        CHECK(controller.fixAllRebuilds().empty());
+        CHECK(controller.fixAllState() == FixAllPanelState::Result); // the Fix All preview stays
+        REQUIRE(controller.shownGlobalCandidate() != nullptr);
+        CHECK(controller.shownGlobalCandidate()->method == ogun::GlobalRepairMethod::FixAll);
+        CHECK(controller.mesh().F == before.F);
+    }
+    SECTION("Compare: a row collected by the poll of the frame in which Cancel is clicked is dropped too") {
+        controller.setMesh(overlappingCubes(), "cubes");
+        const Mesh before = controller.mesh();
+        controller.openFixAll(3);
+        controller.waitForFixAllPlan();
+        ogun::GlobalRepairParams params = controller.globalRepairParams();
+        params.alphaWrapDetail = 300.0; // the last row, slow: still computing when Fix All's row arrives
+        params.windingResolution = ogun::settings::kMinWindingGridResolution;
+        controller.setGlobalRepairParams(params);
+        controller.setBackgroundChecks(true);
+        controller.compareAllGlobalRepairs();
+        // Frame by frame until the poll brings Fix All's row; Cancel is handled in that same frame
+        for (int i = 0; i < 60000 && controller.fixAllCandidate() == nullptr; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            static_cast<void>(controller.pollBackgroundChecks());
+        }
+        REQUIRE(controller.fixAllCandidate() != nullptr);
+        REQUIRE(controller.globalRepairRunning());
+        controller.cancelGlobalRepair();
+        CHECK(controller.fixAllCandidate() == nullptr);
+        controller.waitForFixAll();
+        CHECK_FALSE(controller.globalRepairRunning());
+        CHECK(controller.fixAllCandidate() == nullptr);
+        CHECK(std::none_of(controller.globalCandidates().begin(), controller.globalCandidates().end(),
+                           [](const ogun::RepairCandidate& c) { return c.method == ogun::GlobalRepairMethod::AlphaWrap; }));
+        CHECK(controller.fixAllState() == FixAllPanelState::Plan);
+        CHECK(controller.mesh().F == before.F);
+    }
+    controller.setBackgroundChecks(false);
 }

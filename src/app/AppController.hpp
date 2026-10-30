@@ -1227,15 +1227,28 @@ public:
     /// Computes a candidate for every method of the open operator, one after another.
     void compareAllGlobalRepairs();
 
+    /// Cancel: does not wait. Whatever the job still hands over is dropped, also a result that was finished
+    /// but not yet collected, or collected in the frame the Cancel was clicked; the mesh is unchanged.
     void cancelGlobalRepair();
 
     /// Blocks until the background Repair All job is done and collects its candidates (tests).
     void waitForGlobalRepair();
 
-    /// A Repair All job is computing (a Fix All run that is being cancelled counts until it ends: see
-    /// `fixAllRunning`; a job dropped by an edit does not).
+    /// A Repair All job is computing, or has ended and its results wait for the next poll (so a Cancel
+    /// clicked in that frame still drops them). A job being cancelled counts until it ends; a job dropped
+    /// by an edit does not.
     [[nodiscard]] bool globalRepairRunning() const noexcept {
-        return repairRunner_.busy() && (!repairRunner_.stopping() || fixAllCancelling_);
+        return repairJobActive_;
+    }
+
+    /// The user cancelled the running Repair All job; it has not ended yet.
+    [[nodiscard]] bool globalRepairCancelling() const noexcept {
+        return repairJobActive_ && repairJobCancelled_;
+    }
+
+    /// The background worker is still computing (its results, if any, are collected by the next poll). Tests.
+    [[nodiscard]] bool repairWorkerBusy() const noexcept {
+        return repairRunner_.busy();
     }
 
     [[nodiscard]] float globalRepairProgress() const noexcept {
@@ -1410,7 +1423,7 @@ public:
     }
     /// The rebuild rows are being computed (until the job has ended, also while cancelling).
     [[nodiscard]] bool fixAllRebuildRunning() const noexcept {
-        return fixAllRebuildJob_ && repairRunner_.busy();
+        return fixAllRebuildJob_ && repairJobActive_;
     }
     /// "Rebuilding #12: alpha wrap (1 of 3)... 40 %" (empty when not running).
     [[nodiscard]] std::string fixAllRebuildStatusText() const;
@@ -1591,6 +1604,9 @@ private:
     void openRepairAll(ToolSlot slot, GlobalRepairMethod method);
     /// Moves finished Repair All candidates into the table. Returns true if any arrived.
     bool pollRepairJobs();
+    /// Stops the repair runner's job for the user's Cancel and drops its results, also those the frame's
+    /// poll has just stored.
+    void stopRepairJobForCancel();
     void queueGlobalRepairs(std::vector<GlobalRepairMethod> methods, bool fixAllOnePass = false);
     void storeCandidate(RepairCandidate candidate);
     void storeFixAllRebuild(RepairCandidate candidate);
@@ -1742,6 +1758,13 @@ private:
     std::optional<int> fixAllRebuildShell_;           ///< Their shell (report numbering)
     std::optional<GlobalRepairMethod> shownRebuild_;  ///< A rebuild row is drawn instead of `shownCandidate_`
     bool fixAllRebuildJob_ = false;                   ///< The repair runner's job computes rebuild rows
+    /// The repair runner has a job of ours whose end has not been collected by a poll yet
+    bool repairJobActive_ = false;
+    /// The user cancelled that job: whatever it still hands over is dropped
+    bool repairJobCancelled_ = false;
+    /// What the latest poll stored (rebuild row?, method): results the user had not seen when a Cancel
+    /// clicked in the same frame is handled, so that Cancel drops them too
+    std::vector<std::pair<bool, GlobalRepairMethod>> repairJobJustStored_;
 
     // Mesh > Transform > Translate / Rotate
     MeshTransform transform_{};

@@ -24,6 +24,18 @@ std::optional<std::size_t> knownCount(const AppController& controller, DefectCat
     return controller.rowCount(category);
 }
 
+/// "#2", "#2 and #5", "#2, #3 and #5" (the engine's wording) for 0-based shell indices.
+std::string shellListText(const std::vector<int>& shells) {
+    std::string text;
+    for (std::size_t i = 0; i < shells.size(); ++i) {
+        if (i > 0) {
+            text += i + 1 == shells.size() ? " and " : ", ";
+        }
+        text += "#" + std::to_string(shells[i] + 1);
+    }
+    return text;
+}
+
 std::string sumText(std::optional<std::size_t> a, std::optional<std::size_t> b, bool plus) {
     if (!a || !b) {
         return "?";
@@ -49,6 +61,77 @@ std::string shortNumber(double value) {
         }
     }
     return text;
+}
+
+std::vector<std::string> fixAllWrapLines(const std::string& text, float width,
+                                         const std::function<float(std::string_view)>& measure) {
+    // Words and the spaces before each
+    struct Word {
+        std::string gap;
+        std::string text;
+        bool glue = false; ///< No letter or digit ("%)", ":", "(<"): never a line break next to it
+    };
+    std::vector<Word> words;
+    std::size_t i = 0;
+    while (i < text.size()) {
+        Word w;
+        while (i < text.size() && text[i] == ' ') {
+            w.gap += ' ';
+            ++i;
+        }
+        while (i < text.size() && text[i] != ' ') {
+            w.text += text[i];
+            ++i;
+        }
+        if (w.text.empty()) {
+            break; // trailing spaces
+        }
+        w.glue = std::none_of(w.text.begin(), w.text.end(), [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0; });
+        words.push_back(std::move(w));
+    }
+    // Words that may not be split apart become one unit
+    std::vector<std::string> units;
+    for (std::size_t k = 0; k < words.size(); ++k) {
+        const bool joinPrevious = k > 0 && (words[k].glue || words[k - 1].glue);
+        if (joinPrevious) {
+            units.back() += words[k].gap + words[k].text;
+        } else {
+            units.push_back(k == 0 ? words[k].gap + words[k].text : words[k].text);
+        }
+    }
+    // The gap before each unit (the first word's gap stays inside the first unit)
+    std::vector<std::string> gaps(units.size());
+    {
+        std::size_t u = 0;
+        for (std::size_t k = 0; k < words.size(); ++k) {
+            const bool joinPrevious = k > 0 && (words[k].glue || words[k - 1].glue);
+            if (!joinPrevious) {
+                if (k > 0) {
+                    gaps[u] = words[k].gap;
+                }
+                ++u;
+            }
+        }
+    }
+    std::vector<std::string> lines;
+    std::string line;
+    for (std::size_t u = 0; u < units.size(); ++u) {
+        if (line.empty()) {
+            line = units[u];
+            continue;
+        }
+        std::string candidate = line + gaps[u] + units[u];
+        if (measure(candidate) <= width) {
+            line = std::move(candidate);
+        } else {
+            lines.push_back(std::move(line));
+            line = units[u];
+        }
+    }
+    if (!line.empty() || lines.empty()) {
+        lines.push_back(std::move(line));
+    }
+    return lines;
 }
 
 std::size_t shellsInPlanScope(const MergePlan& plan) {
@@ -375,7 +458,12 @@ std::vector<FixAllResultLine> fixAllResultLines(const FixAllResult& result, bool
         return lines;
     }
     const auto add = [&](std::string text, bool warning, std::vector<int> shells, FixAllLineAction action) {
-        lines.push_back({std::move(text), warning, std::move(shells), action});
+        FixAllResultLine line;
+        line.text = std::move(text);
+        line.warning = warning;
+        line.shells = std::move(shells);
+        line.action = action;
+        lines.push_back(std::move(line));
     };
     add(report.passesLine, false, {}, FixAllLineAction::None);
     const bool unclean = !result.priorityAfter.clean();
@@ -405,9 +493,21 @@ std::vector<FixAllResultLine> fixAllResultLines(const FixAllResult& result, bool
                    std::find(g.shells.begin(), g.shells.end(), shell) != g.shells.end();
         });
     };
+    // A crossing pair with its own counted line ("#1 and #2 still cross (9 crossing face pairs): ...")
+    const auto pairListed = [&](int a, int b) {
+        return std::any_of(report.crossingsLeft.begin(), report.crossingsLeft.end(), [&](const FixAllCrossingLeft& l) {
+            return (l.a == a && l.b == b) || (l.a == b && l.b == a);
+        });
+    };
     for (const FixAllShellResidue& r : report.residue) {
         if (r.suggestion == FixAllSuggestion::ReportOnly && r.reason.find("cavity or inside out?") != std::string::npos &&
             reachedCavity(r.shell)) {
+            continue;
+        }
+        // "#1 still crosses #2: #2 is not selected." says again what the pair lines below say with their counts
+        const std::string crossesHead = "#" + std::to_string(r.shell + 1) + " still crosses ";
+        const bool crossingOnly = !r.unresolved() && !r.crosses.empty() && r.reason.starts_with(crossesHead);
+        if (crossingOnly && std::all_of(r.crosses.begin(), r.crosses.end(), [&](int o) { return pairListed(r.shell, o); })) {
             continue;
         }
         FixAllLineAction action = r.named.empty() ? FixAllLineAction::None : FixAllLineAction::ShowThem;
@@ -422,11 +522,30 @@ std::vector<FixAllResultLine> fixAllResultLines(const FixAllResult& result, bool
         if (r.suggestion == FixAllSuggestion::AlphaWrap) {
             lines.back().rebuildShell = r.shell;
         }
+        if (crossingOnly) {
+            // One reason for every shell it crosses ("#5 still crosses #1, #3 and #9: <why>."): grouped by the why
+            const std::string head = crossesHead + shellListText(r.crosses) + ": ";
+            if (r.reason.starts_with(head)) {
+                std::string why = r.reason.substr(head.size());
+                const std::string tick = " Tick Merge shells and preview again.";
+                if (why.ends_with(tick)) {
+                    why.erase(why.size() - tick.size());
+                }
+                if (why.ends_with(".")) {
+                    why.pop_back();
+                }
+                lines.back().groupKey = why;
+                lines.back().groupKind = FixAllLineGroupKind::Shells;
+            }
+        }
     }
     for (const FixAllCrossingLeft& left : report.crossingsLeft) {
-        add(left.text, true, {left.a, left.b}, FixAllLineAction::ShowThem);
+        // The advice of the shell lines left out above
+        const bool tick = left.whyNotMerged == "the merge is off";
+        add(left.text + (tick ? " Tick Merge shells and preview again." : ""), true, {left.a, left.b}, FixAllLineAction::ShowThem);
         if (left.fills.empty() && !left.whyNotMerged.empty()) {
             lines.back().groupKey = left.whyNotMerged;
+            lines.back().groupKind = FixAllLineGroupKind::ShellPairs;
         }
     }
     if (beforeApply && !result.mergeRemovedFaces.empty()) {
@@ -444,16 +563,18 @@ std::vector<FixAllResultLine> fixAllResultLines(const FixAllResult& result, bool
 
 std::vector<FixAllLineGroup> fixAllLineGroups(const std::vector<FixAllResultLine>& lines) {
     std::vector<FixAllLineGroup> groups;
-    std::vector<std::string> keys;
+    std::vector<std::pair<FixAllLineGroupKind, std::string>> keys;
     for (std::size_t i = 0; i < lines.size(); ++i) {
         if (lines[i].groupKey.empty()) {
             continue;
         }
-        const auto it = std::find(keys.begin(), keys.end(), lines[i].groupKey);
+        const std::pair<FixAllLineGroupKind, std::string> key{lines[i].groupKind, lines[i].groupKey};
+        const auto it = std::find(keys.begin(), keys.end(), key);
         const std::size_t g = static_cast<std::size_t>(it - keys.begin());
         if (it == keys.end()) {
-            keys.push_back(lines[i].groupKey);
+            keys.push_back(key);
             groups.emplace_back();
+            groups.back().kind = key.first;
         }
         groups[g].members.push_back(i);
         for (const int s : lines[i].shells) {
@@ -465,7 +586,13 @@ std::vector<FixAllLineGroup> fixAllLineGroups(const std::vector<FixAllResultLine
     std::vector<FixAllLineGroup> out;
     for (std::size_t g = 0; g < groups.size(); ++g) {
         if (groups[g].members.size() >= kFixAllMinGroup) {
-            groups[g].summary = std::to_string(groups[g].members.size()) + " shell pairs still cross: " + keys[g] + ".";
+            const std::string& why = keys[g].second;
+            if (groups[g].kind == FixAllLineGroupKind::Shells) {
+                groups[g].summary = std::to_string(groups[g].members.size()) + " shells still cross other shells: " + why + ".";
+            } else {
+                groups[g].summary = std::to_string(groups[g].members.size()) + " shell pairs among " +
+                                    std::to_string(groups[g].shells.size()) + " shells still cross: " + why + ".";
+            }
             out.push_back(std::move(groups[g]));
         }
     }

@@ -323,22 +323,23 @@ void AppController::cancelFixAll() {
         postStatusMessage("Fix All cancelled: nothing was changed.");
         return;
     }
-    if (!fixAllJobRunning_ || !repairRunner_.busy() || fixAllCancelling_) {
+    // Also when the run has just ended but is not collected yet: its result is dropped
+    if (!fixAllRunning() || fixAllCancelling_) {
         return;
     }
     const std::string text = repairRunner_.progressText();
-    repairRunner_.requestStop();
+    stopRepairJobForCancel();
     fixAllCancelling_ = true;
     fixAllCancelText_ = text.find("merging") != std::string::npos ? "Cancelling after the current merge..." : "Cancelling Fix All...";
     postStatusMessage(fixAllCancelText_);
 }
 
 bool AppController::fixAllRunning() const noexcept {
-    return fixAllPreviewQueued_.has_value() || (fixAllJobRunning_ && repairRunner_.busy());
+    return fixAllPreviewQueued_.has_value() || (fixAllJobRunning_ && repairJobActive_);
 }
 
 float AppController::fixAllProgress() const noexcept {
-    return fixAllJobRunning_ && repairRunner_.busy() ? repairRunner_.progress() : 0.0f;
+    return fixAllJobRunning_ && repairJobActive_ ? repairRunner_.progress() : 0.0f;
 }
 
 std::string AppController::fixAllStatusText() const {
@@ -379,11 +380,11 @@ bool AppController::pollFixAll() {
         startFixAllRun(onePass);
         changed = true;
     }
-    if (fixAllRebuildJob_ && !repairRunner_.busy()) {
+    if (fixAllRebuildJob_ && !repairJobActive_) {
         fixAllRebuildJob_ = false;
         changed = true;
     }
-    if (fixAllJobRunning_ && !repairRunner_.busy()) {
+    if (fixAllJobRunning_ && !repairJobActive_) {
         fixAllJobRunning_ = false;
         if (fixAllCancelling_) {
             fixAllCancelling_ = false;
@@ -677,6 +678,8 @@ void AppController::clearFixAllRebuilds() {
     if (fixAllRebuildJob_) {
         repairRunner_.requestStop(); // a rebuild row's merge may be inside a Manifold union: do not wait
         fixAllRebuildJob_ = false;
+        repairJobActive_ = false;
+        repairJobCancelled_ = false;
     }
     fixAllRebuilds_.clear();
     fixAllRebuildShell_.reset();
@@ -711,6 +714,9 @@ void AppController::rebuildFixAllShell(int reportShell) {
         request.rebuildBase = std::make_shared<const RepairCandidate>(*candidate);
         request.rebuildShell = reportShell;
         repairRunner_.start(std::move(request));
+        repairJobActive_ = true;
+        repairJobCancelled_ = false;
+        repairJobJustStored_.clear();
         fixAllRebuildJob_ = true;
         postStatusMessage("Rebuilding #" + std::to_string(reportShell + 1) + "...");
         return;
@@ -757,7 +763,7 @@ std::string AppController::fixAllRebuildStatusText() const {
         return {};
     }
     const std::string number = "#" + std::to_string(*fixAllRebuildShell_ + 1);
-    if (repairRunner_.stopping()) {
+    if (repairJobCancelled_) {
         return "Cancelling the rebuild of " + number + "...";
     }
     std::string text = "Rebuilding " + number;
@@ -772,10 +778,10 @@ std::string AppController::fixAllRebuildStatusText() const {
 }
 
 void AppController::cancelFixAllRebuild() {
-    if (!fixAllRebuildRunning() || repairRunner_.stopping()) {
+    if (!fixAllRebuildRunning() || repairJobCancelled_) {
         return;
     }
-    repairRunner_.requestStop();
+    stopRepairJobForCancel();
     postStatusMessage("Rebuild cancelled: nothing was changed.");
 }
 

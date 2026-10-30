@@ -7,8 +7,11 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 using ogun::AppController;
@@ -435,7 +438,182 @@ TEST_CASE("Fix All lines: repeated crossing lines fold into one group", "[app][f
     }
     const std::vector<ogun::FixAllLineGroup> groups = ogun::fixAllLineGroups(lines);
     REQUIRE(groups.size() == 1);
-    CHECK(groups[0].summary == "5 shell pairs still cross: their group reaches into cavity #28.");
+    CHECK(groups[0].summary == "5 shell pairs among 6 shells still cross: their group reaches into cavity #28.");
     CHECK(groups[0].members == std::vector<std::size_t>{1, 2, 3, 4, 5});
     CHECK(groups[0].shells == std::vector<int>{0, 8, 1, 2, 3, 4});
+}
+
+namespace {
+
+/// One character per unit of width, so the test can count.
+float charWidth(std::string_view text) {
+    return static_cast<float>(text.size());
+}
+
+bool hasLetterOrDigit(const std::string& word) {
+    return std::any_of(word.begin(), word.end(), [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0; });
+}
+
+/// A residue line "#k still crosses <others>: <why>." as the engine words it (crossing only).
+ogun::FixAllShellResidue crossingResidue(int shell, std::vector<int> others, const std::string& why) {
+    ogun::FixAllShellResidue r;
+    r.shell = shell;
+    r.crosses = others;
+    r.suggestion = ogun::FixAllSuggestion::ReportOnly;
+    std::string list;
+    for (std::size_t i = 0; i < others.size(); ++i) {
+        if (i > 0) {
+            list += i + 1 == others.size() ? " and " : ", ";
+        }
+        list += "#" + std::to_string(others[i] + 1);
+    }
+    r.reason = "#" + std::to_string(shell + 1) + " still crosses " + list + ": " + why + ".";
+    r.named = {shell};
+    r.named.insert(r.named.end(), others.begin(), others.end());
+    return r;
+}
+
+ogun::FixAllCrossingLeft crossingPair(int a, int b, const std::string& why) {
+    ogun::FixAllCrossingLeft left;
+    left.a = a;
+    left.b = b;
+    left.facePairs = 9;
+    left.whyNotMerged = why;
+    left.text = "#" + std::to_string(a + 1) + " and #" + std::to_string(b + 1) + " still cross (9 crossing face pairs): " + why + ".";
+    return left;
+}
+
+std::size_t countContaining(const std::vector<ogun::FixAllResultLine>& lines, const std::string& part) {
+    return static_cast<std::size_t>(std::count_if(lines.begin(), lines.end(), [&](const ogun::FixAllResultLine& l) {
+        return l.text.find(part) != std::string::npos;
+    }));
+}
+
+} // namespace
+
+TEST_CASE("Fix All panel: plan labels wrap only at spaces, never inside a number or next to a sign", "[app][fixall][gui]") {
+    // The Turkey's row 3 wrapped as "Delete tiny floating shells (< 0." / "1 %)"
+    const std::string row3 = "3  Delete tiny floating shells (< 0.1 %)";
+    for (float width = 8.0f; width <= 45.0f; width += 1.0f) {
+        const std::vector<std::string> lines = ogun::fixAllWrapLines(row3, width, charWidth);
+        const bool together = std::any_of(lines.begin(), lines.end(), [](const std::string& l) {
+            return l.find("(< 0.1 %)") != std::string::npos;
+        });
+        CHECK(together);
+    }
+    CHECK(ogun::fixAllWrapLines(row3, 100.0f, charWidth) == std::vector<std::string>{row3});
+    CHECK(ogun::fixAllWrapLines("Heal thin faces (stretched over 100 : 1)", 30.0f, charWidth) ==
+          std::vector<std::string>{"Heal thin faces (stretched", "over 100 : 1)"});
+    CHECK(ogun::fixAllWrapLines("", 10.0f, charWidth) == std::vector<std::string>{""});
+
+    // Every row of the plan at every width: lines are the label's words in order, split only at spaces, and
+    // no line starts or ends with a word that has no letter or digit
+    AppController controller;
+    controller.setMesh(overlappingCubes(), "cubes");
+    controller.openFixAll(3);
+    controller.waitForFixAllPlan();
+    for (const FixAllPlanRow& row : ogun::fixAllPlanRows(controller)) {
+        const std::string text = std::to_string(row.number) + "  " + row.label;
+        for (float width = 6.0f; width <= 60.0f; width += 1.0f) {
+            const std::vector<std::string> lines = ogun::fixAllWrapLines(text, width, charWidth);
+            std::string joined;
+            for (const std::string& line : lines) {
+                joined += (joined.empty() ? "" : " ") + line;
+                const std::string first = line.substr(0, line.find(' '));
+                const std::string last = line.substr(line.rfind(' ') + 1);
+                // At every break, both neighbouring words have a letter or digit
+                CHECK((hasLetterOrDigit(first) || &line == &lines.front()));
+                CHECK((hasLetterOrDigit(last) || &line == &lines.back()));
+            }
+            const auto squash = [](std::string t) { // a break swallows a run of spaces ("11  Split")
+                for (std::size_t at = t.find("  "); at != std::string::npos; at = t.find("  ")) {
+                    t.erase(at, 1);
+                }
+                return t;
+            };
+            CHECK(squash(joined) == squash(text));
+        }
+    }
+}
+
+TEST_CASE("Fix All lines: each crossing pair is said once", "[app][fixall][gui]") {
+    SECTION("Merge off: the counted pair line, with the advice to tick the merge") {
+        AppController controller;
+        controller.setMesh(overlappingCubes(), "cubes");
+        controller.openFixAll(3);
+        controller.waitForFixAllPlan();
+        controller.setFixAllMergeShells(false);
+        controller.previewFixAll();
+        REQUIRE(controller.fixAllCandidate() != nullptr);
+        const ogun::FixAllResult& result = controller.fixAllCandidate()->fixAll->result;
+        REQUIRE(result.report.crossingsLeft.size() == 1);
+        REQUIRE(result.report.residue.size() == 2); // the engine still has a line per shell
+        const std::vector<ogun::FixAllResultLine> lines = ogun::fixAllResultLines(result, true);
+        CHECK(countContaining(lines, "still cross") == 1);
+        CHECK(countContaining(lines, "#1 and #2 still cross (") == 1);
+        CHECK(countContaining(lines, "the merge is off. Tick Merge shells and preview again.") == 1);
+    }
+    SECTION("One of two crossing shells selected") {
+        AppController controller;
+        controller.setMesh(overlappingCubes(), "cubes");
+        controller.selectShellsWhere([](std::size_t s) { return s == 0; });
+        controller.openFixAll(3);
+        controller.waitForFixAllPlan();
+        controller.previewFixAll();
+        REQUIRE(controller.fixAllCandidate() != nullptr);
+        const std::vector<ogun::FixAllResultLine> lines = ogun::fixAllResultLines(controller.fixAllCandidate()->fixAll->result, true);
+        CHECK(countContaining(lines, "is not selected") == 1);
+        CHECK(countContaining(lines, "still crosses") == 0);
+        CHECK(countContaining(lines, "still cross (") == 1);
+    }
+    SECTION("A shell line naming a pair without its own line is kept") {
+        ogun::FixAllResult result;
+        result.report.complete = true;
+        result.report.residue.push_back(crossingResidue(0, {1, 2}, "the merge is off"));
+        result.report.crossingsLeft.push_back(crossingPair(0, 1, "the merge is off"));
+        const std::vector<ogun::FixAllResultLine> lines = ogun::fixAllResultLines(result, true);
+        CHECK(countContaining(lines, "#1 still crosses #2 and #3") == 1);
+        CHECK(countContaining(lines, "#1 and #2 still cross (") == 1);
+    }
+}
+
+TEST_CASE("Fix All lines: shells that cross for the same reason fold into one group, whatever shells they name",
+          "[app][fixall][gui]") {
+    const std::string why = "their group reaches into cavity #7 of #5, so it is not merged (merge them by hand)";
+    ogun::FixAllResult result;
+    result.report.complete = true;
+    // As on the Turkey: each shell crosses different shells, so the texts differ but the reason is one
+    result.report.residue.push_back(crossingResidue(0, {1, 2, 3}, why));
+    result.report.residue.push_back(crossingResidue(1, {0, 3}, why));
+    result.report.residue.push_back(crossingResidue(2, {0}, why));
+    result.report.residue.push_back(crossingResidue(3, {0, 1}, why));
+    result.report.residue.push_back(crossingResidue(5, {4}, "#5 is not selected"));
+
+    SECTION("Shell lines without pair lines: one summary of the shells") {
+        const std::vector<ogun::FixAllResultLine> lines = ogun::fixAllResultLines(result, false);
+        const std::vector<ogun::FixAllLineGroup> groups = ogun::fixAllLineGroups(lines);
+        REQUIRE(groups.size() == 1);
+        CHECK(groups[0].kind == ogun::FixAllLineGroupKind::Shells);
+        CHECK(groups[0].summary == "4 shells still cross other shells: " + why + ".");
+        REQUIRE(groups[0].members.size() == 4);
+        for (const std::size_t m : groups[0].members) {
+            CHECK(lines[m].text.find(why) != std::string::npos);
+            CHECK(lines[m].action == ogun::FixAllLineAction::ShowThem);
+        }
+        CHECK(groups[0].shells == std::vector<int>{0, 1, 2, 3});
+        CHECK(countContaining(lines, "#6 still crosses #5: #5 is not selected.") == 1); // its own reason: alone
+    }
+    SECTION("With the counted pair lines: the shell lines are left out, the pairs fold into one summary") {
+        for (const auto& [a, b] : std::vector<std::pair<int, int>>{{0, 1}, {0, 2}, {0, 3}, {1, 3}}) {
+            result.report.crossingsLeft.push_back(crossingPair(a, b, why));
+        }
+        result.report.crossingsLeft.push_back(crossingPair(4, 5, "#5 is not selected"));
+        const std::vector<ogun::FixAllResultLine> lines = ogun::fixAllResultLines(result, false);
+        CHECK(countContaining(lines, "still crosses") == 0);
+        const std::vector<ogun::FixAllLineGroup> groups = ogun::fixAllLineGroups(lines);
+        REQUIRE(groups.size() == 1);
+        CHECK(groups[0].kind == ogun::FixAllLineGroupKind::ShellPairs);
+        CHECK(groups[0].summary == "4 shell pairs among 4 shells still cross: " + why + ".");
+        CHECK(groups[0].members.size() == 4);
+    }
 }

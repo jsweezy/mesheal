@@ -255,6 +255,9 @@ void AppController::queueGlobalRepairs(std::vector<GlobalRepairMethod> methods, 
     }
     if (backgroundChecks_) {
         repairRunner_.start(std::move(request));
+        repairJobActive_ = true;
+        repairJobCancelled_ = false;
+        repairJobJustStored_.clear();
         fixAllRebuildJob_ = false;
         fixAllJobRunning_ = fixAll;
         fixAllCancelling_ = false;
@@ -276,7 +279,36 @@ void AppController::cancelGlobalRepair() {
         cancelFixAllRebuild();
         return;
     }
-    repairRunner_.cancel();
+    if (!repairJobActive_ || repairJobCancelled_) {
+        return;
+    }
+    stopRepairJobForCancel();
+    postStatusMessage("Preview cancelled: nothing was changed.");
+}
+
+void AppController::stopRepairJobForCancel() {
+    // Does not wait: an alpha wrap stops at its next step, a union finishes first. `requestStop` also drops
+    // a result that is finished but not collected yet, and the poll drops anything the job hands over later.
+    repairRunner_.requestStop();
+    repairJobCancelled_ = true;
+    // Collected by this frame's poll, before the click was handled: the user never saw it
+    for (const auto& [rebuildRow, method] : repairJobJustStored_) {
+        if (rebuildRow) {
+            std::erase_if(fixAllRebuilds_, [&](const RepairCandidate& c) { return c.method == method; });
+            if (shownRebuild_ == method) {
+                shownRebuild_.reset();
+            }
+        } else {
+            std::erase_if(globalCandidates_, [&](const RepairCandidate& c) { return c.method == method; });
+            if (shownCandidate_ == method) {
+                shownCandidate_.reset();
+            }
+        }
+    }
+    repairJobJustStored_.clear();
+    if (!shownCandidate_ && !globalCandidates_.empty()) {
+        shownCandidate_ = globalCandidates_.front().method;
+    }
 }
 
 bool AppController::candidateIsCurrent(const RepairCandidate& candidate) const noexcept {
@@ -315,17 +347,27 @@ void AppController::storeCandidate(RepairCandidate candidate) {
 }
 
 bool AppController::pollRepairJobs() {
+    // Read before collecting: a job that has ended has handed over everything it computed
+    const bool ended = !repairRunner_.busy();
     std::vector<FinishedCandidate> finished = repairRunner_.takeFinished();
+    repairJobJustStored_.clear();
     bool changed = false;
     for (FinishedCandidate& f : finished) {
-        if (f.meshGeneration != meshGeneration_ || !repairAllOpen()) {
+        if (f.meshGeneration != meshGeneration_ || !repairAllOpen() || repairJobCancelled_) {
             continue;
         }
+        const GlobalRepairMethod method = f.candidate.method;
         if (f.rebuildRow) {
             storeFixAllRebuild(std::move(f.candidate));
         } else {
             storeCandidate(std::move(f.candidate));
         }
+        repairJobJustStored_.emplace_back(f.rebuildRow, method);
+        changed = true;
+    }
+    if (ended && repairJobActive_) {
+        repairJobActive_ = false;
+        repairJobCancelled_ = false;
         changed = true;
     }
     return changed;
@@ -341,6 +383,9 @@ void AppController::discardGlobalCandidates() {
     } else {
         repairRunner_.cancel();
     }
+    repairJobActive_ = false;
+    repairJobCancelled_ = false;
+    repairJobJustStored_.clear();
     fixAllRebuildJob_ = false;
     fixAllPreviewQueued_.reset();
     (void)repairRunner_.takeFinished();

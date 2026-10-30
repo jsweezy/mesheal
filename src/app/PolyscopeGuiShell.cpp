@@ -1089,19 +1089,17 @@ void PolyscopeGui::drawStatusBar(float top, float height) {
         ImGui::SameLine(display.x - barWidth - cancelWidth - 3.0f * settings::kPanelMarginPx);
         const std::optional<GlobalRepairMethod> current = controller_.globalRepairCurrentMethod();
         const bool fixAll = controller_.fixAllRunning();
-        const std::string overlay = fixAll    ? (controller_.fixAllCancelling() ? std::string("Cancelling...") : std::string("Fix All..."))
-                                    : current ? std::string(globalRepairMethodLabel(*current)) + "..."
-                                              : std::string("Repairing...");
+        const std::string overlay = fixAll ? (controller_.fixAllCancelling() ? std::string("Cancelling...") : std::string("Fix All..."))
+                                    : controller_.globalRepairCancelling() ? std::string("Cancelling...")
+                                    : current                              ? std::string(globalRepairMethodLabel(*current)) + "..."
+                                                                           : std::string("Repairing...");
         ImGui::ProgressBar(controller_.globalRepairProgress(), ImVec2(barWidth, 0.0f), overlay.c_str());
         if (fixAll) {
             ImGui::SetItemTooltip("%s", controller_.fixAllStatusText().c_str());
         }
         ImGui::SameLine();
         if (ImGui::SmallButton("Cancel##repair")) {
-            controller_.cancelGlobalRepair(); // Fix All: posts "Cancelling after the current merge..." itself
-            if (!fixAll) {
-                controller_.postStatusMessage("Repair All preview cancelled.");
-            }
+            controller_.cancelGlobalRepair(); // posts its own status message
         }
     } else if (controller_.checksRunning()) {
         const float barWidth = 200.0f;
