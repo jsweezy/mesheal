@@ -453,6 +453,7 @@ void PolyscopeGui::drawRightColumn(float top, float bottom) {
                         : slot == ToolSlot::MergeVertices          ? std::string("Operation: Merge Vertices")
                         : slot == ToolSlot::MergeShells            ? std::string("Operation: Merge Shells")
                         : slot == ToolSlot::Transform              ? std::string("Operation: Translate / Rotate")
+                        : slot == ToolSlot::FixAll                 ? std::string("Operation: Fix All")
                         : std::string("Tool: ") + categoryInfo(*controller_.selectedCategory()).name;
     title += "###ToolSlot";
 
@@ -1072,12 +1073,20 @@ void PolyscopeGui::drawStatusBar(float top, float height) {
         const float cancelWidth = ImGui::CalcTextSize("Cancel").x + 2.0f * ImGui::GetStyle().FramePadding.x;
         ImGui::SameLine(display.x - barWidth - cancelWidth - 3.0f * settings::kPanelMarginPx);
         const std::optional<GlobalRepairMethod> current = controller_.globalRepairCurrentMethod();
-        const std::string overlay = current ? std::string(globalRepairMethodLabel(*current)) + "..." : std::string("Repairing...");
+        const bool fixAll = controller_.fixAllRunning();
+        const std::string overlay = fixAll    ? (controller_.fixAllCancelling() ? std::string("Cancelling...") : std::string("Fix All..."))
+                                    : current ? std::string(globalRepairMethodLabel(*current)) + "..."
+                                              : std::string("Repairing...");
         ImGui::ProgressBar(controller_.globalRepairProgress(), ImVec2(barWidth, 0.0f), overlay.c_str());
+        if (fixAll) {
+            ImGui::SetItemTooltip("%s", controller_.fixAllStatusText().c_str());
+        }
         ImGui::SameLine();
         if (ImGui::SmallButton("Cancel##repair")) {
-            controller_.cancelGlobalRepair();
-            controller_.postStatusMessage("Repair All preview cancelled.");
+            controller_.cancelGlobalRepair(); // Fix All: posts "Cancelling after the current merge..." itself
+            if (!fixAll) {
+                controller_.postStatusMessage("Repair All preview cancelled.");
+            }
         }
     } else if (controller_.checksRunning()) {
         const float barWidth = 200.0f;

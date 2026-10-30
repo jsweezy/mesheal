@@ -57,6 +57,109 @@ RepairCandidate runInPlace(const Mesh& mesh, std::span<const std::uint8_t> faceI
     return candidate;
 }
 
+/// Faces whose flag is set (an empty mask: every face).
+std::vector<Eigen::Index> flaggedFaces(const Mesh& mesh, std::span<const std::uint8_t> flags) {
+    std::vector<Eigen::Index> faces;
+    faces.reserve(static_cast<std::size_t>(mesh.numFaces()));
+    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+        if (flags.empty() || (static_cast<std::size_t>(f) < flags.size() && flags[static_cast<std::size_t>(f)] != 0)) {
+            faces.push_back(f);
+        }
+    }
+    return faces;
+}
+
+/// Fix All on the whole mesh with the scope: the run's result, the preview data and the metrics of the
+/// faces in scope before and after.
+RepairCandidate runFixAllCandidate(const Mesh& mesh, std::span<const std::uint8_t> faceInScope, RepairCandidate candidate,
+                                   std::stop_token stopToken, std::atomic<float>* progress, const FixAllRunInput* input) {
+    const FixAllScopeKind kind = faceInScope.empty() ? FixAllScopeKind::Whole
+                                 : input != nullptr  ? input->scopeKind
+                                                     : FixAllScopeKind::Shells;
+    const FixAllScope scope = FixAllScope::fromFaceMask(mesh, kind, faceInScope);
+    if (scope.faceCount() == 0) {
+        candidate.statusMessage = "No faces in scope.";
+        return candidate;
+    }
+    FixAllParams params = candidate.params.fixAll;
+    params.checkParams = candidate.params.checkParams;
+    params.holeFill = candidate.params.holeSettings;
+    params.islandRepair = candidate.params.islandSettings;
+
+    FixAllProgress local;
+    FixAllProgress* shared = input != nullptr ? input->progress : nullptr;
+    if (shared == nullptr && progress != nullptr) {
+        local.observer = [progress](float value, const std::string&) { progress->store(value); };
+    }
+    FixAllResult result = runFixAll(mesh, scope, params, stopToken, shared != nullptr ? shared : &local,
+                                    input != nullptr ? input->hooks : nullptr);
+    if (result.cancelled || stopToken.stop_requested()) {
+        candidate.cancelled = true;
+        candidate.statusMessage = "Cancelled.";
+        return candidate;
+    }
+    if (!result.success) {
+        candidate.statusMessage = result.error.empty() ? std::string("Fix All failed.") : result.error;
+        return candidate;
+    }
+
+    const FaceDiff diff = faceDiff(mesh, result.mesh);
+    candidate.changedFaces = diff.added;
+    candidate.removedFaces = diff.removed;
+    candidate.vertexDeviation = vertexDeviation(result.mesh, mesh);
+    // Metrics of the faces in scope: the input's scope before, the carried scope after
+    const Mesh scopedBefore = extractFaces(mesh, flaggedFaces(mesh, scope.faceInScope));
+    const Mesh scopedAfter = extractFaces(result.mesh, flaggedFaces(result.mesh, result.scope.faceInScope));
+    RepairMetrics& m = candidate.metrics;
+    m = computeRepairGeometryMetrics(scopedBefore, scopedAfter, stopToken);
+    const FixAllCounts& before = result.countsBefore;
+    const FixAllCounts& after = result.countsAfter;
+    m.shellsBefore = result.report.shellsBefore;
+    m.shellsAfter = result.report.shellsAfter;
+    m.openEdgesBefore = before.openEdges;
+    m.openEdgesAfter = after.openEdges;
+    m.nonManifoldEdgesBefore = before.nonManifoldEdges;
+    m.nonManifoldEdgesAfter = after.nonManifoldEdges;
+    m.nonManifoldVerticesBefore = before.nonManifoldVertices;
+    m.nonManifoldVerticesAfter = after.nonManifoldVertices;
+    m.flippedFacesBefore = before.flippedFaces;
+    m.flippedFacesAfter = after.flippedFaces;
+    m.invertedShellsBefore = before.invertedShells;
+    m.invertedShellsAfter = after.invertedShells;
+    m.intersectingFacesBefore = before.intersectingFaces;
+    m.intersectingFacesAfter = after.intersectingFaces;
+    m.degenerateFacesBefore = before.degenerateFaces;
+    m.degenerateFacesAfter = after.degenerateFaces;
+    m.duplicateFacesBefore = before.duplicateFaces;
+    m.duplicateFacesAfter = after.duplicateFaces;
+    m.thinFacesBefore = before.thinFaces;
+    m.thinFacesAfter = after.thinFaces;
+    m.elapsedMs = result.elapsedMs;
+    if (stopToken.stop_requested()) {
+        candidate.cancelled = true;
+        candidate.statusMessage = "Cancelled.";
+        return candidate;
+    }
+
+    auto data = std::make_shared<FixAllCandidate>();
+    data->scopeKind = kind;
+    data->onePassRequested = params.passes <= 1;
+    data->faceShell.assign(static_cast<std::size_t>(result.mesh.numFaces()), -1);
+    for (std::size_t s = 0; s < result.report.shells.size(); ++s) {
+        for (const Eigen::Index f : result.report.shells[s]) {
+            data->faceShell[static_cast<std::size_t>(f)] = static_cast<int>(s);
+        }
+    }
+    candidate.statusMessage = result.report.passesLine + ". " + result.report.leftLine;
+    candidate.mesh = std::move(result.mesh);
+    result.mesh = Mesh{};
+    data->result = std::move(result);
+    candidate.fixAll = std::move(data);
+    candidate.success = true;
+    report(progress, 1.0f);
+    return candidate;
+}
+
 /// Self-union of each shell that crosses itself; the others are copied as they are.
 Mesh unitePerShell(const Mesh& mesh, const CheckParams& params, std::string& status) {
     const std::vector<int> faceShell = shellIdsOfFaces(mesh);
@@ -104,6 +207,8 @@ Mesh unitePerShell(const Mesh& mesh, const CheckParams& params, std::string& sta
 
 const char* globalRepairMethodLabel(GlobalRepairMethod method) noexcept {
     switch (method) {
+    case GlobalRepairMethod::FixAll:
+        return "Fix All";
     case GlobalRepairMethod::FillHoles:
         return "Fill each hole";
     case GlobalRepairMethod::PatchIslands:
@@ -146,7 +251,14 @@ bool GlobalRepairParams::operator==(const GlobalRepairParams& other) const noexc
            simplifyRebuild == other.simplifyRebuild && islandSettings.dilationRings == other.islandSettings.dilationRings &&
            islandSettings.cgalMaxSteps == other.islandSettings.cgalMaxSteps &&
            holeMethod == other.holeMethod && holeSettings == other.holeSettings &&
-           checkParams.intersectionTolerance == other.checkParams.intersectionTolerance;
+           checkParams.intersectionTolerance == other.checkParams.intersectionTolerance &&
+           fixAll.passes == other.fixAll.passes && fixAll.timeBudgetSeconds == other.fixAll.timeBudgetSeconds &&
+           fixAll.weld == other.fixAll.weld && fixAll.weldTolerance.absFloor == other.fixAll.weldTolerance.absFloor &&
+           fixAll.weldTolerance.relTol == other.fixAll.weldTolerance.relTol &&
+           fixAll.removeTinyShells == other.fixAll.removeTinyShells &&
+           fixAll.tinyShellFraction == other.fixAll.tinyShellFraction && fixAll.removeFins == other.fixAll.removeFins &&
+           fixAll.closeCracks == other.fixAll.closeCracks && fixAll.healThinFaces == other.fixAll.healThinFaces &&
+           fixAll.mergeShells == other.fixAll.mergeShells;
 }
 
 RepairCandidate runGlobalRepair(
@@ -155,10 +267,14 @@ RepairCandidate runGlobalRepair(
     GlobalRepairMethod method,
     const GlobalRepairParams& params,
     std::stop_token stopToken,
-    std::atomic<float>* progress) {
+    std::atomic<float>* progress,
+    const FixAllRunInput* fixAll) {
     RepairCandidate candidate;
     candidate.method = method;
     candidate.params = params;
+    if (method == GlobalRepairMethod::FixAll) {
+        return runFixAllCandidate(mesh, faceInScope, std::move(candidate), stopToken, progress, fixAll);
+    }
     candidate.mesh = mesh;
 
     std::vector<Eigen::Index> inFaces;
@@ -215,7 +331,8 @@ RepairCandidate runGlobalRepair(
     }
     case GlobalRepairMethod::Decimate:
     case GlobalRepairMethod::MergeVertices:
-        break; // runInPlace
+    case GlobalRepairMethod::FixAll:
+        break; // runInPlace / runFixAllCandidate
     }
     if (params.simplifyRebuild && !repaired.empty() &&
         (method == GlobalRepairMethod::WindingRebuild || method == GlobalRepairMethod::AlphaWrap)) {

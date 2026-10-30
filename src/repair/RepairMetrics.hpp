@@ -81,6 +81,10 @@ struct FaceGeometryKeyHash {
 /// Distance from each vertex of `mesh` to the surface of `reference` (for "Color by deviation").
 [[nodiscard]] Eigen::VectorXd vertexDeviation(const Mesh& mesh, const Mesh& reference);
 
+/// Fills the geometric fields only: faces, volume, area, the share of faces kept bit-identical and the two
+/// deviations (`maxDeviation`, `maxLost`). The counts stay 0. Cancel through `stopToken` skips the deviations.
+[[nodiscard]] RepairMetrics computeRepairGeometryMetrics(const Mesh& before, const Mesh& after, std::stop_token stopToken = {});
+
 /// Fills every field except `elapsedMs`. `params` gives the intersection tolerance and thin-face
 /// thresholds used for the before / after counts. Cancel through `stopToken` leaves the counts at 0.
 [[nodiscard]] RepairMetrics computeRepairMetrics(

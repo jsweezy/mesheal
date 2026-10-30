@@ -4,6 +4,7 @@ add_library(ogun_app_controller STATIC
     AboutInfo.cpp
     AppController.cpp
     AppControllerCleanup.cpp
+    AppControllerFixAll.cpp
     AppControllerHoles.cpp
     AppControllerIntersections.cpp
     AppControllerMerge.cpp
@@ -12,6 +13,7 @@ add_library(ogun_app_controller STATIC
     AppControllerTransform.cpp
     DefectBrowser.cpp
     FaceSelection.cpp
+    FixAllPlanRunner.cpp
     FramePacer.cpp
     GuiLayout.cpp
     HealthCheckRunner.cpp

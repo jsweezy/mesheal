@@ -1,6 +1,7 @@
 #pragma once
 
 #include "mesh/Mesh.hpp"
+#include "repair/FixAll.hpp"
 #include "repair/GlobalRepair.hpp"
 
 #include <atomic>
@@ -9,6 +10,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -21,6 +23,8 @@ struct RepairRequest {
     std::vector<std::uint8_t> faceInScope;  ///< Empty: every face
     std::vector<GlobalRepairMethod> methods;
     GlobalRepairParams params{};
+    FixAllScopeKind fixAllScopeKind = FixAllScopeKind::Whole; ///< Fix All: what `faceInScope` is (faces or whole shells)
+    std::shared_ptr<const FixAllTestHooks> fixAllHooks;        ///< Fix All: tests only
 };
 
 /// A finished candidate with the mesh generation it was computed for.
@@ -38,11 +42,15 @@ public:
     RepairJobRunner& operator=(const RepairJobRunner&) = delete;
     ~RepairJobRunner();
 
-    /// Cancels any running job and starts `request`.
+    /// Cancels any running job (waiting for it) and starts `request`.
     void start(RepairRequest request);
 
     /// Requests a stop and waits for the worker to exit.
     void cancel();
+
+    /// Requests a stop without waiting: the job ends at its next stop check (Fix All: after the current
+    /// Manifold union) and nothing it computes is handed over. `busy()` stays true until it has ended.
+    void requestStop();
 
     /// Blocks until the current job is done (tests).
     void waitIdle();
@@ -51,8 +59,16 @@ public:
         return busy_.load();
     }
 
+    /// A stop was requested and the job has not ended yet.
+    [[nodiscard]] bool stopping() const noexcept {
+        return busy_.load() && stopRequested_.load();
+    }
+
     /// Overall progress of the current job in [0, 1].
     [[nodiscard]] float progress() const noexcept;
+
+    /// Fix All's progress text ("pass 2 of 3, phase 1, filling holes..."); empty for other methods.
+    [[nodiscard]] std::string progressText() const;
 
     /// Method being computed right now (empty when idle).
     [[nodiscard]] std::optional<GlobalRepairMethod> currentMethod() const noexcept;
@@ -61,16 +77,18 @@ public:
     [[nodiscard]] std::vector<FinishedCandidate> takeFinished();
 
 private:
-    void run(std::stop_token stopToken, RepairRequest request);
+    void run(std::stop_token stopToken, RepairRequest request, std::shared_ptr<FixAllProgress> fixAllProgress);
 
     std::jthread worker_;
     std::atomic<bool> busy_{false};
+    std::atomic<bool> stopRequested_{false};
     std::atomic<std::size_t> total_{0};
     std::atomic<std::size_t> done_{0};
     std::atomic<int> current_{-1};
     std::atomic<float> methodProgress_{0.0f};
     mutable std::mutex mutex_;
     std::vector<FinishedCandidate> finished_;
+    std::shared_ptr<FixAllProgress> fixAllProgress_; ///< The current job's (guarded by `mutex_`)
 };
 
 } // namespace ogun

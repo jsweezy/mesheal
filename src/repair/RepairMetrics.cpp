@@ -138,11 +138,7 @@ Eigen::VectorXd vertexDeviation(const Mesh& mesh, const Mesh& reference) {
     return sqrD.cwiseSqrt();
 }
 
-RepairMetrics computeRepairMetrics(
-    const Mesh& before,
-    const Mesh& after,
-    const CheckParams& params,
-    std::stop_token stopToken) {
+RepairMetrics computeRepairGeometryMetrics(const Mesh& before, const Mesh& after, std::stop_token stopToken) {
     RepairMetrics m;
     m.facesBefore = before.numFaces();
     m.facesAfter = after.numFaces();
@@ -159,6 +155,15 @@ RepairMetrics computeRepairMetrics(
     }
     m.maxDeviation = maxDistance(surfaceSamples(after), before);
     m.maxLost = maxDistance(surfaceSamples(before), after);
+    return m;
+}
+
+RepairMetrics computeRepairMetrics(
+    const Mesh& before,
+    const Mesh& after,
+    const CheckParams& params,
+    std::stop_token stopToken) {
+    RepairMetrics m = computeRepairGeometryMetrics(before, after, stopToken);
     if (stopToken.stop_requested()) {
         return m;
     }

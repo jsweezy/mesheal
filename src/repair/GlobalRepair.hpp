@@ -3,6 +3,7 @@
 #include "core/Settings.hpp"
 #include "diagnostics/MeshHealth.hpp"
 #include "mesh/Mesh.hpp"
+#include "repair/FixAll.hpp"
 #include "repair/HoleFiller.hpp"
 #include "repair/IntersectionHealer.hpp"
 #include "repair/RepairMetrics.hpp"
@@ -11,6 +12,7 @@
 
 #include <array>
 #include <atomic>
+#include <memory>
 #include <span>
 #include <stop_token>
 #include <string>
@@ -20,6 +22,7 @@ namespace ogun {
 
 /// Whole-mesh ("Repair All") strategies for intersecting faces and holes, from surgical to coarse.
 enum class GlobalRepairMethod {
+    FixAll,          ///< Fix All: every Mesh Health row repaired in passes (`runFixAll`); faces outside the scope kept exactly
     FillHoles,       ///< Every hole gets its recommended fill (or the chosen one); other faces are kept exactly
     PatchIslands,    ///< Every within-shell island gets its recommended local repair (+ fallbacks)
     SelfUnion,       ///< Cut along every crossing and keep the outer surface; keeps other faces exactly
@@ -39,6 +42,14 @@ inline constexpr std::array<GlobalRepairMethod, 4> kGlobalRepairMethods = {
 /// Repair All Holes: the surgical fill and the two rebuilds, which also close holes.
 inline constexpr std::array<GlobalRepairMethod, 3> kHoleRepairMethods = {
     GlobalRepairMethod::FillHoles,
+    GlobalRepairMethod::WindingRebuild,
+    GlobalRepairMethod::AlphaWrap,
+};
+
+/// The Fix All operator: the repair run and the three rebuilds it is compared with.
+inline constexpr std::array<GlobalRepairMethod, 4> kFixAllMethods = {
+    GlobalRepairMethod::FixAll,
+    GlobalRepairMethod::SelfUnion,
     GlobalRepairMethod::WindingRebuild,
     GlobalRepairMethod::AlphaWrap,
 };
@@ -70,6 +81,9 @@ struct GlobalRepairParams {
     HoleFillMethod holeMethod = HoleFillMethod::None;
     HoleFillSettings holeSettings{};
     CheckParams checkParams{};
+    /// Fix All: its own settings. Its `checkParams`, `holeFill` and `islandRepair` are not used: the run
+    /// takes `checkParams`, `holeSettings` and `islandSettings` above, so it agrees with the row tools.
+    FixAllParams fixAll{};
 
     [[nodiscard]] bool operator==(const GlobalRepairParams& other) const noexcept;
 };
@@ -89,6 +103,25 @@ inline constexpr std::array<GlobalRepairMethod, 1> kMergeMethods = {GlobalRepair
     return method == GlobalRepairMethod::Decimate || method == GlobalRepairMethod::MergeVertices;
 }
 
+/// What a Fix All candidate carries besides the mesh.
+struct FixAllCandidate {
+    /// The run. Its `mesh` is moved into `RepairCandidate::mesh` (left empty here); its `scope` and the
+    /// report's shells are faces of that mesh.
+    FixAllResult result;
+    FixAllScopeKind scopeKind = FixAllScopeKind::Whole;
+    bool onePassRequested = false; ///< *Preview one pass* (or *Run one more pass*): one pass whatever the Passes field says
+    /// Shell of each face of the candidate's mesh: an index into `result.report.shells`, which is the
+    /// Shells-panel numbering of that mesh (#(k + 1)); -1 for a face in no shell.
+    std::vector<int> faceShell;
+};
+
+/// Extra inputs of a Fix All run (method `FixAll` only).
+struct FixAllRunInput {
+    FixAllScopeKind scopeKind = FixAllScopeKind::Whole; ///< With a non-empty scope mask: faces or whole shells
+    FixAllProgress* progress = nullptr;                  ///< Fraction and text (else only `progress` gets the fraction)
+    const FixAllTestHooks* hooks = nullptr;              ///< Tests only
+};
+
 /// One computed "Repair All" result, ready to preview and apply.
 struct RepairCandidate {
     bool success = false;
@@ -101,16 +134,20 @@ struct RepairCandidate {
     Eigen::VectorXd vertexDeviation;        ///< Distance of each vertex of `mesh` from the original surface
     RepairMetrics metrics;                  ///< Measured on the faces in scope only
     bool cancelled = false;
+    std::shared_ptr<const FixAllCandidate> fixAll; ///< Method `FixAll` only (null otherwise or when it failed)
 };
 
 /// Runs `method` on the faces in scope (`faceInScope` empty = whole mesh). Shells out of scope are
-/// copied unchanged. Polls `stopToken` between stages; reports 0..1 through `progress`.
+/// copied unchanged. Polls `stopToken` between stages; reports 0..1 through `progress`. Fix All runs on
+/// the whole mesh with the scope (`fixAll` gives its kind, a progress text and test hooks); its metrics
+/// are measured on the faces in scope before and after (the carried scope), its counts are the run's own.
 [[nodiscard]] RepairCandidate runGlobalRepair(
     const Mesh& mesh,
     std::span<const std::uint8_t> faceInScope,
     GlobalRepairMethod method,
     const GlobalRepairParams& params,
     std::stop_token stopToken = {},
-    std::atomic<float>* progress = nullptr);
+    std::atomic<float>* progress = nullptr,
+    const FixAllRunInput* fixAll = nullptr);
 
 } // namespace ogun

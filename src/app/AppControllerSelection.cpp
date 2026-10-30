@@ -92,9 +92,11 @@ bool AppController::clearFaceSelection() {
 void AppController::onFaceSelectionChanged() {
     ++faceSelectionGeneration_;
     faceSelectionFocus_ = faceSelectedCount_ > 0;
-    // A Decimate / Merge preview was computed on the old selection
+    // A Decimate / Merge / Fix All preview was computed on the old selection
     if (activeTool_ == ToolSlot::Decimate || activeTool_ == ToolSlot::MergeVertices) {
         discardGlobalCandidates();
+    } else if (activeTool_ == ToolSlot::FixAll) {
+        onFixAllScopeChanged();
     }
 }
 
@@ -140,6 +142,10 @@ std::optional<Eigen::Index> AppController::faceAtScreenPoint(const ScreenView& v
 }
 
 std::vector<std::uint8_t> AppController::operatorScopeMask() const {
+    if (activeTool_ == ToolSlot::FixAll) {
+        FixAllScopeKind kind = FixAllScopeKind::Whole;
+        return fixAllScopeMask(kind);
+    }
     const bool selectionScope = activeTool_ == ToolSlot::Decimate || activeTool_ == ToolSlot::MergeVertices;
     if (selectionScope && faceSelectedCount_ > 0) {
         // Faces in hidden shells are never edited, even when selected before the hide

@@ -2,6 +2,7 @@
 
 #include "app/DefectBrowser.hpp"
 #include "app/FaceSelection.hpp"
+#include "app/FixAllPlanRunner.hpp"
 #include "app/HealthCheckRunner.hpp"
 #include "app/MergeJobRunner.hpp"
 #include "app/RepairJobRunner.hpp"
@@ -31,6 +32,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -105,7 +107,8 @@ enum class ToolSlot {
     Decimate,
     MergeVertices,
     MergeShells,
-    Transform
+    Transform,
+    FixAll ///< Operation: Fix All (the Repair All panel with Fix All and the rebuilds)
 };
 
 /// One line of the Merge Shells checklist (UI_DESIGN.md §16.3), built from Mesh Health.
@@ -142,6 +145,42 @@ struct MergeChecklist {
 
 /// What the Repair All preview draws: the candidate, the current mesh, or both (current ghosted).
 enum class GlobalPreviewShow { Result, Original, Both };
+
+/// The Fix All panel's state: Plan -> Running -> Result -> (Apply) -> Report.
+enum class FixAllPanelState {
+    Plan,    ///< Nothing computed yet: the plan (rows, scope, merge box)
+    Running, ///< A run (or a preview waiting for the plan-time check) is in progress: progress and Cancel
+    Result,  ///< A candidate is ready: preview, Apply, Close
+    Report   ///< Applied: the report, Undo Fix All, Run one more pass
+};
+
+/// What Fix All will work on: the selected faces, else the selected shells, else the whole mesh; hidden
+/// shells never.
+struct FixAllScopeInfo {
+    FixAllScopeKind kind = FixAllScopeKind::Whole;
+    std::size_t faces = 0;        ///< Faces in scope
+    std::size_t shells = 0;       ///< Shells with a face in scope
+    std::size_t totalShells = 0;
+    std::size_t hiddenShells = 0; ///< Hidden shells: never changed
+    /// "whole mesh, 28 shells (nothing selected)", "2 of 28 shells (selected)", "1,204 selected faces (in 2
+    /// shells)", + "; 1 hidden shell is left as it is".
+    std::string text;
+};
+
+/// The Fix All run that was applied last (the Report state).
+struct FixAllApplied {
+    std::shared_ptr<const FixAllCandidate> run; ///< Its report; `run->result.mesh` is empty (it became the mesh)
+    std::string undoLabel;                      ///< "Fix All" or "Fix All (one pass)"; empty when the run changed nothing (no undo entry)
+    std::size_t undoDepth = 0;                  ///< Undo stack size right after Apply (its entry is on top)
+    std::uint64_t meshGeneration = 0;           ///< The mesh generation Apply made
+    FixAllScopeKind scopeKind = FixAllScopeKind::Whole;
+    std::uint64_t shellsRevision = 0;           ///< Shells and face selection right after the re-selection:
+    std::uint64_t faceSelectionGeneration = 0;  ///< while unchanged, *Run one more pass* keeps a whole-mesh scope
+};
+
+/// Rewrites the shell numbers `#k` of `text` in order with `numbers` (1-based; 0 or less keeps that one
+/// as it is). The text is returned unchanged when it names a different number of shells than `numbers`.
+[[nodiscard]] std::string renumberShellText(std::string_view text, std::span<const int> numbers);
 
 /// Base-mesh back-face rendering (maps to Polyscope's `BackFacePolicy`).
 enum class BackFaceMode { Identical, Darker, Custom, Cull };
@@ -454,7 +493,8 @@ public:
 
     /// A check, repair or merge job is running: the GUI keeps its full frame rate to poll it.
     [[nodiscard]] bool backgroundWorkRunning() const noexcept {
-        return checkRunner_.busy() || checksRunning() || repairRunner_.busy() || mergeRunner_.busy();
+        return checkRunner_.busy() || checksRunning() || repairRunner_.busy() || mergeRunner_.busy() ||
+               fixAllPlanRunner_.busy();
     }
 
     /// Overall progress of the running check job in [0, 1].
@@ -1106,7 +1146,8 @@ public:
         return selectThrough_ || ghostMeshEnabled_;
     }
 
-    /// Faces Decimate / Merge Vertices work on: the selected faces, else the shells in scope (empty = all).
+    /// Faces Decimate / Merge Vertices / Fix All work on: the selected faces, else the shells in scope (empty =
+    /// all). Fix All leaves hidden shells out even when selected (see `fixAllScope`).
     [[nodiscard]] std::vector<std::uint8_t> operatorScopeMask() const;
     /// Faces in `operatorScopeMask()`; cached, as the Decimate / Merge panels show it every frame.
     [[nodiscard]] std::size_t operatorScopeFaceCount() const;
@@ -1134,6 +1175,8 @@ public:
             return kDecimateMethods;
         case ToolSlot::MergeVertices:
             return kMergeMethods;
+        case ToolSlot::FixAll:
+            return kFixAllMethods;
         default:
             return globalRepairMethodsFor(globalRepairTarget());
         }
@@ -1143,7 +1186,7 @@ public:
     [[nodiscard]] bool repairAllOpen() const noexcept {
         return activeTool_ == ToolSlot::RepairAllIntersections || activeTool_ == ToolSlot::RepairAllHoles ||
                activeTool_ == ToolSlot::AlphaWrap || activeTool_ == ToolSlot::Decimate ||
-               activeTool_ == ToolSlot::MergeVertices;
+               activeTool_ == ToolSlot::MergeVertices || activeTool_ == ToolSlot::FixAll;
     }
 
     [[nodiscard]] GlobalRepairMethod globalRepairMethod() const noexcept {
@@ -1170,8 +1213,10 @@ public:
     /// Blocks until the background Repair All job is done and collects its candidates (tests).
     void waitForGlobalRepair();
 
+    /// A Repair All job is computing (a Fix All run that is being cancelled counts until it ends: see
+    /// `fixAllRunning`; a job dropped by an edit does not).
     [[nodiscard]] bool globalRepairRunning() const noexcept {
-        return repairRunner_.busy();
+        return repairRunner_.busy() && (!repairRunner_.stopping() || fixAllCancelling_);
     }
 
     [[nodiscard]] float globalRepairProgress() const noexcept {
@@ -1187,10 +1232,9 @@ public:
         return globalCandidates_;
     }
 
-    /// True when `candidate` was computed with the current parameters.
-    [[nodiscard]] bool candidateIsCurrent(const RepairCandidate& candidate) const noexcept {
-        return candidate.params == globalParams_;
-    }
+    /// True when `candidate` was computed with the current parameters (a one-pass Fix All candidate:
+    /// whatever the Passes field says).
+    [[nodiscard]] bool candidateIsCurrent(const RepairCandidate& candidate) const noexcept;
 
     /// Candidate drawn in 3D (nullptr when none).
     [[nodiscard]] const RepairCandidate* shownGlobalCandidate() const noexcept;
@@ -1216,8 +1260,118 @@ public:
     /// True when the GUI should draw the shown candidate (Repair All open, Show is not Original).
     [[nodiscard]] bool globalPreviewShown() const noexcept;
 
-    /// Replaces the mesh with the shown candidate (one undo step) and re-runs the Auto checks.
+    /// Replaces the mesh with the shown candidate (one undo step) and re-runs the Auto checks. A Fix All
+    /// candidate is applied by `applyFixAll`.
     bool applyGlobalRepair();
+
+    // -------------------------------------------------------------------------
+    // Fix All (AppControllerFixAll.cpp): plan, preview in the background, cancel, Apply as one undo step
+    // -------------------------------------------------------------------------
+
+    /// Opens "Operation: Fix All" in the Tool slot with Passes = `passes` (3 for *Fix All...*, 1 for *One
+    /// Pass...*; clamped to 1..10) and starts the plan-time check (which shells overlap: the default of
+    /// the *Merge shells* box). The scope follows the selection; nothing changes until Apply.
+    void openFixAll(int passes = settings::kDefaultFixAllPasses);
+
+    [[nodiscard]] bool fixAllOpen() const noexcept {
+        return activeTool_ == ToolSlot::FixAll;
+    }
+
+    [[nodiscard]] FixAllPanelState fixAllState() const noexcept;
+
+    /// The scope the next run (and the plan) uses.
+    [[nodiscard]] FixAllScopeInfo fixAllScope() const;
+
+    /// Fix All's own settings (passes, toggles, weld tolerance, merge box). The row thresholds come from
+    /// the tools (`checkParams`, hole and island settings) when a run starts.
+    [[nodiscard]] const FixAllParams& fixAllParams() const noexcept {
+        return globalParams_.fixAll;
+    }
+    /// Passes clamped to 1..10, fractions and the time budget to >= 0, weld tolerances to their limits. A
+    /// change of `mergeShells` counts as the user's click (see `setFixAllMergeShells`).
+    void setFixAllParams(const FixAllParams& params);
+    void setFixAllPasses(int passes);
+    /// The user's click on *Merge shells*: it wins over the plan-time check from now on (until the panel
+    /// is opened again).
+    void setFixAllMergeShells(bool ticked);
+    [[nodiscard]] bool fixAllMergeUserSet() const noexcept {
+        return fixAllMergeUserSet_;
+    }
+
+    /// The plan-time check is still running ("checking..."): the merge box keeps its value until it ends.
+    [[nodiscard]] bool fixAllPlanChecking() const;
+    /// The plan-time merge plan for the current mesh and scope (nullptr while checking). Its shell numbers
+    /// are the Shells panel's (both number shells largest first).
+    [[nodiscard]] const MergePlan* fixAllMergePlan() const noexcept;
+    /// What the weld will do at most (nullptr while checking).
+    [[nodiscard]] const FixAllWeldPlan* fixAllWeldPlan() const noexcept;
+    /// Blocks until the plan-time check is done and takes it (tests; inline without background checks).
+    void waitForFixAllPlan();
+
+    /// Starts a run on the scope: a full run (Passes) or one pass. Runs in the background in the GUI
+    /// (inline in tests). While the plan-time check runs and the user has not clicked the merge box, the
+    /// run waits for it ("checking which shells overlap...").
+    void previewFixAll(bool onePass = false);
+    /// *Run one more pass*: a one-pass preview on the current mesh. After a whole-mesh Apply it keeps the
+    /// whole mesh as the scope until the selection changes (Apply selects the merged shells).
+    void runFixAllOneMorePass();
+    /// Cancel: does not wait. The run stops at its next check; a Manifold union cannot be interrupted, so
+    /// during a merge the run ends when the union returns ("Cancelling after the current merge..."). The
+    /// result is dropped and the mesh is unchanged.
+    void cancelFixAll();
+    /// A run is in progress (or waits for the plan), including while it is being cancelled.
+    [[nodiscard]] bool fixAllRunning() const noexcept;
+    [[nodiscard]] bool fixAllCancelling() const noexcept {
+        return fixAllCancelling_;
+    }
+    [[nodiscard]] float fixAllProgress() const noexcept;
+    /// Status-bar text while running: "Fix All: pass 2 of 3, phase 1, filling holes... 48 %",
+    /// "Cancelling after the current merge...", "Fix All: checking which shells overlap..."; empty when idle.
+    [[nodiscard]] std::string fixAllStatusText() const;
+    /// Blocks until the run is done and collects it (tests).
+    void waitForFixAll();
+
+    /// The computed Fix All candidate for the current mesh (nullptr when none).
+    [[nodiscard]] const RepairCandidate* fixAllCandidate() const noexcept;
+    /// The run shown: the candidate's, else the applied one's (nullptr when neither).
+    [[nodiscard]] const FixAllCandidate* fixAllShown() const noexcept;
+    /// Applies the Fix All candidate as **one** undo step ("Fix All" / "Fix All (one pass)"), merges and
+    /// all; installs the run's final check as the Mesh Health report (every row fresh, Intersections
+    /// included); re-selects the scope faces (face scope), the shells in scope (shell scope) or the merged
+    /// shells (whole mesh). False (nothing changed) without a successful candidate. A run that changed
+    /// nothing adds no undo entry (its check is still installed and the Report shown).
+    bool applyFixAll();
+    /// The last Apply (Report state); cleared when its undo entry is undone, by a new Apply or on close.
+    [[nodiscard]] const std::optional<FixAllApplied>& fixAllApplied() const noexcept {
+        return fixAllApplied_;
+    }
+    /// *Undo Fix All* is possible: the applied run is the top undo entry (later edits undone).
+    [[nodiscard]] bool fixAllUndoAvailable() const noexcept;
+    bool undoFixAll();
+
+    /// Shells-panel number (1-based) of shell `reportShell` of the shown run's report (`report.shells`
+    /// index): the numbering of the result mesh, which the Shells panel shows after Apply.
+    [[nodiscard]] static int fixAllShellNumber(int reportShell) noexcept {
+        return reportShell + 1;
+    }
+    /// Shell numbers (1-based, result mesh; 0 for an entry with no face left) of the shells a step note
+    /// names (its faces are faces of the result when `step.notesInResult`).
+    [[nodiscard]] std::vector<int> fixAllNoteShellNumbers(const FixAllStepReport& step, const FixAllShellNote& note) const;
+    /// The note's text with its `#k` in the result's numbering (step notes number shells in the mesh the
+    /// step ran on). Face-set notes and notes whose text names another number of shells stay as they are.
+    [[nodiscard]] std::string fixAllNoteText(const FixAllStepReport& step, const FixAllShellNote& note) const;
+    /// Current-mesh shells (Shells-panel indices) holding faces of the given report shells, matched by face
+    /// geometry, so it works on the preview (original mesh) and after Apply alike.
+    [[nodiscard]] std::vector<int> fixAllShellsInCurrentMesh(std::span<const int> reportShells) const;
+    /// *Show them*: selects and frames those shells (`showShells`).
+    void fixAllShowShells(std::span<const int> reportShells);
+    /// *Flip all / Flip it*: reverses those shells of the current mesh (one undo step; drops a candidate).
+    bool fixAllFlipShells(std::span<const int> reportShells);
+
+    /// Tests: stage hooks for the next runs (null: none).
+    void setFixAllTestHooks(std::shared_ptr<const FixAllTestHooks> hooks) {
+        fixAllHooks_ = std::move(hooks);
+    }
 
     // -------------------------------------------------------------------------
     // Mesh > Transform: Set Origin to Selection, Translate / Rotate (AppControllerTransform.cpp)
@@ -1376,8 +1530,27 @@ private:
     void openRepairAll(ToolSlot slot, GlobalRepairMethod method);
     /// Moves finished Repair All candidates into the table. Returns true if any arrived.
     bool pollRepairJobs();
-    void queueGlobalRepairs(std::vector<GlobalRepairMethod> methods);
+    void queueGlobalRepairs(std::vector<GlobalRepairMethod> methods, bool fixAllOnePass = false);
     void storeCandidate(RepairCandidate candidate);
+    /// Copies the tools' current settings (thresholds, holes, islands) into `globalParams_`.
+    void refreshGlobalParams();
+
+    // Fix All (AppControllerFixAll.cpp)
+    /// Fix All's scope mask (empty = whole mesh) and its kind.
+    [[nodiscard]] std::vector<std::uint8_t> fixAllScopeMask(FixAllScopeKind& kind) const;
+    /// The scope changed (selection, visibility) or the mesh did: drops a stale candidate and re-checks.
+    void onFixAllScopeChanged();
+    /// Starts (or, without background checks, works out) the plan-time check when it is due.
+    void ensureFixAllPlan();
+    void acceptFixAllPlan(FinishedFixAllPlan finished);
+    /// Starts the run itself (the plan-time check is done or overridden).
+    void startFixAllRun(bool onePass);
+    /// Collects the plan and the end of a run. Returns true when something changed.
+    bool pollFixAll();
+    /// Forgets the plan, the applied run, the user's merge click and the hooks' job (panel closed, new mesh).
+    void resetFixAllState();
+    /// Installs `results` as the Mesh Health rows of the current mesh (the rest re-run or turn Stale).
+    void installHealthReport(std::vector<CategoryResult> results);
 
     [[nodiscard]] bool previewUsesCutout() const noexcept;
     /// Appends deduplicated vertices, undirected edges, and (optionally) triangles of `faces` to `overlay`.
@@ -1484,6 +1657,19 @@ private:
     bool colorByDeviation_ = false;
     RepairJobRunner repairRunner_;
     MergeJobRunner mergeRunner_;
+
+    // Fix All
+    FixAllPlanRunner fixAllPlanRunner_;
+    bool fixAllPlanDue_ = false;              ///< The plan must be worked out again (scope or mesh changed)
+    std::uint64_t fixAllScopeSerial_ = 0;     ///< Bumped on every scope change while the panel is open
+    std::optional<FinishedFixAllPlan> fixAllPlan_;
+    bool fixAllMergeUserSet_ = false;
+    std::optional<bool> fixAllPreviewQueued_; ///< A run waiting for the plan (its one-pass flag)
+    bool fixAllJobRunning_ = false;           ///< The repair runner's job is a Fix All run of this panel
+    bool fixAllCancelling_ = false;
+    std::string fixAllCancelText_;
+    std::optional<FixAllApplied> fixAllApplied_;
+    std::shared_ptr<const FixAllTestHooks> fixAllHooks_;
 
     // Mesh > Transform > Translate / Rotate
     MeshTransform transform_{};

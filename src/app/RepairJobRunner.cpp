@@ -13,9 +13,19 @@ void RepairJobRunner::start(RepairRequest request) {
     total_ = request.methods.size();
     done_ = 0;
     methodProgress_ = 0.0f;
+    stopRequested_ = false;
+    auto fixAllProgress = std::make_shared<FixAllProgress>();
+    fixAllProgress->observer = [this](float value, const std::string&) { methodProgress_ = value; };
+    {
+        std::lock_guard lock(mutex_);
+        fixAllProgress_ = fixAllProgress;
+    }
     busy_ = true;
-    worker_ = std::jthread([this](std::stop_token stopToken, RepairRequest req) { run(stopToken, std::move(req)); },
-                           std::move(request));
+    worker_ = std::jthread(
+        [this](std::stop_token stopToken, RepairRequest req, std::shared_ptr<FixAllProgress> p) {
+            run(stopToken, std::move(req), std::move(p));
+        },
+        std::move(request), std::move(fixAllProgress));
 }
 
 void RepairJobRunner::cancel() {
@@ -24,7 +34,17 @@ void RepairJobRunner::cancel() {
         worker_.join();
     }
     busy_ = false;
+    stopRequested_ = false;
     current_ = -1;
+}
+
+void RepairJobRunner::requestStop() {
+    std::lock_guard lock(mutex_);
+    if (worker_.joinable() && busy_.load()) {
+        worker_.request_stop();
+        stopRequested_ = true;
+    }
+    finished_.clear();
 }
 
 void RepairJobRunner::waitIdle() {
@@ -41,6 +61,18 @@ float RepairJobRunner::progress() const noexcept {
     return (static_cast<float>(done_.load()) + methodProgress_.load()) / static_cast<float>(total);
 }
 
+std::string RepairJobRunner::progressText() const {
+    if (current_.load() != static_cast<int>(GlobalRepairMethod::FixAll)) {
+        return {};
+    }
+    std::shared_ptr<FixAllProgress> p;
+    {
+        std::lock_guard lock(mutex_);
+        p = fixAllProgress_;
+    }
+    return p != nullptr ? p->text() : std::string();
+}
+
 std::optional<GlobalRepairMethod> RepairJobRunner::currentMethod() const noexcept {
     const int current = current_.load();
     if (current < 0) {
@@ -54,18 +86,21 @@ std::vector<FinishedCandidate> RepairJobRunner::takeFinished() {
     return std::exchange(finished_, {});
 }
 
-void RepairJobRunner::run(std::stop_token stopToken, RepairRequest request) {
+void RepairJobRunner::run(std::stop_token stopToken, RepairRequest request, std::shared_ptr<FixAllProgress> fixAllProgress) {
     for (const GlobalRepairMethod method : request.methods) {
         if (stopToken.stop_requested()) {
             break;
         }
         current_ = static_cast<int>(method);
-        RepairCandidate candidate = runGlobalRepair(*request.mesh, request.faceInScope, method, request.params, stopToken, &methodProgress_);
-        if (candidate.cancelled || stopToken.stop_requested()) {
-            break;
-        }
+        const FixAllRunInput fixAll{request.fixAllScopeKind, fixAllProgress.get(), request.fixAllHooks.get()};
+        RepairCandidate candidate = runGlobalRepair(*request.mesh, request.faceInScope, method, request.params, stopToken,
+                                                    &methodProgress_, &fixAll);
         {
+            // Checked under the lock: a `requestStop()` either sees this candidate (and drops it) or stops it here
             std::lock_guard lock(mutex_);
+            if (candidate.cancelled || stopToken.stop_requested()) {
+                break;
+            }
             finished_.push_back({request.meshGeneration, std::move(candidate)});
         }
         methodProgress_ = 0.0f;

@@ -377,6 +377,8 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
                             withThousands(holes.maxPatchFaces).c_str());
         break;
     }
+    case GlobalRepairMethod::FixAll:
+        break; // Fix All's settings are on its own panel
     case GlobalRepairMethod::PatchIslands:
         ImGui::TextDisabled("Island settings: rings %d, CGAL steps %d",
                             controller_.islandRepairSettings().dilationRings, controller_.islandRepairSettings().cgalMaxSteps);

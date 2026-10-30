@@ -1,0 +1,700 @@
+#include "app/AppController.hpp"
+#include "diagnostics/MeshChecks.hpp"
+#include "io/SampleMeshes.hpp"
+#include "repair/RepairMetrics.hpp"
+
+#include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
+
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <filesystem>
+#include <memory>
+#include <string>
+#include <thread>
+#include <vector>
+
+using ogun::AppController;
+using ogun::DefectCategory;
+using ogun::FixAllPanelState;
+using ogun::FixAllScopeKind;
+using ogun::FixAllStageId;
+using ogun::HealthStatus;
+using ogun::Mesh;
+using ogun::SampleMeshes;
+using Eigen::Vector3d;
+
+namespace {
+
+Mesh box(const Vector3d& min, const Vector3d& max) {
+    return SampleMeshes::createBox(min, max);
+}
+
+/// Two overlapping closed cubes (Fix All merges them into one with the merge on).
+Mesh overlappingCubes() {
+    return SampleMeshes::combineMeshes({box({0, 0, 0}, {2, 2, 2}), box({1.8, 0.2, 0.3}, {3.8, 2.2, 2.3})});
+}
+
+/// A box with its last face removed: one shell, one 3-edge hole.
+Mesh openBox(const Vector3d& min, const Vector3d& max) {
+    const Mesh closed = box(min, max);
+    std::vector<Eigen::Index> keep(static_cast<std::size_t>(closed.numFaces() - 1));
+    for (std::size_t f = 0; f < keep.size(); ++f) {
+        keep[f] = static_cast<Eigen::Index>(f);
+    }
+    return ogun::extractFaces(closed, keep);
+}
+
+/// Two open boxes far apart (the second one is the smaller one, #2).
+Mesh twoOpenBoxes() {
+    return SampleMeshes::combineMeshes({openBox({0, 0, 0}, {4, 4, 4}), openBox({10, 0, 0}, {12, 2, 2})});
+}
+
+/// Every face of `before` that is in `faces` is still in `after`, corners and all.
+bool facesKept(const Mesh& before, const std::vector<Eigen::Index>& faces, const Mesh& after) {
+    const ogun::FaceDiff diff = ogun::faceDiff(before, after);
+    return std::none_of(faces.begin(), faces.end(), [&](Eigen::Index f) {
+        return std::find(diff.removed.begin(), diff.removed.end(), f) != diff.removed.end();
+    });
+}
+
+std::size_t openEdges(const Mesh& mesh) {
+    return ogun::checkOpenEdges(mesh).infoCount;
+}
+
+/// The shell (Shells-panel index) whose box lies at x >= `x`.
+std::size_t shellRightOf(const AppController& controller, double x) {
+    for (std::size_t s = 0; s < controller.shells().size(); ++s) {
+        if (controller.shells().shell(s).bbox.min.x() >= x) {
+            return s;
+        }
+    }
+    FAIL("no shell right of x");
+    return 0;
+}
+
+bool waitUntil(const std::atomic<bool>& flag) {
+    for (int i = 0; i < 20000 && !flag.load(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return flag.load();
+}
+
+/// Test hooks that hold the run inside a stage of `id` until `release` is set (`entered` tells the test).
+struct HoldInStage {
+    std::atomic<bool> entered{false};
+    std::atomic<bool> release{false};
+};
+
+std::shared_ptr<const ogun::FixAllTestHooks> holdHooks(const std::shared_ptr<HoldInStage>& hold, FixAllStageId id) {
+    auto hooks = std::make_shared<ogun::FixAllTestHooks>();
+    hooks->adjustStages = [hold, id](int, ogun::FixAllPhase, std::vector<ogun::FixAllStage>& stages) {
+        for (ogun::FixAllStage& stage : stages) {
+            if (stage.id != id) {
+                continue;
+            }
+            auto inner = stage.run;
+            stage.run = [hold, inner](const Mesh& mesh, const ogun::FixAllStageContext& context) {
+                hold->entered = true;
+                while (!hold->release.load()) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+                return inner(mesh, context);
+            };
+        }
+    };
+    return hooks;
+}
+
+/// Test hooks whose phase 1 is a single step that removes one duplicate face per run.
+std::shared_ptr<const ogun::FixAllTestHooks> oneDuplicatePerPass() {
+    auto hooks = std::make_shared<ogun::FixAllTestHooks>();
+    hooks->adjustStages = [](int, ogun::FixAllPhase phase, std::vector<ogun::FixAllStage>& stages) {
+        if (phase != ogun::FixAllPhase::Repair) {
+            return;
+        }
+        ogun::FixAllStage stage;
+        stage.label = "Remove one duplicate";
+        stage.activity = "removing a duplicate";
+        stage.run = [](const Mesh& mesh, const ogun::FixAllStageContext&) {
+            ogun::FixAllStageOutcome out;
+            const auto duplicates = ogun::checkDuplicateFaces(mesh).size();
+            out.targetBefore = duplicates;
+            out.targetAfter = duplicates;
+            for (Eigen::Index f = mesh.numFaces() - 1; f >= 0 && !out.changed; --f) {
+                for (Eigen::Index g = 0; g < f; ++g) {
+                    if (ogun::faceGeometryKey(mesh, f) == ogun::faceGeometryKey(mesh, g)) {
+                        std::vector<Eigen::Index> keep;
+                        out.faceMap.assign(static_cast<std::size_t>(mesh.numFaces()), -1);
+                        for (Eigen::Index k = 0; k < mesh.numFaces(); ++k) {
+                            if (k != f) {
+                                out.faceMap[static_cast<std::size_t>(k)] = static_cast<Eigen::Index>(keep.size());
+                                keep.push_back(k);
+                            }
+                        }
+                        out.mesh = mesh;
+                        out.mesh.F.resize(static_cast<Eigen::Index>(keep.size()), 3);
+                        for (std::size_t r = 0; r < keep.size(); ++r) {
+                            out.mesh.F.row(static_cast<Eigen::Index>(r)) = mesh.F.row(keep[r]);
+                        }
+                        out.changed = true;
+                        out.targetAfter = ogun::checkDuplicateFaces(out.mesh).size();
+                        out.detail = "Removed 1 duplicate face";
+                        break;
+                    }
+                }
+            }
+            return out;
+        };
+        stages = {stage};
+    };
+    return hooks;
+}
+
+} // namespace
+
+TEST_CASE("renumberShellText rewrites shell numbers in order", "[app][fixall]") {
+    const std::vector<int> numbers = {3, 1};
+    CHECK(ogun::renumberShellText("#1 and its inner shell #2 look inside out together", numbers) ==
+          "#3 and its inner shell #1 look inside out together");
+    const std::vector<int> keepFirst = {0, 7};
+    CHECK(ogun::renumberShellText("Deleted nested solid #8 (wholly inside #1, touching nothing)", keepFirst) ==
+          "Deleted nested solid #8 (wholly inside #7, touching nothing)");
+    const std::vector<int> one = {5};
+    CHECK(ogun::renumberShellText("#6 and #9 reach into cavity #28 of #12", one) == "#6 and #9 reach into cavity #28 of #12");
+    CHECK(ogun::renumberShellText("No shells overlap: nothing to merge.", {}) == "No shells overlap: nothing to merge.");
+    CHECK(ogun::renumberShellText("Kept cavity #12", one) == "Kept cavity #5");
+}
+
+TEST_CASE("Fix All: plan, preview without a change, Apply as one undo step, undo restores everything",
+          "[app][fixall][undo][merge]") {
+    AppController controller;
+    controller.setMesh(SampleMeshes::createTurkeyLikeMesh(), "Turkey-like");
+    controller.checkMesh();
+    controller.setAutoCheck(DefectCategory::Intersections, false);
+    REQUIRE(controller.shells().size() == 9);
+    const Mesh before = controller.mesh();
+    const ogun::MeshHealthReport healthBefore = controller.healthReport();
+    const std::size_t undoBefore = controller.canUndo() ? 1 : 0;
+    REQUIRE(undoBefore == 0);
+
+    controller.openFixAll(3);
+    REQUIRE(controller.fixAllOpen());
+    REQUIRE(controller.activeTool() == ogun::ToolSlot::FixAll);
+    REQUIRE(controller.repairAllOpen());
+    REQUIRE(controller.globalRepairMethods().size() == ogun::kFixAllMethods.size());
+    CHECK(controller.fixAllState() == FixAllPanelState::Plan);
+    CHECK(controller.fixAllParams().passes == 3);
+    CHECK(controller.fixAllScope().kind == FixAllScopeKind::Whole);
+    CHECK(controller.fixAllScope().text == "whole mesh, 9 shells (nothing selected)");
+    // The plan-time check ran (inline without background checks) and ticked the merge box
+    CHECK_FALSE(controller.fixAllPlanChecking());
+    REQUIRE(controller.fixAllMergePlan() != nullptr);
+    CHECK(controller.fixAllMergePlan()->tickedByDefault);
+    CHECK(controller.fixAllParams().mergeShells);
+    REQUIRE(controller.fixAllWeldPlan() != nullptr);
+    CHECK(controller.fixAllWeldPlan()->maxTolerance > 0.0);
+
+    controller.previewFixAll();
+    REQUIRE(controller.fixAllState() == FixAllPanelState::Result);
+    const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+    REQUIRE(candidate != nullptr);
+    REQUIRE(candidate->success);
+    REQUIRE(candidate->fixAll != nullptr);
+    CHECK(controller.candidateIsCurrent(*candidate));
+    CHECK(controller.shownGlobalCandidate() == candidate);
+    CHECK(controller.globalPreviewShown());
+    CHECK(candidate->metrics.shellsBefore == 9);
+    CHECK(candidate->metrics.shellsAfter == 2);
+    CHECK(candidate->metrics.intersectingFacesAfter == 0);
+    CHECK(candidate->fixAll->result.mesh.empty()); // moved into the candidate
+    CHECK(candidate->fixAll->faceShell.size() == static_cast<std::size_t>(candidate->mesh.numFaces()));
+    CHECK(candidate->statusMessage.starts_with("Passes: 1 of 3 (stopped: clean)."));
+    // Preview never touches the mesh
+    CHECK(controller.mesh().F == before.F);
+    CHECK(controller.mesh().V == before.V);
+    CHECK_FALSE(controller.canUndo());
+
+    // Shell numbers before Apply name the result's shells; Show maps them to the current mesh by geometry
+    const ogun::FixAllFinalReport& report = candidate->fixAll->result.report;
+    REQUIRE(report.shells.size() == 2);
+    const std::vector<int> separate = {1}; // the separate box, unchanged
+    const std::vector<int> mapped = controller.fixAllShellsInCurrentMesh(separate);
+    REQUIRE(mapped.size() == 1);
+    CHECK(controller.shells().shell(static_cast<std::size_t>(mapped[0])).bbox.min.x() >= 14.0);
+    const std::vector<int> body = {0};
+    const std::vector<int> parts = controller.fixAllShellsInCurrentMesh(body); // faces the union kept as they were
+    CHECK_FALSE(parts.empty());
+    CHECK(std::find(parts.begin(), parts.end(), mapped[0]) == parts.end());
+
+    REQUIRE(controller.applyFixAll());
+    CHECK(controller.lastUndoActionLabel() == "Fix All");
+    CHECK(controller.fixAllState() == FixAllPanelState::Report);
+    CHECK(controller.fixAllUndoAvailable());
+    REQUIRE(controller.shells().size() == 2);
+    CHECK(controller.rowCount(DefectCategory::Intersections) == 0);
+    // The run's final check is installed: no row is stale, running or unchecked (Intersections included)
+    for (const DefectCategory category : ogun::kAllDefectCategories) {
+        INFO(ogun::categoryInfo(category).name);
+        const HealthStatus status = controller.healthReport()[category].status;
+        CHECK((status == HealthStatus::Ok || status == HealthStatus::Defects));
+    }
+    // The merged shell is selected, and the report's shell numbers are the Shells panel's
+    CHECK(controller.shells().selectedCount() == 1);
+    const ogun::FixAllCandidate* shown = controller.fixAllShown();
+    REQUIRE(shown != nullptr);
+    for (std::size_t k = 0; k < shown->result.report.shells.size(); ++k) {
+        CHECK(controller.shells().shellOfFace(shown->result.report.shells[k].front()) == static_cast<int>(k));
+    }
+    for (const ogun::FixAllReportLine& line : shown->result.report.lines) {
+        if (line.text.find('#') == std::string::npos) {
+            continue;
+        }
+        for (const int s : line.shells) {
+            CHECK(line.text.find("#" + std::to_string(AppController::fixAllShellNumber(s))) != std::string::npos);
+        }
+    }
+    // Step notes are renumbered to the result: the merge note names the union, now #1
+    for (const ogun::FixAllStepReport& step : shown->result.steps) {
+        if (step.stage == FixAllStageId::MergeShells && step.accepted()) {
+            REQUIRE_FALSE(step.notes.empty());
+            CHECK(controller.fixAllNoteShellNumbers(step, step.notes.front()) == std::vector<int>{1});
+            CHECK(controller.fixAllNoteText(step, step.notes.front()) == "Merged 7 shells into #1");
+        }
+    }
+
+    // One undo step restores the mesh, the health report and the shell list exactly
+    REQUIRE(controller.undoFixAll());
+    CHECK_FALSE(controller.canUndo());
+    CHECK(controller.mesh().F == before.F);
+    CHECK(controller.mesh().V == before.V);
+    CHECK(controller.shells().size() == 9);
+    CHECK(controller.shells().selectedCount() == 0);
+    for (const DefectCategory category : ogun::kAllDefectCategories) {
+        INFO(ogun::categoryInfo(category).name);
+        CHECK(controller.healthReport()[category].status == healthBefore[category].status);
+        CHECK(controller.healthReport()[category].displayCount(category) == healthBefore[category].displayCount(category));
+    }
+    CHECK_FALSE(controller.fixAllApplied().has_value());
+    CHECK(controller.fixAllState() == FixAllPanelState::Plan);
+    CHECK(controller.fixAllOpen());
+}
+
+TEST_CASE("Fix All: a one-pass run is one undo step, three of them three", "[app][fixall][undo]") {
+    AppController controller;
+    // A cube with three extra copies of faces; the hooked pass removes one copy per run
+    Mesh mesh = box({0, 0, 0}, {2, 2, 2});
+    const Eigen::MatrixXi cube = mesh.F;
+    mesh.F.resize(cube.rows() + 3, 3);
+    mesh.F << cube, cube.topRows(3);
+    controller.setMesh(mesh, "cube with copies");
+    const Mesh before = controller.mesh();
+    controller.setFixAllTestHooks(oneDuplicatePerPass());
+
+    controller.openFixAll(1);
+    CHECK(controller.fixAllParams().passes == 1);
+    for (int i = 0; i < 3; ++i) {
+        INFO("pass " << i + 1);
+        controller.runFixAllOneMorePass();
+        const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+        REQUIRE(candidate != nullptr);
+        REQUIRE(candidate->success);
+        CHECK(candidate->fixAll->onePassRequested);
+        CHECK(candidate->fixAll->result.onePass);
+        REQUIRE(controller.applyFixAll());
+        CHECK(controller.lastUndoActionLabel() == "Fix All (one pass)");
+        CHECK(controller.mesh().numFaces() == before.numFaces() - 1 - i);
+    }
+    CHECK(ogun::checkDuplicateFaces(controller.mesh()).empty());
+    for (int i = 0; i < 3; ++i) {
+        CHECK(controller.lastUndoActionLabel() == "Fix All (one pass)");
+        REQUIRE(controller.undoLastModification());
+    }
+    CHECK_FALSE(controller.canUndo());
+    CHECK(controller.mesh().F == before.F);
+
+    SECTION("A one-pass preview stays current whatever the Passes field says") {
+        controller.setFixAllPasses(3);
+        controller.previewFixAll(true);
+        REQUIRE(controller.fixAllCandidate() != nullptr);
+        CHECK(controller.candidateIsCurrent(*controller.fixAllCandidate()));
+        controller.setFixAllPasses(5);
+        CHECK(controller.candidateIsCurrent(*controller.fixAllCandidate()));
+        ogun::FixAllParams params = controller.fixAllParams();
+        params.removeFins = false;
+        controller.setFixAllParams(params);
+        CHECK_FALSE(controller.candidateIsCurrent(*controller.fixAllCandidate()));
+    }
+    SECTION("A run that changes nothing adds no undo step") {
+        controller.setFixAllTestHooks(nullptr);
+        controller.setMesh(box({0, 0, 0}, {1, 1, 1}), "cube");
+        controller.openFixAll(3);
+        controller.previewFixAll();
+        REQUIRE(controller.fixAllCandidate() != nullptr);
+        REQUIRE_FALSE(controller.fixAllCandidate()->fixAll->result.changed);
+        REQUIRE(controller.applyFixAll());
+        CHECK_FALSE(controller.canUndo());
+        CHECK(controller.fixAllState() == FixAllPanelState::Report);
+        CHECK_FALSE(controller.fixAllUndoAvailable());
+        CHECK(controller.lastRepairStatusMessage().starts_with("Fix All changed nothing"));
+    }
+}
+
+TEST_CASE("Fix All: an edit discards the candidate; undo Fix All only while it is on top", "[app][fixall][undo]") {
+    AppController controller;
+    controller.setMesh(twoOpenBoxes(), "two open boxes");
+    controller.openFixAll();
+    controller.previewFixAll();
+    REQUIRE(controller.fixAllCandidate() != nullptr);
+
+    const std::vector<int> second = {1};
+    REQUIRE(controller.flipShells(second)); // any edit
+    CHECK(controller.fixAllCandidate() == nullptr);
+    CHECK(controller.fixAllState() == FixAllPanelState::Plan);
+    REQUIRE(controller.undoLastModification());
+
+    controller.previewFixAll();
+    REQUIRE(controller.applyFixAll());
+    CHECK(openEdges(controller.mesh()) == 0);
+    CHECK(controller.fixAllUndoAvailable());
+    REQUIRE(controller.flipShells(second));
+    CHECK_FALSE(controller.fixAllUndoAvailable());
+    CHECK_FALSE(controller.undoFixAll());
+    REQUIRE(controller.undoLastModification()); // the flip
+    CHECK(controller.fixAllUndoAvailable());
+    REQUIRE(controller.undoFixAll());
+    CHECK(openEdges(controller.mesh()) == 6);
+
+    SECTION("A selection change drops the candidate too") {
+        controller.previewFixAll();
+        REQUIRE(controller.fixAllCandidate() != nullptr);
+        controller.clickShell(0, false, false, {});
+        CHECK(controller.fixAllCandidate() == nullptr);
+    }
+    SECTION("Closing the panel forgets the plan and the report") {
+        controller.closeTool();
+        CHECK_FALSE(controller.fixAllOpen());
+        CHECK(controller.fixAllMergePlan() == nullptr);
+        CHECK_FALSE(controller.fixAllApplied().has_value());
+    }
+}
+
+TEST_CASE("Fix All follows the selection: faces, shells, nothing; hidden shells never change", "[app][fixall][scope]") {
+    AppController controller;
+    controller.setMesh(twoOpenBoxes(), "two open boxes");
+    REQUIRE(controller.shells().size() == 2);
+    const std::size_t left = 0;
+    const std::size_t right = shellRightOf(controller, 10.0);
+    REQUIRE(right == 1);
+    const Mesh before = controller.mesh();
+    const std::vector<Eigen::Index> leftFaces = controller.shells().shell(left).faces;
+    const std::vector<Eigen::Index> rightFaces = controller.shells().shell(right).faces;
+
+    SECTION("Nothing selected: the whole mesh") {
+        controller.openFixAll();
+        CHECK(controller.fixAllScope().kind == FixAllScopeKind::Whole);
+        controller.previewFixAll();
+        REQUIRE(controller.fixAllCandidate() != nullptr);
+        CHECK(openEdges(controller.fixAllCandidate()->mesh) == 0);
+    }
+    SECTION("Selected faces: only they change, and Apply selects the scope faces again") {
+        controller.selectFaces(leftFaces, true);
+        controller.openFixAll();
+        const ogun::FixAllScopeInfo scope = controller.fixAllScope();
+        CHECK(scope.kind == FixAllScopeKind::Faces);
+        CHECK(scope.faces == leftFaces.size());
+        CHECK(scope.text == "11 selected faces (in 1 shell)");
+        REQUIRE(controller.fixAllMergePlan() != nullptr);
+        CHECK(controller.fixAllMergePlan()->needsWholeShells);
+        CHECK_FALSE(controller.fixAllParams().mergeShells);
+        controller.previewFixAll();
+        const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+        REQUIRE(candidate != nullptr);
+        REQUIRE(candidate->success);
+        CHECK(candidate->fixAll->scopeKind == FixAllScopeKind::Faces);
+        CHECK(openEdges(candidate->mesh) == 3); // the right box's hole is left
+        CHECK(facesKept(before, rightFaces, candidate->mesh));
+        const std::size_t carried = candidate->fixAll->result.scope.faceCount();
+        REQUIRE(carried > leftFaces.size());
+
+        REQUIRE(controller.applyFixAll());
+        CHECK(controller.selectedFaceCount() == carried);
+        CHECK(controller.fixAllScope().kind == FixAllScopeKind::Faces);
+        CHECK(controller.fixAllScope().faces == carried);
+        // Run one more pass works on the same faces
+        controller.runFixAllOneMorePass();
+        REQUIRE(controller.fixAllCandidate() != nullptr);
+        CHECK(controller.fixAllCandidate()->fixAll->scopeKind == FixAllScopeKind::Faces);
+    }
+    SECTION("Selected shells: the others are left; Apply selects the shells in scope") {
+        controller.clickShell(right, false, false, {});
+        controller.openFixAll();
+        CHECK(controller.fixAllScope().kind == FixAllScopeKind::Shells);
+        CHECK(controller.fixAllScope().text == "1 of 2 shells (selected)");
+        controller.previewFixAll();
+        const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+        REQUIRE(candidate != nullptr);
+        CHECK(openEdges(candidate->mesh) == 3);
+        CHECK(facesKept(before, leftFaces, candidate->mesh));
+        REQUIRE(controller.applyFixAll());
+        REQUIRE(controller.shells().selectedCount() == 1);
+        CHECK(controller.shells().shell(controller.shells().selectedShells().front()).bbox.min.x() >= 10.0);
+    }
+    SECTION("A hidden shell is never changed, even when selected") {
+        controller.setShellVisible(right, false);
+        controller.openFixAll();
+        ogun::FixAllScopeInfo scope = controller.fixAllScope();
+        CHECK(scope.kind == FixAllScopeKind::Shells);
+        CHECK(scope.hiddenShells == 1);
+        CHECK(scope.text == "1 of 2 shells (the visible ones); 1 hidden shell is left as it is");
+        controller.previewFixAll();
+        REQUIRE(controller.fixAllCandidate() != nullptr);
+        CHECK(facesKept(before, rightFaces, controller.fixAllCandidate()->mesh));
+        CHECK(openEdges(controller.fixAllCandidate()->mesh) == 3);
+
+        // Selected, then hidden: still left out
+        controller.closeTool();
+        controller.showAllShells();
+        controller.clickShell(left, false, false, {});
+        controller.clickShell(right, true, false, {});
+        REQUIRE(controller.shells().selectedCount() == 2);
+        controller.setShellVisible(right, false);
+        controller.openFixAll();
+        scope = controller.fixAllScope();
+        CHECK(scope.faces == leftFaces.size());
+        controller.previewFixAll();
+        REQUIRE(controller.fixAllCandidate() != nullptr);
+        CHECK(facesKept(before, rightFaces, controller.fixAllCandidate()->mesh));
+    }
+}
+
+TEST_CASE("Fix All: the plan-time check sets the merge box and the user's click wins", "[app][fixall][merge]") {
+    AppController controller;
+    SECTION("Overlapping shells tick it; a click unticks it for good") {
+        controller.setMesh(overlappingCubes(), "overlapping cubes");
+        controller.openFixAll();
+        CHECK(controller.fixAllParams().mergeShells);
+        CHECK_FALSE(controller.fixAllMergeUserSet());
+        controller.setFixAllMergeShells(false);
+        CHECK(controller.fixAllMergeUserSet());
+        // A new scope re-checks the plan but keeps the click
+        controller.clickShell(0, false, false, {});
+        controller.clickShell(1, true, false, {});
+        controller.waitForFixAllPlan();
+        REQUIRE(controller.fixAllMergePlan() != nullptr);
+        CHECK(controller.fixAllMergePlan()->tickedByDefault);
+        CHECK_FALSE(controller.fixAllParams().mergeShells);
+        controller.previewFixAll();
+        REQUIRE(controller.fixAllCandidate() != nullptr);
+        CHECK(controller.fixAllCandidate()->metrics.shellsAfter == 2); // not merged
+        // Opening the panel again forgets the click
+        controller.openFixAll();
+        CHECK(controller.fixAllParams().mergeShells);
+        CHECK_FALSE(controller.fixAllMergeUserSet());
+    }
+    SECTION("Shells that do not overlap leave it unticked") {
+        controller.setMesh(twoOpenBoxes(), "two open boxes");
+        controller.openFixAll();
+        REQUIRE(controller.fixAllMergePlan() != nullptr);
+        CHECK_FALSE(controller.fixAllParams().mergeShells);
+    }
+    SECTION("In the background: checking..., then ticked; a preview waits for it") {
+        controller.setMesh(overlappingCubes(), "overlapping cubes");
+        controller.setBackgroundChecks(true);
+        controller.openFixAll();
+        CHECK(controller.fixAllPlanChecking());
+        CHECK(controller.fixAllMergePlan() == nullptr);
+        controller.previewFixAll();
+        CHECK(controller.fixAllRunning());
+        CHECK(controller.fixAllStatusText() == "Fix All: checking which shells overlap...");
+        controller.waitForFixAll();
+        controller.setBackgroundChecks(false);
+        CHECK_FALSE(controller.fixAllPlanChecking());
+        CHECK(controller.fixAllParams().mergeShells);
+        REQUIRE(controller.fixAllCandidate() != nullptr);
+        CHECK(controller.fixAllCandidate()->metrics.shellsAfter == 1);
+    }
+}
+
+TEST_CASE("Fix All in the background: progress, cancel, cancel during a merge, stale results dropped",
+          "[app][fixall][background]") {
+    AppController controller;
+    controller.setMesh(overlappingCubes(), "overlapping cubes");
+    const Mesh before = controller.mesh();
+    controller.setBackgroundChecks(true);
+
+    SECTION("Cancel during phase 1: the run stops, nothing changes") {
+        auto hold = std::make_shared<HoldInStage>();
+        controller.setFixAllTestHooks(holdHooks(hold, FixAllStageId::Dedupe));
+        controller.openFixAll();
+        controller.setFixAllMergeShells(true);
+        controller.previewFixAll();
+        REQUIRE(waitUntil(hold->entered));
+        CHECK(controller.fixAllRunning());
+        CHECK(controller.fixAllState() == FixAllPanelState::Running);
+        CHECK(controller.globalRepairRunning());
+        CHECK(controller.fixAllStatusText().starts_with("Fix All: pass 1 of 3, phase 1, removing duplicate faces..."));
+        CHECK(controller.fixAllStatusText().ends_with(" %"));
+        CHECK(controller.fixAllProgress() > 0.0f);
+
+        controller.cancelFixAll();
+        CHECK(controller.fixAllCancelling());
+        CHECK(controller.statusMessage() == "Cancelling Fix All...");
+        CHECK(controller.fixAllStatusText() == "Cancelling Fix All...");
+        CHECK(controller.fixAllRunning());
+        hold->release = true;
+        controller.waitForFixAll();
+        CHECK_FALSE(controller.fixAllRunning());
+        CHECK(controller.fixAllCandidate() == nullptr);
+        CHECK(controller.fixAllState() == FixAllPanelState::Plan);
+        CHECK(controller.statusMessage() == "Fix All cancelled: nothing was changed.");
+        CHECK(controller.mesh().F == before.F);
+        CHECK_FALSE(controller.canUndo());
+    }
+    SECTION("Cancel during a merge takes effect when the union returns; its result is dropped") {
+        auto hold = std::make_shared<HoldInStage>();
+        controller.setFixAllTestHooks(holdHooks(hold, FixAllStageId::MergeShells));
+        controller.openFixAll();
+        controller.setFixAllMergeShells(true);
+        controller.previewFixAll();
+        REQUIRE(waitUntil(hold->entered));
+        CHECK(controller.fixAllStatusText().starts_with("Fix All: pass 1 of 3, phase 2, merging 2 shells (Manifold)..."));
+        controller.cancelFixAll();
+        CHECK(controller.statusMessage() == "Cancelling after the current merge...");
+        CHECK(controller.fixAllStatusText() == "Cancelling after the current merge...");
+        hold->release = true; // the union runs to its end, then the run stops
+        controller.waitForFixAll();
+        CHECK(controller.fixAllCandidate() == nullptr);
+        CHECK(controller.mesh().F == before.F);
+        CHECK(controller.shells().size() == 2);
+    }
+    SECTION("An edit while the run computes drops its result") {
+        auto hold = std::make_shared<HoldInStage>();
+        controller.setFixAllTestHooks(holdHooks(hold, FixAllStageId::Dedupe));
+        controller.openFixAll();
+        controller.setFixAllMergeShells(true);
+        controller.previewFixAll();
+        REQUIRE(waitUntil(hold->entered));
+        const std::vector<int> first = {0};
+        REQUIRE(controller.flipShells(first)); // does not wait for the run
+        CHECK_FALSE(controller.fixAllRunning());
+        hold->release = true;
+        controller.waitForFixAll();
+        CHECK(controller.fixAllCandidate() == nullptr);
+    }
+    SECTION("A run that finished for an older mesh is dropped") {
+        controller.setFixAllTestHooks(nullptr);
+        controller.openFixAll();
+        controller.setFixAllMergeShells(true);
+        controller.previewFixAll();
+        while (controller.globalRepairRunning()) { // finished, not yet collected
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        const std::vector<int> first = {0};
+        REQUIRE(controller.flipShells(first));
+        controller.waitForFixAll();
+        CHECK(controller.fixAllCandidate() == nullptr);
+        CHECK(controller.shells().size() == 2);
+    }
+    SECTION("A finished run is collected by the frame's poll") {
+        controller.setFixAllTestHooks(nullptr);
+        controller.openFixAll();
+        controller.setFixAllMergeShells(true);
+        controller.previewFixAll();
+        controller.waitForFixAll();
+        REQUIRE(controller.fixAllCandidate() != nullptr);
+        CHECK(controller.fixAllState() == FixAllPanelState::Result);
+        CHECK(controller.fixAllStatusText().empty());
+        CHECK(controller.statusMessage() == "Fix All preview ready.");
+        REQUIRE(controller.applyFixAll());
+        CHECK(controller.shells().size() == 1);
+        controller.waitForChecks();
+    }
+    controller.setBackgroundChecks(false);
+}
+
+TEST_CASE("Fix All on a whole mesh selects the merged shells; one more pass keeps the whole mesh", "[app][fixall][merge]") {
+    AppController controller;
+    Mesh mesh = SampleMeshes::combineMeshes({overlappingCubes(), box({10, 0, 0}, {11, 1, 1})});
+    controller.setMesh(mesh, "two overlapping cubes and a box");
+    REQUIRE(controller.shells().size() == 3);
+    controller.openFixAll();
+    REQUIRE(controller.fixAllParams().mergeShells);
+    controller.previewFixAll();
+    REQUIRE(controller.applyFixAll());
+    REQUIRE(controller.shells().size() == 2);
+    REQUIRE(controller.shells().selectedCount() == 1);
+    CHECK(controller.shells().shell(controller.shells().selectedShells().front()).bbox.max.x() < 5.0);
+    CHECK(controller.fixAllScope().kind == FixAllScopeKind::Whole);
+    CHECK(controller.fixAllScope().text == "whole mesh, 2 shells (as in the last run)");
+
+    controller.runFixAllOneMorePass();
+    REQUIRE(controller.fixAllCandidate() != nullptr);
+    CHECK(controller.fixAllCandidate()->fixAll->scopeKind == FixAllScopeKind::Whole);
+    // Once the user changes the selection, the selection is the scope again
+    controller.clickShell(1, false, false, {});
+    CHECK(controller.fixAllScope().kind == FixAllScopeKind::Shells);
+}
+
+TEST_CASE("Fix All on the cavity box inside out: Flip all from the report is one undo step", "[app][fixall][orient]") {
+    AppController controller;
+    controller.setMesh(SampleMeshes::createCavityBoxMesh(true), "inside-out cavity box");
+    controller.openFixAll();
+    controller.previewFixAll();
+    const ogun::FixAllCandidate* shown = controller.fixAllShown();
+    REQUIRE(shown != nullptr);
+    REQUIRE(shown->result.report.groupsNotMerged.size() == 1);
+    const std::vector<int>& named = shown->result.report.groupsNotMerged.front().shells;
+    REQUIRE(named.size() == 2);
+    CHECK(controller.fixAllShellsInCurrentMesh(named).size() == 2);
+    REQUIRE(controller.fixAllFlipShells(named));
+    CHECK(controller.lastUndoActionLabel() == "Flip Shells #1 and #2");
+    CHECK(controller.fixAllCandidate() == nullptr); // the edit dropped the preview
+    CHECK(ogun::signedVolume(controller.mesh()) == Catch::Approx(64.0 - 8.0));
+}
+
+TEST_CASE("Fix All on the Turkey through the app: plan, preview, Apply and undo (timings)", "[app][fixall][.slow]") {
+    using Clock = std::chrono::steady_clock;
+    const auto seconds = [](Clock::time_point start) { return std::chrono::duration<double>(Clock::now() - start).count(); };
+    AppController controller;
+    controller.setMesh(ogun::loadStl(std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() /
+                                     "examples" / "Turkey.stl"),
+                       "Turkey.stl");
+    REQUIRE(controller.shells().size() == 28);
+    const Mesh before = controller.mesh();
+
+    auto start = Clock::now();
+    controller.openFixAll();
+    const double planSeconds = seconds(start);
+    REQUIRE(controller.fixAllMergePlan() != nullptr);
+    CHECK(controller.fixAllParams().mergeShells); // the feathers cross the body
+    CHECK(controller.fixAllMergePlan()->groups.empty());
+    REQUIRE(controller.fixAllMergePlan()->refusedGroups.size() == 1);
+
+    start = Clock::now();
+    controller.previewFixAll();
+    const double previewSeconds = seconds(start);
+    const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+    REQUIRE(candidate != nullptr);
+    REQUIRE(candidate->success);
+    CHECK(candidate->metrics.shellsAfter == 28);
+    const double runSeconds = candidate->fixAll->result.elapsedMs / 1000.0;
+
+    start = Clock::now();
+    REQUIRE(controller.applyFixAll());
+    const double applySeconds = seconds(start);
+    CHECK(controller.lastUndoActionLabel() == "Fix All");
+    for (const DefectCategory category : ogun::kAllDefectCategories) {
+        const HealthStatus status = controller.healthReport()[category].status;
+        CHECK((status == HealthStatus::Ok || status == HealthStatus::Defects));
+    }
+    CHECK(controller.rowCount(DefectCategory::OpenEdges) == 0);
+
+    start = Clock::now();
+    REQUIRE(controller.undoFixAll());
+    const double undoSeconds = seconds(start);
+    CHECK(controller.mesh().F == before.F);
+    WARN("Turkey Fix All in the app: plan " << planSeconds << " s, preview " << previewSeconds << " s (run " << runSeconds
+                                            << " s), apply " << applySeconds << " s, undo " << undoSeconds << " s");
+}

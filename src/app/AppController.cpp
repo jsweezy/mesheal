@@ -165,6 +165,7 @@ void AppController::setMesh(Mesh mesh, std::string sourceLabel) {
     lastRepairStatusMessage_.clear();
     checkRunner_.cancel();
     selectedCategory_.reset();
+    resetFixAllState();
     activeTool_ = ToolSlot::None;
     shells_.clear();
     replaceMeshPreservingHistory(std::move(mesh));
@@ -203,6 +204,9 @@ void AppController::replaceMeshPreservingHistory(Mesh mesh, std::optional<ShellB
     holes_.clear();
     holesValid_ = false;
     discardGlobalCandidates();
+    if (activeTool_ == ToolSlot::FixAll) {
+        onFixAllScopeChanged(); // the plan-time check is for the old mesh
+    }
     resetTransformTool();
     orbitPivot_ = computeSelectionCentroid();
 }
@@ -483,7 +487,8 @@ bool AppController::pollBackgroundChecks() {
     std::vector<CategoryResult> finished = checkRunner_.takeFinished();
     const bool repairsFinished = pollRepairJobs();
     const bool mergeFinished = pollMergeJob();
-    const bool changed = !finished.empty() || repairsFinished || mergeFinished;
+    const bool fixAllChanged = pollFixAll();
+    const bool changed = !finished.empty() || repairsFinished || mergeFinished || fixAllChanged;
     for (CategoryResult& result : finished) {
         applyCheckResult(std::move(result));
     }
@@ -581,6 +586,9 @@ void AppController::computeScope(DefectCategory category) {
 }
 
 void AppController::onShellsChanged() {
+    if (activeTool_ == ToolSlot::FixAll) {
+        onFixAllScopeChanged();
+    }
     islandsValid_ = false;
     for (const DefectCategory category : kAllDefectCategories) {
         computeScope(category);
@@ -855,6 +863,9 @@ bool AppController::escape() {
 void AppController::clearSelection() {
     if (repairAllOpen()) {
         discardGlobalCandidates();
+    }
+    if (activeTool_ == ToolSlot::FixAll) {
+        resetFixAllState();
     }
     resetTransformTool();
     pickedFaceIndex_ = -1;
@@ -1349,6 +1360,9 @@ bool AppController::undoLastModification() {
     }
     UndoEntry entry = std::move(undoStack_.back());
     undoStack_.pop_back();
+    if (fixAllApplied_ && undoStack_.size() < fixAllApplied_->undoDepth) {
+        fixAllApplied_.reset(); // the applied run is undone: back to the plan
+    }
 
     checkRunner_.cancel();
     replaceMeshPreservingHistory(std::move(entry.mesh), std::move(entry.shells));

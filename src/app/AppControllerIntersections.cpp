@@ -169,13 +169,17 @@ bool AppController::fixSelectedIntersections() {
 // Repair All operator
 // -----------------------------------------------------------------------------
 
+void AppController::refreshGlobalParams() {
+    globalParams_.checkParams = checkParams();
+    globalParams_.islandSettings = islandSettings_;
+    globalParams_.holeSettings = holeSettings_;
+}
+
 void AppController::openRepairAll(ToolSlot slot, GlobalRepairMethod method) {
     clearSelection();
     activeTool_ = slot;
     globalMethod_ = method;
-    globalParams_.checkParams = checkParams();
-    globalParams_.islandSettings = islandSettings_;
-    globalParams_.holeSettings = holeSettings_;
+    refreshGlobalParams();
 }
 
 void AppController::openRepairAllIntersections() {
@@ -229,26 +233,54 @@ void AppController::compareAllGlobalRepairs() {
     queueGlobalRepairs(std::vector<GlobalRepairMethod>(methods.begin(), methods.end()));
 }
 
-void AppController::queueGlobalRepairs(std::vector<GlobalRepairMethod> methods) {
+void AppController::queueGlobalRepairs(std::vector<GlobalRepairMethod> methods, bool fixAllOnePass) {
     if (mesh_.empty() || methods.empty()) {
         return;
     }
-    globalParams_.checkParams = checkParams();
-    globalParams_.islandSettings = islandSettings_;
-    globalParams_.holeSettings = holeSettings_;
-    RepairRequest request{meshGeneration_, std::make_shared<const Mesh>(mesh_), operatorScopeMask(), std::move(methods), globalParams_};
+    refreshGlobalParams();
+    RepairRequest request;
+    request.meshGeneration = meshGeneration_;
+    request.mesh = std::make_shared<const Mesh>(mesh_);
+    request.methods = std::move(methods);
+    request.params = globalParams_;
+    const bool fixAll = std::find(request.methods.begin(), request.methods.end(), GlobalRepairMethod::FixAll) != request.methods.end();
+    if (activeTool_ == ToolSlot::FixAll) {
+        request.faceInScope = fixAllScopeMask(request.fixAllScopeKind);
+        request.fixAllHooks = fixAllHooks_;
+        if (fixAllOnePass) {
+            request.params.fixAll.passes = 1;
+        }
+    } else {
+        request.faceInScope = operatorScopeMask();
+    }
     if (backgroundChecks_) {
         repairRunner_.start(std::move(request));
-        postStatusMessage("Computing Repair All preview...");
+        fixAllJobRunning_ = fixAll;
+        fixAllCancelling_ = false;
+        postStatusMessage(fixAll ? "Fix All: checking the mesh..." : "Computing Repair All preview...");
         return;
     }
     for (const GlobalRepairMethod method : request.methods) {
-        storeCandidate(runGlobalRepair(mesh_, request.faceInScope, method, request.params));
+        const FixAllRunInput input{request.fixAllScopeKind, nullptr, request.fixAllHooks.get()};
+        storeCandidate(runGlobalRepair(mesh_, request.faceInScope, method, request.params, {}, nullptr, &input));
     }
 }
 
 void AppController::cancelGlobalRepair() {
+    if (fixAllJobRunning_) {
+        cancelFixAll();
+        return;
+    }
     repairRunner_.cancel();
+}
+
+bool AppController::candidateIsCurrent(const RepairCandidate& candidate) const noexcept {
+    if (candidate.method == GlobalRepairMethod::FixAll && candidate.fixAll != nullptr && candidate.fixAll->onePassRequested) {
+        GlobalRepairParams params = candidate.params;
+        params.fixAll.passes = globalParams_.fixAll.passes;
+        return params == globalParams_;
+    }
+    return candidate.params == globalParams_;
 }
 
 void AppController::waitForGlobalRepair() {
@@ -290,7 +322,15 @@ bool AppController::pollRepairJobs() {
 }
 
 void AppController::discardGlobalCandidates() {
-    repairRunner_.cancel();
+    if (fixAllJobRunning_ || repairRunner_.stopping()) {
+        // A Fix All run may be inside a Manifold union: do not wait for it, just drop what it finds
+        repairRunner_.requestStop();
+        fixAllJobRunning_ = false;
+        fixAllCancelling_ = false;
+    } else {
+        repairRunner_.cancel();
+    }
+    fixAllPreviewQueued_.reset();
     (void)repairRunner_.takeFinished();
     globalCandidates_.clear();
     shownCandidate_.reset();
@@ -321,6 +361,9 @@ bool AppController::applyGlobalRepair() {
     if (candidate == nullptr || !candidate->success) {
         lastRepairStatusMessage_ = "Preview a Repair All method first.";
         return false;
+    }
+    if (candidate->method == GlobalRepairMethod::FixAll) {
+        return applyFixAll();
     }
     const std::string label = globalRepairMethodLabel(candidate->method);
     Mesh repaired = candidate->mesh;
