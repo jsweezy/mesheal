@@ -347,6 +347,19 @@ TEST_CASE("S6: an island whose cut leaves the selection is skipped and named", "
         const std::string name = "Island at face #" + std::to_string(*std::min_element(island.begin(), island.end()));
         REQUIRE(islands->detail == name + " extends beyond the selection");
         REQUIRE(result.countsAfter.intersectingFaces > 0);
+        // The skip is a note naming the island's faces, in the returned mesh
+        REQUIRE(islands->notes.size() == 1);
+        REQUIRE(islands->notes[0].faceSet);
+        REQUIRE(islands->notes[0].warning);
+        REQUIRE(islands->notes[0].shells.size() == 1);
+        REQUIRE(islands->notes[0].shells[0].size() == island.size());
+        for (std::size_t i = 0; i < island.size(); ++i) {
+            REQUIRE(ogun::faceGeometryKey(result.mesh, islands->notes[0].shells[0][i]) == ogun::faceGeometryKey(folded, island[i]));
+        }
+        // The fold is left: the report suggests an alpha wrap of its shell
+        REQUIRE(result.report.residue.size() == 1);
+        REQUIRE(result.report.residue[0].crossingFacesWithin > 0);
+        REQUIRE(result.report.residue[0].suggestion == ogun::FixAllSuggestion::AlphaWrap);
     }
     SECTION("The island and two rings selected: it is repaired, nothing outside changes") {
         const FixAllScope scope = scopeOfFaces(folded, FixAllScopeKind::Faces, grown(folded, island, 2));
@@ -578,6 +591,13 @@ TEST_CASE("Fix All on the bunny: one pass, five holes filled, one cap healed", "
     REQUIRE(result.countsBefore.thinFaces == 1);
     REQUIRE(result.countsAfter.thinFaces == 0);
     REQUIRE(ogun::faceDiff(bunny, result.mesh).removed.size() == 4); // the collapse; every other face is kept
+    REQUIRE(result.report.passesLine == "Passes: 1 of 3 (stopped: clean)");
+    REQUIRE(result.report.leftLine == "Clean after 1 pass.");
+    REQUIRE(result.report.shellsLine == "Shells: 1 -> 1");
+    REQUIRE(result.report.closedLine == "Watertight: 1 of 1 shell");
+    REQUIRE(result.report.residue.empty());
+    REQUIRE(result.report.crossingsLeft.empty());
+    WARN("bunny final report: " << result.report.elapsedMs << " ms");
 }
 
 TEST_CASE("Fix All on the Turkey with the merge off", "[repair][fixall][files][.slow]") {
@@ -607,4 +627,21 @@ TEST_CASE("Fix All on the Turkey with the merge off", "[repair][fixall][files][.
     REQUIRE(result.stopReason == FixAllStopReason::RepeatedState);
     REQUIRE(result.countsAfter.openEdges == 0);
     REQUIRE(ogun::shellsLargestFirst(result.mesh).size() == 28);
+
+    // The report: ticking the merge would not help (its group reaches into cavity #28), so no shell is
+    // offered "Tick Merge shells"; every crossing pair is listed with that reason
+    const ogun::FixAllFinalReport& report = result.report;
+    WARN("Turkey (merge off) report " << report.elapsedMs << " ms: " << report.leftLine << " | " << report.shellsLine);
+    REQUIRE(report.complete);
+    REQUIRE(report.crossingsLeft.size() == 100);
+    for (const ogun::FixAllCrossingLeft& left : report.crossingsLeft) {
+        REQUIRE(left.whyNotMerged == "their group reaches into cavity #28 of #12, so it is not merged (merge them by hand)");
+    }
+    REQUIRE(report.residue.size() == 27);
+    for (const ogun::FixAllShellResidue& r : report.residue) {
+        REQUIRE(r.suggestion == ogun::FixAllSuggestion::ReportOnly);
+    }
+    REQUIRE(report.groupsNotMerged.size() == 1);
+    REQUIRE(report.cavitiesKept == std::vector<int>{27});
+    REQUIRE(report.shellsLine == "Shells: 28 -> 28 (1 cavity kept; 1 group not merged)");
 }

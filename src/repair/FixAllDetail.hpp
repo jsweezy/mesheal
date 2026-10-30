@@ -10,6 +10,7 @@
 
 #include <cstddef>
 #include <span>
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -50,5 +51,25 @@ struct EdgeDefectCounts {
 };
 
 [[nodiscard]] EdgeDefectCounts countEdgeDefects(const Mesh& mesh);
+
+/// A kept hole fill: the pass and the hole as the fill step named it.
+struct FillRecord {
+    int pass = 0;
+    int hole = 0;
+};
+
+/// What the final report needs besides the result (FixAllReport.cpp).
+struct FinalReportInput {
+    const Mesh& input;
+    const FixAllScope& inputScope;
+    const FixAllParams& params;
+    std::vector<CategoryResult> health; ///< The nine checks of `result.mesh` (countFixAllDefects order)
+    std::span<const int> fillOf;        ///< Per face of `result.mesh`: index into `fills` (-1: no fill made it)
+    std::span<const FillRecord> fills;
+    std::size_t returnedSteps = 0;      ///< `result.steps[0 .. returnedSteps)` led to `result.mesh`
+};
+
+/// Steps 18 and 19 on `result.mesh`: fills `result.report`. False when stopped.
+[[nodiscard]] bool buildFinalReport(FixAllResult& result, FinalReportInput input, std::stop_token stopToken);
 
 } // namespace ogun::fixall_detail

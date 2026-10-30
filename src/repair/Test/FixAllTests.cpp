@@ -6,6 +6,7 @@
 #include "diagnostics/ShellRelations.hpp"
 #include "repair/SliverHealer.hpp"
 #include "io/SampleMeshes.hpp"
+#include "io/StlReader.hpp"
 #include "mesh/ToleranceConfig.hpp"
 
 #include <catch2/catch_approx.hpp>
@@ -13,7 +14,10 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <map>
 #include <functional>
 #include <stdexcept>
 #include <stop_token>
@@ -353,6 +357,12 @@ TEST_CASE("One pass returns a worse pass; a full run returns the input when late
     REQUIRE(stepped.priorityBefore < stepped.priorityAfter);
     REQUIRE(stepped.stopReason == FixAllStopReason::PassLimit);
     REQUIRE(stepped.bestPass == 1);
+    REQUIRE(stepped.report.passesLine == "Passes: 1 (One pass)");
+    REQUIRE(stepped.report.temporarilyWorseText ==
+            "This pass left more crossing faces (0 -> " + std::to_string(stepped.countsAfter.intersectingFaces) +
+                "). The next pass should repair them: run one more pass.");
+    REQUIRE(stepped.report.lines.at(2).warning);
+    REQUIRE(stepped.report.lines.at(2).text == stepped.report.temporarilyWorseText);
 
     const ogun::FixAllResult full = run(cube, ogun::FixAllParams{}, &hooks);
     REQUIRE_FALSE(full.onePass);
@@ -1132,4 +1142,41 @@ TEST_CASE("Fix All's weld follows scale and placement per axis and keeps surface
         const ogun::FixAllResult result = run(SampleMeshes::createTouchingCubesMesh());
         REQUIRE(weldStep(result)->status == FixAllStepStatus::Unchanged);
     }
+}
+
+TEST_CASE("Fix All timings per step, phase and pass", "[repair][fixall][.benchmark]") {
+    const std::filesystem::path examples =
+        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples";
+    const auto bench = [](const char* name, const Mesh& mesh, bool merge) {
+        ogun::FixAllParams params;
+        params.mergeShells = merge;
+        const auto start = std::chrono::steady_clock::now();
+        const ogun::FixAllResult result = run(mesh, params);
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        REQUIRE(result.success);
+        std::map<std::pair<int, int>, double> perPhase;
+        for (const ogun::FixAllStepReport& step : result.steps) {
+            perPhase[{step.pass, static_cast<int>(step.phase)}] += step.elapsedMs;
+            if (step.elapsedMs >= 1.0) {
+                WARN(name << " pass " << step.pass << " phase " << static_cast<int>(step.phase) << " " << step.label << ": "
+                          << step.elapsedMs << " ms (guards " << step.guardMs << " ms)");
+            }
+        }
+        for (const auto& [key, phaseMs] : perPhase) {
+            WARN(name << " pass " << key.first << " phase " << key.second << ": " << phaseMs << " ms");
+        }
+        for (const ogun::FixAllPassReport& pass : result.passes) {
+            WARN(name << " pass " << pass.pass << ": " << pass.elapsedMs << " ms (incl. the pass-end check)");
+        }
+        WARN(name << ": " << ms << " ms in all, final report " << result.report.elapsedMs << " ms, passes "
+                  << result.passesRun << " (stopped: " << ogun::fixAllStopReasonLabel(result.stopReason) << "), "
+                  << result.report.shellsLine << ", " << result.report.leftLine);
+    };
+    const Mesh bunny = ogun::loadStl(examples / "stanford_bunny.stl");
+    const Mesh turkey = ogun::loadStl(examples / "Turkey.stl");
+    const Mesh box = ogun::loadStl(examples / "self_intersecting_box.stl");
+    bench("bunny", bunny, false);
+    bench("Turkey merge off", turkey, false);
+    bench("Turkey merge on", turkey, true);
+    bench("self_intersecting_box", box, false);
 }

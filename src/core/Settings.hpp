@@ -220,5 +220,6 @@ inline constexpr double kFixAllPassCheckProgressWeight  = 15.0;   // Progress we
 inline constexpr double kFixAllCavityShrinkShare = 1.0e-3;         // Cavity guard: a step may not shrink a shell wound inward by more than this share of its volume
 inline constexpr double kFixAllMergePlanProgressShare = 0.2;       // Share of phase 2's progress weight for planning the merge (the groups share the rest by face count)
 inline constexpr double kFixAllMergeVolumeRelTolerance = 1.0e-6;   // Merge guard: volume sanity bounds (max V <= V_union <= sum V) hold within this share of sum V
+inline constexpr std::size_t kFixAllReportShellsNamed = 8;       // Final report: shells named in the "Left after N passes" line before "and N more"
 
 } // namespace ogun::settings

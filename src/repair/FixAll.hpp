@@ -139,6 +139,11 @@ struct FixAllCounts {
 [[nodiscard]] FixAllCounts countFixAllDefects(const Mesh& mesh, const FixAllScope& scope, const CheckParams& params,
                                               double tinyShellFraction, bool nestedSolids, std::stop_token stopToken = {});
 
+/// The same, also handing back the nine checks' results (whole mesh) in `results` when not null.
+[[nodiscard]] FixAllCounts countFixAllDefects(const Mesh& mesh, const FixAllScope& scope, const CheckParams& params,
+                                              double tinyShellFraction, bool nestedSolids, std::stop_token stopToken,
+                                              std::vector<CategoryResult>* results);
+
 /// A hash of the sorted face geometry keys (`faceGeometryKey`): the same surface gives the same hash
 /// whatever the vertex or face numbering. Used to notice a pass that returns to an earlier state.
 [[nodiscard]] std::uint64_t meshGeometryHash(const Mesh& mesh);
@@ -191,13 +196,23 @@ struct FixAllDeferred {
 };
 
 /// Shells a report line names, for the controller to number and show: each entry is the faces of one
-/// shell, in the numbering of the mesh the step returned (the step's input when it was not kept). The
-/// line itself numbers them `#k` in the Shells-panel order of that mesh (`shellsLargestFirst`). An empty
-/// entry is a shell the step deleted.
+/// shell. A stage gives them in the numbering of the mesh it returned (its input when it was not kept);
+/// the engine carries them through every later step, so in `FixAllResult::steps` they are faces of
+/// `FixAllResult::mesh` (faces removed since are dropped), unless the step's `notesInResult` is false.
+/// The line itself numbers shells `#k` in the Shells-panel order of the mesh the step ran on
+/// (`shellsLargestFirst`), so the controller renumbers them from the faces. An empty entry is a shell the
+/// step deleted (or whose faces a later step replaced, e.g. a union).
 struct FixAllShellNote {
     std::string text;                              ///< "#1 and its inner shell #2 look inside out together: left for you"
     std::vector<std::vector<Eigen::Index>> shells; ///< Faces of each shell named, in the order the text names them
     bool warning = false;                          ///< Something is left for the user (orange in the report)
+    bool faceSet = false;                          ///< The entries are face sets (an island), not whole shells
+};
+
+/// The faces one hole's fill added, for the crossing report: which fill made a crossing that is left.
+struct FixAllFillPatch {
+    int hole = 0;                    ///< 1-based, in the hole order of the mesh the fill ran on ("hole 2")
+    std::vector<Eigen::Index> faces; ///< Rows of the stage's result mesh
 };
 
 /// What a stage sees besides the mesh.
@@ -235,6 +250,7 @@ struct FixAllStageOutcome {
     /// Input faces of shells the stage knows are not cavities and may reverse or delete (inside-out shells
     /// it reversed, floating debris it deleted): the cavity guard does not protect them.
     std::vector<Eigen::Index> notCavityFaces;
+    std::vector<FixAllFillPatch> fills; ///< Fill stage: the faces each hole's fill added
     bool cancelled = false;
 };
 
@@ -298,6 +314,12 @@ struct FixAllStepReport {
     double maxMove = 0.0;
     double elapsedMs = 0.0;
     double guardMs = 0.0;              ///< Of `elapsedMs`: the scope, cavity and dead-end guards and the deferral counts
+    /// Deleting steps (tiny shells, fins and walls, nested solids): the input faces they removed, sorted
+    /// (for *Show in original*).
+    std::vector<Eigen::Index> removedInputFaces;
+    /// The faces of `notes` are faces of `FixAllResult::mesh`. False for the steps of passes after the
+    /// one a full run returned: they describe a state that was not kept.
+    bool notesInResult = true;
 
     [[nodiscard]] bool accepted() const noexcept {
         return status == FixAllStepStatus::Applied;
@@ -336,6 +358,107 @@ enum class FixAllStopReason : std::uint8_t {
 /// "clean", "repeated state", "no further progress", "pass limit", "time budget", "cancelled", "invalid input".
 [[nodiscard]] const char* fixAllStopReasonLabel(FixAllStopReason reason) noexcept;
 
+// ---------------------------------------------------------------------------------------------
+// The final report (steps 18 and 19): worked out once, on the mesh the run returns
+// ---------------------------------------------------------------------------------------------
+
+/// What the report suggests for a shell that is not clean. Never applied by itself.
+enum class FixAllSuggestion : std::uint8_t {
+    None,      ///< Nothing to do (thin faces only)
+    AlphaWrap, ///< Still open, non-manifold or crossing itself: rebuild it by alpha wrap (Rebuild shell #k)
+    TickMerge, ///< Only crossings with shells the merge would unite, and the merge was off: tick Merge shells
+    ReportOnly ///< Fix All will not guess (a cavity reached, inside out with inner shells, rule O unsure, a
+               ///< shell not selected, an edge contact, a shell the merge skipped): said in words
+};
+
+/// "none", "alpha wrap", "tick Merge shells", "report".
+[[nodiscard]] const char* fixAllSuggestionLabel(FixAllSuggestion suggestion) noexcept;
+
+/// What is left in one shell of the returned mesh (in scope) after the last pass, and the suggestion.
+/// Shells are `shellsLargestFirst` indices of `FixAllResult::mesh` (#(shell + 1)).
+struct FixAllShellResidue {
+    int shell = -1;
+    std::size_t faces = 0;
+    double volume = 0.0;                 ///< Signed
+    std::size_t openEdges = 0;
+    std::size_t nonManifoldEdges = 0;    ///< Edges with three or more faces, one of them this shell's
+    std::size_t crossingFacesWithin = 0; ///< Its faces that cross another face of the same shell
+    std::size_t flippedFaces = 0;
+    std::size_t thinFaces = 0;
+    std::vector<int> crosses;            ///< Shells it still crosses or shares a face area with
+    std::vector<int> touches;            ///< Shells it touches along an edge or at a point only
+    FixAllSuggestion suggestion = FixAllSuggestion::None;
+    std::string reason;                  ///< The report line, e.g. "#12 still has 4 open edges. Suggested: alpha wrap it."
+    std::vector<int> named;              ///< Shells the line names, this one first
+
+    /// Open, non-manifold or crossing itself: the goals (closed and crossing-free) are not met.
+    [[nodiscard]] bool unresolved() const noexcept {
+        return openEdges > 0 || nonManifoldEdges > 0 || crossingFacesWithin > 0;
+    }
+};
+
+/// Crossings a hole fill made that are left: which fill, from which pass, and how many face pairs.
+struct FixAllFillCrossing {
+    int pass = 0;
+    int hole = 0;            ///< As the fill step named it ("hole 2"), in that pass's hole order
+    int holeShell = -1;      ///< The filled shell, in the returned mesh
+    std::size_t facePairs = 0;
+};
+
+/// A pair of shells that still cross (or share a face area) after the last pass (Q27).
+struct FixAllCrossingLeft {
+    int a = -1;                 ///< Lower shell index
+    int b = -1;
+    std::size_t facePairs = 0;  ///< Face pairs that cross or share an area
+    std::vector<FixAllFillCrossing> fills;
+    std::string whyNotMerged;   ///< "the merge is off", "#7 is not selected", "#7 cannot be merged: it is still open (3 open edges)" ...
+    std::string text;           ///< One report line per pair
+};
+
+/// A deleting step of the returned state (tiny floating shells, fins and walls, nested solids).
+struct FixAllDeletion {
+    FixAllStageId stage = FixAllStageId::Custom;
+    int pass = 0;
+    std::string text;                     ///< The step's report line
+    std::vector<Eigen::Index> inputFaces; ///< Input faces it removed (for *Show in original*)
+};
+
+/// One line of the report, with the shells it names (`shellsLargestFirst` of the returned mesh).
+struct FixAllReportLine {
+    std::string text;
+    std::vector<int> shells;
+    bool warning = false; ///< Left for the user (orange)
+};
+
+/// Step 18 (final verification) and step 19 (per-shell residue and suggestions), plus the whole-run
+/// summary. Worked out on `FixAllResult::mesh`; shell numbers are its `shellsLargestFirst` order.
+struct FixAllFinalReport {
+    bool complete = false; ///< False when the run failed or was cancelled (nothing below is filled in)
+    /// Every Mesh Health row of the returned mesh, whole mesh, in `kAllDefectCategories` order (the
+    /// controller installs them, so no row is stale after Apply).
+    std::vector<CategoryResult> health;
+    std::vector<std::vector<Eigen::Index>> shells; ///< `shellsLargestFirst` of the returned mesh
+    std::vector<std::uint8_t> shellInScope;        ///< A face of the shell is in scope
+    std::size_t shellsBefore = 0;  ///< Shells of the input with a face in scope
+    std::size_t shellsAfter = 0;   ///< Shells of the returned mesh with a face in scope
+    std::size_t closedShells = 0;  ///< Of `shellsAfter`: no open and no non-manifold edge
+    std::size_t crossingFacesWithin = 0;  ///< Faces in scope crossing a face of their own shell
+    std::size_t crossingFacesBetween = 0; ///< Faces in scope crossing a face of another shell
+    std::vector<int> cavitiesKept;        ///< Rule O cavities in scope (or of a container in scope), kept as they were
+    std::vector<FixAllShellResidue> residue;       ///< Shells in scope with anything left, by shell
+    std::vector<FixAllCrossingLeft> crossingsLeft; ///< Shell pairs that still cross, a shell in scope
+    std::vector<FixAllReportLine> groupsNotMerged; ///< Groups refused by a cavity (Q20) or stopped by rule O (Q23)
+    std::vector<FixAllDeletion> deletions;
+    std::string passesLine;   ///< "Passes: 2 of 3 (stopped: clean)"
+    std::string leftLine;     ///< "Clean after 2 passes." / "Left after 3 passes: 4 open edges and 6 crossing faces (6 between shells), in #12."
+    std::string shellsLine;   ///< "Shells: 28 -> 1 (merged 27 into 1)"
+    std::string cavitiesLine; ///< "Cavities kept: 1 (#28 inside #12, -2.17 mm^3, unchanged)" (empty: none)
+    std::string closedLine;   ///< "Watertight: 27 of 28 shells"
+    std::string temporarilyWorseText; ///< One pass made something worse: what, and that the next pass should repair it
+    std::vector<FixAllReportLine> lines; ///< The whole report in reading order (the lines above, then the rest)
+    double elapsedMs = 0.0;
+};
+
 struct FixAllResult {
     bool success = false;    ///< False for invalid input or cancel (then `mesh` is the input)
     std::string error;
@@ -359,6 +482,7 @@ struct FixAllResult {
     /// Faces of the input that phase 2 removed up to the pass returned: union faces not kept bit-identical
     /// and deleted nested solids (sorted; for *Show removed*).
     std::vector<Eigen::Index> mergeRemovedFaces;
+    FixAllFinalReport report;        ///< What is left, by shell and by crossing pair (steps 18 and 19)
     double elapsedMs = 0.0;
 };
 

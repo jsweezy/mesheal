@@ -663,6 +663,23 @@ using fixall_detail::shellList;
     }
     outcome.changed = true;
     outcome.targetAfter = considered - std::min(considered, filled.holesClosed);
+    // The faces of each kept fill: the batch appends them hole by hole
+    std::size_t addedTotal = 0;
+    for (const HoleFillOutcome& hole : filled.outcomes) {
+        addedTotal += hole.method != HoleFillMethod::None ? hole.facesAdded : 0;
+    }
+    if (addedTotal == filled.addedFaces.size()) {
+        std::size_t next = 0;
+        for (const HoleFillOutcome& hole : filled.outcomes) {
+            if (hole.method == HoleFillMethod::None || hole.facesAdded == 0) {
+                continue;
+            }
+            const auto first = filled.addedFaces.begin() + static_cast<std::ptrdiff_t>(next);
+            outcome.fills.push_back({static_cast<int>(hole.hole + 1),
+                                     std::vector<Eigen::Index>(first, first + static_cast<std::ptrdiff_t>(hole.facesAdded))});
+            next += hole.facesAdded;
+        }
+    }
     outcome.mesh = std::move(filled.mesh);
     outcome.faceMap = std::move(filled.faceMap);
     outcome.detail = "Filled " + std::to_string(filled.holesClosed) + " of " + counted(considered, "hole", "holes");
@@ -749,6 +766,11 @@ using fixall_detail::shellList;
         }
     }
     std::vector<std::string> skipped;
+    std::vector<FixAllShellNote> skippedNotes; // each skipped island's faces, in `mesh`'s numbering for now
+    const auto skipIsland = [&](const IntersectionIsland& island, std::string text) {
+        skippedNotes.push_back({capitalised(text), {island.faces}, true, true});
+        skipped.push_back(std::move(text));
+    };
     std::vector<const IntersectionIsland*> eligible;
     std::vector<Eigen::Index> seeds;
     const int rings = std::max(context.params.islandRepair.dilationRings, 0);
@@ -758,7 +780,7 @@ using fixall_detail::shellList;
             eligible.push_back(&island);
             seeds.insert(seeds.end(), island.faces.begin(), island.faces.end());
         } else {
-            skipped.push_back(islandName(island) + " extends beyond the selection");
+            skipIsland(island, islandName(island) + " extends beyond the selection");
         }
     }
 
@@ -803,7 +825,7 @@ using fixall_detail::shellList;
                 }
                 const std::vector<Eigen::Index> map = fixall_detail::faceMapByGeometry(current, one.mesh);
                 if (!fixall_detail::outsideScopeKept(current, one.mesh, map, currentScope)) {
-                    skipped.push_back(islandName(*island) + ": its repair would change faces outside the selection");
+                    skipIsland(*island, islandName(*island) + ": its repair would change faces outside the selection");
                     continue;
                 }
                 currentScope.carry(map, one.mesh);
@@ -819,6 +841,7 @@ using fixall_detail::shellList;
                                                   : "no island could be repaired (" +
                                                         counted(notRepaired, "island", "islands") + " left)";
         outcome.detail = capitalised(joined({none, skippedText}, "; "));
+        outcome.notes = std::move(skippedNotes);
         return outcome;
     }
     FixAllScope carried = scope;
@@ -830,6 +853,16 @@ using fixall_detail::shellList;
     }
     outcome.changed = true;
     outcome.targetAfter = left.size();
+    for (FixAllShellNote& note : skippedNotes) {
+        std::vector<Eigen::Index> faces;
+        for (const Eigen::Index f : note.shells.front()) {
+            if (map[static_cast<std::size_t>(f)] >= 0) {
+                faces.push_back(map[static_cast<std::size_t>(f)]);
+            }
+        }
+        note.shells.front() = std::move(faces);
+    }
+    outcome.notes = std::move(skippedNotes);
     outcome.faceMap = map;
     outcome.mesh = std::move(current);
     const std::size_t repaired = islands.size() - std::min(islands.size(), left.size());

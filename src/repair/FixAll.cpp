@@ -494,7 +494,32 @@ struct BestState {
     int pass = 0;
     int merges = 0;
     std::vector<Eigen::Index> mergeRemoved; ///< Input faces phase 2 removed up to this state
+    std::vector<CategoryResult> health;     ///< The nine checks of this state (whole mesh)
+    std::vector<int> fillOf;                ///< Fill record of each face (-1: not made by a fill)
+    std::size_t stepCount = 0;              ///< Steps up to this state
+    std::vector<std::vector<FixAllShellNote>> notes; ///< Their notes, in this state's numbering
 };
+
+/// The deleting steps, whose removed input faces the report lists.
+[[nodiscard]] bool deletingStage(FixAllStageId id) noexcept {
+    return id == FixAllStageId::TinyShells || id == FixAllStageId::Fins || id == FixAllStageId::DeleteNestedSolids;
+}
+
+/// Maps every face of `notes` through `map` (old face -> new row, -1 = removed: dropped).
+void mapNoteFaces(std::vector<FixAllShellNote>& notes, std::span<const Eigen::Index> map) {
+    for (FixAllShellNote& note : notes) {
+        for (std::vector<Eigen::Index>& faces : note.shells) {
+            std::size_t kept = 0;
+            for (const Eigen::Index f : faces) {
+                const Eigen::Index to = f >= 0 && static_cast<std::size_t>(f) < map.size() ? map[static_cast<std::size_t>(f)] : -1;
+                if (to >= 0) {
+                    faces[kept++] = to;
+                }
+            }
+            faces.resize(kept);
+        }
+    }
+}
 
 /// The identity face map of `faceCount` faces.
 [[nodiscard]] std::vector<Eigen::Index> identityMap(Eigen::Index faceCount) {
@@ -529,7 +554,9 @@ public:
 
         // Step 0: the input is pass 0
         report(0.0f, "checking the mesh...");
-        const FixAllCounts baseline = countFixAllDefects(input_, scope, params_.checkParams, tinyFraction(), params_.mergeShells, stop_);
+        std::vector<CategoryResult> lastHealth;
+        const FixAllCounts baseline =
+            countFixAllDefects(input_, scope, params_.checkParams, tinyFraction(), params_.mergeShells, stop_, &lastHealth);
         if (!baseline.complete || stop_.stop_requested()) {
             return cancelled();
         }
@@ -540,7 +567,8 @@ public:
         mesh_ = input_;
         scope_ = std::move(scope);
         origin_ = identityMap(input_.numFaces());
-        BestState best{input_, scope_, baseline, result_.priorityBefore, 0, 0, {}};
+        fillOf_.assign(static_cast<std::size_t>(input_.numFaces()), -1);
+        BestState best{input_, scope_, baseline, result_.priorityBefore, 0, 0, {}, lastHealth, fillOf_, 0, {}};
         FixAllCounts lastCounts = baseline;
         std::unordered_set<std::uint64_t> seen{meshGeometryHash(input_)};
         int passesWithoutProgress = 0;
@@ -558,7 +586,8 @@ public:
             }
             merges_ += passReport.merged() ? 1 : 0;
             report(passFraction(pass, checkStart_), passText(pass, "checking the result..."));
-            const FixAllCounts counts = countFixAllDefects(mesh_, scope_, params_.checkParams, tinyFraction(), params_.mergeShells, stop_);
+            const FixAllCounts counts = countFixAllDefects(mesh_, scope_, params_.checkParams, tinyFraction(),
+                                                           params_.mergeShells, stop_, &lastHealth);
             if (!counts.complete || stop_.stop_requested()) {
                 return cancelled();
             }
@@ -567,7 +596,13 @@ public:
             passReport.after = counts.priority();
             passReport.stepCount = result_.steps.size() - passReport.firstStep;
             if (passReport.after < best.priority) {
-                best = BestState{mesh_, scope_, counts, passReport.after, pass, merges_, mergeRemoved_};
+                std::vector<std::vector<FixAllShellNote>> notes;
+                notes.reserve(result_.steps.size());
+                for (const FixAllStepReport& step : result_.steps) {
+                    notes.push_back(step.notes);
+                }
+                best = BestState{mesh_,         scope_,     counts,  passReport.after,     pass,           merges_,
+                                 mergeRemoved_, lastHealth, fillOf_, result_.steps.size(), std::move(notes)};
                 passReport.newBest = true;
                 passesWithoutProgress = 0;
             } else {
@@ -596,6 +631,9 @@ public:
             }
         }
 
+        std::vector<CategoryResult> health;
+        std::vector<int> fillOf;
+        std::size_t returnedSteps = result_.steps.size();
         if (result_.onePass) {
             // Stepping by hand: the pass is returned even when it is worse (a later pass repairs it)
             result_.mesh = std::move(mesh_);
@@ -604,6 +642,8 @@ public:
             result_.bestPass = result_.passesRun;
             result_.merges = merges_;
             result_.mergeRemovedFaces = sortedUnique(std::move(mergeRemoved_));
+            health = std::move(lastHealth);
+            fillOf = std::move(fillOf_);
         } else {
             result_.mesh = std::move(best.mesh);
             result_.scope = std::move(best.scope);
@@ -611,10 +651,29 @@ public:
             result_.bestPass = best.pass;
             result_.merges = best.merges;
             result_.mergeRemovedFaces = sortedUnique(std::move(best.mergeRemoved));
+            health = std::move(best.health);
+            fillOf = std::move(best.fillOf);
+            // Notes of the steps up to the state returned, in its numbering; later steps describe a
+            // state that was not kept
+            returnedSteps = best.stepCount;
+            for (std::size_t i = 0; i < result_.steps.size(); ++i) {
+                if (i < best.stepCount) {
+                    result_.steps[i].notes = std::move(best.notes[i]);
+                } else {
+                    result_.steps[i].notesInResult = false;
+                }
+            }
         }
         result_.priorityAfter = result_.countsAfter.priority();
         result_.temporarilyWorse = result_.onePass && result_.priorityBefore < result_.priorityAfter;
         result_.changed = !sameMesh(result_.mesh, input_);
+
+        // Steps 18 and 19: what is left, by shell and by crossing pair
+        report(settings::kFixAllBaselineProgressShare + settings::kFixAllPassesProgressShare, "checking what is left...");
+        fixall_detail::FinalReportInput finalInput{input_, inputScope_, params_, std::move(health), fillOf, fills_, returnedSteps};
+        if (!fixall_detail::buildFinalReport(result_, finalInput, stop_) || stop_.stop_requested()) {
+            return cancelled();
+        }
         result_.success = true;
         result_.elapsedMs = msSince(start_);
         report(1.0f, "done");
@@ -962,16 +1021,41 @@ private:
         step.facesAdded = static_cast<std::size_t>(outcome.mesh.numFaces()) - kept;
         step.maxMove = outcome.maxMove;
 
-        // Carry each face's input face (for what phase 2 removed) and phase 2's plan rows
-        std::vector<Eigen::Index> origin(static_cast<std::size_t>(outcome.mesh.numFaces()), -1);
+        // Carry each face's input face (for what phase 2 and the deleting steps removed), the fill that
+        // made it, and phase 2's plan rows
+        const auto newFaces = static_cast<std::size_t>(outcome.mesh.numFaces());
+        std::vector<Eigen::Index> origin(newFaces, -1);
+        std::vector<int> fillOf(newFaces, -1);
+        const bool deleting = deletingStage(stage.id);
         for (std::size_t f = 0; f < map.size() && f < origin_.size(); ++f) {
             if (map[f] >= 0) {
                 origin[static_cast<std::size_t>(map[f])] = origin_[f];
-            } else if (step.phase == FixAllPhase::Merge && origin_[f] >= 0) {
-                mergeRemoved_.push_back(origin_[f]);
+                fillOf[static_cast<std::size_t>(map[f])] = f < fillOf_.size() ? fillOf_[f] : -1;
+            } else if (origin_[f] >= 0) {
+                if (step.phase == FixAllPhase::Merge) {
+                    mergeRemoved_.push_back(origin_[f]);
+                }
+                if (deleting) {
+                    step.removedInputFaces.push_back(origin_[f]);
+                }
+            }
+        }
+        std::sort(step.removedInputFaces.begin(), step.removedInputFaces.end());
+        for (const FixAllFillPatch& patch : outcome.fills) {
+            const int record = static_cast<int>(fills_.size());
+            fills_.push_back({step.pass, patch.hole});
+            for (const Eigen::Index f : patch.faces) {
+                if (f >= 0 && static_cast<std::size_t>(f) < newFaces) {
+                    fillOf[static_cast<std::size_t>(f)] = record;
+                }
             }
         }
         origin_ = std::move(origin);
+        fillOf_ = std::move(fillOf);
+        // Notes of the earlier steps follow their faces to the new mesh
+        for (FixAllStepReport& earlier : result_.steps) {
+            mapNoteFaces(earlier.notes, map);
+        }
         if (step.phase == FixAllPhase::Merge) {
             for (Eigen::Index& row : planFaceMap_) {
                 row = row >= 0 && static_cast<std::size_t>(row) < map.size() ? map[static_cast<std::size_t>(row)] : -1;
@@ -999,6 +1083,8 @@ private:
     std::vector<Eigen::Index> origin_;       ///< Input face of each face of `mesh_` (-1: made by the run)
     std::vector<Eigen::Index> planFaceMap_;  ///< Phase 2: face of the planned mesh -> row of `mesh_`
     std::vector<Eigen::Index> mergeRemoved_; ///< Input faces phase 2 removed (unsorted, may repeat)
+    std::vector<int> fillOf_;                ///< Of each face of `mesh_`: its record in `fills_` (-1: not made by a fill)
+    std::vector<fixall_detail::FillRecord> fills_; ///< Every kept hole fill: pass and hole
     int merges_ = 0;                         ///< Passes whose phase 2 changed the mesh
     std::optional<std::vector<InwardShell>> inward_;            ///< Of `mesh_`, worked out when a guard needs it
     std::optional<fixall_detail::EdgeDefectCounts> edges_;      ///< Of `mesh_`
@@ -1132,6 +1218,12 @@ FixAllCounts countFixAllDefects(const Mesh& mesh, const FixAllScope& scope, cons
 
 FixAllCounts countFixAllDefects(const Mesh& mesh, const FixAllScope& scope, const CheckParams& params,
                                 double tinyShellFraction, bool nestedSolids, std::stop_token stopToken) {
+    return countFixAllDefects(mesh, scope, params, tinyShellFraction, nestedSolids, std::move(stopToken), nullptr);
+}
+
+FixAllCounts countFixAllDefects(const Mesh& mesh, const FixAllScope& scope, const CheckParams& params,
+                                double tinyShellFraction, bool nestedSolids, std::stop_token stopToken,
+                                std::vector<CategoryResult>* results) {
     struct Item {
         DefectCategory category;
         std::size_t FixAllCounts::*field;
@@ -1150,17 +1242,24 @@ FixAllCounts countFixAllDefects(const Mesh& mesh, const FixAllScope& scope, cons
 
     FixAllCounts counts;
     const bool everyFace = scope.everyFace();
+    if (results != nullptr) {
+        results->clear();
+        results->reserve(kItems.size());
+    }
     for (const Item& item : kItems) {
         if (stopToken.stop_requested()) {
             counts.complete = false;
             return counts;
         }
-        const CategoryResult result = runCategoryCheck(item.category, mesh, params, stopToken);
+        CategoryResult result = runCategoryCheck(item.category, mesh, params, stopToken);
         if (result.cancelled) {
             counts.complete = false;
             return counts;
         }
         counts.*item.field = countInScope(result, scope, everyFace);
+        if (results != nullptr) {
+            results->push_back(std::move(result));
+        }
     }
     if (tinyShellFraction > 0.0 && scope.kind != FixAllScopeKind::Faces) {
         TinyShellSearch search;
