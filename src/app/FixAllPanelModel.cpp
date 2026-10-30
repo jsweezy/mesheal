@@ -3,6 +3,7 @@
 #include "mesh/Units.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 namespace ogun {
@@ -215,7 +216,233 @@ std::vector<FixAllPlanRow> fixAllPlanRows(AppController& controller) {
                                "are merged by the next pass.");
         r.found = p.mergeShells && !faceScope ? "(required after 10)" : "(skipped: runs only after a merge)";
     }
+    for (FixAllPlanRow& row : rows) {
+        if (row.sw == FixAllRowSwitch::Always) {
+            row.note = "always runs";
+        } else if (row.sw == FixAllRowSwitch::Required) {
+            row.note = "runs after a merge";
+        } else if (!row.available) {
+            row.note = "needs whole shells";
+        }
+    }
     return rows;
+}
+
+const char* fixAllPhaseCaption(int phase) noexcept {
+    switch (phase) {
+    case 1: return "Phase 1: repair each shell";
+    case 2: return "Phase 2: merge shells";
+    case 3: return "Phase 3: clean up the merged result";
+    default: return "";
+    }
+}
+
+int fixAllStepNumber(FixAllStageId stage, FixAllPhase phase) noexcept {
+    if (phase == FixAllPhase::Cleanup) {
+        return 11;
+    }
+    switch (stage) {
+    case FixAllStageId::Weld: return 0;
+    case FixAllStageId::DropRepeated:
+    case FixAllStageId::Dedupe: return 1;
+    case FixAllStageId::SplitTouching: return 2;
+    case FixAllStageId::TinyShells: return 3;
+    case FixAllStageId::Fins: return 4;
+    case FixAllStageId::Orient:
+    case FixAllStageId::OrientAgain: return 5;
+    case FixAllStageId::CloseCracks: return 6;
+    case FixAllStageId::Slivers: return 7;
+    case FixAllStageId::FillHoles: return 8;
+    case FixAllStageId::Islands: return 9;
+    case FixAllStageId::PlanMerge:
+    case FixAllStageId::DeleteNestedSolids:
+    case FixAllStageId::MergeShells: return 10;
+    case FixAllStageId::Custom: break;
+    }
+    return phase == FixAllPhase::Merge ? 10 : 0;
+}
+
+std::string fixAllTimeText(double milliseconds) {
+    char buffer[40];
+    if (milliseconds < 1000.0) {
+        std::snprintf(buffer, sizeof(buffer), "%.0f ms", milliseconds);
+    } else if (milliseconds < 60000.0) {
+        std::snprintf(buffer, sizeof(buffer), "%.1f s", milliseconds / 1000.0);
+    } else {
+        const int seconds = static_cast<int>(std::lround(milliseconds / 1000.0));
+        std::snprintf(buffer, sizeof(buffer), "%d min %d s", seconds / 60, seconds % 60);
+    }
+    return buffer;
+}
+
+namespace {
+
+FixAllStepLine stepLine(const AppController& controller, const FixAllResult& result, std::size_t index) {
+    const FixAllStepReport& step = result.steps[index];
+    FixAllStepLine line;
+    line.index = index;
+    line.phase = step.phase;
+    line.number = fixAllStepNumber(step.stage, step.phase);
+    line.time = step.status == FixAllStepStatus::Skipped ? std::string() : fixAllTimeText(step.elapsedMs);
+    const bool warnNote = std::any_of(step.notes.begin(), step.notes.end(), [](const FixAllShellNote& n) { return n.warning; });
+    switch (step.status) {
+    case FixAllStepStatus::Applied:
+        line.dot = step.deferred.empty() && !warnNote ? FixAllDot::Green : FixAllDot::Orange;
+        line.text = step.detail.empty() ? step.label : step.detail;
+        break;
+    case FixAllStepStatus::Unchanged:
+        line.dot = FixAllDot::Grey;
+        line.text = step.label + ": nothing to do";
+        break;
+    case FixAllStepStatus::Refused:
+        line.dot = FixAllDot::Orange;
+        line.text = step.label + ": undone" + (step.reason.empty() ? std::string() : " (" + step.reason + ")");
+        break;
+    case FixAllStepStatus::Skipped:
+        line.dot = FixAllDot::Grey;
+        line.text = step.label + ": skipped" + (step.reason.empty() ? std::string() : " (" + step.reason + ")");
+        break;
+    }
+    if (step.status == FixAllStepStatus::Refused && !step.reason.empty()) {
+        line.details.push_back("Why: " + step.reason);
+    }
+    for (const FixAllDeferred& d : step.deferred) {
+        line.details.push_back(d.text);
+    }
+    for (const FixAllShellNote& note : step.notes) {
+        line.details.push_back(controller.fixAllNoteText(step, note));
+    }
+    return line;
+}
+
+} // namespace
+
+std::vector<FixAllPassLines> fixAllPassLines(const AppController& controller, const FixAllResult& result) {
+    std::vector<FixAllPassLines> out;
+    for (const FixAllPassReport& pass : result.passes) {
+        FixAllPassLines lines;
+        lines.pass = pass.pass;
+        const bool kept = result.bestPass == pass.pass;
+        lines.discarded = !result.onePass && pass.pass > result.bestPass;
+        std::string outcome;
+        if (result.onePass) {
+            outcome = "one pass";
+        } else if (kept && pass.newBest) {
+            outcome = "best so far";
+        } else if (kept) {
+            outcome = "kept";
+        } else if (pass.pass < result.bestPass) {
+            outcome = pass.newBest ? "best so far" : "kept going";
+        } else if (pass.repeated) {
+            outcome = "back to an earlier state, discarded";
+        } else if (result.bestPass > 0) {
+            outcome = "no better than pass " + std::to_string(result.bestPass) + ", discarded";
+        } else {
+            outcome = "no better than the input, discarded";
+        }
+        if (pass.groupsMerged > 0) {
+            outcome += "; merged " + plural(pass.groupsMerged, "group", "groups");
+        }
+        lines.header = "Pass " + std::to_string(pass.pass) + ": " + outcome + ", " + fixAllTimeText(pass.elapsedMs);
+        const std::size_t end = std::min(result.steps.size(), pass.firstStep + pass.stepCount);
+        for (std::size_t i = pass.firstStep; i < end; ++i) {
+            lines.steps.push_back(stepLine(controller, result, i));
+        }
+        out.push_back(std::move(lines));
+    }
+    return out;
+}
+
+std::string fixAllStepsSummary(const FixAllResult& result) {
+    std::size_t done = 0;
+    std::size_t refused = 0;
+    for (const FixAllStepReport& step : result.steps) {
+        done += step.status == FixAllStepStatus::Applied ? 1 : 0;
+        refused += step.status == FixAllStepStatus::Refused ? 1 : 0;
+    }
+    std::string text = plural(static_cast<std::size_t>(result.passesRun), "pass", "passes") + ", " + std::to_string(done) + " steps done";
+    if (refused > 0) {
+        text += ", " + std::to_string(refused) + " undone";
+    }
+    return text;
+}
+
+std::vector<FixAllResultLine> fixAllResultLines(const FixAllResult& result, bool beforeApply) {
+    const FixAllFinalReport& report = result.report;
+    std::vector<FixAllResultLine> lines;
+    if (!report.complete) {
+        return lines;
+    }
+    const auto add = [&](std::string text, bool warning, std::vector<int> shells, FixAllLineAction action) {
+        lines.push_back({std::move(text), warning, std::move(shells), action});
+    };
+    add(report.passesLine, false, {}, FixAllLineAction::None);
+    const bool unclean = !result.priorityAfter.clean();
+    std::vector<int> leftIn;
+    for (const FixAllShellResidue& r : report.residue) {
+        if (r.suggestion != FixAllSuggestion::None) {
+            leftIn.push_back(r.shell);
+        }
+    }
+    add(report.leftLine, unclean, leftIn, leftIn.empty() ? FixAllLineAction::None : FixAllLineAction::ShowThem);
+    if (!report.temporarilyWorseText.empty()) {
+        add(report.temporarilyWorseText, true, {}, FixAllLineAction::None);
+    }
+    add(report.shellsLine, false, {}, FixAllLineAction::None);
+    if (!report.cavitiesLine.empty()) {
+        add(report.cavitiesLine, false, report.cavitiesKept, FixAllLineAction::ShowCavities);
+    }
+    add(report.closedLine, report.closedShells < report.shellsAfter, {}, FixAllLineAction::None);
+    for (const FixAllReportLine& line : report.groupsNotMerged) {
+        const bool flip = line.text.find("look inside out together") != std::string::npos && line.shells.size() >= 2;
+        add(line.text, true, line.shells, flip ? FixAllLineAction::FlipGroup : FixAllLineAction::ShowThem);
+    }
+    for (const FixAllShellResidue& r : report.residue) {
+        FixAllLineAction action = r.named.empty() ? FixAllLineAction::None : FixAllLineAction::ShowThem;
+        std::vector<int> shells = r.named;
+        if (r.reason.find("looks inside out together") != std::string::npos && r.named.size() >= 2) {
+            action = FixAllLineAction::FlipGroup;
+        } else if (r.reason.find("is still inside out") != std::string::npos) {
+            action = FixAllLineAction::FlipIt;
+            shells = {r.shell};
+        }
+        add(r.reason, r.suggestion != FixAllSuggestion::None, std::move(shells), action);
+    }
+    for (const FixAllCrossingLeft& left : report.crossingsLeft) {
+        add(left.text, true, {left.a, left.b}, FixAllLineAction::ShowThem);
+    }
+    if (beforeApply && !result.mergeRemovedFaces.empty()) {
+        add("The merge removed " + plural(result.mergeRemovedFaces.size(), "face", "faces") +
+                " that lay inside other shells, or belonged to a nested solid.",
+            false, {}, FixAllLineAction::ShowRemoved);
+    }
+    const bool manyPasses = result.passesRun > 1;
+    for (const FixAllDeletion& deletion : report.deletions) {
+        add(deletion.text + (manyPasses ? " (pass " + std::to_string(deletion.pass) + ")" : std::string()), false, {},
+            beforeApply && !deletion.inputFaces.empty() ? FixAllLineAction::ShowRemoved : FixAllLineAction::None);
+    }
+    return lines;
+}
+
+FixAllRunningText fixAllRunningText(const std::string& progressText) {
+    FixAllRunningText out;
+    int pass = 0;
+    int total = 0;
+    int phase = 0;
+    int used = 0;
+    if (std::sscanf(progressText.c_str(), "pass %d of %d, phase %d, %n", &pass, &total, &phase, &used) >= 3 && used > 0) {
+        out.pass = "Pass " + std::to_string(pass) + " of " + std::to_string(total);
+        out.phase = fixAllPhaseCaption(phase);
+        out.detail = progressText.substr(static_cast<std::size_t>(used));
+        return out;
+    }
+    if (std::sscanf(progressText.c_str(), "pass %d of %d, %n", &pass, &total, &used) >= 2 && used > 0) {
+        out.pass = "Pass " + std::to_string(pass) + " of " + std::to_string(total);
+        out.detail = progressText.substr(static_cast<std::size_t>(used));
+        return out;
+    }
+    out.detail = progressText;
+    return out;
 }
 
 } // namespace ogun

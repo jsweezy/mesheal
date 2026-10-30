@@ -1350,6 +1350,10 @@ public:
     /// Blocks until the run is done and collects it (tests).
     void waitForFixAll();
 
+    /// *Back to the plan*: drops the shown preview (the mesh is unchanged) so the plan can be edited and
+    /// previewed again. After an Apply the Report state comes back. Does nothing while a run is in progress.
+    void backToFixAllPlan();
+
     /// The computed Fix All candidate for the current mesh (nullptr when none).
     [[nodiscard]] const RepairCandidate* fixAllCandidate() const noexcept;
     /// The run shown: the candidate's, else the applied one's (nullptr when neither).

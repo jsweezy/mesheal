@@ -157,6 +157,8 @@ private:
     void drawFixAllRunning();
     void drawFixAllResult();
     void drawFixAllReport();
+    void drawFixAllSteps(const FixAllResult& result);
+    void drawFixAllLines(const FixAllResult& result, bool beforeApply);
     /// The [Fix All...] and [One Pass...] buttons beside Check Mesh; returns after laying them out.
     void drawFixAllHeaderButtons();
     void drawMergeShellsOperator();

@@ -167,3 +167,134 @@ TEST_CASE("Fix All panel: merge estimate text", "[app][fixall][gui]") {
     plan.groups.push_back({{0, 1}, {}});
     CHECK(ogun::mergeEstimateText(plan) == "3 -> 2 shells");
 }
+
+TEST_CASE("Fix All panel rows: rows with no box carry a plain note, never a greyed box", "[app][fixall][gui]") {
+    AppController controller;
+    controller.setMesh(overlappingCubes(), "cubes");
+    controller.openFixAll(3);
+    controller.waitForFixAllPlan();
+    std::vector<FixAllPlanRow> rows = ogun::fixAllPlanRows(controller);
+    for (const int n : {0, 3, 4, 6, 7, 10}) {
+        CHECK(rowOf(rows, n).hasBox());
+        CHECK(rowOf(rows, n).note.empty());
+    }
+    for (const int n : {1, 2, 5, 8, 9}) {
+        CHECK_FALSE(rowOf(rows, n).hasBox());
+        CHECK(rowOf(rows, n).note == "always runs");
+    }
+    CHECK_FALSE(rowOf(rows, 11).hasBox());
+    CHECK(rowOf(rows, 11).note == "runs after a merge");
+
+    // A face selection removes the box of the whole-shell rows too
+    controller.selectFaces(std::vector<Eigen::Index>{0, 1, 2}, true);
+    controller.waitForFixAllPlan();
+    rows = ogun::fixAllPlanRows(controller);
+    CHECK_FALSE(rowOf(rows, 3).hasBox());
+    CHECK(rowOf(rows, 3).note == "needs whole shells");
+    CHECK_FALSE(rowOf(rows, 10).hasBox());
+}
+
+TEST_CASE("Fix All panel: step numbers, times and the running text", "[app][fixall][gui]") {
+    using ogun::FixAllPhase;
+    using ogun::FixAllStageId;
+    CHECK(ogun::fixAllStepNumber(FixAllStageId::Weld, FixAllPhase::Repair) == 0);
+    CHECK(ogun::fixAllStepNumber(FixAllStageId::Dedupe, FixAllPhase::Repair) == 1);
+    CHECK(ogun::fixAllStepNumber(FixAllStageId::OrientAgain, FixAllPhase::Repair) == 5);
+    CHECK(ogun::fixAllStepNumber(FixAllStageId::FillHoles, FixAllPhase::Repair) == 8);
+    CHECK(ogun::fixAllStepNumber(FixAllStageId::MergeShells, FixAllPhase::Merge) == 10);
+    CHECK(ogun::fixAllStepNumber(FixAllStageId::FillHoles, FixAllPhase::Cleanup) == 11);
+
+    CHECK(ogun::fixAllTimeText(6.2) == "6 ms");
+    CHECK(ogun::fixAllTimeText(1234.0) == "1.2 s");
+    CHECK(ogun::fixAllTimeText(65000.0) == "1 min 5 s");
+
+    const ogun::FixAllRunningText full = ogun::fixAllRunningText("pass 2 of 3, phase 2, merging 28 shells...");
+    CHECK(full.pass == "Pass 2 of 3");
+    CHECK(full.phase == "Phase 2: merge shells");
+    CHECK(full.detail == "merging 28 shells...");
+    const ogun::FixAllRunningText noPhase = ogun::fixAllRunningText("pass 1 of 1, checking the result...");
+    CHECK(noPhase.pass == "Pass 1 of 1");
+    CHECK(noPhase.phase.empty());
+    CHECK(noPhase.detail == "checking the result...");
+    const ogun::FixAllRunningText other = ogun::fixAllRunningText("checking the mesh...");
+    CHECK(other.pass.empty());
+    CHECK(other.detail == "checking the mesh...");
+}
+
+TEST_CASE("Fix All panel: step lists and report lines of a real run", "[app][fixall][gui]") {
+    AppController controller;
+    controller.setMesh(overlappingCubes(), "cubes");
+    controller.openFixAll(3);
+    controller.waitForFixAllPlan();
+    controller.previewFixAll();
+    REQUIRE(controller.fixAllState() == ogun::FixAllPanelState::Result);
+    const ogun::FixAllCandidate* run = controller.fixAllShown();
+    REQUIRE(run != nullptr);
+    const ogun::FixAllResult& result = run->result;
+
+    const std::vector<ogun::FixAllPassLines> passes = ogun::fixAllPassLines(controller, result);
+    REQUIRE(passes.size() == result.passes.size());
+    REQUIRE_FALSE(passes.empty());
+    std::size_t steps = 0;
+    for (const ogun::FixAllPassLines& pass : passes) {
+        CHECK(pass.header.starts_with("Pass " + std::to_string(pass.pass) + ": "));
+        steps += pass.steps.size();
+        for (const ogun::FixAllStepLine& line : pass.steps) {
+            CHECK_FALSE(line.text.empty());
+            CHECK(line.number >= 0);
+            CHECK(line.number <= 11);
+        }
+    }
+    CHECK(steps > 0);
+    CHECK(ogun::fixAllStepsSummary(result).find("pass") != std::string::npos);
+    bool sawMerge = false;
+    for (const ogun::FixAllStepLine& line : passes.front().steps) {
+        sawMerge = sawMerge || (line.number == 10 && line.dot == ogun::FixAllDot::Green);
+    }
+    CHECK(sawMerge);
+
+    const std::vector<ogun::FixAllResultLine> before = ogun::fixAllResultLines(result, true);
+    REQUIRE(before.size() >= 4);
+    CHECK(before.front().text == result.report.passesLine);
+    const auto has = [](const std::vector<ogun::FixAllResultLine>& lines, const std::string& text) {
+        return std::any_of(lines.begin(), lines.end(), [&](const ogun::FixAllResultLine& l) { return l.text == text; });
+    };
+    CHECK(has(before, result.report.shellsLine));
+    CHECK(has(before, result.report.closedLine));
+    CHECK(result.report.shellsLine.starts_with("Shells: 2 -> 1"));
+    const bool removedLine = std::any_of(before.begin(), before.end(), [](const ogun::FixAllResultLine& l) {
+        return l.action == ogun::FixAllLineAction::ShowRemoved;
+    });
+    CHECK(removedLine == !result.mergeRemovedFaces.empty());
+    const std::vector<ogun::FixAllResultLine> after = ogun::fixAllResultLines(result, false);
+    CHECK(std::none_of(after.begin(), after.end(), [](const ogun::FixAllResultLine& l) {
+        return l.action == ogun::FixAllLineAction::ShowRemoved;
+    }));
+}
+
+TEST_CASE("Fix All: Back to plan drops the preview and changes nothing", "[app][fixall][gui][undo]") {
+    AppController controller;
+    controller.setMesh(overlappingCubes(), "cubes");
+    const Eigen::Index faces = controller.mesh().numFaces();
+    controller.openFixAll(3);
+    controller.waitForFixAllPlan();
+    controller.previewFixAll();
+    REQUIRE(controller.fixAllState() == ogun::FixAllPanelState::Result);
+    controller.backToFixAllPlan();
+    CHECK(controller.fixAllState() == ogun::FixAllPanelState::Plan);
+    CHECK(controller.fixAllCandidate() == nullptr);
+    CHECK(controller.mesh().numFaces() == faces);
+    CHECK_FALSE(controller.canUndo());
+
+    // After an Apply the Report comes back, and Undo Fix All is still the top entry
+    controller.previewFixAll();
+    REQUIRE(controller.applyFixAll());
+    REQUIRE(controller.fixAllState() == ogun::FixAllPanelState::Report);
+    controller.runFixAllOneMorePass();
+    REQUIRE(controller.fixAllState() == ogun::FixAllPanelState::Result);
+    controller.backToFixAllPlan();
+    CHECK(controller.fixAllState() == ogun::FixAllPanelState::Report);
+    CHECK(controller.fixAllUndoAvailable());
+    CHECK(controller.undoFixAll());
+    CHECK(controller.mesh().numFaces() == faces);
+}

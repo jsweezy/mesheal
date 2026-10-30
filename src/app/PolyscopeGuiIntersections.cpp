@@ -474,10 +474,11 @@ void PolyscopeGui::drawGlobalCandidateTable() {
     // Sized to its rows: with ScrollX the table would otherwise fill the rest of the panel
     const float height = ImGui::GetTextLineHeightWithSpacing() * static_cast<float>(candidates.size() + 1) +
                          ImGui::GetStyle().ScrollbarSize + 2.0f * ImGui::GetStyle().CellPadding.y;
-    if (!ImGui::BeginTable("RepairCandidates", 9, flags, ImVec2(0.0f, height))) {
+    if (!ImGui::BeginTable("RepairCandidates", 10, flags, ImVec2(0.0f, height))) {
         return;
     }
     ImGui::TableSetupColumn("Method");
+    ImGui::TableSetupColumn("Shells");
     const bool holes = controller_.globalRepairTarget() == DefectCategory::OpenEdges;
     ImGui::TableSetupColumn("Closed");
     ImGui::TableSetupColumn(holes ? "Open edges" : "Crossings");
@@ -490,6 +491,7 @@ void PolyscopeGui::drawGlobalCandidateTable() {
     ImGui::TableHeadersRow();
     const char* headerHelp[] = {
         "Click a row to show that result.",
+        "Shells in scope: before -> after (a merge or a deletion lowers it).",
         "Watertight and manifold: no open and no non-manifold edges.",
         holes ? "Open edges after (before)." : "Intersecting faces after (before).",
         "Volume change (sum of signed shell volumes: overlapping shells count twice before a union).",
@@ -499,7 +501,7 @@ void PolyscopeGui::drawGlobalCandidateTable() {
         "Faces after (before) in the shells in scope.",
         "Time to compute the repair.",
     };
-    for (int c = 0; c < 9; ++c) {
+    for (int c = 0; c < 10; ++c) {
         ImGui::TableSetColumnIndex(c);
         ImGui::PushID(c);
         ImGui::TableHeader(ImGui::TableGetColumnName(c));
@@ -523,10 +525,12 @@ void PolyscopeGui::drawGlobalCandidateTable() {
         }
         if (!c.success) {
             tooltip(c.statusMessage.c_str());
-            ImGui::TableSetColumnIndex(1);
+            ImGui::TableSetColumnIndex(2);
             ImGui::TextUnformatted("failed");
         } else {
             ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%s -> %s", withThousands(m.shellsBefore).c_str(), withThousands(m.shellsAfter).c_str());
+            ImGui::TableSetColumnIndex(2);
             if (m.watertight()) {
                 ImGui::TextColored(gui::kOkColor, "yes");
             } else {
@@ -534,7 +538,7 @@ void PolyscopeGui::drawGlobalCandidateTable() {
                 tooltip((withThousands(m.openEdgesAfter) + " open, " + withThousands(m.nonManifoldEdgesAfter) +
                          " non-manifold edges").c_str());
             }
-            ImGui::TableSetColumnIndex(2);
+            ImGui::TableSetColumnIndex(3);
             if (holes) {
                 ImGui::TextColored(m.openEdgesAfter == 0 ? gui::kOkColor : gui::kDefectColor, "%s (%s)",
                                    withThousands(m.openEdgesAfter).c_str(), withThousands(m.openEdgesBefore).c_str());
@@ -546,18 +550,18 @@ void PolyscopeGui::drawGlobalCandidateTable() {
                 ImGui::TextColored(gui::kDefectColor, "%s (%s)", withThousands(m.intersectingFacesAfter).c_str(),
                                    withThousands(m.intersectingFacesBefore).c_str());
             }
-            ImGui::TableSetColumnIndex(3);
-            ImGui::TextUnformatted(percentText(m.volumeChangePercent()).c_str());
             ImGui::TableSetColumnIndex(4);
-            ImGui::TextUnformatted(percentText(m.areaChangePercent()).c_str());
+            ImGui::TextUnformatted(percentText(m.volumeChangePercent()).c_str());
             ImGui::TableSetColumnIndex(5);
-            ImGui::TextUnformatted(lengthText(m.maxDeviation, unit).c_str());
+            ImGui::TextUnformatted(percentText(m.areaChangePercent()).c_str());
             ImGui::TableSetColumnIndex(6);
-            ImGui::TextUnformatted(lengthText(m.maxLost, unit).c_str());
+            ImGui::TextUnformatted(lengthText(m.maxDeviation, unit).c_str());
             ImGui::TableSetColumnIndex(7);
+            ImGui::TextUnformatted(lengthText(m.maxLost, unit).c_str());
+            ImGui::TableSetColumnIndex(8);
             ImGui::Text("%s (%s)", withThousands(static_cast<std::size_t>(m.facesAfter)).c_str(),
                         withThousands(static_cast<std::size_t>(m.facesBefore)).c_str());
-            ImGui::TableSetColumnIndex(8);
+            ImGui::TableSetColumnIndex(9);
             ImGui::Text("%.2f s", m.elapsedMs / 1000.0);
         }
         if (!current || !c.success) {

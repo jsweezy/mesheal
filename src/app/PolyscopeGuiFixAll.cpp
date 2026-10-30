@@ -6,6 +6,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <string>
 
@@ -142,29 +143,29 @@ void PolyscopeGui::drawFixAllPlan() {
     ImGui::Separator();
     const bool empty = scope.faces == 0;
     const int shownPasses = controller_.fixAllParams().passes;
-    ImGui::BeginDisabled(empty);
-    ImGui::PushStyleColor(ImGuiCol_Button, gui::kFixAllButtonColor);
-    if (ImGui::Button(shownPasses > 1 ? "Preview Fix All" : "Preview one pass")) {
-        fixAllHintSeen_ = true;
-        controller_.previewFixAll(shownPasses <= 1);
-        requestSync();
-    }
-    ImGui::PopStyleColor();
-    tooltip(shownPasses > 1 ? "Run Fix All with the passes above on a copy of the mesh, in the background, and show the result. "
-                              "Nothing changes until you Apply."
-                            : "Run one pass on a copy of the mesh, in the background, and show the result. Nothing changes until "
-                              "you Apply.");
-    if (shownPasses > 1) {
-        ImGui::SameLine();
-        if (ImGui::Button("Preview one pass")) {
+    if (!empty) {
+        ImGui::PushStyleColor(ImGuiCol_Button, gui::kFixAllButtonColor);
+        if (ImGui::Button(shownPasses > 1 ? "Preview Fix All" : "Preview one pass")) {
             fixAllHintSeen_ = true;
-            controller_.previewFixAll(true);
+            controller_.previewFixAll(shownPasses <= 1);
             requestSync();
         }
-        tooltip("Run the sequence once, whatever Passes says, so you can see each step's effect before the next pass.");
+        ImGui::PopStyleColor();
+        tooltip(shownPasses > 1 ? "Run Fix All with the passes above on a copy of the mesh, in the background, and show the result. "
+                                  "Nothing changes until you Apply."
+                                : "Run one pass on a copy of the mesh, in the background, and show the result. Nothing changes until "
+                                  "you Apply.");
+        if (shownPasses > 1) {
+            ImGui::SameLine();
+            if (ImGui::Button("Preview one pass")) {
+                fixAllHintSeen_ = true;
+                controller_.previewFixAll(true);
+                requestSync();
+            }
+            tooltip("Run the sequence once, whatever Passes says, so you can see each step's effect before the next pass.");
+        }
+        ImGui::SameLine();
     }
-    ImGui::EndDisabled();
-    ImGui::SameLine();
     if (ImGui::Button("Close")) {
         controller_.closeTool();
         requestSync();
@@ -207,23 +208,6 @@ void PolyscopeGui::drawFixAllPlanRows() {
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             const std::string number = std::to_string(row.number);
-            bool on = row.available && row.on;
-            const bool editable = row.sw == FixAllRowSwitch::Option && row.available;
-            ImGui::BeginDisabled(!editable);
-            if (ImGui::Checkbox("##on", &on) && editable) {
-                switch (row.number) {
-                case 0: params.weld = on; break;
-                case 3: params.removeTinyShells = on; break;
-                case 4: params.removeFins = on; break;
-                case 6: params.closeCracks = on; break;
-                case 7: params.healThinFaces = on; break;
-                case 10: controller_.setFixAllMergeShells(on); break;
-                default: break;
-                }
-                changed = changed || row.number != 10;
-            }
-
-            ImGui::EndDisabled();
             std::string tip = row.tooltip;
             if (row.sw == FixAllRowSwitch::Always) {
                 tip += "\n\nThis step always runs: it has no switch.";
@@ -232,20 +216,36 @@ void PolyscopeGui::drawFixAllPlanRows() {
             } else if (!row.available) {
                 tip += "\n\nA selection of faces has no whole shells, so this step is off. Select shells, or clear the selection.";
             }
-            tooltip(tip.c_str());
-            ImGui::SameLine();
-            if (row.available) {
-                ImGui::TextWrapped("%s  %s", number.c_str(), row.label.c_str());
+            if (row.hasBox()) {
+                bool on = row.on;
+                if (ImGui::Checkbox("##on", &on)) {
+                    switch (row.number) {
+                    case 0: params.weld = on; break;
+                    case 3: params.removeTinyShells = on; break;
+                    case 4: params.removeFins = on; break;
+                    case 6: params.closeCracks = on; break;
+                    case 7: params.healThinFaces = on; break;
+                    case 10: controller_.setFixAllMergeShells(on); break;
+                    default: break;
+                    }
+                    changed = changed || row.number != 10;
+                }
+                tooltip(tip.c_str());
             } else {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-                ImGui::TextWrapped("%s  %s", number.c_str(), row.label.c_str());
-                ImGui::PopStyleColor();
+                // No box to change: plain text, never a greyed box
+                ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
             }
+            ImGui::SameLine();
+            ImGui::TextWrapped("%s  %s", number.c_str(), row.label.c_str());
             tooltip(tip.c_str());
+            if (!row.hasBox() && row.sw != FixAllRowSwitch::Required && !row.note.empty() && row.note != row.found) {
+                ImGui::SameLine();
+                ImGui::TextColored(gui::kMutedColor, "(%s)", row.note.c_str());
+            }
             ImGui::TableSetColumnIndex(1);
             if (row.found == "checking...") {
                 ImGui::TextColored(gui::kRunningColor, "checking...");
-            } else if (row.found == "?" || row.found == "0" || row.found.empty() || !row.available) {
+            } else if (row.found == "?" || row.found == "0" || row.found.empty() || !row.available || row.sw == FixAllRowSwitch::Required) {
                 ImGui::TextDisabled("%s", row.found.c_str());
             } else {
                 ImGui::TextUnformatted(row.found.c_str());
@@ -404,46 +404,235 @@ void PolyscopeGui::drawFixAllSettingsUsed() {
     ImGui::TreePop();
 }
 
+
 // -----------------------------------------------------------------------------
-// Running, Result and Report: minimal until the full states
+// Running, Result and Report
 // -----------------------------------------------------------------------------
 
+namespace {
+
+HealthStatus dotStatus(FixAllDot dot) {
+    switch (dot) {
+    case FixAllDot::Green: return HealthStatus::Ok;
+    case FixAllDot::Orange: return HealthStatus::Defects;
+    case FixAllDot::Grey: return HealthStatus::NotRun;
+    }
+    return HealthStatus::NotRun;
+}
+
+} // namespace
+
 void PolyscopeGui::drawFixAllRunning() {
+    const FixAllRunningText text = fixAllRunningText(controller_.fixAllStatusText());
     ImGui::AlignTextToFramePadding();
     gui::statusDot(HealthStatus::Running, false);
     ImGui::SameLine();
-    const std::string text = controller_.fixAllStatusText();
-    ImGui::TextColored(gui::kRunningColor, "%s", text.empty() ? "Fix All is running..." : text.c_str());
-    ImGui::ProgressBar(controller_.fixAllProgress(), ImVec2(-1.0f, 0.0f));
-    ImGui::BeginDisabled(controller_.fixAllCancelling());
-    if (ImGui::Button("Cancel")) {
-        controller_.cancelFixAll();
-        requestSync();
+    if (controller_.fixAllCancelling()) {
+        ImGui::TextColored(gui::kRunningColor, "Cancelling...");
+    } else if (!text.pass.empty()) {
+        ImGui::TextColored(gui::kRunningColor, "Running  -  %s", text.pass.c_str());
+    } else {
+        ImGui::TextColored(gui::kRunningColor, "Running...");
     }
-    ImGui::EndDisabled();
-    tooltip("Stop and keep the mesh as it is. A merge in progress finishes first.");
-    ImGui::TextDisabled("Nothing changes until you Apply.");
+    if (!text.phase.empty() && !controller_.fixAllCancelling()) {
+        ImGui::TextWrapped("%s", text.phase.c_str());
+    }
+    if (!text.detail.empty()) {
+        wrappedColored(gui::kMutedColor, text.detail);
+    }
+    ImGui::ProgressBar(controller_.fixAllProgress(), ImVec2(-1.0f, 0.0f));
+    if (!controller_.fixAllCancelling()) {
+        if (ImGui::Button("Cancel")) {
+            controller_.cancelFixAll();
+            requestSync();
+        }
+        tooltip("Stop and keep the mesh as it is. A merge in progress finishes first.");
+    }
+    ImGui::TextDisabled("Nothing changes until you Apply. The step list appears when the run is done.");
+    ImGui::TextDisabled("Cancel takes effect when the current merge returns.");
+}
+
+void PolyscopeGui::drawFixAllSteps(const FixAllResult& result) {
+    const std::vector<FixAllPassLines> passes = fixAllPassLines(controller_, result);
+    if (passes.empty()) {
+        return;
+    }
+    const std::string title = "Passes and steps (" + fixAllStepsSummary(result) + ")";
+    if (!ImGui::TreeNode("##steps", "%s", title.c_str())) {
+        return;
+    }
+    for (std::size_t p = 0; p < passes.size(); ++p) {
+        const FixAllPassLines& pass = passes[p];
+        ImGui::PushID(static_cast<int>(p));
+        const ImGuiTreeNodeFlags open = (passes.size() == 1 || p + 1 == passes.size()) ? ImGuiTreeNodeFlags_DefaultOpen : 0;
+        if (pass.discarded) {
+            ImGui::PushStyleColor(ImGuiCol_Text, gui::kMutedColor);
+        }
+        const bool expanded = ImGui::TreeNodeEx("##pass", open, "%s", pass.header.c_str());
+        if (pass.discarded) {
+            ImGui::PopStyleColor();
+        }
+        tooltip("Click to fold or unfold the steps of this pass.");
+        if (expanded) {
+            int phase = 0;
+            for (const FixAllStepLine& step : pass.steps) {
+                if (static_cast<int>(step.phase) != phase) {
+                    phase = static_cast<int>(step.phase);
+                    ImGui::TextDisabled("%s", fixAllPhaseCaption(phase));
+                }
+                ImGui::PushID(static_cast<int>(step.index));
+                const ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow |
+                                                 (step.details.empty() ? ImGuiTreeNodeFlags_Leaf : 0);
+                const bool detailsOpen = ImGui::TreeNodeEx("##step", flags | ImGuiTreeNodeFlags_NoTreePushOnOpen);
+                ImGui::SameLine();
+                gui::statusDot(dotStatus(step.dot), false);
+                ImGui::SameLine();
+                ImGui::TextWrapped("%d  %s", step.number, step.text.c_str());
+                if (!step.time.empty()) {
+                    ImGui::SameLine();
+                    ImGui::TextColored(gui::kMutedColor, "%s", step.time.c_str());
+                }
+                if (detailsOpen) {
+                    ImGui::Indent();
+                    for (const std::string& detail : step.details) {
+                        wrappedColored(gui::kMutedColor, detail);
+                    }
+                    ImGui::Unindent();
+                    ImGui::TreePop();
+                }
+                ImGui::PopID();
+            }
+        }
+        if (expanded) {
+            ImGui::TreePop();
+        }
+        ImGui::PopID();
+    }
+    ImGui::TreePop();
+}
+
+void PolyscopeGui::drawFixAllLines(const FixAllResult& result, bool beforeApply) {
+    const std::vector<FixAllResultLine> lines = fixAllResultLines(result, beforeApply);
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        const FixAllResultLine& line = lines[i];
+        ImGui::PushID(static_cast<int>(i));
+        if (line.warning) {
+            wrappedColored(gui::kDefectColor, "(!) " + line.text);
+        } else {
+            ImGui::TextWrapped("%s", line.text.c_str());
+        }
+        // Selecting or flipping shells changes the mesh's selection, which would drop an unapplied preview
+        const bool shellButtons = !beforeApply;
+        switch (line.action) {
+        case FixAllLineAction::ShowThem:
+            if (shellButtons && ImGui::SmallButton("Show them")) {
+                controller_.fixAllShowShells(line.shells);
+                requestSync();
+            }
+            if (shellButtons) {
+                tooltip("Select these shells in the Shells panel and frame them.");
+            }
+            break;
+        case FixAllLineAction::ShowCavities:
+            if (shellButtons && ImGui::SmallButton("Show")) {
+                controller_.fixAllShowShells(line.shells);
+                requestSync();
+            }
+            if (shellButtons) {
+                tooltip("Select the cavities that were kept: hollow shells inside a solid, wound inward on purpose.");
+            }
+            break;
+        case FixAllLineAction::FlipGroup:
+            if (shellButtons) {
+                if (ImGui::SmallButton("Show them")) {
+                    controller_.fixAllShowShells(line.shells);
+                    requestSync();
+                }
+                tooltip("Select these shells in the Shells panel and frame them.");
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Flip all")) {
+                    controller_.fixAllFlipShells(line.shells);
+                    requestSync(true);
+                }
+                tooltip("Reverse the outer shell and the shells inside it (one undo step). Use it when the whole group is inside out.");
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Flip outer only")) {
+                    const std::array<int, 1> outer{line.shells.front()};
+                    controller_.fixAllFlipShells(outer);
+                    requestSync(true);
+                }
+                tooltip("Reverse only the outer shell (one undo step). Use it when the shells inside are already right.");
+            }
+            break;
+        case FixAllLineAction::FlipIt:
+            if (shellButtons) {
+                if (ImGui::SmallButton("Show it")) {
+                    controller_.fixAllShowShells(line.shells);
+                    requestSync();
+                }
+                tooltip("Select this shell in the Shells panel and frame it.");
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Flip it")) {
+                    controller_.fixAllFlipShells(line.shells);
+                    requestSync(true);
+                }
+                tooltip("Reverse this shell (one undo step).");
+            }
+            break;
+        case FixAllLineAction::ShowRemoved:
+            if (ImGui::SmallButton("Show removed")) {
+                controller_.setGlobalPreviewShow(GlobalPreviewShow::Both);
+                requestSync();
+            }
+            tooltip("Show the original with the removed faces ghosted behind the result (the Both view below). Original shows only "
+                    "the original.");
+            break;
+        case FixAllLineAction::None:
+            break;
+        }
+        ImGui::PopID();
+    }
 }
 
 void PolyscopeGui::drawFixAllResult() {
     const RepairCandidate* candidate = controller_.fixAllCandidate();
-    if (candidate == nullptr) {
-        ImGui::TextDisabled("No result.");
-    } else if (!candidate->success) {
-        ImGui::TextColored(gui::kErrorColor, "Fix All failed: %s", candidate->statusMessage.c_str());
-    } else {
-        const RepairMetrics& m = candidate->metrics;
-        ImGui::TextWrapped("%.1f%% of faces unchanged, shells %s -> %s, %.2f s.", 100.0 * m.unchangedFraction,
-                           withThousands(m.shellsBefore).c_str(), withThousands(m.shellsAfter).c_str(), m.elapsedMs / 1000.0);
-        if (!candidate->statusMessage.empty()) {
-            wrappedColored(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled), candidate->statusMessage);
+    if (candidate == nullptr || !candidate->success || candidate->fixAll == nullptr) {
+        if (candidate != nullptr) {
+            ImGui::TextColored(gui::kErrorColor, "Fix All failed: %s", candidate->statusMessage.c_str());
+            ImGui::TextDisabled("Nothing was changed.");
+        } else {
+            ImGui::TextDisabled("No result.");
         }
+        if (ImGui::Button("Back to plan")) {
+            controller_.backToFixAllPlan();
+            requestSync();
+        }
+        tooltip("Return to the plan to change settings and preview again.");
+        ImGui::SameLine();
+        if (ImGui::Button("Close")) {
+            controller_.closeTool();
+            requestSync();
+        }
+        tooltip("Close without changing the mesh.  Key: Esc");
+        return;
     }
+    const FixAllResult& result = candidate->fixAll->result;
+
+    ImGui::TextColored(gui::kInfoColor, "Preview ready. Nothing has changed yet.");
+    drawGlobalCandidateTable();
+    ImGui::Spacing();
+    drawFixAllLines(result, true);
+    ImGui::TextDisabled("Shell numbers are those of the result. Apply to get Show them and Flip buttons for the shells named.");
+    ImGui::Spacing();
+    drawFixAllSteps(result);
+
     ImGui::SeparatorText("Preview");
     int show = static_cast<int>(controller_.globalPreviewShow());
     bool showChanged = ImGui::RadioButton("Result", &show, static_cast<int>(GlobalPreviewShow::Result));
+    tooltip("The repaired mesh.");
     ImGui::SameLine();
     showChanged |= ImGui::RadioButton("Original", &show, static_cast<int>(GlobalPreviewShow::Original));
+    tooltip("The mesh as it is now.");
     ImGui::SameLine();
     showChanged |= ImGui::RadioButton("Both", &show, static_cast<int>(GlobalPreviewShow::Both));
     tooltip("Both: the faces the repair removes are ghosted behind the result.");
@@ -459,42 +648,83 @@ void PolyscopeGui::drawFixAllResult() {
     tooltip("Color the result by its distance from the original surface. Off: the changed faces are tinted.");
 
     ImGui::Separator();
-    const bool canApply = candidate != nullptr && candidate->success;
-    ImGui::BeginDisabled(!canApply);
     ImGui::PushStyleColor(ImGuiCol_Button, gui::kFixAllButtonColor);
     if (ImGui::Button("Apply Fix All") && controller_.applyFixAll()) {
         requestSync(true);
     }
     ImGui::PopStyleColor();
-    ImGui::EndDisabled();
-    tooltip("Replace the mesh with the shown result (one undo step).");
+    tooltip("Replace the mesh with the shown result. It is one undo step: Undo Fix All, or Ctrl/Cmd+Z, puts everything back.");
+    ImGui::SameLine();
+    if (ImGui::Button("Back to plan")) {
+        controller_.backToFixAllPlan();
+        requestSync();
+    }
+    tooltip("Drop this preview and return to the plan to change settings. The mesh is unchanged.");
     ImGui::SameLine();
     if (ImGui::Button("Close")) {
         controller_.closeTool();
         requestSync();
     }
     tooltip("Close without changing the mesh.  Key: Esc");
+    ImGui::TextDisabled("Apply = 1 undo step.");
 }
 
 void PolyscopeGui::drawFixAllReport() {
     const std::optional<FixAllApplied>& applied = controller_.fixAllApplied();
-    ImGui::TextColored(gui::kOkColor, "Fix All applied.");
-    if (applied && !applied->undoLabel.empty()) {
-        ImGui::TextDisabled("One undo step: %s.", applied->undoLabel.c_str());
+    const FixAllCandidate* run = controller_.fixAllShown();
+    if (!applied || run == nullptr) {
+        ImGui::TextDisabled("No report.");
+        if (ImGui::Button("Close")) {
+            controller_.closeTool();
+            requestSync();
+        }
+        return;
     }
-    const bool canUndo = controller_.fixAllUndoAvailable();
-    ImGui::BeginDisabled(!canUndo);
-    if (ImGui::Button("Undo Fix All") && controller_.undoFixAll()) {
-        requestSync(true);
+    const bool undoable = controller_.fixAllUndoAvailable();
+    if (applied->undoLabel.empty()) {
+        ImGui::TextColored(gui::kOkColor, "Fix All finished: it changed nothing, so there is nothing to undo.");
+    } else {
+        ImGui::TextColored(gui::kOkColor, "Fix All applied (Ctrl/Cmd+Z to undo).");
     }
-    ImGui::EndDisabled();
-    tooltip("Put the mesh back as it was before Fix All (also Ctrl/Cmd+Z).");
+    const bool current = applied->meshGeneration == controller_.meshGeneration();
+    if (current) {
+        drawFixAllLines(run->result, false);
+    } else {
+        for (const FixAllResultLine& line : fixAllResultLines(run->result, false)) {
+            if (line.warning) {
+                wrappedColored(gui::kDefectColor, "(!) " + line.text);
+            } else {
+                ImGui::TextWrapped("%s", line.text.c_str());
+            }
+        }
+        ImGui::TextDisabled("The mesh changed after Fix All, so the Show and Flip buttons are hidden. This report is as it was.");
+    }
+    ImGui::Spacing();
+    drawFixAllSteps(run->result);
+
+    ImGui::Separator();
+    if (undoable) {
+        if (ImGui::Button("Undo Fix All") && controller_.undoFixAll()) {
+            requestSync(true);
+        }
+        tooltip("Put the mesh back as it was before Fix All (also Ctrl/Cmd+Z).");
+        ImGui::SameLine();
+    }
+    if (ImGui::Button("Run one more pass")) {
+        controller_.runFixAllOneMorePass();
+        requestSync();
+    }
+    tooltip("Preview one more pass of Fix All on the mesh as it is now. Nothing changes until you Apply. Useful when the report "
+            "says something is left: some problems need the result of the first pass to be repaired.");
     ImGui::SameLine();
     if (ImGui::Button("Close")) {
         controller_.closeTool();
         requestSync();
     }
     tooltip("Close this panel.  Key: Esc");
+    if (!undoable && !applied->undoLabel.empty()) {
+        ImGui::TextDisabled("Undo Fix All appears again when the edits made after it are undone (Ctrl/Cmd+Z).");
+    }
 }
 
 } // namespace ogun

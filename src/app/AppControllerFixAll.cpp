@@ -401,6 +401,13 @@ const FixAllCandidate* AppController::fixAllShown() const noexcept {
     return fixAllApplied_ ? fixAllApplied_->run.get() : nullptr;
 }
 
+void AppController::backToFixAllPlan() {
+    if (!fixAllOpen() || fixAllRunning()) {
+        return;
+    }
+    discardGlobalCandidates();
+}
+
 FixAllPanelState AppController::fixAllState() const noexcept {
     if (!fixAllOpen()) {
         return FixAllPanelState::Plan;
