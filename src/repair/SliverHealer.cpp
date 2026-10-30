@@ -177,7 +177,39 @@ bool canFlipEdge(
     const Triangle f0{ps, pt, pa};
     const Eigen::Vector3d n0 = areaNormal(f0);
     if (hasReliableNormal(f0) && n0.normalized().dot(nOppHat) < settings.coplanarDot) {
-        return fail("Neighbor face lies across a sharp feature crease; flipping would distort the surface.");
+        // When f0 is an ultra-thin cap or sliver, its normal tilts wildly due to micron-scale altitude on curved surfaces.
+        // Check whether neighbor faces extending across the side arms are coplanar with nOpp.
+        // If the side-arm neighbors are coplanar with nOpp, the local region is smooth and not a true feature crease.
+        const CgalHalfedgeIndex hArm1 = mesh.next(h);
+        const CgalHalfedgeIndex hArm2 = mesh.prev(h);
+        const CgalFaceIndex fArm1 = mesh.is_border(mesh.opposite(hArm1)) ? CgalSurfaceMesh::null_face() : mesh.face(mesh.opposite(hArm1));
+        const CgalFaceIndex fArm2 = mesh.is_border(mesh.opposite(hArm2)) ? CgalSurfaceMesh::null_face() : mesh.face(mesh.opposite(hArm2));
+
+        bool sideArmsCoplanar = false;
+        int checkedArms = 0;
+        int coplanarArms = 0;
+
+        const double creaseDot = std::cos(settings.creaseAngleDeg * kDegToRad);
+        for (const CgalFaceIndex fArm : {fArm1, fArm2}) {
+            if (fArm != CgalSurfaceMesh::null_face()) {
+                const Triangle tArm = facePoints(mesh, fArm);
+                if (hasReliableNormal(tArm)) {
+                    ++checkedArms;
+                    const Eigen::Vector3d nArm = areaNormal(tArm).normalized();
+                    if (nArm.dot(nOppHat) >= creaseDot) {
+                        ++coplanarArms;
+                    }
+                }
+            }
+        }
+
+        if (checkedArms > 0 && coplanarArms == checkedArms) {
+            sideArmsCoplanar = true;
+        }
+
+        if (!sideArmsCoplanar) {
+            return fail("Neighbor face lies across a sharp feature crease; flipping would distort the surface.");
+        }
     }
 
     // Post-flip triangles must be non-degenerate and keep the neighbor's orientation (convex, planar quad).

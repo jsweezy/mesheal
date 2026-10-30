@@ -724,3 +724,29 @@ TEST_CASE("SliverHealer heals micro-cluster needles on Turkey_left_with_needles"
     REQUIRE(rScoped.success);
     CHECK(rScoped.remainingThinFaces <= 1);
 }
+
+TEST_CASE("SliverHealer heals curved-surface cap on turkey_single_cap", "[repair][cap][flip]") {
+    const std::filesystem::path capStl =
+        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "build" / "examples" / "turkey_single_cap.stl";
+    if (!std::filesystem::exists(capStl)) {
+        return;
+    }
+    const ogun::Mesh mesh = ogun::loadStl(capStl);
+    const ogun::ThinFaceReport before = ogun::ThinFaceChecker::check(mesh, {});
+    REQUIRE(before.numDefects() == 1);
+
+    const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(mesh, before.faceIndices[0]);
+    CHECK(a.type == ogun::SliverType::Cap);
+    CHECK(a.longestEdgeFlippable);
+    CHECK(a.recommendedAction == ogun::HealAction::FlipLongestEdge);
+
+    const ogun::RepairResults rAll = ogun::SliverHealer::healAllThinFaces(mesh);
+    REQUIRE(rAll.success);
+    CHECK(rAll.remainingThinFaces == 0);
+    CHECK(rAll.edgeFlips == 1);
+
+    const ogun::RepairResults rScoped = ogun::SliverHealer::healFaces(mesh, before.faceIndices);
+    REQUIRE(rScoped.success);
+    CHECK(rScoped.remainingThinFaces == 0);
+    CHECK(rScoped.edgeFlips == 1);
+}
