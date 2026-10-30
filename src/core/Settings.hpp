@@ -193,5 +193,29 @@ inline constexpr double kDefaultWeldRelTol     = 1.0e-9;          // Coordinate-
 // when on every axis |p_i - q_i| <= max(floor, rel x max(|p_i|, |q_i|)) (a ToleranceConfig of its own).
 inline constexpr double kDefaultFixAllWeldAbsFloor = 1.0e-6;      // Fix All weld: absolute per-axis floor in file coordinates (unitless)
 inline constexpr double kDefaultFixAllWeldRelTol   = 1.0e-6;      // Fix All weld: per-axis tolerance relative to the larger coordinate on that axis
+inline constexpr double kFixAllWeldToleranceMin    = 1.0e-9;      // Fix All weld: smallest floor or relative tolerance Preferences accepts (rel = 0 is refused)
+inline constexpr double kFixAllWeldToleranceMax    = 1.0e-3;      // Fix All weld: largest floor or relative tolerance Preferences accepts
+inline constexpr double kFixAllWeldNoteDiagonalShare = 1.0e-4;    // Fix All weld: the plan warns when the largest per-axis tolerance exceeds this share (0.01 %) of the scope's bbox diagonal
+
+// -----------------------------------------------------------------------------
+// Fix All (one-click repair in passes: repair each shell, merge, clean up)
+// -----------------------------------------------------------------------------
+inline constexpr int    kDefaultFixAllPasses = 3;                 // Passes of a full run (1 = One pass); stops earlier when clean or stuck
+inline constexpr int    kFixAllMinPasses     = 1;                 // Fewest passes a run may be asked for
+inline constexpr int    kFixAllMaxPasses     = 10;                // Most passes a run may be asked for
+inline constexpr double kDefaultFixAllTimeBudgetSeconds = 0.0;    // Stop after the pass that ends past this many seconds (0 = no budget)
+inline constexpr bool   kDefaultFixAllWeld        = true;         // Weld by distance (its own per-axis tolerance above) runs first in each pass
+inline constexpr bool   kDefaultFixAllTinyShells  = true;         // Remove tiny floating shells (below kDefaultFixAllTinyShellFraction, touching nothing)
+inline constexpr bool   kDefaultFixAllFins        = true;         // Remove fins and internal walls
+inline constexpr bool   kDefaultFixAllCloseCracks = true;         // Close cracks (Holes tool's crack settings)
+inline constexpr bool   kDefaultFixAllHealThin    = true;         // Heal thin faces (Thin faces tool's aspect limit)
+inline constexpr bool   kDefaultFixAllMergeShells = false;        // Merge shells (phase 2); the panel ticks it when shells in scope overlap
+inline constexpr float  kFixAllBaselineProgressShare = 0.10f;     // Progress bar: share of the first check of the mesh
+inline constexpr float  kFixAllPassesProgressShare   = 0.85f;     // Progress bar: share of all passes together (split equally between them)
+inline constexpr double kFixAllQuickStageProgressWeight = 1.25;   // Progress weight within a pass of each quick phase-1 stage (weld, clean-ups, orient, cracks: 10 % over 8)
+inline constexpr double kFixAllHealStageProgressWeight  = 11.25;  // Progress weight within a pass of each healing stage (slivers, holes, islands, orient: 45 % over 4)
+inline constexpr double kFixAllMergeProgressWeight      = 20.0;   // Progress weight within a pass of phase 2 (merge), when it runs
+inline constexpr double kFixAllCleanupProgressWeight    = 10.0;   // Progress weight within a pass of phase 3 (clean up the merge), when the merge is on
+inline constexpr double kFixAllPassCheckProgressWeight  = 15.0;   // Progress weight within a pass of the check that judges it
 
 } // namespace ogun::settings

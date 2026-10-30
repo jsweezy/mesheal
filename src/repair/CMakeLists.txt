@@ -1,4 +1,5 @@
 add_library(ogun_repair STATIC
+    FixAll.cpp
     GlobalRepair.cpp
     HoleFiller.cpp
     IntersectionHealer.cpp
