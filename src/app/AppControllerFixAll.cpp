@@ -192,6 +192,7 @@ void AppController::openFixAll(int passes) {
 void AppController::setFixAllParams(const FixAllParams& params) {
     const bool mergeClicked = params.mergeShells != globalParams_.fixAll.mergeShells;
     FixAllParams& p = globalParams_.fixAll;
+    const ToleranceConfig oldWeld = p.weldTolerance;
     p = params;
     p.passes = std::clamp(p.passes, settings::kFixAllMinPasses, settings::kFixAllMaxPasses);
     p.timeBudgetSeconds = std::max(p.timeBudgetSeconds, 0.0);
@@ -201,6 +202,13 @@ void AppController::setFixAllParams(const FixAllParams& params) {
     p.weldTolerance.relTol = std::clamp(p.weldTolerance.relTol, settings::kFixAllWeldToleranceMin, settings::kFixAllWeldToleranceMax);
     if (mergeClicked) {
         fixAllMergeUserSet_ = true;
+    }
+    // The plan's weld row (edges it collapses, the tolerance note) was worked out with the old tolerance
+    if (fixAllOpen() && (p.weldTolerance.absFloor != oldWeld.absFloor || p.weldTolerance.relTol != oldWeld.relTol)) {
+        ++fixAllScopeSerial_; // drops a check still running with the old tolerance
+        fixAllPlan_.reset();
+        fixAllPlanDue_ = true;
+        ensureFixAllPlan();
     }
 }
 
@@ -571,6 +579,13 @@ std::vector<int> AppController::fixAllNoteShellNumbers(const FixAllStepReport& s
     const FixAllCandidate* run = fixAllShown();
     if (run == nullptr || !step.notesInResult || note.faceSet) {
         return {};
+    }
+    // A rebuild row's report shows the steps of the run it builds on: number them with that run's result
+    if (run->rebuild && run->rebuild->base != nullptr) {
+        const std::vector<FixAllStepReport>& baseSteps = run->rebuild->base->result.steps;
+        if (std::any_of(baseSteps.begin(), baseSteps.end(), [&](const FixAllStepReport& s) { return &s == &step; })) {
+            run = run->rebuild->base.get();
+        }
     }
     std::vector<int> numbers;
     numbers.reserve(note.shells.size());

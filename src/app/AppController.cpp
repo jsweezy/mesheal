@@ -1363,6 +1363,9 @@ void AppController::pushUndoEntry(std::string actionLabel, bool movesWholeMesh) 
         movesWholeMesh});
     if (undoStack_.size() > settings::kMaxUndoHistoryDepth) {
         undoStack_.erase(undoStack_.begin());
+        if (fixAllApplied_ && fixAllApplied_->undoDepth > 0) {
+            --fixAllApplied_->undoDepth; // its entry moved down with the others
+        }
     }
 }
 

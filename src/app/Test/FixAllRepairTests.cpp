@@ -850,3 +850,95 @@ TEST_CASE("Fix All + Rebuild in the background: Cancel stops the alpha wrap mid-
     CHECK(controller.mesh().F == before.F);
     CHECK_FALSE(controller.canUndo());
 }
+
+TEST_CASE("Fix All: undo Fix All survives a full undo history", "[app][fixall][undo]") {
+    AppController controller;
+    controller.setMesh(twoOpenBoxes(), "two open boxes");
+    controller.openFixAll();
+    // Fill the undo history to its cap (an even number of flips leaves the mesh as it was)
+    const std::vector<int> second = {1};
+    for (std::size_t i = 0; i < ogun::settings::kMaxUndoHistoryDepth; ++i) {
+        REQUIRE(controller.flipShells(second));
+    }
+    controller.previewFixAll();
+    REQUIRE(controller.applyFixAll());
+    CHECK(controller.fixAllUndoAvailable());
+    REQUIRE(controller.flipShells(second)); // a later edit: the oldest entry is dropped again
+    CHECK_FALSE(controller.fixAllUndoAvailable());
+    REQUIRE(controller.undoLastModification()); // the flip: Fix All is on top again
+    CHECK(controller.fixAllApplied().has_value());
+    CHECK(controller.fixAllState() == FixAllPanelState::Report);
+    CHECK(controller.fixAllUndoAvailable());
+    REQUIRE(controller.undoFixAll());
+    CHECK(openEdges(controller.mesh()) == 6);
+    CHECK_FALSE(controller.fixAllApplied().has_value());
+}
+
+TEST_CASE("Fix All + Rebuild: the report's step notes keep the numbering of the run they describe",
+          "[app][fixall][rebuild]") {
+    AppController controller;
+    openFixAllOnOpenBox(controller);
+    controller.previewFixAll();
+    REQUIRE(controller.fixAllCandidate() != nullptr);
+    controller.rebuildFixAllShell(1);
+    REQUIRE_FALSE(controller.fixAllRebuilds().empty());
+    REQUIRE(controller.fixAllRebuilds().front().success);
+    controller.showFixAllRebuild(ogun::GlobalRepairMethod::AlphaWrap);
+    REQUIRE(controller.applyGlobalRepair());
+    REQUIRE(controller.fixAllState() == FixAllPanelState::Report);
+
+    // The Report draws the steps of the Fix All run the rebuild builds on: their notes name shells of
+    // that run's result, so they are numbered with it, not with the rebuilt mesh
+    const ogun::FixAllCandidate* run = controller.fixAllShown();
+    REQUIRE(run != nullptr);
+    REQUIRE(run->rebuild.has_value());
+    const ogun::FixAllCandidate& base = *run->rebuild->base;
+    std::size_t checked = 0;
+    for (const ogun::FixAllStepReport& step : base.result.steps) {
+        if (!step.notesInResult) {
+            continue;
+        }
+        for (const ogun::FixAllShellNote& note : step.notes) {
+            if (note.faceSet) {
+                continue;
+            }
+            std::vector<int> expected;
+            for (const std::vector<Eigen::Index>& faces : note.shells) {
+                int number = 0;
+                for (const Eigen::Index f : faces) {
+                    if (f >= 0 && static_cast<std::size_t>(f) < base.faceShell.size() && base.faceShell[static_cast<std::size_t>(f)] >= 0) {
+                        number = base.faceShell[static_cast<std::size_t>(f)] + 1;
+                        break;
+                    }
+                }
+                expected.push_back(number);
+            }
+            INFO(note.text);
+            CHECK(controller.fixAllNoteShellNumbers(step, note) == expected);
+            ++checked;
+        }
+    }
+    CHECK(checked > 0);
+}
+
+TEST_CASE("Fix All: the weld row follows the weld tolerance set in the panel", "[app][fixall]") {
+    Mesh needle;
+    needle.V.resize(4, 3);
+    needle.V << 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 5.0e-5, 0.0;
+    needle.F.resize(2, 3);
+    needle.F << 0, 1, 2, 1, 3, 2;
+    needle.recomputeNormals();
+    AppController controller;
+    controller.setMesh(needle, "needle");
+    controller.openFixAll();
+    REQUIRE(controller.fixAllWeldPlan() != nullptr);
+    CHECK(controller.fixAllWeldPlan()->collapsingEdges == 0);
+
+    ogun::FixAllParams params = controller.fixAllParams();
+    params.weldTolerance.absFloor = 1.0e-4; // now the 5e-5 edge is within the weld's reach
+    controller.setFixAllParams(params);
+    controller.waitForFixAllPlan();
+    REQUIRE(controller.fixAllWeldPlan() != nullptr);
+    CHECK(controller.fixAllWeldPlan()->collapsingEdges == 1);
+    CHECK(controller.fixAllWeldPlan()->maxTolerance == Catch::Approx(1.0e-4));
+}

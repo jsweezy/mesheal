@@ -947,6 +947,8 @@ void PolyscopeGui::drawFixAllReport() {
         return;
     }
     const bool undoable = controller_.fixAllUndoAvailable();
+    // Read now: Close (or Undo) below resets `applied`
+    const bool undoHint = !undoable && !applied->undoLabel.empty();
     if (applied->undoLabel.empty()) {
         ImGui::TextColored(gui::kOkColor, "Fix All finished: it changed nothing, so there is nothing to undo.");
     } else {
@@ -998,7 +1000,7 @@ void PolyscopeGui::drawFixAllReport() {
         requestSync();
     }
     tooltip("Close this panel.  Key: Esc");
-    if (!undoable && !applied->undoLabel.empty()) {
+    if (undoHint) {
         ImGui::TextDisabled("Undo Fix All appears again when the edits made after it are undone (Ctrl/Cmd+Z).");
     }
 }
