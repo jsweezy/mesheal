@@ -97,7 +97,21 @@ struct FixAllResultLine {
     /// `report.shells` index of a shell Fix All left that alpha wrap is suggested for: the line gets the
     /// *Rebuild shell #k...* button (before Apply). -1: no button.
     int rebuildShell = -1;
+    /// Lines with the same non-empty key are one repeated situation ("still cross ... because the merge was refused:
+    /// cavity #28"); `fixAllLineGroups` folds them into one summary. Empty: never grouped.
+    std::string groupKey;
 };
+
+/// A repeated situation: `members` index into the lines, `summary` is the one line that stands for them.
+struct FixAllLineGroup {
+    std::string summary;           ///< "60 shell pairs still cross: their group reaches into cavity #28 ..."
+    std::vector<std::size_t> members;
+    std::vector<int> shells;       ///< Every shell the members name, each once
+};
+
+/// Groups of at least `kFixAllMinGroup` lines sharing a `groupKey`, in order of first appearance.
+inline constexpr std::size_t kFixAllMinGroup = 3;
+[[nodiscard]] std::vector<FixAllLineGroup> fixAllLineGroups(const std::vector<FixAllResultLine>& lines);
 
 /// The plan row number of a stage (0..11; phase 3 steps are row 11).
 [[nodiscard]] int fixAllStepNumber(FixAllStageId stage, FixAllPhase phase) noexcept;

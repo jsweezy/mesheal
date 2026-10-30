@@ -33,6 +33,24 @@ void wrappedColored(const ImVec4& color, const std::string& text) {
     ImGui::PopStyleColor();
 }
 
+/// Call before a button that follows another button: keeps it on the same line when it fits in the rest of
+/// the row, else leaves the cursor on the next line. Sizes buttons to their text, never clips them.
+void flowSameLine(const char* nextLabel) {
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float width = ImGui::CalcTextSize(nextLabel).x + 2.0f * style.FramePadding.x;
+    const float right = ImGui::GetWindowPos().x - ImGui::GetScrollX() + ImGui::GetWindowContentRegionMax().x;
+    if (ImGui::GetItemRectMax().x + style.ItemSpacing.x + width <= right) {
+        ImGui::SameLine();
+    }
+}
+
+/// Muted text that wraps at the cell or panel edge (words are never split unless one is wider than the line).
+void mutedWrapped(const std::string& text) {
+    ImGui::PushStyleColor(ImGuiCol_Text, gui::kMutedColor);
+    ImGui::TextWrapped("%s", text.c_str());
+    ImGui::PopStyleColor();
+}
+
 /// "0.006 mm" (the number is in file coordinates; the unit is a label).
 std::string lengthWithUnit(double value, Unit unit) {
     char buffer[48];
@@ -114,8 +132,16 @@ void PolyscopeGui::drawFixAllOperator() {
         ImGui::TextDisabled("No mesh loaded.");
         return;
     }
+    // The body scrolls in a child region; the action buttons below it stay visible. The footer's height is the one
+    // measured on the previous frame.
+    static float footerHeight = 60.0f;
+    const FixAllPanelState state = controller_.fixAllState();
+    const bool footer = state != FixAllPanelState::Running;
+    if (footer) {
+        ImGui::BeginChild(("##fixAllBody" + std::to_string(static_cast<int>(state))).c_str(), ImVec2(0.0f, -footerHeight));
+    }
     ImGui::PushTextWrapPos(0.0f); // long lines wrap at the panel edge
-    switch (controller_.fixAllState()) {
+    switch (state) {
     case FixAllPanelState::Plan:
         drawFixAllPlan();
         break;
@@ -130,6 +156,34 @@ void PolyscopeGui::drawFixAllOperator() {
         break;
     }
     ImGui::PopTextWrapPos();
+    if (footer) {
+        ImGui::EndChild();
+        const float top = ImGui::GetCursorPosY();
+        ImGui::PushTextWrapPos(0.0f);
+        drawFixAllFooter();
+        ImGui::PopTextWrapPos();
+        footerHeight = std::max(ImGui::GetCursorPosY() - top, 0.0f) + ImGui::GetStyle().ItemSpacing.y;
+    }
+}
+
+void PolyscopeGui::drawFixAllFooter() {
+    switch (controller_.fixAllState()) {
+    case FixAllPanelState::Plan:
+        if (fixAllRebuildSide_) {
+            drawFixAllRebuildFooter();
+        } else {
+            drawFixAllPlanFooter();
+        }
+        break;
+    case FixAllPanelState::Result:
+        drawFixAllResultFooter();
+        break;
+    case FixAllPanelState::Report:
+        drawFixAllReportFooter();
+        break;
+    case FixAllPanelState::Running:
+        break;
+    }
 }
 
 void PolyscopeGui::drawFixAllPlan() {
@@ -175,7 +229,10 @@ void PolyscopeGui::drawFixAllPlan() {
 
     drawFixAllOptions();
     drawFixAllSettingsUsed();
+}
 
+void PolyscopeGui::drawFixAllPlanFooter() {
+    const FixAllScopeInfo scope = controller_.fixAllScope();
     ImGui::Separator();
     const bool empty = scope.faces == 0;
     const int shownPasses = controller_.fixAllParams().passes;
@@ -192,7 +249,7 @@ void PolyscopeGui::drawFixAllPlan() {
                                 : "Run one pass on a copy of the mesh, in the background, and show the result. Nothing changes until "
                                   "you Apply.");
         if (shownPasses > 1) {
-            ImGui::SameLine();
+            flowSameLine("Preview one pass");
             if (ImGui::Button("Preview one pass")) {
                 fixAllHintSeen_ = true;
                 controller_.previewFixAll(true);
@@ -201,7 +258,7 @@ void PolyscopeGui::drawFixAllPlan() {
             tooltip("Run the sequence once, whatever Passes says, so you can see each step's effect before the next pass.");
         }
         if (scope.kind != FixAllScopeKind::Faces) {
-            ImGui::SameLine();
+            flowSameLine("Compare with rebuilds");
             if (ImGui::Button("Compare with rebuilds")) {
                 fixAllHintSeen_ = true;
                 controller_.setGlobalRepairMethod(GlobalRepairMethod::FixAll);
@@ -211,7 +268,7 @@ void PolyscopeGui::drawFixAllPlan() {
             tooltip("Run Fix All and the three rebuilds (self-union, winding-number rebuild, alpha wrap) on the scope and list them "
                     "side by side, so you can see what each keeps and what it costs. Nothing changes until Apply.");
         }
-        ImGui::SameLine();
+        flowSameLine("Close");
     }
     if (ImGui::Button("Close")) {
         controller_.closeTool();
@@ -286,8 +343,10 @@ void PolyscopeGui::drawFixAllPlanRows() {
             ImGui::TextWrapped("%s  %s", number.c_str(), row.label.c_str());
             tooltip(tip.c_str());
             if (!row.hasBox() && row.sw != FixAllRowSwitch::Required && !row.note.empty() && row.note != row.found) {
+                // On its own line, under the label: never squeezed into what is left of the label's line
+                ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), 0.0f));
                 ImGui::SameLine();
-                ImGui::TextColored(gui::kMutedColor, "(%s)", row.note.c_str());
+                mutedWrapped("(" + row.note + ")");
             }
             ImGui::TableSetColumnIndex(1);
             if (row.found == "checking...") {
@@ -560,8 +619,49 @@ void PolyscopeGui::drawFixAllSteps(const FixAllResult& result) {
 
 void PolyscopeGui::drawFixAllLines(const FixAllResult& result, bool beforeApply) {
     const std::vector<FixAllResultLine> lines = fixAllResultLines(result, beforeApply);
+    const std::vector<FixAllLineGroup> groups = fixAllLineGroups(lines);
+    const auto groupOf = [&](std::size_t i) -> const FixAllLineGroup* {
+        for (const FixAllLineGroup& g : groups) {
+            if (std::find(g.members.begin(), g.members.end(), i) != g.members.end()) {
+                return &g;
+            }
+        }
+        return nullptr;
+    };
+    std::vector<const FixAllLineGroup*> drawnGroups;
     for (std::size_t i = 0; i < lines.size(); ++i) {
         const FixAllResultLine& line = lines[i];
+        const FixAllLineGroup* group = groupOf(i);
+        if (group != nullptr && std::find(drawnGroups.begin(), drawnGroups.end(), group) != drawnGroups.end()) {
+            continue; // drawn inside its group's list
+        }
+        if (group != nullptr) {
+            // One summary line with a collapsed list of the individual pairs
+            drawnGroups.push_back(group);
+            ImGui::PushID(static_cast<int>(i));
+            wrappedColored(gui::kDefectColor, "(!) " + group->summary);
+            if (!beforeApply && ImGui::SmallButton("Show them all")) {
+                controller_.fixAllShowShells(group->shells);
+                requestSync();
+            }
+            if (!beforeApply) {
+                tooltip("Select every shell named in these pairs in the Shells panel and frame them.");
+            }
+            if (ImGui::TreeNode("##pairs", "Show the %zu pairs", group->members.size())) {
+                for (const std::size_t m : group->members) {
+                    ImGui::PushID(static_cast<int>(m));
+                    wrappedColored(gui::kDefectColor, lines[m].text);
+                    if (!beforeApply && ImGui::SmallButton("Show them")) {
+                        controller_.fixAllShowShells(lines[m].shells);
+                        requestSync();
+                    }
+                    ImGui::PopID();
+                }
+                ImGui::TreePop();
+            }
+            ImGui::PopID();
+            continue;
+        }
         ImGui::PushID(static_cast<int>(i));
         if (line.warning) {
             wrappedColored(gui::kDefectColor, "(!) " + line.text);
@@ -604,13 +704,13 @@ void PolyscopeGui::drawFixAllLines(const FixAllResult& result, bool beforeApply)
                     requestSync();
                 }
                 tooltip("Select these shells in the Shells panel and frame them.");
-                ImGui::SameLine();
+                flowSameLine("Flip all");
                 if (ImGui::SmallButton("Flip all")) {
                     controller_.fixAllFlipShells(line.shells);
                     requestSync(true);
                 }
                 tooltip("Reverse the outer shell and the shells inside it (one undo step). Use it when the whole group is inside out.");
-                ImGui::SameLine();
+                flowSameLine("Flip outer only");
                 if (ImGui::SmallButton("Flip outer only")) {
                     const std::array<int, 1> outer{line.shells.front()};
                     controller_.fixAllFlipShells(outer);
@@ -626,7 +726,7 @@ void PolyscopeGui::drawFixAllLines(const FixAllResult& result, bool beforeApply)
                     requestSync();
                 }
                 tooltip("Select this shell in the Shells panel and frame it.");
-                ImGui::SameLine();
+                flowSameLine("Flip it");
                 if (ImGui::SmallButton("Flip it")) {
                     controller_.fixAllFlipShells(line.shells);
                     requestSync(true);
@@ -658,18 +758,7 @@ void PolyscopeGui::drawFixAllResult() {
         } else {
             ImGui::TextDisabled("No result.");
         }
-        if (ImGui::Button("Back to plan")) {
-            controller_.backToFixAllPlan();
-            requestSync();
-        }
-        tooltip("Return to the plan to change settings and preview again.");
-        ImGui::SameLine();
-        if (ImGui::Button("Close")) {
-            controller_.closeTool();
-            requestSync();
-        }
-        tooltip("Close without changing the mesh.  Key: Esc");
-        return;
+        return; // its Back to plan / Close are in the footer
     }
     const FixAllResult& result = candidate->fixAll->result;
     const RepairCandidate* shown = controller_.shownGlobalCandidate();
@@ -715,7 +804,25 @@ void PolyscopeGui::drawFixAllResult() {
     }
 
     drawFixAllPreviewControls();
+}
+
+void PolyscopeGui::drawFixAllResultFooter() {
+    const RepairCandidate* candidate = controller_.fixAllCandidate();
     ImGui::Separator();
+    if (candidate == nullptr || !candidate->success || candidate->fixAll == nullptr) {
+        if (ImGui::Button("Back to plan")) {
+            controller_.backToFixAllPlan();
+            requestSync();
+        }
+        tooltip("Return to the plan to change settings and preview again.");
+        flowSameLine("Close");
+        if (ImGui::Button("Close")) {
+            controller_.closeTool();
+            requestSync();
+        }
+        tooltip("Close without changing the mesh.  Key: Esc");
+        return;
+    }
     drawFixAllApplyRow(false);
 }
 
@@ -763,15 +870,19 @@ void PolyscopeGui::drawFixAllApplyRow(bool inPlan) {
         }
         ImGui::PopStyleColor();
         tooltip(help.c_str());
-        ImGui::SameLine();
     }
     if (!inPlan) {
+        if (shown != nullptr && shown->success && !busy) {
+            flowSameLine("Back to plan");
+        }
         if (ImGui::Button("Back to plan")) {
             controller_.backToFixAllPlan();
             requestSync();
         }
         tooltip("Drop this preview and return to the plan to change settings. The mesh is unchanged.");
-        ImGui::SameLine();
+        flowSameLine("Close");
+    } else if (shown != nullptr && shown->success && !busy) {
+        flowSameLine("Close");
     }
     if (ImGui::Button("Close")) {
         controller_.closeTool();
@@ -839,7 +950,13 @@ void PolyscopeGui::drawFixAllSwitch() {
     int side = fixAllRebuildSide_ ? 1 : 0;
     bool changed = ImGui::RadioButton("Repair  keep my geometry", &side, 0);
     tooltip("Fix each problem in place. Faces that are not part of a problem stay exactly as they are. Cavities are kept.");
-    ImGui::SameLine();
+    // Side by side only when both fit; else one under the other
+    const float radioWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
+                             ImGui::CalcTextSize("Rebuild  new watertight surface").x;
+    if (ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + radioWidth <=
+        ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x) {
+        ImGui::SameLine();
+    }
     changed |= ImGui::RadioButton("Rebuild  new watertight surface", &side, 1);
     tooltip("Replace the shells with a new surface (alpha wrap, winding-number rebuild or self-union). Alpha wrap is always "
             "watertight, but no original face survives and small gaps and cavities are filled in. Compare the two before you choose.");
@@ -886,38 +1003,14 @@ void PolyscopeGui::drawFixAllRebuildPlan() {
             fixAllRebuildMethod_ = option.method;
         }
         tooltip(option.help);
-        ImGui::SameLine();
-        ImGui::TextDisabled("%s", option.summary);
-        if (fixAllRebuildMethod_ == option.method) {
-            ImGui::Indent();
-            drawGlobalMethodParams(option.method);
-            ImGui::Unindent();
-        }
-    }
-
-    if (running) {
-        drawFixAllRebuildJob();
-    } else if (scope.faces > 0) {
-        ImGui::PushStyleColor(ImGuiCol_Button, gui::kFixAllButtonColor);
-        if (ImGui::Button("Preview")) {
-            fixAllHintSeen_ = true;
-            controller_.setGlobalRepairMethod(fixAllRebuildMethod_);
-            controller_.previewGlobalRepair();
-            requestSync();
-        }
+        ImGui::Indent();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("%s", option.summary);
         ImGui::PopStyleColor();
-        tooltip("Compute the chosen rebuild on a copy of the mesh, in the background, and show it. Nothing changes until you Apply.");
-        ImGui::SameLine();
-        if (ImGui::Button("Compare with Repair")) {
-            fixAllHintSeen_ = true;
-            controller_.setGlobalRepairMethod(GlobalRepairMethod::FixAll);
-            controller_.compareAllGlobalRepairs();
-            requestSync();
+        if (fixAllRebuildMethod_ == option.method) {
+            drawGlobalMethodParams(option.method);
         }
-        tooltip("Run Fix All and the three rebuilds on the scope and list them side by side: how much of your geometry each keeps "
-                "(Kept), how far it moves (Max dev) and what it fills in (Lost). Nothing changes until Apply.");
-    } else {
-        ImGui::TextDisabled("Nothing is in scope: every shell is hidden.");
+        ImGui::Unindent();
     }
 
     if (!controller_.globalCandidates().empty()) {
@@ -931,6 +1024,37 @@ void PolyscopeGui::drawFixAllRebuildPlan() {
         }
         drawFixAllPreviewControls();
     }
+}
+
+void PolyscopeGui::drawFixAllRebuildFooter() {
+    const FixAllScopeInfo scope = controller_.fixAllScope();
+    const bool running = controller_.globalRepairRunning();
+    ImGui::Separator();
+    if (running) {
+        drawFixAllRebuildJob();
+    } else if (scope.faces > 0) {
+        ImGui::PushStyleColor(ImGuiCol_Button, gui::kFixAllButtonColor);
+        if (ImGui::Button("Preview")) {
+            fixAllHintSeen_ = true;
+            controller_.setGlobalRepairMethod(fixAllRebuildMethod_);
+            controller_.previewGlobalRepair();
+            requestSync();
+        }
+        ImGui::PopStyleColor();
+        tooltip("Compute the chosen rebuild on a copy of the mesh, in the background, and show it. Nothing changes until you Apply.");
+        flowSameLine("Compare with Repair");
+        if (ImGui::Button("Compare with Repair")) {
+            fixAllHintSeen_ = true;
+            controller_.setGlobalRepairMethod(GlobalRepairMethod::FixAll);
+            controller_.compareAllGlobalRepairs();
+            requestSync();
+        }
+        tooltip("Run Fix All and the three rebuilds on the scope and list them side by side: how much of your geometry each keeps "
+                "(Kept), how far it moves (Max dev) and what it fills in (Lost). Nothing changes until Apply.");
+    } else {
+        ImGui::TextDisabled("Nothing is in scope: every shell is hidden.");
+    }
+
     ImGui::Separator();
     drawFixAllApplyRow(true);
 }
@@ -946,9 +1070,6 @@ void PolyscopeGui::drawFixAllReport() {
         }
         return;
     }
-    const bool undoable = controller_.fixAllUndoAvailable();
-    // Read now: Close (or Undo) below resets `applied`
-    const bool undoHint = !undoable && !applied->undoLabel.empty();
     if (applied->undoLabel.empty()) {
         ImGui::TextColored(gui::kOkColor, "Fix All finished: it changed nothing, so there is nothing to undo.");
     } else {
@@ -979,14 +1100,23 @@ void PolyscopeGui::drawFixAllReport() {
     }
     ImGui::Spacing();
     drawFixAllSteps(run->rebuild && run->rebuild->base != nullptr ? run->rebuild->base->result : run->result);
+}
 
+void PolyscopeGui::drawFixAllReportFooter() {
+    const std::optional<FixAllApplied>& applied = controller_.fixAllApplied();
+    if (!applied || controller_.fixAllShown() == nullptr) {
+        return;
+    }
+    const bool undoable = controller_.fixAllUndoAvailable();
+    // Read now: Close (or Undo) below resets `applied`
+    const bool undoHint = !undoable && !applied->undoLabel.empty();
     ImGui::Separator();
     if (undoable) {
         if (ImGui::Button("Undo Fix All") && controller_.undoFixAll()) {
             requestSync(true);
         }
         tooltip("Put the mesh back as it was before Fix All (also Ctrl/Cmd+Z).");
-        ImGui::SameLine();
+        flowSameLine("Run one more pass");
     }
     if (ImGui::Button("Run one more pass")) {
         controller_.runFixAllOneMorePass();
@@ -994,7 +1124,7 @@ void PolyscopeGui::drawFixAllReport() {
     }
     tooltip("Preview one more pass of Fix All on the mesh as it is now. Nothing changes until you Apply. Useful when the report "
             "says something is left: some problems need the result of the first pass to be repaired.");
-    ImGui::SameLine();
+    flowSameLine("Close");
     if (ImGui::Button("Close")) {
         controller_.closeTool();
         requestSync();

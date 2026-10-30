@@ -398,7 +398,18 @@ std::vector<FixAllResultLine> fixAllResultLines(const FixAllResult& result, bool
         const bool flip = line.text.find("look inside out together") != std::string::npos && line.shells.size() >= 2;
         add(line.text, true, line.shells, flip ? FixAllLineAction::FlipGroup : FixAllLineAction::ShowThem);
     }
+    // A shell shown as a cavity another group reaches into needs no second "cavity or inside out?" line
+    const auto reachedCavity = [&](int shell) {
+        return std::any_of(report.groupsNotMerged.begin(), report.groupsNotMerged.end(), [&](const FixAllReportLine& g) {
+            return g.text.find("reaches into cavity") != std::string::npos &&
+                   std::find(g.shells.begin(), g.shells.end(), shell) != g.shells.end();
+        });
+    };
     for (const FixAllShellResidue& r : report.residue) {
+        if (r.suggestion == FixAllSuggestion::ReportOnly && r.reason.find("cavity or inside out?") != std::string::npos &&
+            reachedCavity(r.shell)) {
+            continue;
+        }
         FixAllLineAction action = r.named.empty() ? FixAllLineAction::None : FixAllLineAction::ShowThem;
         std::vector<int> shells = r.named;
         if (r.reason.find("looks inside out together") != std::string::npos && r.named.size() >= 2) {
@@ -414,6 +425,9 @@ std::vector<FixAllResultLine> fixAllResultLines(const FixAllResult& result, bool
     }
     for (const FixAllCrossingLeft& left : report.crossingsLeft) {
         add(left.text, true, {left.a, left.b}, FixAllLineAction::ShowThem);
+        if (left.fills.empty() && !left.whyNotMerged.empty()) {
+            lines.back().groupKey = left.whyNotMerged;
+        }
     }
     if (beforeApply && !result.mergeRemovedFaces.empty()) {
         add("The merge removed " + plural(result.mergeRemovedFaces.size(), "face", "faces") +
@@ -426,6 +440,36 @@ std::vector<FixAllResultLine> fixAllResultLines(const FixAllResult& result, bool
             beforeApply && !deletion.inputFaces.empty() ? FixAllLineAction::ShowRemoved : FixAllLineAction::None);
     }
     return lines;
+}
+
+std::vector<FixAllLineGroup> fixAllLineGroups(const std::vector<FixAllResultLine>& lines) {
+    std::vector<FixAllLineGroup> groups;
+    std::vector<std::string> keys;
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        if (lines[i].groupKey.empty()) {
+            continue;
+        }
+        const auto it = std::find(keys.begin(), keys.end(), lines[i].groupKey);
+        const std::size_t g = static_cast<std::size_t>(it - keys.begin());
+        if (it == keys.end()) {
+            keys.push_back(lines[i].groupKey);
+            groups.emplace_back();
+        }
+        groups[g].members.push_back(i);
+        for (const int s : lines[i].shells) {
+            if (std::find(groups[g].shells.begin(), groups[g].shells.end(), s) == groups[g].shells.end()) {
+                groups[g].shells.push_back(s);
+            }
+        }
+    }
+    std::vector<FixAllLineGroup> out;
+    for (std::size_t g = 0; g < groups.size(); ++g) {
+        if (groups[g].members.size() >= kFixAllMinGroup) {
+            groups[g].summary = std::to_string(groups[g].members.size()) + " shell pairs still cross: " + keys[g] + ".";
+            out.push_back(std::move(groups[g]));
+        }
+    }
+    return out;
 }
 
 FixAllRunningText fixAllRunningText(const std::string& progressText) {

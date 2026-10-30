@@ -157,6 +157,11 @@ private:
     void drawFixAllRunning();
     void drawFixAllResult();
     void drawFixAllReport();
+    void drawFixAllFooter();        ///< The action buttons, always visible below the scrolling body
+    void drawFixAllPlanFooter();
+    void drawFixAllRebuildFooter();
+    void drawFixAllResultFooter();
+    void drawFixAllReportFooter();
     void drawFixAllSwitch();        ///< Repair / Rebuild radios (hidden for a face scope)
     void drawFixAllRebuildPlan();   ///< The Rebuild side of the Plan state
     void drawFixAllRebuildJob();    ///< Progress and Cancel of a rebuild job (whole scope or one shell)

@@ -398,3 +398,44 @@ TEST_CASE("Fix All Rebuild side: a whole-scope rebuild previews and applies as o
     CHECK(controller.mesh().F == before.F);
     CHECK(controller.mesh().V == before.V);
 }
+
+TEST_CASE("Fix All lines: a cavity another shell reaches into is not also reported as 'cavity or inside out?'",
+          "[app][fixall][gui]") {
+    AppController controller;
+    controller.setMesh(SampleMeshes::createCavityReachedMesh(SampleMeshes::CavityReachedVariant::CrossesWall), "cavity reached");
+    controller.openFixAll(3);
+    controller.waitForFixAllPlan();
+    controller.previewFixAll();
+    REQUIRE(controller.fixAllCandidate() != nullptr);
+    REQUIRE(controller.fixAllCandidate()->fixAll != nullptr);
+    const ogun::FixAllResult& result = controller.fixAllCandidate()->fixAll->result;
+    const std::vector<ogun::FixAllResultLine> lines = ogun::fixAllResultLines(result, true);
+    const auto count = [&](const std::string& part) {
+        return std::count_if(lines.begin(), lines.end(), [&](const ogun::FixAllResultLine& l) { return l.text.find(part) != std::string::npos; });
+    };
+    CHECK(count("reaches into cavity") >= 1);
+    CHECK(count("cavity or inside out?") == 0);
+}
+
+TEST_CASE("Fix All lines: repeated crossing lines fold into one group", "[app][fixall][gui]") {
+    std::vector<ogun::FixAllResultLine> lines(1);
+    lines[0].text = "Shells: 9 -> 9";
+    for (int i = 0; i < 5; ++i) {
+        ogun::FixAllResultLine l;
+        l.text = "#" + std::to_string(i + 1) + " and #9 still cross";
+        l.shells = {i, 8};
+        l.groupKey = "their group reaches into cavity #28";
+        lines.push_back(l);
+    }
+    for (int i = 0; i < 2; ++i) { // too few to group
+        ogun::FixAllResultLine l;
+        l.shells = {i, 7};
+        l.groupKey = "the merge is off";
+        lines.push_back(l);
+    }
+    const std::vector<ogun::FixAllLineGroup> groups = ogun::fixAllLineGroups(lines);
+    REQUIRE(groups.size() == 1);
+    CHECK(groups[0].summary == "5 shell pairs still cross: their group reaches into cavity #28.");
+    CHECK(groups[0].members == std::vector<std::size_t>{1, 2, 3, 4, 5});
+    CHECK(groups[0].shells == std::vector<int>{0, 8, 1, 2, 3, 4});
+}
