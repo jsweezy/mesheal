@@ -66,6 +66,16 @@ ogun::UserPreferences customPreferences() {
     p.defaults.thinFace.minAltitude = 0.02;
     p.defaults.thinFace.minArea = 4.0e-5;
     p.defaults.thinFace.maxAspectRatio = 250.0;
+    p.defaults.fixAll.passes = 5;
+    p.defaults.fixAll.timeBudgetSeconds = 120.0;
+    p.defaults.fixAll.weld = !p.defaults.fixAll.weld;
+    p.defaults.fixAll.weldTolerance.absFloor = 2.0e-5;
+    p.defaults.fixAll.weldTolerance.relTol = 3.0e-7;
+    p.defaults.fixAll.removeTinyShells = !p.defaults.fixAll.removeTinyShells;
+    p.defaults.fixAll.tinyShellFraction = 0.0025;
+    p.defaults.fixAll.removeFins = !p.defaults.fixAll.removeFins;
+    p.defaults.fixAll.closeCracks = !p.defaults.fixAll.closeCracks;
+    p.defaults.fixAll.healThinFaces = !p.defaults.fixAll.healThinFaces;
     p.checkMeshAfterLoad = !p.checkMeshAfterLoad;
     for (bool& autoCheck : p.autoCheckDefaults) {
         autoCheck = !autoCheck;
@@ -346,4 +356,100 @@ TEST_CASE("Mouse preferences: presets apply as built, unknown or invalid values 
     const std::string text = ogun::formatUserPreferences(ogun::UserPreferences{});
     CHECK(text.find("mouse.preset = ogun\n") != std::string::npos);
     CHECK(text.find("mouse.pan = shift+left, right, middle\n") != std::string::npos);
+}
+
+TEST_CASE("Fix All preferences: defaults, limits, refused zero, malformed values and the load weld", "[app][preferences][fixall]") {
+    using namespace ogun;
+    const UserPreferences defaults;
+    CHECK(defaults.defaults.fixAll.passes == 3);
+    CHECK(defaults.defaults.fixAll.weld);
+    CHECK(defaults.defaults.fixAll.weldTolerance.absFloor == 1.0e-6);
+    CHECK(defaults.defaults.fixAll.weldTolerance.relTol == 1.0e-6);
+    CHECK(defaults.defaults.fixAll.tinyShellFraction == 1.0e-3);
+    CHECK(defaults.defaults.fixAll.removeTinyShells);
+    CHECK(defaults.defaults.fixAll.removeFins);
+    CHECK(defaults.defaults.fixAll.closeCracks);
+    CHECK(defaults.defaults.fixAll.healThinFaces);
+    CHECK(defaults.tolerance.absFloor == settings::kDefaultWeldAbsFloor); // the load weld stays 1e-9
+
+    // Limits clamp; rel = 0 (or negative) is refused and keeps the default
+    const UserPreferences limits = parseUserPreferences(
+        "fixall.passes = 99\nfixall.weld_floor = 1\nfixall.weld_rel = 1e-12\nfixall.tiny_shell_fraction = 5\n"
+        "fixall.time_budget = -3\n");
+    CHECK(limits.defaults.fixAll.passes == settings::kFixAllMaxPasses);
+    CHECK(limits.defaults.fixAll.weldTolerance.absFloor == settings::kFixAllWeldToleranceMax);
+    CHECK(limits.defaults.fixAll.weldTolerance.relTol == settings::kFixAllWeldToleranceMin);
+    CHECK(limits.defaults.fixAll.tinyShellFraction == settings::kFixAllTinyShellFractionMax);
+    CHECK(limits.defaults.fixAll.timeBudgetSeconds == 0.0);
+    CHECK(parseUserPreferences("fixall.passes = 0\n").defaults.fixAll.passes == settings::kFixAllMinPasses);
+    CHECK(parseUserPreferences("fixall.weld_rel = 0\n").defaults.fixAll.weldTolerance.relTol ==
+          settings::kDefaultFixAllWeldRelTol);
+    CHECK(parseUserPreferences("fixall.weld_rel = -1e-5\n").defaults.fixAll.weldTolerance.relTol ==
+          settings::kDefaultFixAllWeldRelTol);
+
+    // Malformed values fall back per key; the other keys of the file still apply
+    const UserPreferences bad = parseUserPreferences(
+        "fixall.passes = many\nfixall.weld = maybe\nfixall.weld_floor = nan\nfixall.fins = false\n"
+        "fixall.tiny_shell_fraction = 1 2\nfixall.cracks = 0\n");
+    CHECK(bad.defaults.fixAll.passes == 3);
+    CHECK(bad.defaults.fixAll.weld);
+    CHECK(bad.defaults.fixAll.weldTolerance.absFloor == settings::kDefaultFixAllWeldAbsFloor);
+    CHECK(bad.defaults.fixAll.tinyShellFraction == settings::kDefaultFixAllTinyShellFraction);
+    CHECK_FALSE(bad.defaults.fixAll.removeFins);
+    CHECK_FALSE(bad.defaults.fixAll.closeCracks);
+
+    // Editing Fix All never touches the load weld keys, and the written text is stable
+    UserPreferences edited = parseUserPreferences("weld_floor = 4e-8\nrelative_tolerance = 5e-8\n");
+    edited.defaults.fixAll.weldTolerance.absFloor = 7.5e-5;
+    const UserPreferences back = parseUserPreferences(formatUserPreferences(edited));
+    CHECK(back.tolerance.absFloor == 4.0e-8);
+    CHECK(back.tolerance.relTol == 5.0e-8);
+    CHECK(back.defaults.fixAll.weldTolerance.absFloor == 7.5e-5);
+    CHECK(keyValues(formatUserPreferences(edited)).at("fixall.weld_floor") == "7.5e-05");
+}
+
+TEST_CASE("Fix All preferences reach the controller without touching the merge box or the load weld", "[app][preferences][fixall]") {
+    using namespace ogun;
+    AppController controller;
+    UserPreferences prefs;
+    prefs.defaults.fixAll.passes = 6;
+    prefs.defaults.fixAll.weld = false;
+    prefs.defaults.fixAll.weldTolerance = {2.0e-5, 4.0e-6};
+    prefs.defaults.fixAll.removeTinyShells = false;
+    prefs.defaults.fixAll.tinyShellFraction = 0.002;
+    prefs.defaults.fixAll.healThinFaces = false;
+
+    controller.setFixAllMergeShells(true);
+    controller.applyUserPreferences(prefs);
+    CHECK(controller.fixAllParams().mergeShells); // untouched
+    CHECK(controller.fixAllParams().passes == 6);
+    CHECK_FALSE(controller.fixAllParams().weld);
+    CHECK(controller.fixAllParams().weldTolerance.absFloor == 2.0e-5);
+    CHECK(controller.fixAllParams().tinyShellFraction == 0.002);
+    CHECK_FALSE(controller.fixAllParams().healThinFaces);
+    CHECK(controller.toleranceConfig().absFloor == settings::kDefaultWeldAbsFloor);
+    CHECK(controller.toleranceConfig().relTol == settings::kDefaultWeldRelTol);
+    CHECK(sameUserPreferences(controller.userPreferences(), prefs));
+
+    // The panel opens with the saved settings; One Pass and panel edits are not saved
+    controller.loadSampleDefectiveMesh();
+    controller.openFixAll(1);
+    CHECK(controller.fixAllParams().passes == 1);
+    CHECK_FALSE(controller.fixAllParams().weld);
+    FixAllParams edited = controller.fixAllParams();
+    edited.weld = true;
+    controller.setFixAllParams(edited);
+    CHECK(controller.userPreferences().defaults.fixAll.passes == 6);
+    CHECK_FALSE(controller.userPreferences().defaults.fixAll.weld);
+    controller.closeTool();
+
+    // Limits apply and Reset to defaults restores the built-in values
+    prefs.defaults.fixAll.weldTolerance = {1.0, 0.0};
+    controller.setFixAllDefaults(prefs.defaults.fixAll);
+    CHECK(controller.preferenceDefaults().fixAll.weldTolerance.absFloor == settings::kFixAllWeldToleranceMax);
+    CHECK(controller.preferenceDefaults().fixAll.weldTolerance.relTol == settings::kFixAllWeldToleranceMin);
+    controller.applyUserPreferences(UserPreferences{});
+    CHECK(controller.fixAllParams().passes == 3);
+    CHECK(controller.fixAllParams().weld);
+    CHECK(sameUserPreferences(controller.userPreferences(), UserPreferences{}));
 }

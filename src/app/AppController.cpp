@@ -301,6 +301,21 @@ void AppController::setThinFaceDefaults(const ThinFaceThresholds& defaults) {
     setThresholds(defaults);
 }
 
+void AppController::setFixAllDefaults(const FixAllPreferences& d) {
+    FixAllPreferences& stored = preferenceDefaults_.fixAll;
+    stored = d;
+    stored.passes = std::clamp(stored.passes, settings::kFixAllMinPasses, settings::kFixAllMaxPasses);
+    stored.timeBudgetSeconds = std::max(stored.timeBudgetSeconds, 0.0);
+    stored.tinyShellFraction = std::clamp(stored.tinyShellFraction, 0.0, settings::kFixAllTinyShellFractionMax);
+    stored.weldTolerance.absFloor =
+        std::clamp(stored.weldTolerance.absFloor, settings::kFixAllWeldToleranceMin, settings::kFixAllWeldToleranceMax);
+    stored.weldTolerance.relTol =
+        std::clamp(stored.weldTolerance.relTol, settings::kFixAllWeldToleranceMin, settings::kFixAllWeldToleranceMax);
+    FixAllParams params = globalParams_.fixAll;
+    applyFixAllDefaults(params, stored);
+    setFixAllParams(params);
+}
+
 UserPreferences AppController::userPreferences() const {
     UserPreferences prefs;
     prefs.appearance = overlayAppearance_;
@@ -327,6 +342,7 @@ void AppController::applyUserPreferences(const UserPreferences& prefs) {
     setPreviewPatchOpacity(prefs.previewPatchOpacity);
     setToleranceConfig(prefs.tolerance);
     setThinFaceDefaults(prefs.defaults.thinFace);
+    setFixAllDefaults(prefs.defaults.fixAll);
     setCheckMeshAfterLoad(prefs.checkMeshAfterLoad);
     autoCheckDefaults_ = prefs.autoCheckDefaults;
     setListCap(prefs.listCap);

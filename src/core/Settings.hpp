@@ -203,6 +203,7 @@ inline constexpr double kFixAllWeldNoteDiagonalShare = 1.0e-4;    // Fix All wel
 inline constexpr int    kDefaultFixAllPasses = 3;                 // Passes of a full run (1 = One pass); stops earlier when clean or stuck
 inline constexpr int    kFixAllMinPasses     = 1;                 // Fewest passes a run may be asked for
 inline constexpr int    kFixAllMaxPasses     = 10;                // Most passes a run may be asked for
+inline constexpr double kFixAllTinyShellFractionMax = 0.1;        // Largest tiny-shell fraction Preferences accepts (10 % of the bounding-box diagonal)
 inline constexpr double kDefaultFixAllTimeBudgetSeconds = 0.0;    // Stop after the pass that ends past this many seconds (0 = no budget)
 inline constexpr bool   kDefaultFixAllWeld        = true;         // Weld by distance (its own per-axis tolerance above) runs first in each pass
 inline constexpr bool   kDefaultFixAllTinyShells  = true;         // Remove tiny floating shells (below kDefaultFixAllTinyShellFraction, touching nothing)

@@ -1131,12 +1131,13 @@ void PolyscopeGui::drawPreferencesWindow(float top, float bottom, float rightCol
             const ToleranceConfig storedTol = controller_.toleranceConfig();
             ToleranceConfig tol = storedTol;
             bool changed = false;
+            ImGui::SeparatorText("Loading");
             ImGui::PushItemWidth(110.0f);
             if (ImGui::InputDouble("Weld floor", &tol.absFloor, 0.0, 0.0, "%.6g")) {
                 tol.absFloor = std::max(0.0, tol.absFloor);
                 changed = true;
             }
-            gui::helpMarker("Absolute vertex-welding tolerance floor used when loading STL files, in file coordinates (the file unit does not change it).");
+            gui::helpMarker("Absolute vertex-welding tolerance floor used when loading STL files, in file coordinates (the file unit does not change it). Fix All has its own weld (Fix All tab).");
             if (ImGui::InputDouble("Relative tolerance", &tol.relTol, 0.0, 0.0, "%.6g")) {
                 tol.relTol = std::max(0.0, tol.relTol);
                 changed = true;
@@ -1163,6 +1164,10 @@ void PolyscopeGui::drawPreferencesWindow(float top, float bottom, float rightCol
             if (ImGui::Button("Reset default tolerances")) {
                 controller_.setToleranceConfig(ToleranceConfig{});
             }
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Fix All")) {
+            drawFixAllPreferencesTab();
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Diagnostics")) {
@@ -1224,6 +1229,56 @@ void PolyscopeGui::drawPreferencesWindow(float top, float bottom, float rightCol
         }
     }
     ImGui::End();
+}
+
+void PolyscopeGui::drawFixAllPreferencesTab() {
+    const FixAllPreferences stored = controller_.preferenceDefaults().fixAll;
+    FixAllPreferences fix = stored;
+    ImGui::TextWrapped("Starting values of the Fix All panel. They are separate from the weld done when the file was loaded.");
+    ImGui::SeparatorText("Run");
+    ImGui::PushItemWidth(110.0f);
+    ImGui::InputInt("Passes", &fix.passes);
+    gui::helpMarker("Passes of a full Fix All run (1 to 10). It stops earlier when the mesh is clean or a pass changes nothing. "
+                    "Fix All, One Pass always runs 1.");
+    ImGui::InputDouble("Time budget (s)", &fix.timeBudgetSeconds, 0.0, 0.0, "%.6g");
+    gui::helpMarker("No new pass starts once a pass has ended past this many seconds. 0 = no budget.");
+    ImGui::SeparatorText("Fix All weld");
+    ImGui::Checkbox("Weld by distance first", &fix.weld);
+    gui::helpMarker("Merges vertices that are almost on top of each other (cracks) at the start of each pass. Separate from "
+                    "the weld done when the file was loaded (Units & Tolerance > Loading).");
+    ImGui::InputDouble("Fix All weld floor", &fix.weldTolerance.absFloor, 0.0, 0.0, "%.6g");
+    gui::helpMarker("Absolute per-axis tolerance floor of the Fix All weld, in file coordinates. "
+                    "Allowed range 1e-9 to 1e-3. Separate from the weld done when the file was loaded.");
+    ImGui::InputDouble("Fix All relative tolerance", &fix.weldTolerance.relTol, 0.0, 0.0, "%.6g");
+    gui::helpMarker("Per-axis tolerance relative to the larger coordinate on that axis. Allowed range 1e-9 to 1e-3; 0 is "
+                    "not allowed. Separate from the weld done when the file was loaded.");
+    ImGui::SeparatorText("Steps");
+    ImGui::Checkbox("Remove fins / internal walls", &fix.removeFins);
+    ImGui::Checkbox("Remove tiny floating shells", &fix.removeTinyShells);
+    double percent = fix.tinyShellFraction * 100.0;
+    if (ImGui::InputDouble("Tiny shell size (%)", &percent, 0.0, 0.0, "%.6g")) {
+        fix.tinyShellFraction = percent / 100.0;
+    }
+    gui::helpMarker("A floating shell touching nothing is tiny when its bounding-box diagonal is below this share of the "
+                    "whole model's bounding-box diagonal (0.1 % by default).");
+    ImGui::PopItemWidth();
+    ImGui::Checkbox("Close cracks", &fix.closeCracks);
+    ImGui::Checkbox("Heal thin faces", &fix.healThinFaces);
+    gui::helpMarker("Uses the aspect-ratio limit of the Thin / sliver faces settings.");
+    ImGui::TextDisabled("Merge shells is decided for each mesh in the Fix All panel; it is not saved.");
+    if (ImGui::Button("Reset Fix All settings")) {
+        fix = FixAllPreferences{};
+    }
+    const FixAllPreferences& s = stored;
+    if (fix.passes != s.passes || fix.timeBudgetSeconds != s.timeBudgetSeconds || fix.weld != s.weld ||
+        fix.weldTolerance.absFloor != s.weldTolerance.absFloor || fix.weldTolerance.relTol != s.weldTolerance.relTol ||
+        fix.removeTinyShells != s.removeTinyShells || fix.tinyShellFraction != s.tinyShellFraction ||
+        fix.removeFins != s.removeFins || fix.closeCracks != s.closeCracks || fix.healThinFaces != s.healThinFaces) {
+        if (fix.weldTolerance.relTol <= 0.0) {
+            fix.weldTolerance.relTol = s.weldTolerance.relTol; // 0 is refused
+        }
+        controller_.setFixAllDefaults(fix);
+    }
 }
 
 UserPreferences PolyscopeGui::currentPreferences() const {

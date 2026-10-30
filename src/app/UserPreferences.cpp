@@ -118,6 +118,38 @@ Field realField(const char* section, std::string key, Get get, double lo, double
             equalBy(get)};
 }
 
+/// Real number clamped to [lo, hi]; a value <= 0 is malformed (kept at the default) when `refuseNonPositive`.
+template <typename Get>
+Field positiveRealField(const char* section, std::string key, Get get, double lo, double hi) {
+    Field field = realField(section, std::move(key), get, lo, hi);
+    field.parse = [get, lo, hi](UserPreferences& p, std::string_view text) {
+        const auto v = parseReals<double, 1>(text);
+        if (!v || (*v)[0] <= 0.0) {
+            return false;
+        }
+        get(p) = std::clamp((*v)[0], lo, hi);
+        return true;
+    };
+    return field;
+}
+
+/// Whole number clamped to [lo, hi].
+template <typename Get>
+Field intField(const char* section, std::string key, Get get, int lo, int hi) {
+    return {section, std::move(key),
+            [get](const UserPreferences& p) { return std::to_string(get(p)); },
+            [get, lo, hi](UserPreferences& p, std::string_view text) {
+                long long value = 0;
+                const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), value);
+                if (ec != std::errc() || end != text.data() + text.size()) {
+                    return false;
+                }
+                get(p) = static_cast<int>(std::clamp<long long>(value, lo, hi));
+                return true;
+            },
+            equalBy(get)};
+}
+
 template <typename Get>
 Field colorField(const char* section, std::string key, Get get) {
     return {section, std::move(key),
@@ -234,6 +266,27 @@ const std::vector<Field>& preferenceFields() {
                               [](auto& p) -> auto& { return p.defaults.thinFace.minAltitude; }, 0.0, kHuge));
         f.push_back(realField(tol, "thin_min_area_floor",
                               [](auto& p) -> auto& { return p.defaults.thinFace.minArea; }, 0.0, kHuge));
+
+        // Fix All's own weld and switches; the load weld above is never touched by them
+        const char* fix = "Preferences > Fix All";
+        f.push_back(intField(fix, "fixall.passes", [](auto& p) -> auto& { return p.defaults.fixAll.passes; },
+                             settings::kFixAllMinPasses, settings::kFixAllMaxPasses));
+        f.push_back(realField(fix, "fixall.time_budget",
+                              [](auto& p) -> auto& { return p.defaults.fixAll.timeBudgetSeconds; }, 0.0, kHuge));
+        f.push_back(boolField(fix, "fixall.weld", [](auto& p) -> auto& { return p.defaults.fixAll.weld; }));
+        f.push_back(realField(fix, "fixall.weld_floor",
+                              [](auto& p) -> auto& { return p.defaults.fixAll.weldTolerance.absFloor; },
+                              settings::kFixAllWeldToleranceMin, settings::kFixAllWeldToleranceMax));
+        f.push_back(positiveRealField(fix, "fixall.weld_rel",
+                                      [](auto& p) -> auto& { return p.defaults.fixAll.weldTolerance.relTol; },
+                                      settings::kFixAllWeldToleranceMin, settings::kFixAllWeldToleranceMax));
+        f.push_back(boolField(fix, "fixall.tiny_shells", [](auto& p) -> auto& { return p.defaults.fixAll.removeTinyShells; }));
+        f.push_back(realField(fix, "fixall.tiny_shell_fraction",
+                              [](auto& p) -> auto& { return p.defaults.fixAll.tinyShellFraction; }, 0.0,
+                              settings::kFixAllTinyShellFractionMax));
+        f.push_back(boolField(fix, "fixall.fins", [](auto& p) -> auto& { return p.defaults.fixAll.removeFins; }));
+        f.push_back(boolField(fix, "fixall.cracks", [](auto& p) -> auto& { return p.defaults.fixAll.closeCracks; }));
+        f.push_back(boolField(fix, "fixall.thin", [](auto& p) -> auto& { return p.defaults.fixAll.healThinFaces; }));
 
         const char* diag = "Preferences > Diagnostics";
         f.push_back(boolField(diag, "check_mesh_after_load", [](auto& p) -> auto& { return p.checkMeshAfterLoad; }));

@@ -58,8 +58,23 @@ struct UserPreferences;
 
 /// Preferences > Units & Tolerance defaults; the live tool settings start from these and
 /// editing the live settings never changes them. Kept plain so it is easy to serialize.
+/// Fix All settings saved in Preferences > Fix All (its own weld, never the load weld). The Merge shells
+/// box is not a preference: it is decided per mesh. The panel's Options start from these each time it opens.
+struct FixAllPreferences {
+    int passes = settings::kDefaultFixAllPasses;
+    double timeBudgetSeconds = settings::kDefaultFixAllTimeBudgetSeconds;
+    bool weld = settings::kDefaultFixAllWeld;
+    ToleranceConfig weldTolerance{settings::kDefaultFixAllWeldAbsFloor, settings::kDefaultFixAllWeldRelTol};
+    bool removeTinyShells = settings::kDefaultFixAllTinyShells;
+    double tinyShellFraction = settings::kDefaultFixAllTinyShellFraction;
+    bool removeFins = settings::kDefaultFixAllFins;
+    bool closeCracks = settings::kDefaultFixAllCloseCracks;
+    bool healThinFaces = settings::kDefaultFixAllHealThin;
+};
+
 struct PreferenceDefaults {
     ThinFaceThresholds thinFace{}; // min altitude / min area / max aspect ratio (file units)
+    FixAllPreferences fixAll{};
 };
 
 /// State of one Mesh Health row.
@@ -427,6 +442,10 @@ public:
 
     /// Stores new thin-face defaults and copies them into the live thresholds.
     void setThinFaceDefaults(const ThinFaceThresholds& defaults);
+
+    /// Stores the Fix All preferences (limits applied) and copies them into the live Fix All settings; the
+    /// Merge shells box is left as it is.
+    void setFixAllDefaults(const FixAllPreferences& defaults);
 
     /// Saved preference values held by the controller (UserPreferences.hpp; GUI-only fields keep defaults).
     [[nodiscard]] UserPreferences userPreferences() const;
@@ -1577,6 +1596,8 @@ private:
 
     Mesh mesh_;
     CgalSurfaceMesh cgalMesh_;
+    static void applyFixAllDefaults(FixAllParams& params, const FixAllPreferences& defaults);
+
     bool cgalMeshValid_ = false;
     std::string loadedSourceLabel_ = "(No mesh loaded)";
     std::filesystem::path currentFilePath_;

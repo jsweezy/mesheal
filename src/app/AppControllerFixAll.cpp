@@ -167,9 +167,22 @@ void AppController::resetFixAllState() {
     fixAllCancelling_ = false;
 }
 
+void AppController::applyFixAllDefaults(FixAllParams& params, const FixAllPreferences& d) {
+    params.passes = d.passes;
+    params.timeBudgetSeconds = d.timeBudgetSeconds;
+    params.weld = d.weld;
+    params.weldTolerance = d.weldTolerance;
+    params.removeTinyShells = d.removeTinyShells;
+    params.tinyShellFraction = d.tinyShellFraction;
+    params.removeFins = d.removeFins;
+    params.closeCracks = d.closeCracks;
+    params.healThinFaces = d.healThinFaces;
+}
+
 void AppController::openFixAll(int passes) {
     openRepairAll(ToolSlot::FixAll, GlobalRepairMethod::FixAll);
     resetFixAllState();
+    applyFixAllDefaults(globalParams_.fixAll, preferenceDefaults_.fixAll);
     globalParams_.fixAll.passes = std::clamp(passes, settings::kFixAllMinPasses, settings::kFixAllMaxPasses);
     globalParams_.fixAll.mergeShells = settings::kDefaultFixAllMergeShells;
     onFixAllScopeChanged();

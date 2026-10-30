@@ -67,6 +67,7 @@ private:
     void drawPreferencesWindow(float top, float bottom, float rightColumnLeft);
     /// Preferences > Mouse: preset, one row of bindings per action, conflicts, zoom options.
     void drawMousePreferencesTab();
+    void drawFixAllPreferencesTab();
     /// Popup editing one binding of the Mouse tab (click-to-capture plus button / modifier controls).
     void drawMouseBindingEditor();
     /// Controller preferences plus the GUI-only ones (UI scale, background color).
