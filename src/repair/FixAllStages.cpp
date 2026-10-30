@@ -35,6 +35,12 @@ std::string formatLength(double value, Unit unit) {
     return std::string(text.data()) + " " + std::string(unitSymbol(unit));
 }
 
+std::string formatVolume(double value, Unit unit) {
+    std::array<char, 32> text{};
+    std::snprintf(text.data(), text.size(), "%.6g", value);
+    return std::string(text.data()) + " " + std::string(unitSymbol(unit)) + "^3";
+}
+
 std::string shellList(std::span<const int> shells) {
     std::string text;
     for (std::size_t i = 0; i < shells.size(); ++i) {

@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <stop_token>
 #include <string>
 #include <vector>
@@ -161,5 +162,19 @@ struct MergePlan {
 /// The same, working out the relations (every pair) and roles. std::nullopt when stopped.
 [[nodiscard]] std::optional<bool> mergeTickedByDefault(const Mesh& mesh, const FixAllScope& scope,
                                                        const MergePlanParams& params = {}, std::stop_token stopToken = {});
+
+/// Phase 2's stages for `plan` (worked out on the mesh phase 2 starts from): one step deleting every
+/// isolated nested solid (when there is one), then one step per merge group, which unites the group's
+/// shells with `mergeShells` (its pass-through cavities kept bit-identical) and checks the merge guards.
+/// Refused groups get no stage. The stages find their shells through `FixAllStageContext::planFaceMap`.
+[[nodiscard]] std::vector<FixAllStage> fixAllMergeStages(const MergePlan& plan);
+
+/// The merge guard's volume sanity check: the union `unionVolume` of shells of volumes `solidVolumes`
+/// (cavities left out) must lie between the largest of them and their sum, and the signed total of the
+/// union and its kept cavities, `signedTotal`, must be the union less the cavities' volumes
+/// (`cavityVolumes`, negative), each within `kFixAllMergeVolumeRelTolerance` of the sum. Outside these
+/// bounds a shell was probably inside out or misread. Empty when it holds, else why not.
+[[nodiscard]] std::string mergeVolumeProblem(std::span<const double> solidVolumes, double unionVolume,
+                                             std::span<const double> cavityVolumes, double signedTotal);
 
 } // namespace ogun

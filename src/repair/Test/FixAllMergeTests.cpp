@@ -1,20 +1,25 @@
 // Fix All phase 2: the merge plan (groups, kept cavities, refused groups, nested solids to delete,
-// skipped shells, contacts, links outside the scope) and the default of the Merge shells box.
+// skipped shells, contacts, links outside the scope), the default of the Merge shells box, and the merge
+// run inside each pass with its guards, followed by the phase-3 clean-up.
 
 #include "repair/MergePlan.hpp"
 
 #include "diagnostics/MeshChecks.hpp"
+#include "diagnostics/ShellRelations.hpp"
 #include "io/SampleMeshes.hpp"
 #include "io/StlReader.hpp"
 #include "repair/FixAll.hpp"
+#include "repair/RepairMetrics.hpp"
 #include "repair/ShellMerge.hpp"
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <iostream>
 #include <numeric>
 #include <optional>
@@ -499,4 +504,626 @@ TEST_CASE("Turkey merge plan: the group reaching cavity #28 is refused; without 
     CHECK(ogun::checkShells(merged.mesh).infoCount == 1);
     std::cout << "Turkey without #28: plan " << q.elapsedMs << " ms, merge " << merged.elapsedMs << " ms, faces "
               << without.numFaces() << " -> " << merged.mesh.numFaces() << "\n";
+}
+
+// ---------------------------------------------------------------------------------------------
+// Phase 2 in the pass: the merge runs, guarded, and phase 3 cleans up after it
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+
+using ogun::FixAllGuard;
+using ogun::FixAllPhase;
+using ogun::FixAllResult;
+using ogun::FixAllStage;
+using ogun::FixAllStageId;
+using ogun::FixAllStepReport;
+using ogun::FixAllStepStatus;
+using ogun::FixAllStopReason;
+
+ogun::FixAllParams mergeOn(int passes = ogun::settings::kDefaultFixAllPasses) {
+    ogun::FixAllParams params;
+    params.mergeShells = true;
+    params.passes = passes;
+    return params;
+}
+
+FixAllResult runAll(const Mesh& mesh, const ogun::FixAllParams& params, const ogun::FixAllTestHooks* hooks = nullptr) {
+    return ogun::runFixAll(mesh, FixAllScope::whole(mesh), params, {}, nullptr, hooks);
+}
+
+const FixAllStepReport* stepIn(const FixAllResult& result, FixAllStageId id, int pass = 1) {
+    const auto it = std::find_if(result.steps.begin(), result.steps.end(),
+                                 [&](const FixAllStepReport& step) { return step.stage == id && step.pass == pass; });
+    return it == result.steps.end() ? nullptr : &*it;
+}
+
+std::size_t shellCount(const Mesh& mesh) {
+    return ogun::shellsLargestFirst(mesh).size();
+}
+
+bool same(const Mesh& a, const Mesh& b) {
+    return a.V.rows() == b.V.rows() && a.F.rows() == b.F.rows() && a.V == b.V && a.F == b.F;
+}
+
+/// Every face of `part` is in `mesh` with the same corners (the part was kept bit-identical).
+bool keeps(const Mesh& mesh, const Mesh& part) {
+    std::vector<ogun::FaceGeometryKey> keys;
+    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+        keys.push_back(ogun::faceGeometryKey(mesh, f));
+    }
+    for (Eigen::Index f = 0; f < part.numFaces(); ++f) {
+        if (std::find(keys.begin(), keys.end(), ogun::faceGeometryKey(part, f)) == keys.end()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool notesContain(const FixAllStepReport* step, const std::string& text) {
+    return step != nullptr && std::any_of(step->notes.begin(), step->notes.end(),
+                                          [&](const ogun::FixAllShellNote& note) { return note.text == text; });
+}
+
+std::size_t phaseSteps(const FixAllResult& result, FixAllPhase phase, int pass) {
+    return static_cast<std::size_t>(std::count_if(result.steps.begin(), result.steps.end(), [&](const FixAllStepReport& step) {
+        return step.phase == phase && step.pass == pass;
+    }));
+}
+
+std::size_t mergeStepsKept(const FixAllResult& result, int pass) {
+    return static_cast<std::size_t>(std::count_if(result.steps.begin(), result.steps.end(), [&](const FixAllStepReport& step) {
+        return step.stage == FixAllStageId::MergeShells && step.pass == pass && step.accepted();
+    }));
+}
+
+/// The same stage list with every stage `id` removed in every phase.
+ogun::FixAllTestHooks without(std::vector<FixAllStageId> ids) {
+    ogun::FixAllTestHooks hooks;
+    hooks.adjustStages = [ids = std::move(ids)](int, FixAllPhase, std::vector<FixAllStage>& stages) {
+        std::erase_if(stages, [&](const FixAllStage& s) { return std::find(ids.begin(), ids.end(), s.id) != ids.end(); });
+    };
+    return hooks;
+}
+
+} // namespace
+
+TEST_CASE("Fix All merges two overlapping closed shells and cleans up after the union", "[repair][fixall][merge]") {
+    const Mesh a = box({0, 0, 0}, {2, 2, 2});
+    const Mesh b = box({1.8, 0.2, 0.3}, {3.8, 2.2, 2.3});
+    const Mesh mesh = SampleMeshes::combineMeshes({a, b});
+    const double overlap = 0.2 * 1.8 * 1.7;
+    REQUIRE(ogun::mergeTickedByDefault(mesh, FixAllScope::whole(mesh)) == std::optional<bool>(true));
+
+    SECTION("Merge on: 2 shells -> 1, no crossings, closed, the overlap counted once") {
+        ogun::FixAllProgress progress;
+        std::vector<std::string> texts;
+        progress.observer = [&](float, const std::string& text) { texts.push_back(text); };
+        const FixAllResult result = ogun::runFixAll(mesh, FixAllScope::whole(mesh), mergeOn(), {}, &progress);
+        REQUIRE(result.success);
+        CHECK(shellCount(result.mesh) == 1);
+        CHECK(result.countsBefore.intersectingFaces > 0);
+        CHECK(result.countsAfter.intersectingFaces == 0);
+        CHECK(result.countsAfter.openEdges == 0);
+        CHECK(result.countsAfter.nonManifoldEdges == 0);
+        CHECK(ogun::signedVolume(result.mesh) == Catch::Approx(16.0 - overlap));
+        CHECK(result.merges == 1);
+        REQUIRE_FALSE(result.passes.empty());
+        CHECK(result.passes[0].groupsMerged == 1);
+        CHECK(result.passes[0].merged());
+        CHECK(result.stopReason == FixAllStopReason::Clean);
+
+        const FixAllStepReport* planned = stepIn(result, FixAllStageId::PlanMerge);
+        REQUIRE(planned != nullptr);
+        CHECK(planned->phase == FixAllPhase::Merge);
+        CHECK(planned->detail == "Merge 2 shells that overlap into 1 solid.");
+        REQUIRE(planned->notes.size() == 1);
+        CHECK(planned->notes[0].shells.size() == 2);
+        const FixAllStepReport* merge = stepIn(result, FixAllStageId::MergeShells);
+        REQUIRE(merge != nullptr);
+        REQUIRE(merge->accepted());
+        CHECK(merge->detail.starts_with("Merged 2 shells into 1 ("));
+        CHECK(merge->detail.find("crossing faces ") != std::string::npos);
+        CHECK(merge->countBefore == 2);
+        CHECK(merge->countAfter == 1);
+        CHECK(notesContain(merge, "Merged 2 shells into #1"));
+        // Phase 3 ran after the merge
+        CHECK(phaseSteps(result, FixAllPhase::Cleanup, 1) == ogun::fixAllCleanupStages().size());
+        // Faces the union removed, in the input's numbering
+        CHECK_FALSE(result.mergeRemovedFaces.empty());
+        CHECK(std::is_sorted(result.mergeRemovedFaces.begin(), result.mergeRemovedFaces.end()));
+        CHECK(result.mergeRemovedFaces.back() < mesh.numFaces());
+        CHECK(result.scope.matches(result.mesh));
+        CHECK(std::find(texts.begin(), texts.end(), "pass 1 of 3, phase 2, planning the merge...") != texts.end());
+        CHECK(std::find(texts.begin(), texts.end(), "pass 1 of 3, phase 2, merging 2 shells (Manifold)...") != texts.end());
+
+        // Thin faces are no worse than right after the union
+        const ogun::ShellMergeResult direct = ogun::mergeShells(mesh, ogun::shellsLargestFirst(mesh));
+        REQUIRE(direct.success);
+        const ogun::FixAllCounts union0 =
+            ogun::countFixAllDefects(direct.mesh, FixAllScope::whole(direct.mesh), ogun::FixAllParams{}.checkParams);
+        CHECK(result.countsAfter.thinFaces <= union0.thinFaces);
+    }
+    SECTION("Merge off: two shells, the crossings stay and are counted") {
+        const FixAllResult result = runAll(mesh, {});
+        CHECK(shellCount(result.mesh) == 2);
+        CHECK(result.countsAfter.intersectingFaces > 0);
+        CHECK(same(result.mesh, mesh));
+        CHECK(result.merges == 0);
+        CHECK(phaseSteps(result, FixAllPhase::Merge, 1) == 0);
+        CHECK(result.mergeRemovedFaces.empty());
+    }
+}
+
+TEST_CASE("Fix All merges the closed shells and leaves an open one it cannot close", "[repair][fixall][merge]") {
+    const Mesh mesh = SampleMeshes::createOpenShellAmongCubesMesh();
+    REQUIRE(shellCount(mesh) == 3);
+    const Mesh open = withoutShells(mesh, {0, 1});
+    ogun::FixAllParams params = mergeOn();
+    params.holeFill.maxHoleEdges = 3; // its 4-edge hole cannot be filled
+    const FixAllResult result = runAll(mesh, params);
+    REQUIRE(result.success);
+    CHECK(shellCount(result.mesh) == 2);
+    CHECK(keeps(result.mesh, open)); // bit-identical
+    CHECK(result.countsAfter.openEdges == 4);
+    CHECK(result.merges == 1);
+    CHECK(notesContain(stepIn(result, FixAllStageId::PlanMerge, 1),
+                       "#3 cannot be merged yet: it is still open (4 open edges); it overlaps #1."));
+    for (int pass = 2; pass <= result.passesRun; ++pass) { // the union is #1 now, the open box #2
+        CHECK(notesContain(stepIn(result, FixAllStageId::PlanMerge, pass),
+                           "#2 cannot be merged yet: it is still open (4 open edges); it overlaps #1."));
+    }
+    CHECK(result.passesRun == 2);
+    CHECK(result.stopReason == FixAllStopReason::RepeatedState);
+    CHECK(result.countsAfter.intersectingFaces > 0); // the open box still crosses the union
+    // The union of the two closed boxes: 64 + 64 - 6.125
+    const Mesh merged = withoutShells(result.mesh, {1});
+    CHECK(ogun::signedVolume(merged) == Catch::Approx(121.875));
+}
+
+TEST_CASE("A merge the plan or the merge guards refuse changes nothing", "[repair][fixall][merge]") {
+    // An inside-out box crossing a good one, with orientation hooked off: rule O calls it inside out
+    const Mesh mesh = SampleMeshes::combineMeshes({box({0, 0, 0}, {2, 2, 2}), box({-1, -1, 0.5}, {0.5, 0.5, 1.5}, true)});
+    const ogun::FixAllTestHooks noOrient = without({FixAllStageId::Orient, FixAllStageId::OrientAgain});
+
+    SECTION("The plan skips the inside-out box: no group, nothing merged") {
+        const FixAllResult result = runAll(mesh, mergeOn(1), &noOrient);
+        REQUIRE(result.success);
+        CHECK(same(result.mesh, mesh));
+        CHECK(stepIn(result, FixAllStageId::MergeShells) == nullptr);
+        CHECK(notesContain(stepIn(result, FixAllStageId::PlanMerge),
+                           "#2 cannot be merged yet: it is inside out (see Inverted shells); it overlaps #1."));
+    }
+    SECTION("Forced into one group anyway, the merge guard refuses it") {
+        MergePlan forced = plan(mesh);
+        REQUIRE(forced.groups.empty());
+        forced.groups.push_back({{0, 1}, {}});
+        ogun::FixAllTestHooks hooks;
+        hooks.adjustStages = [&](int, FixAllPhase phase, std::vector<FixAllStage>& stages) {
+            if (phase == FixAllPhase::Repair) {
+                stages.clear();
+            } else if (phase == FixAllPhase::Merge) {
+                stages = ogun::fixAllMergeStages(forced);
+            }
+        };
+        const FixAllResult result = runAll(mesh, mergeOn(1), &hooks);
+        const FixAllStepReport* merge = stepIn(result, FixAllStageId::MergeShells);
+        REQUIRE(merge != nullptr);
+        CHECK(merge->status == FixAllStepStatus::Refused);
+        CHECK(merge->guard == FixAllGuard::Merge);
+        CHECK(merge->reason == "#1 reaches into #2, which is wound inward: fix its orientation, or merge them by hand.");
+        CHECK(same(result.mesh, mesh));
+        CHECK(stepIn(result, FixAllStageId::Slivers) == nullptr); // no phase 3
+    }
+    SECTION("Volume sanity") {
+        const std::vector<double> none;
+        CHECK(ogun::mergeVolumeProblem(std::vector<double>{8.0, 8.0}, 15.388, none, 15.388).empty());
+        CHECK(ogun::mergeVolumeProblem(std::vector<double>{8.0, 8.0}, 17.0, none, 17.0).starts_with("The union's volume (17) is above"));
+        CHECK(ogun::mergeVolumeProblem(std::vector<double>{8.0, 8.0}, 7.0, none, 7.0).starts_with("The union's volume (7) is below"));
+        // An inside-out shell counted as a solid: the union exceeds the sum
+        CHECK_FALSE(ogun::mergeVolumeProblem(std::vector<double>{8.0, -1.0}, 8.0, none, 8.0).empty());
+        // Overlap plus cavity: 121.875 - 4 = 117.875
+        CHECK(ogun::mergeVolumeProblem(std::vector<double>{64.0, 64.0}, 121.875, std::vector<double>{-4.0}, 117.875).empty());
+        CHECK(ogun::mergeVolumeProblem(std::vector<double>{64.0, 64.0}, 121.875, std::vector<double>{-4.0}, 121.875)
+                  .starts_with("The merged shells' signed volume (121.875) is not the union's less its cavities (117.875)"));
+    }
+}
+
+TEST_CASE("Fix All on the Turkey-like assembly: feathers merged, inner box deleted, separate box untouched",
+          "[repair][fixall][merge]") {
+    const Mesh mesh = SampleMeshes::createTurkeyLikeMesh();
+    REQUIRE(shellCount(mesh) == 9);
+    const Mesh separate = withoutShells(mesh, {0, 1, 2, 3, 4, 5, 6, 7});
+    const FixAllResult result = runAll(mesh, mergeOn());
+    REQUIRE(result.success);
+    CHECK(shellCount(result.mesh) == 2);
+    CHECK(keeps(result.mesh, separate));
+    CHECK(result.countsAfter.openEdges == 0);
+    CHECK(result.countsAfter.intersectingFaces == 0);
+    CHECK(result.stopReason == FixAllStopReason::Clean);
+    const FixAllStepReport* deleted = stepIn(result, FixAllStageId::DeleteNestedSolids);
+    REQUIRE(deleted != nullptr);
+    REQUIRE(deleted->accepted());
+    CHECK(deleted->detail == "Deleted nested solid #8 (wholly inside #1, touching nothing)");
+    REQUIRE(deleted->notes.size() == 1);
+    CHECK(deleted->notes[0].shells.size() == 2);
+    CHECK(deleted->notes[0].shells[0].empty()); // deleted
+    CHECK(deleted->notes[0].shells[1].size() == 12);
+    CHECK(result.passes[0].nestedSolidsDeleted == 1);
+    CHECK(result.passes[0].groupsMerged == 1);
+    const FixAllStepReport* merge = stepIn(result, FixAllStageId::MergeShells);
+    REQUIRE(merge != nullptr);
+    CHECK(merge->detail.starts_with("Merged 7 shells into 1 ("));
+    // The inner box's 12 faces are among the faces phase 2 removed
+    CHECK(result.mergeRemovedFaces.size() >= 12);
+
+    SECTION("S3: nothing selected gives the same result as every shell selected") {
+        std::vector<std::uint8_t> all(static_cast<std::size_t>(mesh.numFaces()), 1);
+        const FixAllResult selected =
+            ogun::runFixAll(mesh, FixAllScope::fromFaceMask(mesh, FixAllScopeKind::Shells, all), mergeOn());
+        CHECK(ogun::meshGeometryHash(selected.mesh) == ogun::meshGeometryHash(result.mesh));
+        CHECK(selected.passesRun == result.passesRun);
+    }
+}
+
+TEST_CASE("Fix All keeps every cavity through the merge", "[repair][fixall][merge][cavity]") {
+    SECTION("Nested solid vs cavity: the nested solid is deleted, 3 -> 2, volume 63") {
+        const Mesh mesh = SampleMeshes::createNestedSolidAndCavityMesh();
+        const Mesh body = withoutShells(mesh, {1, 2});
+        const Mesh cavity = withoutShells(mesh, {0, 2});
+        const FixAllResult result = runAll(mesh, mergeOn());
+        CHECK(shellCount(result.mesh) == 2);
+        CHECK(ogun::signedVolume(result.mesh) == Catch::Approx(63.0));
+        CHECK(keeps(result.mesh, body));
+        CHECK(keeps(result.mesh, cavity));
+        CHECK(result.countsAfter.invertedShells == 0);
+        CHECK(stepIn(result, FixAllStageId::DeleteNestedSolids)->accepted());
+        CHECK(stepIn(result, FixAllStageId::MergeShells) == nullptr);
+    }
+    SECTION("Fixture 1: the box is ticked by hand, nothing to merge") {
+        const Mesh mesh = SampleMeshes::createCavityBoxMesh();
+        const FixAllResult result = runAll(mesh, mergeOn());
+        CHECK(same(result.mesh, mesh));
+        CHECK(result.passesRun == 1);
+        CHECK(result.stopReason == FixAllStopReason::Clean);
+        CHECK(stepIn(result, FixAllStageId::PlanMerge)->detail == "No shells overlap: nothing to merge. 1 cavity kept: #2.");
+        CHECK(ogun::signedVolume(result.mesh) == Catch::Approx(56.0));
+    }
+    SECTION("Fixture 2: A and B united around the cavity, 3 -> 2, signed volume 117.875") {
+        const Mesh mesh = SampleMeshes::createOverlapPlusCavityMesh();
+        const Mesh cavity = withoutShells(mesh, {0, 1});
+        const FixAllResult result = runAll(mesh, mergeOn());
+        CHECK(shellCount(result.mesh) == 2);
+        CHECK(keeps(result.mesh, cavity));
+        CHECK(ogun::signedVolume(result.mesh) == Catch::Approx(117.875));
+        CHECK(ogun::signedVolume(withoutShells(result.mesh, {0})) == Catch::Approx(-4.0)); // the cavity is #2 now
+        CHECK(result.countsAfter.openEdges == 0);
+        CHECK(result.countsAfter.intersectingFaces == 0);
+        CHECK(result.countsAfter.invertedShells == 0);
+        const FixAllStepReport* merge = stepIn(result, FixAllStageId::MergeShells);
+        REQUIRE(merge != nullptr);
+        CHECK(merge->detail.ends_with("; 1 cavity kept as it was: #3"));
+        CHECK(notesContain(merge, "Kept cavity #2 as it was"));
+    }
+    SECTION("Fixtures 3 and 3b: the group reaching into the cavity is refused, nothing changes") {
+        using Variant = SampleMeshes::CavityReachedVariant;
+        for (const Variant variant : {Variant::CrossesWall, Variant::InsideOverlap}) {
+            const Mesh mesh = SampleMeshes::createCavityReachedMesh(variant);
+            const FixAllResult result = runAll(mesh, mergeOn());
+            CHECK(same(result.mesh, mesh));
+            CHECK(shellCount(result.mesh) == 3);
+            CHECK(result.countsAfter.intersectingFaces > 0);
+            CHECK(stepIn(result, FixAllStageId::MergeShells) == nullptr);
+            const FixAllStepReport* planned = stepIn(result, FixAllStageId::PlanMerge);
+            REQUIRE(planned != nullptr);
+            CHECK(std::any_of(planned->notes.begin(), planned->notes.end(), [](const ogun::FixAllShellNote& note) {
+                return note.warning && note.text.find("reaches into cavity #3 of #") != std::string::npos;
+            }));
+        }
+        CHECK(ogun::signedVolume(SampleMeshes::createCavityReachedMesh()) == Catch::Approx(124.8));
+    }
+    SECTION("Fixture 3c: the separate pair is still merged, 5 -> 4") {
+        const Mesh mesh = SampleMeshes::createCavityReachedMesh(SampleMeshes::CavityReachedVariant::WithSeparatePair);
+        const Mesh refused = withoutShells(mesh, {3, 4});
+        const FixAllResult result = runAll(mesh, mergeOn());
+        CHECK(shellCount(result.mesh) == 4);
+        CHECK(keeps(result.mesh, refused));
+        CHECK(mergeStepsKept(result, 1) == 1);
+    }
+}
+
+TEST_CASE("Fix All always fills a hole whose patch crosses another shell; the merge unites them",
+          "[repair][fixall][merge]") {
+    using Variant = SampleMeshes::FillCrossesVariant;
+    const Mesh mesh = SampleMeshes::createFillCrossesShellMesh(Variant::PlateThroughOpenBox);
+    REQUIRE(shellCount(mesh) == 3);
+    REQUIRE(ogun::mergeTickedByDefault(mesh, FixAllScope::whole(mesh)) == std::optional<bool>(true));
+
+    SECTION("Fixture 4, merge on: 3 -> 1, the body's volume, one merge, one pass") {
+        const FixAllResult result = runAll(mesh, mergeOn());
+        const FixAllStepReport* fill = stepIn(result, FixAllStageId::FillHoles);
+        REQUIRE(fill != nullptr);
+        CHECK(fill->accepted());
+        CHECK(std::any_of(fill->notes.begin(), fill->notes.end(), [](const ogun::FixAllShellNote& note) {
+            return note.text.ends_with("left for the merge");
+        }));
+        CHECK(shellCount(result.mesh) == 1);
+        CHECK(ogun::signedVolume(result.mesh) == Catch::Approx(216.0));
+        CHECK(result.countsAfter.openEdges == 0);
+        CHECK(result.countsAfter.intersectingFaces == 0);
+        CHECK(result.merges == 1);
+        CHECK(result.passesRun == 1);
+        CHECK(result.stopReason == FixAllStopReason::Clean);
+    }
+    SECTION("Fixture 4, merge off: the fill is kept, D is closed, the crossing is reported") {
+        const FixAllResult result = runAll(mesh, {});
+        const FixAllStepReport* fill = stepIn(result, FixAllStageId::FillHoles);
+        REQUIRE(fill != nullptr);
+        CHECK(fill->accepted());
+        CHECK(result.countsAfter.openEdges == 0);
+        CHECK(shellCount(result.mesh) == 3);
+        CHECK(result.countsAfter.intersectingFaces > 0);
+        REQUIRE_FALSE(fill->deferred.empty());
+        CHECK(fill->deferred.back().kind == ogun::FixAllDeferredKind::CrossingsWithShell);
+        CHECK(fill->deferred.back().text.ends_with("with other shells: reported (the merge is off)"));
+    }
+    SECTION("4d: the plate not selected; the open box is filled and, a nested solid touching something, merged into the body") {
+        const FixAllResult result = ogun::runFixAll(mesh, shellScope(mesh, {0, 2}), mergeOn());
+        CHECK(result.countsAfter.openEdges == 0);
+        CHECK(keeps(result.mesh, withoutShells(mesh, {0, 2}))); // the plate is bit-identical
+        CHECK(notesContain(stepIn(result, FixAllStageId::PlanMerge),
+                           "#3 still crosses #2, which is not selected: select both to merge them."));
+        CHECK(shellCount(result.mesh) == 2);
+        CHECK(result.merges == 1);
+    }
+    SECTION("4e: the plate is open and its fill hooked off: the box is filled, the plate skipped and named") {
+        const Mesh openPlate = SampleMeshes::createFillCrossesShellMesh(Variant::OpenPlate);
+        const Mesh plate = withoutShells(openPlate, {0, 2}); // 11 faces: #2 by size until the open box is filled
+        REQUIRE(plate.numFaces() == 11);
+        // The fill runs on everything but the plate
+        ogun::FixAllTestHooks hooks;
+        hooks.adjustStages = [](int, FixAllPhase, std::vector<FixAllStage>& stages) {
+            for (FixAllStage& stage : stages) {
+                if (stage.id != FixAllStageId::FillHoles) {
+                    continue;
+                }
+                stage.run = [fill = stage.run](const Mesh& m, const ogun::FixAllStageContext& context) {
+                    FixAllScope scope = context.scope;
+                    const auto shells = ogun::shellsLargestFirst(m);
+                    for (const auto& shell : shells) {
+                        if (shell.size() == 11) {
+                            for (const Eigen::Index f : shell) {
+                                scope.faceInScope[static_cast<std::size_t>(f)] = 0;
+                            }
+                        }
+                    }
+                    scope.updatePins(m);
+                    return fill(m, ogun::FixAllStageContext{context.params, scope, context.pass, context.phase,
+                                                            context.stopToken, context.preMerge, context.planFaceMap});
+                };
+            }
+        };
+        const FixAllResult result = runAll(openPlate, mergeOn(), &hooks);
+        CHECK(keeps(result.mesh, plate));
+        CHECK(result.countsAfter.openEdges == 3); // the plate's hole
+        const FixAllStepReport* planned = stepIn(result, FixAllStageId::PlanMerge);
+        REQUIRE(planned != nullptr);
+        CHECK(std::any_of(planned->notes.begin(), planned->notes.end(), [](const ogun::FixAllShellNote& note) {
+            return note.warning && note.text.starts_with("#3 cannot be merged yet: it is still open (3 open edges)"); // the filled box has 12 faces now
+        }));
+        CHECK(shellCount(result.mesh) == 2);
+    }
+    SECTION("4a: a box closed only in pass 2 is merged in pass 2") {
+        // A duplicate face gives pass 1 something to repair, so it is progress; the fill is off in pass 1
+        Mesh crossing = SampleMeshes::createFillCrossesShellMesh(Variant::OpenBoxThroughBody);
+        crossing.F.conservativeResize(crossing.F.rows() + 1, 3);
+        crossing.F.row(crossing.F.rows() - 1) = crossing.F.row(0);
+        crossing.recomputeNormals();
+        ogun::FixAllTestHooks hooks;
+        hooks.adjustStages = [](int pass, FixAllPhase phase, std::vector<FixAllStage>& stages) {
+            if (pass == 1 && phase == FixAllPhase::Repair) {
+                std::erase_if(stages, [](const FixAllStage& s) { return s.id == FixAllStageId::FillHoles; });
+            }
+        };
+        const FixAllResult result = runAll(crossing, mergeOn(), &hooks);
+        CHECK(result.passesRun == 2);
+        CHECK(mergeStepsKept(result, 1) == 0);
+        CHECK(notesContain(stepIn(result, FixAllStageId::PlanMerge, 1),
+                           "#2 cannot be merged yet: it is still open (4 open edges); it overlaps #1."));
+        CHECK(mergeStepsKept(result, 2) == 1);
+        CHECK(result.merges == 1);
+        CHECK(shellCount(result.mesh) == 1);
+        CHECK(result.countsAfter.openEdges == 0);
+        CHECK(result.stopReason == FixAllStopReason::Clean);
+    }
+}
+
+TEST_CASE("Fix All merges across a shared face area, never along an edge", "[repair][fixall][merge]") {
+    SECTION("4b: touching along an edge: no merge in any pass") {
+        const Mesh mesh = SampleMeshes::createEdgeTouchingBoxesMesh();
+        const FixAllResult result = runAll(mesh, mergeOn());
+        CHECK(shellCount(result.mesh) == 2);
+        CHECK(ogun::signedVolume(result.mesh) == Catch::Approx(16.0));
+        CHECK(result.merges == 0);
+        CHECK(notesContain(stepIn(result, FixAllStageId::PlanMerge),
+                           "#1 and #2 touch along an edge or at a point only and cannot be one solid: left as they are."));
+    }
+    SECTION("4c: touching across a face area: 2 -> 1, volume 10") {
+        const Mesh mesh = SampleMeshes::createFaceTouchingBoxesMesh();
+        const FixAllResult result = runAll(mesh, mergeOn());
+        CHECK(shellCount(result.mesh) == 1);
+        CHECK(ogun::signedVolume(result.mesh) == Catch::Approx(10.0));
+        CHECK(result.countsAfter.openEdges == 0);
+        CHECK(result.countsAfter.nonManifoldEdges == 0);
+        CHECK(result.merges == 1);
+    }
+}
+
+TEST_CASE("Fix All merges each group of an assembly, and only the selected shells", "[repair][fixall][merge][scope]") {
+    SECTION("Two separate assemblies: 4 -> 2 in one merge") {
+        const Mesh mesh = SampleMeshes::combineMeshes({box({0, 0, 0}, {2, 2, 2}), box({1.8, 0.2, 0.3}, {3.8, 2.2, 2.3}),
+                                                       box({10, 0, 0}, {12, 2, 2}), box({11.8, 0.2, 0.3}, {13.8, 2.2, 2.3})});
+        const FixAllResult result = runAll(mesh, mergeOn());
+        CHECK(shellCount(result.mesh) == 2);
+        CHECK(result.passes[0].groupsMerged == 2);
+        CHECK(result.merges == 1);
+        CHECK(stepIn(result, FixAllStageId::PlanMerge)->detail == "Merge 4 shells that overlap into 2 solids.");
+        const FixAllResult off = runAll(mesh, {});
+        CHECK(shellCount(off.mesh) == 4);
+        CHECK(off.countsAfter.intersectingFaces > 0);
+    }
+    SECTION("S1: #1 and #2 selected are merged; #3 is left bit-identical and named") {
+        const Mesh mesh = SampleMeshes::combineMeshes(
+            {box({0, 0, 0}, {2, 2, 2}), box({1.8, 0.2, 0.3}, {3.8, 2.2, 2.3}), box({3.6, 0.4, 0.5}, {5.6, 2.4, 2.5})});
+        const Mesh third = withoutShells(mesh, {0, 1});
+        const FixAllResult result = ogun::runFixAll(mesh, shellScope(mesh, {0, 1}), mergeOn());
+        CHECK(shellCount(result.mesh) == 2);
+        CHECK(keeps(result.mesh, third));
+        CHECK(notesContain(stepIn(result, FixAllStageId::PlanMerge),
+                           "#2 still crosses #3, which is not selected: select both to merge them."));
+        CHECK(result.merges == 1);
+    }
+    SECTION("A face scope: the merge needs whole shells") {
+        const Mesh mesh = SampleMeshes::combineMeshes({box({0, 0, 0}, {2, 2, 2}), box({1.8, 0.2, 0.3}, {3.8, 2.2, 2.3})});
+        std::vector<std::uint8_t> mask(static_cast<std::size_t>(mesh.numFaces()), 0);
+        mask[0] = 1;
+        const FixAllResult result = ogun::runFixAll(mesh, FixAllScope::fromFaceMask(mesh, FixAllScopeKind::Faces, mask), mergeOn());
+        const FixAllStepReport* planned = stepIn(result, FixAllStageId::PlanMerge);
+        REQUIRE(planned != nullptr);
+        CHECK(planned->status == FixAllStepStatus::Skipped);
+        CHECK(planned->reason == "Merge needs whole shells: select shells, or clear the selection.");
+        CHECK(shellCount(result.mesh) == 2);
+    }
+}
+
+TEST_CASE("Fix All merges at most once per pass and still stops", "[repair][fixall][merge]") {
+    // A mocked phase 3 that always adds a new box crossing the body: each pass merges it, then adds another
+    const Mesh mesh = SampleMeshes::combineMeshes({box({0, 0, 0}, {4, 4, 4}), box({3.5, 0.5, 0.5}, {7.5, 4.5, 4.5})});
+    ogun::FixAllTestHooks hooks;
+    hooks.adjustStages = [](int pass, FixAllPhase phase, std::vector<FixAllStage>& stages) {
+        if (phase != FixAllPhase::Cleanup) {
+            return;
+        }
+        FixAllStage splitter;
+        splitter.label = "Split off a crossing shell";
+        splitter.run = [pass](const Mesh& m, const ogun::FixAllStageContext&) {
+            ogun::FixAllStageOutcome outcome;
+            const double y = 0.3 * pass;
+            outcome.mesh = SampleMeshes::combineMeshes({m, box({1.0, 1.0 + y, -1.0}, {2.0, 2.0 + y, 1.0})});
+            outcome.changed = true;
+            outcome.targetBefore = 1;
+            return outcome;
+        };
+        stages.push_back(std::move(splitter));
+    };
+    const FixAllResult result = runAll(mesh, mergeOn(), &hooks);
+    REQUIRE(result.success);
+    for (int pass = 1; pass <= result.passesRun; ++pass) {
+        CHECK(mergeStepsKept(result, pass) <= 1);
+        CHECK(std::count_if(result.steps.begin(), result.steps.end(), [&](const FixAllStepReport& step) {
+                  return step.stage == FixAllStageId::PlanMerge && step.pass == pass;
+              }) == 1);
+    }
+    CHECK(result.passesRun <= 3);
+    CHECK((result.stopReason == FixAllStopReason::NoProgress || result.stopReason == FixAllStopReason::PassLimit ||
+           result.stopReason == FixAllStopReason::RepeatedState));
+}
+
+TEST_CASE("Cancel during a merge drops the run once the union returns", "[repair][fixall][merge]") {
+    const Mesh mesh = SampleMeshes::combineMeshes({box({0, 0, 0}, {2, 2, 2}), box({1.8, 0.2, 0.3}, {3.8, 2.2, 2.3}),
+                                                   box({10, 0, 0}, {12, 2, 2}), box({11.8, 0.2, 0.3}, {13.8, 2.2, 2.3})});
+    std::stop_source source;
+    ogun::FixAllProgress progress;
+    int merging = 0;
+    progress.observer = [&](float, const std::string& text) {
+        if (text.find("merging") != std::string::npos && ++merging == 2) {
+            source.request_stop(); // between the groups: the second one is not kept
+        }
+    };
+    const FixAllResult result = ogun::runFixAll(mesh, FixAllScope::whole(mesh), mergeOn(), source.get_token(), &progress);
+    CHECK(merging == 2);
+    CHECK(result.cancelled);
+    CHECK_FALSE(result.success);
+    CHECK(same(result.mesh, mesh));
+}
+
+TEST_CASE("The dead-end guard asks the merge plan whether the merge can take a crossing", "[repair][fixall][merge]") {
+    // Pull the first box's corner (2, 2, 2) out through the second box, which is open
+    const Mesh openBox = dropLastFaces(box({3, 0.5, 0.5}, {4, 1.5, 1.5}), 1);
+    const Mesh mesh = SampleMeshes::combineMeshes({box({0, 0, 0}, {2, 2, 2}), openBox});
+    FixAllStage pull;
+    pull.label = "Pull";
+    pull.movesVertices = true;
+    pull.run = [](const Mesh& m, const ogun::FixAllStageContext&) {
+        ogun::FixAllStageOutcome outcome;
+        outcome.mesh = m;
+        for (Eigen::Index v = 0; v < m.numVertices(); ++v) {
+            if (m.V.row(v) == Eigen::RowVector3d(2.0, 2.0, 2.0)) {
+                outcome.mesh.V.row(v) << 5.0, 1.0, 1.0;
+            }
+        }
+        outcome.mesh.recomputeNormals();
+        outcome.changed = true;
+        outcome.targetBefore = 1;
+        return outcome;
+    };
+    ogun::FixAllTestHooks hooks;
+    hooks.adjustStages = [&](int pass, FixAllPhase phase, std::vector<FixAllStage>& stages) {
+        if (pass == 1 && phase == FixAllPhase::Repair) {
+            stages.assign(1, pull);
+        }
+    };
+    const FixAllResult result = runAll(mesh, mergeOn(1), &hooks);
+    REQUIRE_FALSE(result.steps.empty());
+    CHECK(result.steps.front().guard == FixAllGuard::DeadEnd);
+    CHECK(result.steps.front().reason ==
+          "It would move faces of #1 through #2, and the merge cannot take them (#2 is not closed), so nothing was changed.");
+}
+
+TEST_CASE("Fix All on the Turkey with the merge on: its group is refused; without #28 it merges", "[repair][fixall][merge][.slow]") {
+    const Mesh turkey = ogun::loadStl(examplePath("Turkey.stl"));
+    const auto timed = [](const Mesh& mesh) {
+        const auto start = std::chrono::steady_clock::now();
+        FixAllResult result = runAll(mesh, mergeOn());
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        return std::make_pair(std::move(result), ms);
+    };
+    const auto print = [](const char* name, const FixAllResult& result, double ms) {
+        double guards = 0.0;
+        for (const FixAllStepReport& step : result.steps) {
+            guards += step.guardMs;
+            if (step.phase != FixAllPhase::Repair || step.status != FixAllStepStatus::Unchanged) {
+                WARN(name << " pass " << step.pass << " phase " << static_cast<int>(step.phase) << ": " << step.label << " ["
+                          << static_cast<int>(step.status) << "] " << step.detail << step.reason << " | " << step.elapsedMs
+                          << " ms, guards " << step.guardMs << " ms");
+            }
+        }
+        WARN(name << ": " << ms << " ms, guards " << guards << " ms, passes " << result.passesRun << ", stop "
+                  << ogun::fixAllStopReasonLabel(result.stopReason) << ", shells " << shellCount(result.mesh) << ", crossings "
+                  << result.countsBefore.intersectingFaces << " -> " << result.countsAfter.intersectingFaces << ", thin "
+                  << result.countsBefore.thinFaces << " -> " << result.countsAfter.thinFaces << ", faces "
+                  << result.mesh.numFaces());
+    };
+
+    // #6 and #9 reach into cavity #28 of #12: the group of 27 is refused, nothing merged
+    const auto [refused, refusedMs] = timed(turkey);
+    print("Turkey merge on", refused, refusedMs);
+    REQUIRE(refused.success);
+    CHECK(refused.merges == 0);
+    CHECK(shellCount(refused.mesh) == 28);
+    CHECK(refused.countsAfter.openEdges == 0);
+    const FixAllStepReport* planned = stepIn(refused, FixAllStageId::PlanMerge);
+    REQUIRE(planned != nullptr);
+    CHECK(std::any_of(planned->notes.begin(), planned->notes.end(), [](const ogun::FixAllShellNote& note) {
+        return note.warning && note.text.starts_with("#6 and #9 reach into cavity #28 of #12");
+    }));
+
+    // The user deletes #28 by hand: 27 shells -> 1
+    const Mesh without = withoutShells(turkey, {27});
+    const auto [merged, mergedMs] = timed(without);
+    print("Turkey without #28, merge on", merged, mergedMs);
+    REQUIRE(merged.success);
+    CHECK(merged.merges >= 1);
+    CHECK(shellCount(merged.mesh) == 1);
+    CHECK(merged.countsAfter.openEdges == 0);
 }

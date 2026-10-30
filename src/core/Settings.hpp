@@ -218,5 +218,7 @@ inline constexpr double kFixAllMergeProgressWeight      = 20.0;   // Progress we
 inline constexpr double kFixAllCleanupProgressWeight    = 10.0;   // Progress weight within a pass of phase 3 (clean up the merge), when the merge is on
 inline constexpr double kFixAllPassCheckProgressWeight  = 15.0;   // Progress weight within a pass of the check that judges it
 inline constexpr double kFixAllCavityShrinkShare = 1.0e-3;         // Cavity guard: a step may not shrink a shell wound inward by more than this share of its volume
+inline constexpr double kFixAllMergePlanProgressShare = 0.2;       // Share of phase 2's progress weight for planning the merge (the groups share the rest by face count)
+inline constexpr double kFixAllMergeVolumeRelTolerance = 1.0e-6;   // Merge guard: volume sanity bounds (max V <= V_union <= sum V) hold within this share of sum V
 
 } // namespace ogun::settings

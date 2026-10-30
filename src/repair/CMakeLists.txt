@@ -1,5 +1,6 @@
 add_library(ogun_repair STATIC
     FixAll.cpp
+    FixAllMerge.cpp
     FixAllStages.cpp
     GlobalRepair.cpp
     HoleFiller.cpp

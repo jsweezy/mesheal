@@ -21,6 +21,13 @@ namespace ogun::fixall_detail {
 /// "0.003 mm" (3 significant digits).
 [[nodiscard]] std::string formatLength(double value, Unit unit);
 
+/// "121.875 mm^3" (6 significant digits).
+[[nodiscard]] std::string formatVolume(double value, Unit unit);
+
+/// Elements of a check's result that touch `scope` (the score's counting rule; open edges: every rim
+/// edge of a hole with a rim face in scope).
+[[nodiscard]] std::size_t countInScope(const CategoryResult& result, const FixAllScope& scope);
+
 /// "#2", "#2 and #5", "#2, #3 and #5" for shell indices (0-based, Shells-panel order).
 [[nodiscard]] std::string shellList(std::span<const int> shells);
 

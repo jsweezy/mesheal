@@ -11,6 +11,7 @@
 #include <map>
 #include <numbers>
 #include <sstream>
+#include <vector>
 
 namespace ogun {
 
@@ -471,6 +472,60 @@ Mesh SampleMeshes::createTurkeyLikeMesh(Unit unit) {
     parts.push_back(createBox({3.2, 1.2, 1.2}, {4.8, 2.8, 2.8}, false, unit));
     parts.push_back(createBox({14.0, 0.0, 0.0}, {16.0, 2.0, 2.0}, false, unit));
     return combineMeshes(parts);
+}
+
+namespace {
+
+/// `mesh` without the faces whose centroid passes `drop` (vertices kept).
+template <typename Drop>
+Mesh withoutFacesWhere(const Mesh& mesh, Drop drop) {
+    std::vector<Eigen::Index> kept;
+    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+        const Eigen::Vector3d c = (mesh.V.row(mesh.F(f, 0)) + mesh.V.row(mesh.F(f, 1)) + mesh.V.row(mesh.F(f, 2))).transpose() / 3.0;
+        if (!drop(c)) {
+            kept.push_back(f);
+        }
+    }
+    Mesh out = mesh;
+    out.F.resize(static_cast<Eigen::Index>(kept.size()), 3);
+    for (std::size_t i = 0; i < kept.size(); ++i) {
+        out.F.row(static_cast<Eigen::Index>(i)) = mesh.F.row(kept[i]);
+    }
+    out.recomputeNormals();
+    return out;
+}
+
+} // namespace
+
+Mesh SampleMeshes::createFillCrossesShellMesh(FillCrossesVariant variant, Unit unit) {
+    const Mesh body = createBox({0.0, 0.0, 0.0}, {6.0, 6.0, 6.0}, false, unit);
+    if (variant == FillCrossesVariant::OpenBoxThroughBody) {
+        const Mesh open = withoutFacesWhere(createBox({4.0, 1.0, 1.0}, {9.0, 3.0, 3.0}, false, unit),
+                                            [](const Eigen::Vector3d& c) { return c.x() > 9.0 - 1e-9; });
+        return combineMeshes({body, open});
+    }
+    Mesh plate = createBox({1.0, 1.0, 2.9}, {5.0, 5.0, 3.1}, false, unit);
+    if (variant == FillCrossesVariant::OpenPlate) {
+        // One triangle of the plate's far side x = 1, well clear of the open box
+        bool dropped = false;
+        plate = withoutFacesWhere(plate, [&](const Eigen::Vector3d& c) {
+            if (!dropped && c.x() < 1.0 + 1e-9) {
+                dropped = true;
+                return true;
+            }
+            return false;
+        });
+    }
+    const Mesh open = withoutFacesWhere(createBox({2.0, 2.0, 2.0}, {4.0, 4.0, 4.0}, false, unit),
+                                        [](const Eigen::Vector3d& c) { return c.x() > 4.0 - 1e-9; });
+    return combineMeshes({body, plate, open});
+}
+
+Mesh SampleMeshes::createOpenShellAmongCubesMesh(Unit unit) {
+    const Mesh open = withoutFacesWhere(createBox({-3.0, 1.0, 1.0}, {0.5, 3.0, 3.0}, false, unit),
+                                        [](const Eigen::Vector3d& c) { return c.x() < -3.0 + 1e-9; });
+    return combineMeshes({createBox({0.0, 0.0, 0.0}, {4.0, 4.0, 4.0}, false, unit),
+                          createBox({3.5, 0.5, 0.5}, {7.5, 4.5, 4.5}, false, unit), open});
 }
 
 Mesh SampleMeshes::createCavityHoleSliversIntersectionsMesh(Unit unit) {

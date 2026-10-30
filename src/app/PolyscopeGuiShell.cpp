@@ -39,7 +39,7 @@ struct ShapeSample {
     Mesh (*make)(Unit unit);
 };
 
-constexpr std::array<ShapeSample, 14> kShapeSamples = {{
+constexpr std::array<ShapeSample, 16> kShapeSamples = {{
     {"Box with cavity, hole, slivers, and intersections",
      "Loaded a gridded box with a cavity, a hole, slivers, a fold and a peg through its side.",
      "A gridded box with a hollow inside (a cavity), a missing square (a hole), three thin faces, a top vertex "
@@ -97,6 +97,19 @@ constexpr std::array<ShapeSample, 14> kShapeSamples = {{
      "A gridded cube read like a file: two corners are 0.0000001 off in one triangle each (cracks the weld done "
      "when loading leaves and Fix All's weld closes), two triangles face inward and one triangle is missing.",
      [](Unit unit) { return SampleMeshes::createCrackedFlippedCubeSoup(unit); }},
+    {"Box holding a plate through an open box",
+     "Loaded a box holding a thin plate and an open box the plate passes through: 3 shells, 1 hole.",
+     "A box holding a thin plate and a smaller box with one side missing; the plate passes through the small "
+     "box's walls and its open side, so any patch over the opening crosses the plate. With Merge shells on, "
+     "the merge unites them.",
+     [](Unit unit) {
+         return SampleMeshes::createFillCrossesShellMesh(SampleMeshes::FillCrossesVariant::PlateThroughOpenBox, unit);
+     }},
+    {"Overlapping boxes, one open",
+     "Loaded three boxes crossing the first, the third with one side missing: 3 shells, 1 hole.",
+     "Two boxes that overlap and a third, open box poking into the first. An open shell cannot be merged: the "
+     "merge unites the two closed ones and names the open one.",
+     [](Unit unit) { return SampleMeshes::createOpenShellAmongCubesMesh(unit); }},
 }};
 
 /// Menu item for a feature planned in a later phase: drawn disabled with a tooltip.

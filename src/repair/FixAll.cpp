@@ -4,6 +4,8 @@
 #include "diagnostics/MeshChecks.hpp"
 #include "diagnostics/SelfIntersections.hpp"
 #include "diagnostics/ShellRelations.hpp"
+#include "diagnostics/ShellRoles.hpp"
+#include "repair/MergePlan.hpp"
 #include "repair/RepairMetrics.hpp"
 #include "repair/TopologyCleanup.hpp"
 
@@ -208,9 +210,77 @@ struct InwardShell {
     return hits;
 }
 
+/// Why the merge would not unite shells `a` and `b` of `plan` (`shellsLargestFirst` of the mesh it was
+/// worked out on), or an empty string when they are in one merge group.
+[[nodiscard]] std::string notMergeable(const MergePlan& plan, int a, int b) {
+    for (const MergePlanGroup& group : plan.groups) {
+        const bool hasA = std::find(group.shells.begin(), group.shells.end(), a) != group.shells.end();
+        const bool hasB = std::find(group.shells.begin(), group.shells.end(), b) != group.shells.end();
+        if (hasA && hasB) {
+            return {};
+        }
+    }
+    const auto name = [](int s) { return "#" + std::to_string(s + 1); };
+    for (const int s : {a, b}) {
+        if (static_cast<std::size_t>(s) >= plan.shellInScope.size() || plan.shellInScope[static_cast<std::size_t>(s)] == 0) {
+            return name(s) + " is not selected";
+        }
+    }
+    for (const MergePlanRefusedGroup& group : plan.refusedGroups) {
+        const bool hasA = std::find(group.shells.begin(), group.shells.end(), a) != group.shells.end();
+        const bool hasB = std::find(group.shells.begin(), group.shells.end(), b) != group.shells.end();
+        if ((hasA || hasB) && !group.hollows.empty()) {
+            return "their group reaches into cavity " + name(group.hollows.front());
+        }
+    }
+    for (const std::vector<int>& stopped : plan.stoppedGroups) {
+        for (const int s : {a, b}) {
+            if (std::find(stopped.begin(), stopped.end(), s) != stopped.end()) {
+                return name(s) + " looks inside out with its inner shells";
+            }
+        }
+    }
+    for (const MergePlanSkipped& skipped : plan.skipped) {
+        if (skipped.shell != a && skipped.shell != b) {
+            continue;
+        }
+        const std::string s = name(skipped.shell);
+        switch (skipped.why) {
+        case MergeSkipReason::Open:
+            return s + " is not closed";
+        case MergeSkipReason::FinEdges:
+            return s + " has Fin / other edges";
+        case MergeSkipReason::Flipped:
+            return s + "'s faces are not wound consistently";
+        case MergeSkipReason::InsideOut:
+            return s + " is inside out";
+        case MergeSkipReason::Unclassified:
+            return "rule O cannot tell whether " + s + " is a cavity";
+        case MergeSkipReason::NotManifold:
+            return "Manifold cannot read " + s;
+        case MergeSkipReason::NoVolume:
+            return s + " has no volume";
+        case MergeSkipReason::ContainerNotMergeable:
+            return s + " lies inside a shell that cannot be merged";
+        }
+    }
+    for (const int s : {a, b}) {
+        const ShellRole role = static_cast<std::size_t>(s) < plan.roles.shells.size()
+                                   ? plan.roles.shells[static_cast<std::size_t>(s)].role
+                                   : ShellRole::Unclassified;
+        if (role == ShellRole::Cavity || static_cast<std::size_t>(s) >= plan.relations.shells.size() ||
+            plan.relations.shells[static_cast<std::size_t>(s)].signedVolume < 0.0) {
+            return name(s) + " is wound inward";
+        }
+    }
+    return name(a) + " and " + name(b) + " would not be merged";
+}
+
 /// Dead-end guard: the faces a step moved or made (`faceDiff`) cross a face of another shell that none
-/// of the faces it replaced crossed, and the merge cannot take that pair: merge off, a face scope, a
-/// shell not wholly in scope, or a shell that is not closed, consistently wound and outward.
+/// of the faces it replaced crossed, and the merge cannot take that pair: merge off, a face scope, or the
+/// merge plan of the step's result (`planMerge`, worked out only when such a crossing appears) does not
+/// put the two shells in one merge group (a shell not selected, skipped, stopped, wound inward, or in a
+/// group that reaches into a cavity).
 [[nodiscard]] std::string deadEnd(const Mesh& before, const Mesh& after, const FixAllScope& scopeAfter,
                                   const FixAllParams& params, std::stop_token stop) {
     const FaceDiff diff = faceDiff(before, after);
@@ -234,20 +304,8 @@ struct InwardShell {
         return {};
     }
 
-    const std::vector<ShellFacts> facts = describeShells(after, shells);
     const bool mergeOn = params.mergeShells && scopeAfter.kind != FixAllScopeKind::Faces;
-    const auto whyNot = [&](int s) -> std::string {
-        const std::string name = "#" + std::to_string(s + 1);
-        const auto& faces = shells[static_cast<std::size_t>(s)];
-        if (!std::all_of(faces.begin(), faces.end(), [&](Eigen::Index f) { return scopeAfter.inScope(f); })) {
-            return name + " is not selected";
-        }
-        const ShellFacts& fact = facts[static_cast<std::size_t>(s)];
-        if (!fact.closed || !fact.oriented) {
-            return name + " is not closed";
-        }
-        return fact.signedVolume > 0.0 ? std::string() : name + " is wound inward";
-    };
+    std::optional<MergePlan> plan; // worked out on the step's result when a crossing needs it
     struct Candidate {
         int moved;
         int other;
@@ -268,10 +326,15 @@ struct InwardShell {
                           : scopeAfter.kind == FixAllScopeKind::Faces ? std::string("the merge needs whole shells")
                                                                      : std::string();
         if (why.empty() && mergeOn) {
-            why = whyNot(sm);
-            if (why.empty()) {
-                why = whyNot(so);
+            if (!plan) {
+                MergePlanParams planParams;
+                planParams.intersectionTolerance = params.checkParams.intersectionTolerance;
+                plan = planMerge(after, scopeAfter, planParams, stop);
             }
+            if (!plan->complete) {
+                return {}; // stopped: the engine drops the run
+            }
+            why = notMergeable(*plan, sm, so);
         }
         if (!why.empty()) {
             candidates.push_back({sm, so, faceGeometryKey(after, static_cast<Eigen::Index>(other)), std::move(why)});
@@ -313,6 +376,70 @@ struct InwardShell {
         }
     }
     return {};
+}
+
+/// Nested solids the merge would delete (rule O NestedSolid touching and holding nothing, it and its
+/// container in scope). Relations are worked out only when some shell's box lies inside another's.
+/// std::nullopt when stopped.
+[[nodiscard]] std::optional<std::size_t> countIsolatedNestedSolids(const Mesh& mesh, const FixAllScope& scope,
+                                                                    const CheckParams& params, std::stop_token stop) {
+    const std::vector<std::vector<Eigen::Index>> shells = shellsLargestFirst(mesh);
+    if (shells.size() < 2) {
+        return std::size_t{0};
+    }
+    std::vector<BoundingBox> boxes;
+    boxes.reserve(shells.size());
+    for (const std::vector<Eigen::Index>& faces : shells) {
+        BoundingBox box{Eigen::Vector3d::Constant(std::numeric_limits<double>::infinity()),
+                        Eigen::Vector3d::Constant(-std::numeric_limits<double>::infinity())};
+        for (const Eigen::Index f : faces) {
+            for (int c = 0; c < 3; ++c) {
+                const Eigen::Vector3d p = mesh.V.row(mesh.F(f, c)).transpose();
+                box.min = box.min.cwiseMin(p);
+                box.max = box.max.cwiseMax(p);
+            }
+        }
+        boxes.push_back(box);
+    }
+    bool anyInside = false;
+    for (std::size_t a = 0; a < boxes.size() && !anyInside; ++a) {
+        for (std::size_t b = 0; b < boxes.size() && !anyInside; ++b) {
+            anyInside = a != b && (boxes[a].min.array() >= boxes[b].min.array()).all() &&
+                        (boxes[a].max.array() <= boxes[b].max.array()).all();
+        }
+    }
+    if (!anyInside) {
+        return std::size_t{0};
+    }
+    ShellRelationParams relationParams;
+    relationParams.intersectionTolerance = params.intersectionTolerance;
+    const ShellRelations relations = computeShellRelations(mesh, shells, relationParams, stop);
+    if (!relations.complete || stop.stop_requested()) {
+        return std::nullopt;
+    }
+    const ShellRoles roles = classifyShellRoles(mesh, relations);
+    std::vector<std::uint8_t> busy(shells.size(), 0); // meets another shell, or holds one
+    for (const ShellPairRelation& pair : relations.pairs) {
+        if (pair.crossings > 0 || pair.sharedAreaPairs > 0 || pair.contacts > 0) {
+            busy[static_cast<std::size_t>(pair.a)] = 1;
+            busy[static_cast<std::size_t>(pair.b)] = 1;
+        }
+    }
+    for (const ShellFacts& facts : relations.shells) {
+        for (const int c : facts.containers) {
+            busy[static_cast<std::size_t>(c)] = 1;
+        }
+    }
+    const std::vector<std::uint8_t> in = shellsInScope(scope, shells);
+    std::size_t count = 0;
+    for (std::size_t s = 0; s < shells.size() && s < roles.shells.size(); ++s) {
+        const int c = relations.shells[s].nestedIn;
+        count += roles.shells[s].role == ShellRole::NestedSolid && busy[s] == 0 && in[s] != 0 && c >= 0 &&
+                         in[static_cast<std::size_t>(c)] != 0
+                     ? 1
+                     : 0;
+    }
+    return count;
 }
 
 /// True when a stage after `index` has one of `ids`.
@@ -365,7 +492,24 @@ struct BestState {
     FixAllCounts counts;
     FixAllPriority priority;
     int pass = 0;
+    int merges = 0;
+    std::vector<Eigen::Index> mergeRemoved; ///< Input faces phase 2 removed up to this state
 };
+
+/// The identity face map of `faceCount` faces.
+[[nodiscard]] std::vector<Eigen::Index> identityMap(Eigen::Index faceCount) {
+    std::vector<Eigen::Index> map(static_cast<std::size_t>(std::max<Eigen::Index>(faceCount, 0)));
+    for (std::size_t f = 0; f < map.size(); ++f) {
+        map[f] = static_cast<Eigen::Index>(f);
+    }
+    return map;
+}
+
+[[nodiscard]] std::vector<Eigen::Index> sortedUnique(std::vector<Eigen::Index> faces) {
+    std::sort(faces.begin(), faces.end());
+    faces.erase(std::unique(faces.begin(), faces.end()), faces.end());
+    return faces;
+}
 
 class FixAllRun {
 public:
@@ -385,7 +529,7 @@ public:
 
         // Step 0: the input is pass 0
         report(0.0f, "checking the mesh...");
-        const FixAllCounts baseline = countFixAllDefects(input_, scope, params_.checkParams, tinyFraction(), stop_);
+        const FixAllCounts baseline = countFixAllDefects(input_, scope, params_.checkParams, tinyFraction(), params_.mergeShells, stop_);
         if (!baseline.complete || stop_.stop_requested()) {
             return cancelled();
         }
@@ -395,7 +539,8 @@ public:
 
         mesh_ = input_;
         scope_ = std::move(scope);
-        BestState best{input_, scope_, baseline, result_.priorityBefore, 0};
+        origin_ = identityMap(input_.numFaces());
+        BestState best{input_, scope_, baseline, result_.priorityBefore, 0, 0, {}};
         FixAllCounts lastCounts = baseline;
         std::unordered_set<std::uint64_t> seen{meshGeometryHash(input_)};
         int passesWithoutProgress = 0;
@@ -408,11 +553,12 @@ public:
             passReport.before = lastCounts.priority();
             passReport.firstStep = result_.steps.size();
 
-            if (!runPass(pass)) {
+            if (!runPass(pass, passReport)) {
                 return cancelled();
             }
+            merges_ += passReport.merged() ? 1 : 0;
             report(passFraction(pass, checkStart_), passText(pass, "checking the result..."));
-            const FixAllCounts counts = countFixAllDefects(mesh_, scope_, params_.checkParams, tinyFraction(), stop_);
+            const FixAllCounts counts = countFixAllDefects(mesh_, scope_, params_.checkParams, tinyFraction(), params_.mergeShells, stop_);
             if (!counts.complete || stop_.stop_requested()) {
                 return cancelled();
             }
@@ -421,7 +567,7 @@ public:
             passReport.after = counts.priority();
             passReport.stepCount = result_.steps.size() - passReport.firstStep;
             if (passReport.after < best.priority) {
-                best = BestState{mesh_, scope_, counts, passReport.after, pass};
+                best = BestState{mesh_, scope_, counts, passReport.after, pass, merges_, mergeRemoved_};
                 passReport.newBest = true;
                 passesWithoutProgress = 0;
             } else {
@@ -456,11 +602,15 @@ public:
             result_.scope = std::move(scope_);
             result_.countsAfter = lastCounts;
             result_.bestPass = result_.passesRun;
+            result_.merges = merges_;
+            result_.mergeRemovedFaces = sortedUnique(std::move(mergeRemoved_));
         } else {
             result_.mesh = std::move(best.mesh);
             result_.scope = std::move(best.scope);
             result_.countsAfter = best.counts;
             result_.bestPass = best.pass;
+            result_.merges = best.merges;
+            result_.mergeRemovedFaces = sortedUnique(std::move(best.mergeRemoved));
         }
         result_.priorityAfter = result_.countsAfter.priority();
         result_.temporarilyWorse = result_.onePass && result_.priorityBefore < result_.priorityAfter;
@@ -517,10 +667,15 @@ private:
     }
 
     /// Runs `stages` of `phase` in order, sharing `weight` of the pass's progress (phase 1: each stage's
-    /// own weight). Sets `changed` when a step was kept. False when cancelled.
+    /// own weight; phase 2: in proportion to the stages' weights, i.e. their face counts; phase 3:
+    /// equally). Sets `changed` when a step was kept. False when cancelled.
     bool runPhase(std::vector<FixAllStage>& stages, int pass, FixAllPhase phase, double total, double& done,
                   double weight, bool& changed) {
         const auto phaseName = "phase " + std::to_string(static_cast<int>(phase)) + ", ";
+        double weights = 0.0;
+        for (const FixAllStage& stage : stages) {
+            weights += std::max(0.0, stage.progressWeight);
+        }
         for (std::size_t i = 0; i < stages.size(); ++i) {
             if (stop_.stop_requested()) {
                 return false;
@@ -530,28 +685,69 @@ private:
                 return false;
             }
             changed = changed || result_.steps.back().status == FixAllStepStatus::Applied;
-            done += phase == FixAllPhase::Repair ? std::max(0.0, stages[i].progressWeight)
-                                                 : weight / static_cast<double>(stages.size());
+            const double own = std::max(0.0, stages[i].progressWeight);
+            done += phase == FixAllPhase::Repair                  ? own
+                    : phase == FixAllPhase::Merge && weights > 0.0 ? weight * own / weights
+                                                                   : weight / static_cast<double>(stages.size());
         }
-        if (phase != FixAllPhase::Repair && stages.empty()) {
+        if (phase != FixAllPhase::Repair && (stages.empty() || (phase == FixAllPhase::Merge && weights <= 0.0))) {
             done += weight;
         }
         return true;
     }
 
+    /// Records a step that did not run (the merge under a face scope).
+    void skippedStep(FixAllStageId id, std::string label, int pass, FixAllPhase phase, std::string reason) {
+        FixAllStepReport step;
+        step.stage = id;
+        step.label = std::move(label);
+        step.pass = pass;
+        step.phase = phase;
+        step.status = FixAllStepStatus::Skipped;
+        step.reason = std::move(reason);
+        result_.steps.push_back(std::move(step));
+    }
+
+    /// Records the merge plan as a report-only step: its lines, with the shells they name.
+    void planStep(const MergePlan& plan, int pass) {
+        FixAllStepReport step;
+        step.stage = FixAllStageId::PlanMerge;
+        step.label = "Plan the merge";
+        step.pass = pass;
+        step.phase = FixAllPhase::Merge;
+        step.status = FixAllStepStatus::Unchanged;
+        for (const MergePlanLine& line : plan.lines) {
+            FixAllShellNote note;
+            note.text = line.text;
+            note.warning = line.kind == MergePlanLineKind::Warning;
+            for (const int s : line.shells) {
+                if (s >= 0 && static_cast<std::size_t>(s) < plan.shells.size()) {
+                    note.shells.push_back(plan.shells[static_cast<std::size_t>(s)]);
+                }
+            }
+            if (line.kind == MergePlanLineKind::Info) {
+                step.detail += (step.detail.empty() ? "" : " ") + line.text;
+            }
+            step.notes.push_back(std::move(note));
+        }
+        step.countBefore = plan.operandCount();
+        step.countAfter = plan.operandCount();
+        step.elapsedMs = plan.elapsedMs;
+        result_.steps.push_back(std::move(step));
+    }
+
     /// Runs one pass on `mesh_`; false when cancelled.
-    bool runPass(int pass) {
+    bool runPass(int pass, FixAllPassReport& passReport) {
         std::vector<FixAllStage> repair = fixAllRepairStages();
         adjust(pass, FixAllPhase::Repair, repair);
-        std::vector<FixAllStage> merge; // phase 2 is not built yet: only a test inserts a merge
-        adjust(pass, FixAllPhase::Merge, merge);
 
-        // Progress layout of the pass: phase 1 stages, phase 2 and 3 (merge on), the closing check
+        // Progress layout of the pass: phase 1 stages, phase 2 and 3 (merge on, or a test that may add a
+        // merge), the closing check
         double total = settings::kFixAllPassCheckProgressWeight;
         for (const FixAllStage& stage : repair) {
             total += std::max(0.0, stage.progressWeight);
         }
-        const bool mergeShare = mergeRuns() || !merge.empty();
+        const bool mergeShare = params_.mergeShells || (hooks_ != nullptr && hooks_->adjustStages);
         const double mergeWeight = mergeShare ? settings::kFixAllMergeProgressWeight : 0.0;
         const double cleanupWeight = mergeShare ? settings::kFixAllCleanupProgressWeight : 0.0;
         total += mergeWeight + cleanupWeight;
@@ -563,27 +759,53 @@ private:
             return false;
         }
 
-        // ---- Phase 2: merge the shells (whole shells only) ----
+        // ---- Phase 2: merge the shells (whole shells only), planned once per pass on phase 1's result ----
         if (stop_.stop_requested()) {
             return false;
         }
+        std::vector<FixAllStage> merge;
+        double stagesWeight = mergeWeight;
+        if (mergeRuns()) {
+            report(passFraction(pass, done / total), passText(pass, "phase 2, planning the merge..."));
+            MergePlanParams planParams;
+            planParams.intersectionTolerance = params_.checkParams.intersectionTolerance;
+            const MergePlan plan = planMerge(mesh_, scope_, planParams, stop_);
+            if (!plan.complete || stop_.stop_requested()) {
+                return false;
+            }
+            planStep(plan, pass);
+            merge = fixAllMergeStages(plan);
+            done += mergeWeight * settings::kFixAllMergePlanProgressShare;
+            stagesWeight = mergeWeight * (1.0 - settings::kFixAllMergePlanProgressShare);
+        } else if (params_.mergeShells) {
+            skippedStep(FixAllStageId::PlanMerge, "Plan the merge", pass, FixAllPhase::Merge,
+                        "Merge needs whole shells: select shells, or clear the selection.");
+        }
+        adjust(pass, FixAllPhase::Merge, merge);
         const Mesh preMerge = merge.empty() ? Mesh{} : mesh_;
+        planFaceMap_ = identityMap(mesh_.numFaces());
         bool merged = false;
         if (scope_.kind == FixAllScopeKind::Faces) {
             for (const FixAllStage& stage : merge) {
-                FixAllStepReport step;
-                step.stage = stage.id;
-                step.label = stage.label;
-                step.pass = pass;
-                step.phase = FixAllPhase::Merge;
-                step.status = FixAllStepStatus::Skipped;
-                step.reason = "Merge needs whole shells: select shells, or clear the selection.";
-                result_.steps.push_back(std::move(step));
+                skippedStep(stage.id, stage.label, pass, FixAllPhase::Merge,
+                            "Merge needs whole shells: select shells, or clear the selection.");
             }
-            done += mergeWeight;
-        } else if (!runPhase(merge, pass, FixAllPhase::Merge, total, done, mergeWeight, merged)) {
-            return false;
+            done += stagesWeight;
+        } else {
+            const std::size_t firstMergeStep = result_.steps.size();
+            if (!runPhase(merge, pass, FixAllPhase::Merge, total, done, stagesWeight, merged)) {
+                return false;
+            }
+            for (std::size_t i = firstMergeStep; i < result_.steps.size(); ++i) {
+                const FixAllStepReport& step = result_.steps[i];
+                if (step.accepted() && step.stage == FixAllStageId::MergeShells) {
+                    ++passReport.groupsMerged;
+                } else if (step.accepted() && step.stage == FixAllStageId::DeleteNestedSolids) {
+                    passReport.nestedSolidsDeleted += step.countBefore - step.countAfter;
+                }
+            }
         }
+        planFaceMap_.clear();
 
         // ---- Phase 3: clean up the merged result (only when phase 2 changed the mesh) ----
         if (merged) {
@@ -628,7 +850,9 @@ private:
         const auto stepStart = Clock::now();
         FixAllStageOutcome outcome;
         try {
-            outcome = stage.run(mesh_, FixAllStageContext{params_, scope_, pass, phase, stop_, preMerge_});
+            const std::span<const Eigen::Index> planMap =
+                phase == FixAllPhase::Merge ? std::span<const Eigen::Index>(planFaceMap_) : std::span<const Eigen::Index>();
+            outcome = stage.run(mesh_, FixAllStageContext{params_, scope_, pass, phase, stop_, preMerge_, planMap});
         } catch (const std::exception& error) {
             outcome = FixAllStageOutcome{};
             outcome.failure = std::string("It failed: ") + error.what();
@@ -653,6 +877,8 @@ private:
         };
         if (!outcome.failure.empty()) {
             refuse(FixAllGuard::Failed, outcome.failure);
+        } else if (!outcome.refusal.empty()) {
+            refuse(FixAllGuard::Merge, outcome.refusal);
         } else if (!outcome.skipped.empty()) {
             step.status = FixAllStepStatus::Skipped;
             step.reason = outcome.skipped;
@@ -735,6 +961,22 @@ private:
         const auto kept = static_cast<std::size_t>(mesh_.numFaces()) - step.facesRemoved;
         step.facesAdded = static_cast<std::size_t>(outcome.mesh.numFaces()) - kept;
         step.maxMove = outcome.maxMove;
+
+        // Carry each face's input face (for what phase 2 removed) and phase 2's plan rows
+        std::vector<Eigen::Index> origin(static_cast<std::size_t>(outcome.mesh.numFaces()), -1);
+        for (std::size_t f = 0; f < map.size() && f < origin_.size(); ++f) {
+            if (map[f] >= 0) {
+                origin[static_cast<std::size_t>(map[f])] = origin_[f];
+            } else if (step.phase == FixAllPhase::Merge && origin_[f] >= 0) {
+                mergeRemoved_.push_back(origin_[f]);
+            }
+        }
+        origin_ = std::move(origin);
+        if (step.phase == FixAllPhase::Merge) {
+            for (Eigen::Index& row : planFaceMap_) {
+                row = row >= 0 && static_cast<std::size_t>(row) < map.size() ? map[static_cast<std::size_t>(row)] : -1;
+            }
+        }
         scope_ = std::move(carried);
         mesh_ = std::move(outcome.mesh);
         edges_ = after;
@@ -754,12 +996,20 @@ private:
     FixAllScope inputScope_;
     double checkStart_ = 0.0; ///< Where the closing check starts within the pass (0..1)
     const Mesh* preMerge_ = nullptr; ///< Phase 3: the mesh before the merge
+    std::vector<Eigen::Index> origin_;       ///< Input face of each face of `mesh_` (-1: made by the run)
+    std::vector<Eigen::Index> planFaceMap_;  ///< Phase 2: face of the planned mesh -> row of `mesh_`
+    std::vector<Eigen::Index> mergeRemoved_; ///< Input faces phase 2 removed (unsorted, may repeat)
+    int merges_ = 0;                         ///< Passes whose phase 2 changed the mesh
     std::optional<std::vector<InwardShell>> inward_;            ///< Of `mesh_`, worked out when a guard needs it
     std::optional<fixall_detail::EdgeDefectCounts> edges_;      ///< Of `mesh_`
     FixAllResult result_;
 };
 
 } // namespace
+
+std::size_t fixall_detail::countInScope(const CategoryResult& result, const FixAllScope& scope) {
+    return ogun::countInScope(result, scope, scope.everyFace());
+}
 
 bool fixall_detail::outsideScopeKept(const Mesh& before, const Mesh& after, std::span<const Eigen::Index> map,
                                      const FixAllScope& scope) {
@@ -865,7 +1115,7 @@ FixAllPriority FixAllCounts::priority() const noexcept {
     p.closedManifold = openEdges + nonManifoldEdges + nonManifoldVertices;
     p.oriented = flippedFaces + invertedShells;
     p.intersecting = intersectingFaces;
-    p.junk = degenerateFaces + duplicateFaces + tinyShells;
+    p.junk = degenerateFaces + duplicateFaces + tinyShells + nestedSolids;
     p.thin = thinFaces;
     return p;
 }
@@ -877,6 +1127,11 @@ FixAllCounts countFixAllDefects(const Mesh& mesh, const FixAllScope& scope, cons
 
 FixAllCounts countFixAllDefects(const Mesh& mesh, const FixAllScope& scope, const CheckParams& params,
                                 double tinyShellFraction, std::stop_token stopToken) {
+    return countFixAllDefects(mesh, scope, params, tinyShellFraction, false, std::move(stopToken));
+}
+
+FixAllCounts countFixAllDefects(const Mesh& mesh, const FixAllScope& scope, const CheckParams& params,
+                                double tinyShellFraction, bool nestedSolids, std::stop_token stopToken) {
     struct Item {
         DefectCategory category;
         std::size_t FixAllCounts::*field;
@@ -919,6 +1174,14 @@ FixAllCounts countFixAllDefects(const Mesh& mesh, const FixAllScope& scope, cons
         for (const TinyFloatingShell& shell : tiny.shells) {
             counts.tinyShells += std::all_of(shell.faces.begin(), shell.faces.end(), [&](Eigen::Index f) { return scope.inScope(f); }) ? 1 : 0;
         }
+    }
+    if (nestedSolids && scope.kind != FixAllScopeKind::Faces) {
+        const std::optional<std::size_t> nested = countIsolatedNestedSolids(mesh, scope, params, stopToken);
+        if (!nested) {
+            counts.complete = false;
+            return counts;
+        }
+        counts.nestedSolids = *nested;
     }
     return counts;
 }

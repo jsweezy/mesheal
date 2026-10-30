@@ -459,10 +459,10 @@ TEST_CASE("Phase 3 cleans up a mesh merged by mergeShells", "[repair][fixall][cl
         ogun::countFixAllDefects(direct.mesh, FixAllScope::whole(direct.mesh), defaults.checkParams).priority();
     REQUIRE(mergedP.thin > 0);
 
+    // The hook stands in for the merge, so the merge box stays off (with it on, the pass merges first)
     const ogun::FixAllTestHooks hooks = mergeInPassOne();
     ogun::FixAllParams params;
     params.passes = 1;
-    params.mergeShells = true;
     ogun::FixAllProgress progress;
     std::vector<std::string> texts;
     progress.observer = [&](float, const std::string& text) { texts.push_back(text); };
@@ -495,6 +495,15 @@ TEST_CASE("Phase 3 cleans up a mesh merged by mergeShells", "[repair][fixall][cl
         const ogun::FixAllResult plain = ogun::runFixAll(cubes, FixAllScope::whole(cubes), params);
         REQUIRE(std::none_of(plain.steps.begin(), plain.steps.end(),
                              [](const ogun::FixAllStepReport& step) { return step.phase != FixAllPhase::Repair; }));
+    }
+    SECTION("The pass's own merge gives the same clean-up") {
+        ogun::FixAllParams merge = params;
+        merge.mergeShells = true;
+        const ogun::FixAllResult real = ogun::runFixAll(cubes, FixAllScope::whole(cubes), merge);
+        REQUIRE(stepOf(real, FixAllStageId::MergeShells, 1, FixAllPhase::Merge)->accepted());
+        REQUIRE(stepOf(real, FixAllStageId::Slivers, 1, FixAllPhase::Cleanup)->detail ==
+                "Healed 16 of 16 cut slivers (0 flips, 8 collapses)");
+        REQUIRE(ogun::meshGeometryHash(real.mesh) == ogun::meshGeometryHash(result.mesh));
     }
 }
 

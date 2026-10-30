@@ -150,6 +150,26 @@ struct SampleMeshes {
     /// [14, 16] x [0, 2]^2: 9 shells. File > Load Sample > "Turkey-like assembly".
     [[nodiscard]] static Mesh createTurkeyLikeMesh(Unit unit = Unit::Millimeter);
 
+    enum class FillCrossesVariant {
+        PlateThroughOpenBox, ///< Body, plate, open box: every fill of the open box's hole crosses the plate
+        OpenPlate,           ///< The same with one triangle of the plate's far side x = 1 missing (the plate is open too)
+        OpenBoxThroughBody   ///< Body [0, 6]^3 and a box [4, 9] x [1, 3]^2 through its side x = 6, open at x = 9
+    };
+
+    /// A fill that crosses another shell. PlateThroughOpenBox: a body A = [0, 6]^3, a plate
+    /// P = [1, 5]^2 x [2.9, 3.1] inside it (a nested solid) and a box D = [2, 4]^3 inside it with its two
+    /// x = 4 triangles missing (a 4-edge hole); the plate passes through D's walls and through its opening,
+    /// so every fill of D's hole crosses P. 3 shells: A #1, P #2, D #3.
+    /// File > Load Sample > "Box holding a plate through an open box".
+    [[nodiscard]] static Mesh createFillCrossesShellMesh(
+        FillCrossesVariant variant = FillCrossesVariant::PlateThroughOpenBox,
+        Unit unit = Unit::Millimeter);
+
+    /// Three boxes, all crossing the first: [0, 4]^3, [3.5, 7.5] x [0.5, 4.5]^2 and [-3, 0.5] x [1, 3]^2,
+    /// the last missing its far side x = -3 (two triangles: a 4-edge hole). 3 shells.
+    /// File > Load Sample > "Overlapping boxes, one open".
+    [[nodiscard]] static Mesh createOpenShellAmongCubesMesh(Unit unit = Unit::Millimeter);
+
     /// The sample to try every repair on at once: a 4 x 4 grid box [0, 8]^3 with
     ///   - a hole: one 2 x 2 cell missing from its front y = 0 (x in [4, 6], z in [2, 4]);
     ///   - slivers on its left side x = 0: one Cap (a point 0.01 off a cell diagonal) and two Needles

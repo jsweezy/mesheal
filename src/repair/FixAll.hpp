@@ -93,7 +93,7 @@ struct FixAllPriority {
     std::size_t closedManifold = 0; ///< Open edges + non-manifold edges + non-manifold vertices
     std::size_t oriented = 0;       ///< Flipped faces + inside-out closed shells (rule O; cavities are not counted)
     std::size_t intersecting = 0;   ///< Faces in scope that cross another face (in scope or not)
-    std::size_t junk = 0;           ///< Degenerate + duplicate faces + tiny floating shells (when their removal is on)
+    std::size_t junk = 0;           ///< Degenerate + duplicate faces + tiny floating shells (when their removal is on) + nested solids touching nothing (when the merge is on)
     std::size_t thin = 0;           ///< Thin faces (aspect over the limit)
 
     [[nodiscard]] auto operator<=>(const FixAllPriority&) const = default;
@@ -115,6 +115,7 @@ struct FixAllCounts {
     std::size_t duplicateFaces = 0;
     std::size_t thinFaces = 0;
     std::size_t tinyShells = 0;        ///< Tiny floating shells wholly in scope (0 when not counted)
+    std::size_t nestedSolids = 0;      ///< Nested solids touching nothing, with their container, in scope (0 when not counted)
     bool complete = true;              ///< False when stopped
 
     [[nodiscard]] FixAllPriority priority() const noexcept;
@@ -131,6 +132,12 @@ struct FixAllCounts {
 /// progress. The engine passes its fraction when the tiny-shell step is on.
 [[nodiscard]] FixAllCounts countFixAllDefects(const Mesh& mesh, const FixAllScope& scope, const CheckParams& params,
                                               double tinyShellFraction, std::stop_token stopToken = {});
+
+/// The same, also counting, when `nestedSolids` (the merge is on), the nested solids the merge deletes
+/// (rule O: outward, wholly inside another shell's material, touching and holding nothing; it and its
+/// container in scope; none for a face scope) as junk, so a pass that only deletes them is progress.
+[[nodiscard]] FixAllCounts countFixAllDefects(const Mesh& mesh, const FixAllScope& scope, const CheckParams& params,
+                                              double tinyShellFraction, bool nestedSolids, std::stop_token stopToken = {});
 
 /// A hash of the sorted face geometry keys (`faceGeometryKey`): the same surface gives the same hash
 /// whatever the vertex or face numbering. Used to notice a pass that returns to an earlier state.
@@ -163,6 +170,9 @@ enum class FixAllStageId : std::uint8_t {
     FillHoles,     ///< Step 9: fill every hole, the fill that crosses least when every fill crosses
     Islands,       ///< Step 10: patch intersection islands within shells
     OrientAgain,   ///< Step 11: step 6 again (shells closed this pass are judged by rule O here)
+    PlanMerge,     ///< Step 12: the merge plan (report only: groups, kept cavities, refusals, skipped shells)
+    DeleteNestedSolids, ///< Step 13: delete the nested solids that touch nothing
+    MergeShells,   ///< Step 13: unite one merge group (Manifold), with the merge guards
     Custom         ///< A stage a test inserts
 };
 
@@ -182,10 +192,12 @@ struct FixAllDeferred {
 
 /// Shells a report line names, for the controller to number and show: each entry is the faces of one
 /// shell, in the numbering of the mesh the step returned (the step's input when it was not kept). The
-/// line itself numbers them `#k` in the Shells-panel order of that mesh (`shellsLargestFirst`).
+/// line itself numbers them `#k` in the Shells-panel order of that mesh (`shellsLargestFirst`). An empty
+/// entry is a shell the step deleted.
 struct FixAllShellNote {
     std::string text;                              ///< "#1 and its inner shell #2 look inside out together: left for you"
     std::vector<std::vector<Eigen::Index>> shells; ///< Faces of each shell named, in the order the text names them
+    bool warning = false;                          ///< Something is left for the user (orange in the report)
 };
 
 /// What a stage sees besides the mesh.
@@ -198,6 +210,9 @@ struct FixAllStageContext {
     /// Phase 3 only: the mesh before the merge. The sliver step then heals only the thin faces the merge
     /// made (faces not in it, by geometry).
     const Mesh* preMerge = nullptr;
+    /// Phase 2 only: face of the mesh the merge was planned on -> row of the mesh the stage gets (-1 =
+    /// removed by an earlier phase-2 step). Empty: the rows are the same.
+    std::span<const Eigen::Index> planFaceMap;
 };
 
 /// What a stage returns. The engine keeps `mesh` only when `changed` and every guard passes.
@@ -210,6 +225,10 @@ struct FixAllStageOutcome {
     double maxMove = 0.0;              ///< Farthest a vertex moved (straight line)
     std::string detail;                ///< Report line ("Removed 3 collapsed faces")
     std::string failure;               ///< Non-empty: the stage failed, nothing is kept
+    /// Non-empty: the stage's own guard refused its change (the merge guards: Manifold, a union that is
+    /// not closed and oriented, more crossings, volumes that do not add up, a reached cavity). Nothing is
+    /// kept; the step is refused by `FixAllGuard::Merge` with this reason.
+    std::string refusal;
     std::string skipped;               ///< Non-empty: the stage did not run on this mesh (why)
     std::vector<FixAllDeferred> deferred; ///< Problems the change leaves for later steps (besides those the engine measures)
     std::vector<FixAllShellNote> notes;   ///< Shells the report names (stopped, kept, crossed ...)
@@ -249,7 +268,8 @@ enum class FixAllGuard : std::uint8_t {
     NoChurn,     ///< It did not lower its own target
     Scope,       ///< It changed a face outside the scope
     Cavity,      ///< It would lose, open, join or shrink a shell wound inward (a cavity)
-    DeadEnd      ///< It moved vertices into a crossing with a shell the merge cannot take
+    DeadEnd,     ///< It moved vertices into a crossing with a shell the merge cannot take
+    Merge        ///< A merge guard: Manifold failed, the union is not closed and oriented, crossings rose, the volumes do not add up, or a cavity is reached
 };
 
 enum class FixAllStepStatus : std::uint8_t {
@@ -293,7 +313,14 @@ struct FixAllPassReport {
     bool repeated = false; ///< Its end state was seen before
     std::size_t firstStep = 0; ///< Its steps: `FixAllResult::steps[firstStep .. firstStep + stepCount)`
     std::size_t stepCount = 0;
+    std::size_t groupsMerged = 0;        ///< Phase 2: merge groups united this pass
+    std::size_t nestedSolidsDeleted = 0; ///< Phase 2: nested solids deleted this pass
     double elapsedMs = 0.0;
+
+    /// Phase 2 changed the mesh this pass (at most one merge per pass).
+    [[nodiscard]] bool merged() const noexcept {
+        return groupsMerged > 0 || nestedSolidsDeleted > 0;
+    }
 };
 
 enum class FixAllStopReason : std::uint8_t {
@@ -328,6 +355,10 @@ struct FixAllResult {
     FixAllPriority priorityBefore;
     FixAllPriority priorityAfter;
     FixAllWeldPlan weldPlan;         ///< Worked out on the input's scope (step 0)
+    int merges = 0;                  ///< Passes up to the one returned whose phase 2 changed the mesh
+    /// Faces of the input that phase 2 removed up to the pass returned: union faces not kept bit-identical
+    /// and deleted nested solids (sorted; for *Show removed*).
+    std::vector<Eigen::Index> mergeRemovedFaces;
     double elapsedMs = 0.0;
 };
 
@@ -348,8 +379,9 @@ private:
 };
 
 /// Test hooks: edit a phase's stage list before a pass runs it (remove, replace or insert stages). It is
-/// called for phase 1 (`fixAllRepairStages`), phase 2 (no stages yet: a test may insert a merge, e.g. one
-/// that calls `mergeShells`) and phase 3 (`fixAllCleanupStages`, only when phase 2 changed the mesh).
+/// called for phase 1 (`fixAllRepairStages`), phase 2 (`fixAllMergeStages` of the pass's merge plan, or
+/// none when the merge is off: a test may insert its own) and phase 3 (`fixAllCleanupStages`, only when
+/// phase 2 changed the mesh).
 struct FixAllTestHooks {
     std::function<void(int pass, FixAllPhase phase, std::vector<FixAllStage>& stages)> adjustStages;
 };
