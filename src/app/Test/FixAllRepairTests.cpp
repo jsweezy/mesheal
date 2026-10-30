@@ -1,4 +1,5 @@
 #include "app/AppController.hpp"
+#include "app/FixAllPanelModel.hpp"
 #include "diagnostics/MeshChecks.hpp"
 #include "io/SampleMeshes.hpp"
 #include "repair/RepairMetrics.hpp"
@@ -941,4 +942,74 @@ TEST_CASE("Fix All: the weld row follows the weld tolerance set in the panel", "
     REQUIRE(controller.fixAllWeldPlan() != nullptr);
     CHECK(controller.fixAllWeldPlan()->collapsingEdges == 1);
     CHECK(controller.fixAllWeldPlan()->maxTolerance == Catch::Approx(1.0e-4));
+}
+
+TEST_CASE("Fix All on the Turkey as the GUI drives it: background plan check, preview, per-frame polling (timings)",
+          "[app][fixall][.benchmark]") {
+    using Clock = std::chrono::steady_clock;
+    const auto seconds = [](Clock::time_point start) { return std::chrono::duration<double>(Clock::now() - start).count(); };
+    AppController controller;
+    controller.setMesh(ogun::loadStl(std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() /
+                                     "examples" / "Turkey.stl"),
+                       "Turkey.stl");
+    controller.setBackgroundChecks(true); // as PolyscopeGui::run does
+
+    // One GUI frame: poll the jobs, then what the panel reads every frame (its plan rows, scope and status)
+    double pollSeconds = 0.0;
+    double maxFrameSeconds = 0.0;
+    int frames = 0;
+    const auto frame = [&] {
+        const auto start = Clock::now();
+        static_cast<void>(controller.pollBackgroundChecks());
+        if (controller.fixAllState() == FixAllPanelState::Plan) {
+            static_cast<void>(ogun::fixAllPlanRows(controller));
+        }
+        static_cast<void>(controller.fixAllScope());
+        static_cast<void>(controller.fixAllStatusText());
+        const double s = seconds(start);
+        pollSeconds += s;
+        maxFrameSeconds = std::max(maxFrameSeconds, s);
+        ++frames;
+        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    };
+
+    while (controller.backgroundWorkRunning()) {
+        frame(); // the load checks, if any
+    }
+
+    auto start = Clock::now();
+    controller.openFixAll();
+    while (controller.fixAllPlanChecking()) {
+        frame();
+    }
+    const double planSeconds = seconds(start);
+    REQUIRE(controller.fixAllMergePlan() != nullptr);
+    CHECK(controller.fixAllParams().mergeShells);
+
+    pollSeconds = 0.0;
+    maxFrameSeconds = 0.0;
+    frames = 0;
+    start = Clock::now();
+    controller.previewFixAll();
+    while (controller.fixAllRunning()) {
+        frame();
+    }
+    frame(); // collects the finished candidate
+    const double previewSeconds = seconds(start);
+    const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+    REQUIRE(candidate != nullptr);
+    REQUIRE(candidate->success);
+    CHECK(candidate->metrics.shellsAfter == 28);
+    const double runSeconds = candidate->fixAll->result.elapsedMs / 1000.0;
+
+    // The Result panel's text, built every frame
+    start = Clock::now();
+    static_cast<void>(ogun::fixAllPassLines(controller, candidate->fixAll->result));
+    static_cast<void>(ogun::fixAllResultLines(candidate->fixAll->result, true));
+    const double resultTextSeconds = seconds(start);
+    controller.setBackgroundChecks(false);
+    WARN("Turkey Fix All as in the GUI: plan check " << planSeconds << " s, preview " << previewSeconds << " s (run " << runSeconds
+                                                     << " s; " << frames << " frames polled, " << pollSeconds
+                                                     << " s in all, slowest " << maxFrameSeconds << " s), result text "
+                                                     << resultTextSeconds << " s");
 }
