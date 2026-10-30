@@ -148,6 +148,7 @@ void PolyscopeGui::drawHealthPanel() {
     }
     tooltip("Run every check below in the background, including rows whose Auto is off.  Key: F5");
     ImGui::SameLine();
+    drawFixAllHeaderButtons();
 
     bool anyRun = false;
     for (const CategoryHealth& row : controller_.healthReport().rows) {

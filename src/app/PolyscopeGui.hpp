@@ -146,11 +146,26 @@ private:
     void drawHoleScorecard();
     void drawHoleFillSettings();
     void drawRepairAllOperator();
+
+    // ---- Operation: Fix All (PolyscopeGuiFixAll.cpp) ----
+    void drawFixAllOperator();
+    void drawFixAllPlan();
+    void drawFixAllPlanRows();
+    void drawFixAllMergeNotes();
+    void drawFixAllOptions();
+    void drawFixAllSettingsUsed();
+    void drawFixAllRunning();
+    void drawFixAllResult();
+    void drawFixAllReport();
+    /// The [Fix All...] and [One Pass...] buttons beside Check Mesh; returns after laying them out.
+    void drawFixAllHeaderButtons();
     void drawMergeShellsOperator();
     void drawGlobalMethodParams(GlobalRepairMethod method);
     void drawGlobalCandidateTable();
     void fixAll(DefectCategory category);
     void checkMesh();
+    /// Opens Operation: Fix All with the saved number of passes (`fullRun`), or with one pass (One Pass...).
+    void openFixAllPanel(bool fullRun);
 
     // ---- Face selection tools: box (B), circle (C), Shift+click (PolyscopeGuiSelection.cpp) ----
     enum class FaceSelectMode { None, Box, Circle };
@@ -232,6 +247,7 @@ private:
     bool showPolyRender_ = false;      ///< ... Render & Debug (frame rate, vsync, redraw)
     bool showMeshInfo_ = false;
     bool showPreferences_ = false;
+    bool fixAllHintSeen_ = false; ///< The first-run line of the Fix All panel was shown once
     bool showNavigationHelpWindow_ = false;
     bool showAboutWindow_ = false;
     bool requestSaveConfirm_ = false;

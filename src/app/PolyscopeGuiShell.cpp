@@ -468,6 +468,8 @@ void PolyscopeGui::drawRightColumn(float top, float bottom) {
     if (ImGui::Begin(title.c_str(), &open, kDockedFlags | ImGuiWindowFlags_NoCollapse)) {
         if (slot == ToolSlot::UnitsAndScale) {
             drawUnitsAndScaleOperator();
+        } else if (slot == ToolSlot::FixAll) {
+            drawFixAllOperator();
         } else if (controller_.repairAllOpen()) {
             drawRepairAllOperator();
         } else if (slot == ToolSlot::MergeShells) {
@@ -796,6 +798,15 @@ void PolyscopeGui::drawRepairMenu() {
     if (ImGui::MenuItem("Check Mesh", "F5", false, controller_.hasMesh())) {
         checkMesh();
     }
+    if (ImGui::MenuItem("Fix All...", "Shift+F5", false, controller_.hasMesh())) {
+        openFixAllPanel(true);
+    }
+    tooltip("Repair every problem in the scope (the selection, or the whole mesh), repeating the sequence up to the number of "
+            "passes you set, with a preview and before / after numbers. Nothing changes until Apply.");
+    if (ImGui::MenuItem("Fix All, One Pass...", "Alt+Shift+F5", false, controller_.hasMesh())) {
+        openFixAllPanel(false);
+    }
+    tooltip("Run the Fix All sequence once and preview it, so you can see each step's effect. Run it again for the next pass.");
     ImGui::Separator();
     for (const DefectCategory category : kAllDefectCategories) {
         const CategoryInfo& info = categoryInfo(category);
@@ -816,8 +827,6 @@ void PolyscopeGui::drawRepairMenu() {
             tooltip("Planned (P4).");
         }
     }
-    ImGui::Separator();
-    plannedMenuItem("Auto-Repair in Safe Order", "Planned.");
     ImGui::EndMenu();
 }
 
@@ -1579,6 +1588,8 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"X", "Asks \"Delete N selected faces?\" next to the cursor (Enter or the Delete button confirms; Esc, Cancel or a click outside cancels), then deletes the selected faces as Delete does"},
         {"Delete  /  Backspace", "Immediately (no confirmation) deletes the selected faces (Mesh > Delete Selected Faces); with no faces selected, the selected shells. Undoable"},
         {"F5", "Check Mesh: runs every Mesh Health row in the background"},
+        {"Shift + F5", "Fix All...: opens Operation: Fix All with the saved number of passes (3 unless changed in Preferences > Fix All). Follows the selection (faces, else shells, else the whole mesh). Preview first; nothing changes until Apply"},
+        {"Alt + Shift + F5", "Fix All, One Pass...: the same panel with Passes = 1 (Option+Shift+F5 on macOS), to step the repair by hand"},
         {"Ctrl/Cmd + Z", "Undoes the last mesh modification (repair, Fix All / Fix Selected, Scale, Transform, Decimate, Weld, Delete Faces / Shells), one step at a time. "
                          "Undoing a Scale or Transform re-frames the camera (Home)"},
         {"Ctrl/Cmd + O / S / Shift+S", "Open, Save (overwrite, asks the first time), Save As"},

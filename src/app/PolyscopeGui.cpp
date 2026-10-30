@@ -801,7 +801,11 @@ void PolyscopeGui::handleKeyboardShortcuts() {
         return;
     }
     if (ImGui::IsKeyPressed(ImGuiKey_F5, false)) {
-        checkMesh();
+        if (io.KeyShift) {
+            openFixAllPanel(!io.KeyAlt); // Shift+F5: Fix All; Alt+Shift+F5: One Pass
+        } else if (!io.KeyAlt) {
+            checkMesh();
+        }
     }
     if (ImGui::IsKeyPressed(ImGuiKey_N, false)) {
         stepDefectFocus(io.KeyShift ? -1 : +1);

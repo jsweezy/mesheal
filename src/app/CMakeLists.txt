@@ -13,6 +13,7 @@ add_library(ogun_app_controller STATIC
     AppControllerTransform.cpp
     DefectBrowser.cpp
     FaceSelection.cpp
+    FixAllPanelModel.cpp
     FixAllPlanRunner.cpp
     FramePacer.cpp
     GuiLayout.cpp
@@ -57,6 +58,7 @@ if(OGUN_BUILD_GUI)
         PolyscopeGui.cpp
         PolyscopeGuiShell.cpp
         PolyscopeGuiPanels.cpp
+        PolyscopeGuiFixAll.cpp
         PolyscopeGuiHealth.cpp
         PolyscopeGuiHoles.cpp
         PolyscopeGuiIntersections.cpp

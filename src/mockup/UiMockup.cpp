@@ -756,7 +756,7 @@ float UiMockup::drawMenuBar() {
             }
         }
         ImGui::Separator();
-        ImGui::MenuItem("Auto-Repair in Safe Order (future)", nullptr, false, false);
+        ImGui::MenuItem("Fix All... (Shift+F5, in the real app)", nullptr, false, false);
         ImGui::EndMenu();
     }
 
@@ -1209,7 +1209,7 @@ void UiMockup::drawCategoryTool(HealthCategory& category) {
     }
     if (categoryIndex == kIntersections && hasShellPanel()) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        ImGui::TextWrapped("Crossings between shells are removed by Merge Shells, not by Fix All.");
+        ImGui::TextWrapped("Crossings between shells are removed by Merge Shells, or by the top-level Fix All (Repair > Fix All...) with its Merge box ticked; a row's own Fix All skips them.");
         ImGui::PopStyleColor();
     }
 
