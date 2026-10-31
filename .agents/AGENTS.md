@@ -38,13 +38,19 @@ Whenever you add, modify, or remove features, workflows, UI controls, diagnostic
 - Use `reserve()` on a `std::vector` whenever the final size is known or can be estimated up front.
 - Keep code comments short, and only comment complex code such as what an algorithm is doing.
 
-## 5. Building
+## 5. Building & Testing
 
-- Limit CPU usage when building on this Mac Neo with "-j 2".   Testing can use "-j 4".  
+- Limit CPU usage when building on this Mac Neo with "-j 2". Testing can use "-j 4".
 - There are two build trees:
-  - **`build/`**: Debug build (`CMAKE_BUILD_TYPE=Debug`), for day-to-day development and tests.
-  - **`build_release/`**: Release build (`CMAKE_BUILD_TYPE=Release`), for running the app on big meshes and timing performance.
+  - **`build/`**: Debug build (`CMAKE_BUILD_TYPE=Debug`), for day-to-day development, debugging, and targeted unit tests.
+  - **`build_release/`**: Release build (`CMAKE_BUILD_TYPE=Release`), for running the app on big meshes, timing performance, and running the full integration test suite.
 - `build_release/` reuses the dependency sources already downloaded into `build/_deps/` (`FETCHCONTENT_SOURCE_DIR_<NAME>` for Catch2, Eigen, libigl, Manifold, Polyscope and portable-file-dialogs), so it needs no network access. `build/` must therefore stay in place.
+- **Running `build_release`**:
+  - Build with: `cmake --build build_release -j 2`
+  - Why & when to use `build_release/`: In `build/` (Debug), running the full suite or tests on large meshes (e.g. `Turkey.stl` with 259k faces, `stanford_bunny.stl`) takes 5+ minutes because compiler optimizations are disabled and heavy assertions are active. In `build_release/`, fully optimized `-O3` binaries execute the full test suite in ~20–30 seconds.
+- **Testing Guidelines**:
+  - **Target specific test filters**: During feature development, run only the relevant test cases using tags or test names (e.g. `./build/src/app/Test/ogun_app_tests "[app][weld]"` or `./build/src/repair/Test/ogun_repair_tests "[repair][merge]"`), which run in milliseconds.
+  - **Timeouts & Baselines**: Establish a runtime baseline first, and always run test commands with an explicit timeout (with a reasonable buffer) to prevent hanging if a test enters an infinite loop or deadlock.
 
 - **Driving the GUI**: `cliclick` (Homebrew, `/opt/homebrew/bin/cliclick`) clicks and types in the running app, e.g. `cliclick m:X,Y w:300 dd:X,Y w:300 du:X,Y` (press). A quick `c:X,Y` only works on list rows: ImGui buttons, radio buttons and headers need the button held for about 300 ms. `t:"text"` types text (not shortcut keys), `kp:return` presses a key. Take screenshots with `screencapture -x <file>.png` and look at them. Coordinates are screen points: compare the screenshot size with `system_profiler SPDisplaysDataType` ("UI Looks like"); on this Mac they equal pixels (2560 x 1600). cliclick needs Accessibility permission for the terminal running the agent (System Settings > Privacy & Security > Accessibility); without it, it warns "Accessibility privileges not enabled".
 
