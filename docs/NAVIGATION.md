@@ -90,7 +90,7 @@ How inputs are matched:
 
 ### Mouse in the Shells panel (multi-shell meshes)
 
-**View > Compass** draws X / Y / Z axes (red / green / blue) in the bottom-left corner of the 3D view; they turn with the camera. It is off by default and remembered. **View > Polyscope** opens Polyscope's Slice Planes, Appearance (transparency, ground plane, background), Camera & Clipping and Render & Debug sections as floating windows. Each opens in its own place side by side along the top of the free 3D view (in rows when the view is narrow), so several open at once do not overlap. Ogun starts empty when no STL is given on the command line.
+**View > Compass** draws X / Y / Z axes (red / green / blue) in the bottom-left corner of the 3D view; they turn with the camera. It is off by default and remembered. **View > Polyscope** opens Polyscope's Appearance, Slice Planes, Structures, Camera & Clipping and Render & Debug sections (floating windows and sidebar panel). Each floating window opens in its own place side by side along the top of the free 3D view (in rows when the view is narrow), so several open at once do not overlap. Ogun starts empty when no STL is given on the command line.
 
 The **Shells** panel (left column, between Navigate and Structures) appears only when the mesh has more than one shell. Mesh Health covers the **selected** shells, or the **visible** shells when none is selected; a *Scope* line in Mesh Health says so, with an *All shells* button. A crossing counts only when both of its shells are in scope.
 

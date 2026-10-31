@@ -250,7 +250,7 @@ private:
     std::shared_ptr<polyscope::render::TextureBuffer> appIconTexture_;
 
     // Panels & layout (View menu, Reset Layout)
-    bool showStructures_ = false;      ///< Structures panel, off until View > Structures (advanced)
+    bool showStructures_ = false;      ///< Structures panel, off until View > Polyscope > Structures
     bool showShells_ = true;           ///< Shells panel (shown only for multi-shell meshes)
     bool structuresCollapsed_ = true;  ///< Structures panel state, to size the Shells panel above it
     bool showCompass_ = false;         ///< View > Compass (saved preference)
