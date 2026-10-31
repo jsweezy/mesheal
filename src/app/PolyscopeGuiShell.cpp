@@ -450,7 +450,8 @@ void PolyscopeGui::drawRightColumn(float top, float bottom) {
                         : slot == ToolSlot::RepairAllHoles         ? std::string("Operation: Repair All Holes")
                         : slot == ToolSlot::AlphaWrap              ? std::string("Operation: Alpha Wrap")
                         : slot == ToolSlot::Decimate               ? std::string("Operation: Decimate")
-                        : slot == ToolSlot::MergeVertices          ? std::string("Operation: Merge Vertices")
+                        : slot == ToolSlot::MergeVertices          ? std::string("Operation: Merge by Distance")
+                        : slot == ToolSlot::Weld                   ? std::string("Operation: Weld")
                         : slot == ToolSlot::MergeShells            ? std::string("Operation: Merge Shells")
                         : slot == ToolSlot::Transform              ? std::string("Operation: Translate / Rotate")
                         : slot == ToolSlot::FixAll                 ? std::string("Operation: Fix All")
@@ -755,12 +756,18 @@ void PolyscopeGui::drawMeshMenu() {
     }
     tooltip("Reduce the face count of the selected faces, or the whole mesh (ratio 0.01 to 1, default 0.5). "
             "Preview, then apply.");
-    if (ImGui::MenuItem("Weld / Merge Vertices...", nullptr, false, hasMesh)) {
+    if (ImGui::MenuItem("Merge by Distance...", nullptr, false, hasMesh)) {
         controller_.openMergeVertices();
         requestSync();
     }
     tooltip("Merge vertices closer than a distance (default 0.05) in the selected faces, or the whole mesh, "
-            "removing the faces that collapse. Preview, then apply.");
+            "removing the faces that collapse. Preserves open edges and cracks by default. Preview, then apply.");
+    if (ImGui::MenuItem("Weld...", nullptr, false, hasMesh)) {
+        controller_.openWeld();
+        requestSync();
+    }
+    tooltip("Weld open boundary vertices together across seams and cracks within a distance (default 0.05) "
+            "without modifying interior faces. Preview, then apply.");
     if (ImGui::MenuItem("Alpha Wrap...", nullptr, false, hasMesh)) {
         controller_.openAlphaWrap();
         requestSync();
@@ -1051,7 +1058,7 @@ void PolyscopeGui::drawStatusBar(float top, float height) {
         if (controller_.selectedFaceCount() > 0) {
             divider();
             ImGui::Text("%s faces selected", withThousands(controller_.selectedFaceCount()).c_str());
-            tooltip("Faces selected with B (box), C (circle) or Shift+click. Decimate and Weld / Merge Vertices work "
+            tooltip("Faces selected with B (box), C (circle) or Shift+click. Decimate, Merge by Distance and Weld work "
                     "on them. Alt+A deselects.");
         }
     }
@@ -1568,7 +1575,7 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"Select Face", inputs(MouseAction::Select) + " a face: if it is a defect of the selected Mesh Health row it becomes the focus (Inspector, Orbit Pivot at its centroid); with no row selected, the row containing it opens; a clean face only moves the Orbit Pivot. " +
                             inputs(MouseAction::ClearPick) + " clears the Polyscope pick."},
         {"Select Shell", inputs(MouseAction::SelectShell) + " a face selects its whole shell in the Shells panel (multi-shell meshes); with Ctrl/Cmd added it adds or removes it. A plain click never changes the shell selection."},
-        {"Toggle Face", inputs(MouseAction::ToggleFace) + " a face adds it to or removes it from the face selection (Decimate and Weld / Merge Vertices then work on the selected faces). Faces a slice plane cuts away are clicked through"},
+        {"Toggle Face", inputs(MouseAction::ToggleFace) + " a face adds it to or removes it from the face selection (Decimate, Merge by Distance and Weld then work on the selected faces). Faces a slice plane cuts away are clicked through"},
     });
 
     ImGui::Spacing();
@@ -1595,7 +1602,7 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"Shift + F5", "Fix All...: opens Operation: Fix All with the saved number of passes (3 unless changed in Preferences > Fix All). Follows the selection (faces, else shells, else the whole mesh). Preview first; nothing changes until Apply"},
         {"Alt + Shift + F5", "Fix All, One Pass...: the same panel with Passes = 1 (Option+Shift+F5 on macOS), to step the repair by hand"},
         {"Repair > Rebuild Watertight Surface...", "Opens the Fix All panel on its Rebuild side (no key): a new, always watertight surface instead of repairing the faces. Gaps narrower than alpha and inner cavities are filled and no original face is kept; compare it with Repair before you Apply"},
-        {"Ctrl/Cmd + Z", "Undoes the last mesh modification (repair, Fix All / Fix Selected, Scale, Transform, Decimate, Weld, Delete Faces / Shells), one step at a time. "
+        {"Ctrl/Cmd + Z", "Undoes the last mesh modification (repair, Fix All / Fix Selected, Scale, Transform, Decimate, Merge by Distance, Weld, Delete Faces / Shells), one step at a time. "
                          "Undoing a Scale or Transform re-frames the camera (Home)"},
         {"Ctrl/Cmd + O / S / Shift+S", "Open, Save (overwrite, asks the first time), Save As"},
         {"Ctrl/Cmd + ,", "Preferences"},

@@ -330,9 +330,47 @@ TEST_CASE("Merge Vertices uses 0.05 by default, applies and undoes", "[app][sele
     REQUIRE(c->metrics.watertight());
 
     REQUIRE(controller.applyGlobalRepair());
-    REQUIRE(controller.lastUndoActionLabel() == "Merge Vertices");
+    REQUIRE(controller.lastUndoActionLabel() == "Merge by Distance");
     REQUIRE(controller.mesh().numFaces() == before.numFaces() - 2);
     REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().F == before.F);
+}
+
+TEST_CASE("Mesh > Weld welds open edges across cracks and is undoable", "[app][weld]") {
+    ogun::Mesh sheets;
+    sheets.V.resize(8, 3);
+    sheets.V << 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1.02, 0, 0, 2, 0, 0, 2, 1, 0, 1.02, 1, 0;
+    sheets.F.resize(4, 3);
+    sheets.F << 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7;
+    sheets.recomputeNormals();
+
+    ogun::AppController controller;
+    controller.setMesh(sheets, "open sheets");
+    const ogun::Mesh before = controller.mesh();
+
+    controller.openWeld();
+    REQUIRE(controller.activeTool() == ToolSlot::Weld);
+    REQUIRE(controller.globalRepairMethod() == ogun::GlobalRepairMethod::Weld);
+    REQUIRE(controller.globalRepairParams().weldDistance == 0.05);
+
+    ogun::GlobalRepairParams params = controller.globalRepairParams();
+    params.weldDistance = 100.0;
+    controller.setGlobalRepairParams(params);
+    REQUIRE(controller.globalRepairParams().weldDistance == ogun::settings::kMaxWeldDistance);
+    params.weldDistance = 0.05;
+    controller.setGlobalRepairParams(params);
+
+    controller.previewGlobalRepair();
+    const ogun::RepairCandidate* c = controller.shownGlobalCandidate();
+    REQUIRE(c != nullptr);
+    REQUIRE(c->success);
+    REQUIRE(c->mesh.numVertices() == 6);
+
+    REQUIRE(controller.applyGlobalRepair());
+    REQUIRE(controller.lastUndoActionLabel() == "Weld");
+    REQUIRE(controller.mesh().numVertices() == 6);
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().V == before.V);
     REQUIRE(controller.mesh().F == before.F);
 }
 

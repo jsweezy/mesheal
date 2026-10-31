@@ -47,7 +47,7 @@ struct GlobalMethodOption {
     const char* help;
 };
 
-constexpr std::array<GlobalMethodOption, 7> kGlobalMethodOptions = {{
+constexpr std::array<GlobalMethodOption, 8> kGlobalMethodOptions = {{
     {GlobalRepairMethod::FillHoles, "keeps every other face exactly",
      "Surgical: each hole gets its recommended fill (Flat holes Fill Flat, Curved holes Fill Smooth, cracks "
      "Close Crack), or the method chosen below. Every existing face is kept; holes over the size limit and open "
@@ -69,10 +69,13 @@ constexpr std::array<GlobalMethodOption, 7> kGlobalMethodOptions = {{
      "Garland-Heckbert edge collapse (CGAL) down to the chosen fraction of the faces. Collapses that would flip a "
      "face are skipped; hole rims and the edge of a face selection never move, so the rest of the mesh is kept "
      "exactly."},
-    {GlobalRepairMethod::MergeVertices, "welds close vertices",
+    {GlobalRepairMethod::MergeVertices, "merges close vertices",
      "Merges every vertex within the distance of an earlier one (no vertex moves farther than the distance). "
-     "Faces that collapse are removed, as are faces that become copies of another. Closes small gaps between "
-     "unwelded patches and removes tiny faces; between shells that only touch it creates non-manifold edges."},
+     "Faces that collapse are removed, as are faces that become copies of another. By default preserves open "
+     "edges and cracks so seams are not altered; uncheck to allow crack merging."},
+    {GlobalRepairMethod::Weld, "welds open edges across cracks",
+     "Welds vertices on open boundary edges together across cracks and seams within the distance threshold. "
+     "Interior vertices and triangles are never altered or collapsed."},
 }};
 
 /// Length with the current unit ("0.012 mm").
@@ -217,17 +220,22 @@ void PolyscopeGui::drawRepairAllOperator() {
     const DefectCategory target = controller_.globalRepairTarget();
     const CategoryHealth& row = controller_.categoryHealth(target);
     const ToolSlot slot = controller_.activeTool();
-    const bool wrapOnly = slot == ToolSlot::AlphaWrap || slot == ToolSlot::Decimate || slot == ToolSlot::MergeVertices;
+    const bool wrapOnly =
+        slot == ToolSlot::AlphaWrap || slot == ToolSlot::Decimate || slot == ToolSlot::MergeVertices || slot == ToolSlot::Weld;
     if (slot == ToolSlot::AlphaWrap) {
         ImGui::TextWrapped("Wraps %s in a new surface that is always watertight, manifold and free of "
                            "self-intersections. Every face is new: detail smaller than alpha is lost.",
                            controller_.shells().scoped() ? "the shells in scope" : "the whole mesh");
-    } else if (slot == ToolSlot::Decimate || slot == ToolSlot::MergeVertices) {
+    } else if (slot == ToolSlot::Decimate || slot == ToolSlot::MergeVertices || slot == ToolSlot::Weld) {
         const std::size_t inScope = controller_.operatorScopeFaceCount();
         const std::string scope = controller_.selectedFaceCount() > 0
             ? "the " + withThousands(inScope) + (inScope == 1 ? " selected face" : " selected faces")
             : controller_.operatorScopeText();
-        ImGui::TextWrapped("%s %s.", slot == ToolSlot::Decimate ? "Decimates" : "Merges close vertices in", scope.c_str());
+        ImGui::TextWrapped("%s %s.",
+                           slot == ToolSlot::Decimate ? "Decimates"
+                           : slot == ToolSlot::Weld   ? "Welds open boundary edges in"
+                                                      : "Merges close vertices in",
+                           scope.c_str());
     } else if (target == DefectCategory::OpenEdges) {
         if (row.status == HealthStatus::Defects || row.status == HealthStatus::Ok) {
             const std::size_t holes = controller_.holeCountInScope();
@@ -416,11 +424,13 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
         }
         tooltip("Vertices closer than this are merged (default 0.05; 0.0001 to 10, log scale; the unit is only a label). "
                 "Ctrl+click (Control, not Cmd) to type a value.");
+        changed |= ImGui::Checkbox("Preserve open edges / cracks", &params.mergePreserveOpenEdges);
+        tooltip("On (default): open edges and cracks are protected and will not merge across seams. To stitch "
+                "open seams, use Mesh > Weld. Off: vertices across open edges can merge.");
         changed |= ImGui::Checkbox("Keep surfaces apart", &params.mergeKeepSurfacesApart);
-        tooltip("On: two vertices merge only when an edge joins them (a short edge collapses) or both lie "
-                "on open edges (a crack is welded). Surfaces and shells that touch stay apart. Off: any "
-                "close vertices merge, like Blender's Merge by Distance, which pinches touching surfaces "
-                "into non-manifold edges.");
+        tooltip("On (default): two vertices merge only when an edge joins them (a short edge collapses). Surfaces "
+                "and shells that touch stay apart. Off: any close vertices merge, like Blender's Merge by Distance, "
+                "which pinches touching surfaces into non-manifold edges.");
         const double meanEdge = controller_.meanEdgeLength();
         if (meanEdge > 0.0) {
             const double ratio = distance / meanEdge;
@@ -432,6 +442,25 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
                                    ratio < settings::kMergeCollapseWarnRatio ? "many edges will collapse" : "whole areas will collapse");
                 ImGui::PopStyleColor();
             }
+        }
+        break;
+    }
+    case GlobalRepairMethod::Weld: {
+        double distance = params.weldDistance;
+        const std::string label = "Distance (" + std::string(unitSymbol(controller_.fileUnit())) + ")";
+        const double lo = settings::kMinWeldDistance;
+        const double hi = settings::kMaxWeldDistance;
+        if (ImGui::SliderScalar(label.c_str(), ImGuiDataType_Double, &distance, &lo, &hi, "%.4g", ImGuiSliderFlags_Logarithmic)) {
+            params.weldDistance = std::clamp(distance, settings::kMinWeldDistance, settings::kMaxWeldDistance);
+            changed = true;
+        }
+        tooltip("Open boundary vertices closer than this across cracks are welded (default 0.05; 0.0001 to 10, log scale; the unit is only a label). "
+                "Ctrl+click (Control, not Cmd) to type a value.");
+        ImGui::TextDisabled("Welds open boundary vertices together across seams and cracks without modifying interior faces.");
+        const double meanEdge = controller_.meanEdgeLength();
+        if (meanEdge > 0.0) {
+            const double ratio = distance / meanEdge;
+            ImGui::TextDisabled("mean edge %s (the distance is %.0f%% of it)", lengthText(meanEdge, controller_.fileUnit()).c_str(), 100.0 * ratio);
         }
         break;
     }

@@ -11,9 +11,9 @@
 
 namespace ogun {
 
-/// Whole-mesh (or selected-faces) clean-up operations: Mesh > Clean Up > Weld / Merge Vertices and
-/// Mesh > Simplify > Decimate. `faceInScope` (one flag per face, empty = every face) limits the work
-/// to a region; faces outside it keep their vertices and positions exactly.
+/// Whole-mesh (or selected-faces) clean-up operations: Mesh > Modify > Merge by Distance,
+/// Mesh > Modify > Weld, and Mesh > Simplify > Decimate. `faceInScope` (one flag per face,
+/// empty = every face) limits the work to a region; faces outside it keep their vertices and positions exactly.
 
 struct MergeByDistanceResult {
     bool success = false;
@@ -34,13 +34,21 @@ struct MergeByDistanceResult {
 /// removed, as are faces that become copies of another (both, when the copies face opposite ways).
 /// With `keepSurfacesApart`, two vertices only merge when an edge joins them (a short edge collapses)
 /// or both lie on open edges (a crack is welded): surfaces and shells that touch are not pinched.
+/// With `preserveOpenEdges`, vertices across open edges / cracks do not merge (preserving boundary seams).
 /// `pinned` (one flag per vertex, empty = none): a pinned vertex may absorb others but never moves or
 /// disappears; pinned vertices take their turn first. Vertices with a non-finite coordinate are skipped.
 /// The output keeps only the vertices faces use (see `vertexMap`).
 [[nodiscard]] MergeByDistanceResult mergeByDistance(const Mesh& mesh, double distance,
                                                     std::span<const std::uint8_t> faceInScope = {},
                                                     bool keepSurfacesApart = false,
-                                                    std::span<const std::uint8_t> pinned = {});
+                                                    std::span<const std::uint8_t> pinned = {},
+                                                    bool preserveOpenEdges = false);
+
+/// Welds vertices on open boundary edges across cracks/gaps within `distance`. Interior vertices and
+/// triangles are never altered or collapsed.
+[[nodiscard]] MergeByDistanceResult weldOpenEdges(const Mesh& mesh, double distance,
+                                                  std::span<const std::uint8_t> faceInScope = {},
+                                                  std::span<const std::uint8_t> pinned = {});
 
 /// The same merge with a per-axis, coordinate-relative tolerance (Fix All's weld): two vertices p and
 /// q match when on every axis |p_i - q_i| <= max(tol.absFloor, tol.relTol x max(|p_i|, |q_i|))
@@ -54,7 +62,8 @@ struct MergeByDistanceResult {
 [[nodiscard]] MergeByDistanceResult mergeByDistance(const Mesh& mesh, const ToleranceConfig& tol,
                                                     std::span<const std::uint8_t> faceInScope = {},
                                                     bool keepSurfacesApart = false,
-                                                    std::span<const std::uint8_t> pinned = {});
+                                                    std::span<const std::uint8_t> pinned = {},
+                                                    bool preserveOpenEdges = false);
 
 struct DecimateResult {
     bool success = false;

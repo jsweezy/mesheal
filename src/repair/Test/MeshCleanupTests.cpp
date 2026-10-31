@@ -214,6 +214,62 @@ TEST_CASE("Keeping surfaces apart still welds cracks and collapses short edges",
     REQUIRE(collapsed.degenerateRemoved == 2);
 }
 
+TEST_CASE("Merge by distance preserves open edges and cracks when requested", "[repair][merge]") {
+    ogun::Mesh sheets;
+    sheets.V.resize(8, 3);
+    sheets.V << 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1.02, 0, 0, 2, 0, 0, 2, 1, 0, 1.02, 1, 0;
+    sheets.F.resize(4, 3);
+    sheets.F << 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7;
+    sheets.recomputeNormals();
+
+    // With preserveOpenEdges = true (the UI default), the crack across open edges is not merged
+    const ogun::MergeByDistanceResult preserved = ogun::mergeByDistance(sheets, 0.05, {}, true, {}, true);
+    REQUIRE(preserved.success);
+    REQUIRE(preserved.verticesMerged == 0);
+    REQUIRE(preserved.mesh.numVertices() == 8);
+
+    // GlobalRepair defaults to mergePreserveOpenEdges = true
+    ogun::GlobalRepairParams params;
+    REQUIRE(params.mergePreserveOpenEdges);
+    const ogun::RepairCandidate candidate = ogun::runGlobalRepair(sheets, {}, ogun::GlobalRepairMethod::MergeVertices, params);
+    REQUIRE(candidate.success);
+    REQUIRE(candidate.mesh.numVertices() == 8);
+
+    // Short edge collapse still works when preserving open edges because an edge connects the vertices
+    const ogun::Mesh shortEdge = cubeWithShortEdge(0.02);
+    const ogun::MergeByDistanceResult collapsed = ogun::mergeByDistance(shortEdge, 0.05, {}, true, {}, true);
+    REQUIRE(collapsed.verticesMerged == 1);
+    REQUIRE(collapsed.degenerateRemoved == 2);
+}
+
+TEST_CASE("weldOpenEdges welds open seams and ignores interior edges", "[repair][weld]") {
+    ogun::Mesh sheets;
+    sheets.V.resize(8, 3);
+    sheets.V << 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1.02, 0, 0, 2, 0, 0, 2, 1, 0, 1.02, 1, 0;
+    sheets.F.resize(4, 3);
+    sheets.F << 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7;
+    sheets.recomputeNormals();
+
+    const ogun::MergeByDistanceResult welded = ogun::weldOpenEdges(sheets, 0.05);
+    REQUIRE(welded.success);
+    REQUIRE(welded.verticesMerged == 2);
+    REQUIRE(welded.mesh.numVertices() == 6);
+
+    // Internal edges on closed meshes are completely untouched by weldOpenEdges
+    const ogun::Mesh shortEdge = cubeWithShortEdge(0.02);
+    const ogun::MergeByDistanceResult untouched = ogun::weldOpenEdges(shortEdge, 0.05);
+    REQUIRE(untouched.success);
+    REQUIRE(untouched.verticesMerged == 0);
+    REQUIRE(untouched.mesh.numFaces() == shortEdge.numFaces());
+
+    // Via GlobalRepair
+    ogun::GlobalRepairParams params;
+    params.weldDistance = 0.05;
+    const ogun::RepairCandidate rep = ogun::runGlobalRepair(sheets, {}, ogun::GlobalRepairMethod::Weld, params);
+    REQUIRE(rep.success);
+    REQUIRE(rep.mesh.numVertices() == 6);
+}
+
 TEST_CASE("Decimate stops at the target face count, not one collapse below it", "[repair][decimate]") {
     const ogun::Mesh box = ogun::SampleMeshes::createGridCubeMesh(1, 10.0); // 12 faces
     REQUIRE(box.numFaces() == 12);

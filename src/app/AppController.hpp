@@ -121,6 +121,7 @@ enum class ToolSlot {
     AlphaWrap,
     Decimate,
     MergeVertices,
+    Weld,
     MergeShells,
     Transform,
     FixAll ///< Operation: Fix All (the Repair All panel with Fix All and the rebuilds)
@@ -1177,8 +1178,11 @@ public:
     /// Opens "Operation: Decimate" (Mesh > Simplify) on the same operator.
     void openDecimate();
 
-    /// Opens "Operation: Merge Vertices" (Mesh > Clean Up > Weld / Merge Vertices) on the same operator.
+    /// Opens "Operation: Merge by Distance" (Mesh > Modify > Merge by Distance) on the same operator.
     void openMergeVertices();
+
+    /// Opens "Operation: Weld" (Mesh > Modify > Weld) on the same operator.
+    void openWeld();
 
     /// Row the open Repair All operator repairs: Intersections or OpenEdges (Alpha Wrap: Intersections).
     [[nodiscard]] DefectCategory globalRepairTarget() const noexcept {
@@ -1194,6 +1198,8 @@ public:
             return kDecimateMethods;
         case ToolSlot::MergeVertices:
             return kMergeMethods;
+        case ToolSlot::Weld:
+            return kWeldMethods;
         case ToolSlot::FixAll:
             return kFixAllMethods;
         default:
@@ -1205,7 +1211,8 @@ public:
     [[nodiscard]] bool repairAllOpen() const noexcept {
         return activeTool_ == ToolSlot::RepairAllIntersections || activeTool_ == ToolSlot::RepairAllHoles ||
                activeTool_ == ToolSlot::AlphaWrap || activeTool_ == ToolSlot::Decimate ||
-               activeTool_ == ToolSlot::MergeVertices || activeTool_ == ToolSlot::FixAll;
+               activeTool_ == ToolSlot::MergeVertices || activeTool_ == ToolSlot::Weld ||
+               activeTool_ == ToolSlot::FixAll;
     }
 
     [[nodiscard]] GlobalRepairMethod globalRepairMethod() const noexcept {

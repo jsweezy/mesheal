@@ -92,8 +92,8 @@ bool AppController::clearFaceSelection() {
 void AppController::onFaceSelectionChanged() {
     ++faceSelectionGeneration_;
     faceSelectionFocus_ = faceSelectedCount_ > 0;
-    // A Decimate / Merge / Fix All preview was computed on the old selection
-    if (activeTool_ == ToolSlot::Decimate || activeTool_ == ToolSlot::MergeVertices) {
+    // A Decimate / Merge / Weld / Fix All preview was computed on the old selection
+    if (activeTool_ == ToolSlot::Decimate || activeTool_ == ToolSlot::MergeVertices || activeTool_ == ToolSlot::Weld) {
         discardGlobalCandidates();
     } else if (activeTool_ == ToolSlot::FixAll) {
         onFixAllScopeChanged();
@@ -146,7 +146,8 @@ std::vector<std::uint8_t> AppController::operatorScopeMask() const {
         FixAllScopeKind kind = FixAllScopeKind::Whole;
         return fixAllScopeMask(kind);
     }
-    const bool selectionScope = activeTool_ == ToolSlot::Decimate || activeTool_ == ToolSlot::MergeVertices;
+    const bool selectionScope =
+        activeTool_ == ToolSlot::Decimate || activeTool_ == ToolSlot::MergeVertices || activeTool_ == ToolSlot::Weld;
     if (selectionScope && faceSelectedCount_ > 0) {
         // Faces in hidden shells are never edited, even when selected before the hide
         std::vector<std::uint8_t> mask = faceSelected_;

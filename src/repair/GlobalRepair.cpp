@@ -33,8 +33,13 @@ RepairCandidate runInPlace(const Mesh& mesh, std::span<const std::uint8_t> faceI
         DecimateResult r = decimate(mesh, params.decimateRatio, faceInScope);
         candidate.statusMessage = r.statusMessage;
         result = std::move(r.mesh);
-    } else {
-        MergeByDistanceResult r = mergeByDistance(mesh, params.mergeDistance, faceInScope, params.mergeKeepSurfacesApart);
+    } else if (candidate.method == GlobalRepairMethod::MergeVertices) {
+        MergeByDistanceResult r =
+            mergeByDistance(mesh, params.mergeDistance, faceInScope, params.mergeKeepSurfacesApart, {}, params.mergePreserveOpenEdges);
+        candidate.statusMessage = r.statusMessage;
+        result = std::move(r.mesh);
+    } else if (candidate.method == GlobalRepairMethod::Weld) {
+        MergeByDistanceResult r = weldOpenEdges(mesh, params.weldDistance, faceInScope);
         candidate.statusMessage = r.statusMessage;
         result = std::move(r.mesh);
     }
@@ -246,6 +251,8 @@ const char* globalRepairMethodLabel(GlobalRepairMethod method) noexcept {
         return "Decimate";
     case GlobalRepairMethod::MergeVertices:
         return "Merge by distance";
+    case GlobalRepairMethod::Weld:
+        return "Weld";
     }
     return "?";
 }
@@ -270,6 +277,7 @@ bool GlobalRepairParams::operator==(const GlobalRepairParams& other) const noexc
     return unionCrossingShells == other.unionCrossingShells && alphaWrapDetail == other.alphaWrapDetail &&
            alphaWrapOffsetRatio == other.alphaWrapOffsetRatio && decimateRatio == other.decimateRatio &&
            mergeDistance == other.mergeDistance && mergeKeepSurfacesApart == other.mergeKeepSurfacesApart &&
+           mergePreserveOpenEdges == other.mergePreserveOpenEdges && weldDistance == other.weldDistance &&
            windingResolution == other.windingResolution &&
            simplifyRebuild == other.simplifyRebuild && islandSettings.dilationRings == other.islandSettings.dilationRings &&
            islandSettings.cgalMaxSteps == other.islandSettings.cgalMaxSteps &&
@@ -354,6 +362,7 @@ RepairCandidate runGlobalRepair(
     }
     case GlobalRepairMethod::Decimate:
     case GlobalRepairMethod::MergeVertices:
+    case GlobalRepairMethod::Weld:
     case GlobalRepairMethod::FixAll:
         break; // runInPlace / runFixAllCandidate
     }

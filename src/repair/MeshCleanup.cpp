@@ -97,7 +97,8 @@ bool sameWinding(const std::array<int, 3>& a, const std::array<int, 3>& b) noexc
 template <typename WidthFor, typename Match>
 MergeByDistanceResult mergeVertices(const Mesh& mesh, WidthFor widthFor, Match match,
                                     std::span<const std::uint8_t> faceInScope, bool keepSurfacesApart,
-                                    std::span<const std::uint8_t> pinned, bool protectOutside) {
+                                    std::span<const std::uint8_t> pinned, bool protectOutside,
+                                    bool preserveOpenEdges = false, bool onlyOpenEdges = false) {
     MergeByDistanceResult result;
     const auto nv = static_cast<std::size_t>(mesh.numVertices());
     const auto nf = static_cast<std::size_t>(mesh.numFaces());
@@ -126,10 +127,10 @@ MergeByDistanceResult mergeVertices(const Mesh& mesh, WidthFor widthFor, Match m
             }
         }
     }
-    // Keeping surfaces apart: the edges (sorted vertex pairs) and the vertices on open edges
+    // Keeping surfaces apart or checking cracks: the edges (sorted vertex pairs) and vertices on open edges
     std::vector<std::pair<int, int>> edges;
     std::vector<std::uint8_t> onOpenEdge;
-    if (keepSurfacesApart) {
+    if (keepSurfacesApart || preserveOpenEdges || onlyOpenEdges) {
         edges.reserve(3 * nf);
         for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
             for (int c = 0; c < 3; ++c) {
@@ -150,6 +151,13 @@ MergeByDistanceResult mergeVertices(const Mesh& mesh, WidthFor widthFor, Match m
                 onOpenEdge[static_cast<std::size_t>(edges[i].second)] = 1;
             }
             i = j;
+        }
+    }
+    if (onlyOpenEdges) {
+        for (std::size_t v = 0; v < nv; ++v) {
+            if (candidate[v] != 0 && onOpenEdge[v] == 0) {
+                candidate[v] = 0;
+            }
         }
     }
     // Protected (outside the scope): a vertex used only by faces outside the scope may still absorb an
@@ -198,12 +206,22 @@ MergeByDistanceResult mergeVertices(const Mesh& mesh, WidthFor widthFor, Match m
     }
 
     const auto mayMerge = [&](int a, int b) {
-        if (!keepSurfacesApart) {
-            return true;
+        if (onlyOpenEdges) {
+            return onOpenEdge[static_cast<std::size_t>(a)] != 0 && onOpenEdge[static_cast<std::size_t>(b)] != 0;
         }
         const std::pair<int, int> edge(std::min(a, b), std::max(a, b));
-        return std::binary_search(edges.begin(), edges.end(), edge) ||
-               (onOpenEdge[static_cast<std::size_t>(a)] != 0 && onOpenEdge[static_cast<std::size_t>(b)] != 0);
+        const bool hasEdge = !edges.empty() && std::binary_search(edges.begin(), edges.end(), edge);
+        if (hasEdge) {
+            return true;
+        }
+        const bool touchesOpen = !onOpenEdge.empty() && (onOpenEdge[static_cast<std::size_t>(a)] != 0 || onOpenEdge[static_cast<std::size_t>(b)] != 0);
+        if (preserveOpenEdges && touchesOpen) {
+            return false;
+        }
+        if (keepSurfacesApart) {
+            return !preserveOpenEdges && !onOpenEdge.empty() && (onOpenEdge[static_cast<std::size_t>(a)] != 0 && onOpenEdge[static_cast<std::size_t>(b)] != 0);
+        }
+        return true;
     };
 
     // Each unmerged vertex (pinned ones first, then the rest, each in index order) absorbs the unmerged,
@@ -323,8 +341,13 @@ MergeByDistanceResult mergeVertices(const Mesh& mesh, WidthFor widthFor, Match m
     }
     result.success = true;
     std::array<char, 160> text{};
-    std::snprintf(text.data(), text.size(), "Merged %zu vertices (moved at most %.3g); removed %zu collapsed and %zu duplicate faces.",
-                  result.verticesMerged, result.maxMove, result.degenerateRemoved, result.duplicatesRemoved);
+    if (onlyOpenEdges) {
+        std::snprintf(text.data(), text.size(), "Welded %zu open-edge vertices (moved at most %.3g); removed %zu collapsed and %zu duplicate faces.",
+                      result.verticesMerged, result.maxMove, result.degenerateRemoved, result.duplicatesRemoved);
+    } else {
+        std::snprintf(text.data(), text.size(), "Merged %zu vertices (moved at most %.3g); removed %zu collapsed and %zu duplicate faces.",
+                      result.verticesMerged, result.maxMove, result.degenerateRemoved, result.duplicatesRemoved);
+    }
     result.statusMessage = text.data();
     return result;
 }
@@ -332,7 +355,8 @@ MergeByDistanceResult mergeVertices(const Mesh& mesh, WidthFor widthFor, Match m
 } // namespace
 
 MergeByDistanceResult mergeByDistance(const Mesh& mesh, double distance, std::span<const std::uint8_t> faceInScope,
-                                      bool keepSurfacesApart, std::span<const std::uint8_t> pinned) {
+                                      bool keepSurfacesApart, std::span<const std::uint8_t> pinned,
+                                      bool preserveOpenEdges) {
     if (mesh.empty() || !(distance > 0.0) || !std::isfinite(distance)) {
         MergeByDistanceResult result;
         result.statusMessage = "Merge needs a mesh and a positive distance.";
@@ -342,11 +366,26 @@ MergeByDistanceResult mergeByDistance(const Mesh& mesh, double distance, std::sp
     return mergeVertices(
         mesh, [distance](double) { return distance; },
         [d2](const Eigen::Vector3d& p, const Eigen::Vector3d& q) { return (q - p).squaredNorm() <= d2; }, faceInScope,
-        keepSurfacesApart, pinned, false);
+        keepSurfacesApart, pinned, false, preserveOpenEdges, false);
+}
+
+MergeByDistanceResult weldOpenEdges(const Mesh& mesh, double distance, std::span<const std::uint8_t> faceInScope,
+                                    std::span<const std::uint8_t> pinned) {
+    if (mesh.empty() || !(distance > 0.0) || !std::isfinite(distance)) {
+        MergeByDistanceResult result;
+        result.statusMessage = "Weld needs a mesh and a positive distance.";
+        return result;
+    }
+    const double d2 = distance * distance;
+    return mergeVertices(
+        mesh, [distance](double) { return distance; },
+        [d2](const Eigen::Vector3d& p, const Eigen::Vector3d& q) { return (q - p).squaredNorm() <= d2; }, faceInScope,
+        true, pinned, false, false, true);
 }
 
 MergeByDistanceResult mergeByDistance(const Mesh& mesh, const ToleranceConfig& tol, std::span<const std::uint8_t> faceInScope,
-                                      bool keepSurfacesApart, std::span<const std::uint8_t> pinned) {
+                                      bool keepSurfacesApart, std::span<const std::uint8_t> pinned,
+                                      bool preserveOpenEdges) {
     const bool valid = std::isfinite(tol.absFloor) && std::isfinite(tol.relTol) && tol.absFloor >= 0.0 && tol.relTol >= 0.0 &&
                        (tol.absFloor > 0.0 || tol.relTol > 0.0);
     if (mesh.empty() || !valid) {
@@ -357,7 +396,7 @@ MergeByDistanceResult mergeByDistance(const Mesh& mesh, const ToleranceConfig& t
     return mergeVertices(
         mesh, [&tol](double largest) { return std::max(tol.absFloor, tol.relTol * largest); },
         [&tol](const Eigen::Vector3d& p, const Eigen::Vector3d& q) { return tol.verticesMatchWithinTolerance(p, q); },
-        faceInScope, keepSurfacesApart, pinned, true);
+        faceInScope, keepSurfacesApart, pinned, true, preserveOpenEdges, false);
 }
 
 DecimateResult decimate(const Mesh& mesh, double ratio, std::span<const std::uint8_t> faceInScope) {

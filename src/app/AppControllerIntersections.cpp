@@ -202,6 +202,10 @@ void AppController::openMergeVertices() {
     openRepairAll(ToolSlot::MergeVertices, GlobalRepairMethod::MergeVertices);
 }
 
+void AppController::openWeld() {
+    openRepairAll(ToolSlot::Weld, GlobalRepairMethod::Weld);
+}
+
 void AppController::setGlobalRepairMethod(GlobalRepairMethod method) {
     globalMethod_ = method;
     const auto it = std::find_if(globalCandidates_.begin(), globalCandidates_.end(),
@@ -220,6 +224,8 @@ void AppController::setGlobalRepairParams(const GlobalRepairParams& params) {
     globalParams_.decimateRatio = std::clamp(globalParams_.decimateRatio, settings::kMinDecimateRatio, settings::kMaxDecimateRatio);
     globalParams_.mergeDistance =
         std::clamp(globalParams_.mergeDistance, settings::kMinMergeDistance, settings::kMaxMergeDistance);
+    globalParams_.weldDistance =
+        std::clamp(globalParams_.weldDistance, settings::kMinWeldDistance, settings::kMaxWeldDistance);
     globalParams_.windingResolution = std::clamp(globalParams_.windingResolution, settings::kMinWindingGridResolution,
                                                  settings::kMaxWindingGridResolution);
 }
@@ -440,7 +446,8 @@ bool AppController::applyGlobalRepair() {
     Mesh repaired = candidate->mesh;
     pushUndoEntry(activeTool_ == ToolSlot::AlphaWrap       ? std::string("Alpha Wrap")
                   : activeTool_ == ToolSlot::Decimate      ? std::string("Decimate")
-                  : activeTool_ == ToolSlot::MergeVertices ? std::string("Merge Vertices")
+                  : activeTool_ == ToolSlot::MergeVertices ? std::string("Merge by Distance")
+                  : activeTool_ == ToolSlot::Weld          ? std::string("Weld")
                   : activeTool_ == ToolSlot::FixAll        ? "Rebuild (" + label + ")"
                   : activeTool_ == ToolSlot::RepairAllHoles ? "Repair All Holes (" + label + ")"
                                                             : "Repair All Intersections (" + label + ")");

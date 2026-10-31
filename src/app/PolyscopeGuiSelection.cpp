@@ -208,7 +208,7 @@ void PolyscopeGui::drawSelectFacesMenu() {
           "Faces cut away by a slice plane are never selected.");
     ImGui::Separator();
     ImGui::TextDisabled("%s faces selected", withThousands(controller_.selectedFaceCount()).c_str());
-    ImGui::TextDisabled("Use them: Mesh > Decimate, Weld / Merge Vertices, Delete Selected Faces (Del)");
+    ImGui::TextDisabled("Use them: Mesh > Decimate, Merge by Distance, Weld, Delete Selected Faces (Del)");
     ImGui::TextDisabled("Color: Display > Base mesh > Selected faces");
     ImGui::EndMenu();
 }

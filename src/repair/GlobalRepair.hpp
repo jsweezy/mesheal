@@ -30,7 +30,8 @@ enum class GlobalRepairMethod {
     WindingRebuild,  ///< New surface: marching cubes of the winding number on a grid
     AlphaWrap,       ///< New surface: CGAL alpha wrap (always watertight and manifold)
     Decimate,        ///< Mesh > Simplify > Decimate: edge collapse of the faces in scope
-    MergeVertices    ///< Mesh > Clean Up > Weld / Merge Vertices: merge by distance in scope
+    MergeVertices,   ///< Mesh > Modify > Merge by Distance: merge by distance in scope
+    Weld             ///< Mesh > Modify > Weld: weld open edges across cracks
 };
 
 inline constexpr std::array<GlobalRepairMethod, 4> kGlobalRepairMethods = {
@@ -73,6 +74,10 @@ struct GlobalRepairParams {
     double mergeDistance = settings::kDefaultMergeDistance;
     /// Merge vertices: only along edges and open edges, so touching surfaces / shells are not pinched.
     bool mergeKeepSurfacesApart = settings::kDefaultMergeKeepSurfacesApart;
+    /// Merge vertices: preserve open edges and cracks (do not merge across cracks).
+    bool mergePreserveOpenEdges = settings::kDefaultMergePreserveOpenEdges;
+    /// Weld: distance in file coordinates.
+    double weldDistance = settings::kDefaultWeldDistance;
     /// Winding-number rebuild: grid cells along the longest side.
     int windingResolution = settings::kDefaultWindingGridResolution;
     /// Rebuilds (winding / wrap): simplify back to the in-scope face count when larger.
@@ -97,11 +102,12 @@ struct GlobalRepairParams {
 inline constexpr std::array<GlobalRepairMethod, 1> kWrapMethods = {GlobalRepairMethod::AlphaWrap};
 inline constexpr std::array<GlobalRepairMethod, 1> kDecimateMethods = {GlobalRepairMethod::Decimate};
 inline constexpr std::array<GlobalRepairMethod, 1> kMergeMethods = {GlobalRepairMethod::MergeVertices};
+inline constexpr std::array<GlobalRepairMethod, 1> kWeldMethods = {GlobalRepairMethod::Weld};
 
 /// Methods that edit the faces in scope in place (the rest of the mesh keeps its vertices), so the
 /// scope may be any set of faces, not just whole shells.
 [[nodiscard]] constexpr bool editsInPlace(GlobalRepairMethod method) noexcept {
-    return method == GlobalRepairMethod::Decimate || method == GlobalRepairMethod::MergeVertices;
+    return method == GlobalRepairMethod::Decimate || method == GlobalRepairMethod::MergeVertices || method == GlobalRepairMethod::Weld;
 }
 
 /// The rebuilds *Rebuild shell #k...* offers for one shell Fix All left, alpha wrap first (the suggested
