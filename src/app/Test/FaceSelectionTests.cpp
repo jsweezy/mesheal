@@ -374,6 +374,41 @@ TEST_CASE("Mesh > Weld welds open edges across cracks and is undoable", "[app][w
     REQUIRE(controller.mesh().F == before.F);
 }
 
+TEST_CASE("Loading 'Cube with a visible crack' sample in AppController and healing with Weld", "[app][weld][crack]") {
+    ogun::AppController controller;
+    const ogun::Mesh mesh = ogun::SampleMeshes::createVisibleCrackCubeMesh(0.04);
+    controller.setMesh(mesh, "Cube with a visible crack");
+    const ogun::Mesh before = controller.mesh();
+
+    // Verify initial health: 1 shell, 6 open edges
+    REQUIRE(controller.shells().size() == 1);
+    const ogun::CategoryResult openEdgesBefore = ogun::checkOpenEdges(controller.mesh());
+    REQUIRE(openEdgesBefore.infoCount == 6);
+
+    controller.openWeld();
+    REQUIRE(controller.activeTool() == ToolSlot::Weld);
+    REQUIRE(controller.globalRepairMethod() == ogun::GlobalRepairMethod::Weld);
+
+    // Preview weld with default distance (0.05 mm)
+    controller.previewGlobalRepair();
+    const ogun::RepairCandidate* candidate = controller.shownGlobalCandidate();
+    REQUIRE(candidate != nullptr);
+    REQUIRE(candidate->success);
+    REQUIRE(ogun::checkOpenEdges(candidate->mesh).empty());
+
+    // Apply and verify
+    REQUIRE(controller.applyGlobalRepair());
+    REQUIRE(controller.lastUndoActionLabel() == "Weld");
+    REQUIRE(ogun::checkOpenEdges(controller.mesh()).empty());
+    REQUIRE(controller.shells().size() == 1);
+
+    // Undo restores the crack
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().V == before.V);
+    REQUIRE(controller.mesh().F == before.F);
+    REQUIRE(ogun::checkOpenEdges(controller.mesh()).infoCount == 6);
+}
+
 TEST_CASE("The face selection color can be changed and reset", "[app][selection]") {
     ogun::AppController controller;
     controller.setMesh(gridCube(), "grid cube");

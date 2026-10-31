@@ -835,6 +835,40 @@ Mesh SampleMeshes::createBoundaryCapPlateMesh(Unit unit) {
     return meshFromFaces(points, faces, unit);
 }
 
+Mesh SampleMeshes::createVisibleCrackCubeMesh(double gap, Unit unit) {
+    const double w = 0.5 * std::max(gap, 0.0);
+    const std::vector<Eigen::Vector3d> points{
+        {0.0, 0.0, 0.0}, {4.0, 0.0, 0.0}, {4.0, 4.0, 0.0}, {0.0, 4.0, 0.0}, // 0-3 bottom corners
+        {0.0, 0.0, 4.0}, {4.0, 0.0, 4.0}, {4.0, 4.0, 4.0}, {0.0, 4.0, 4.0}, // 4-7 top corners
+        {2.0, 1.0, 4.0},                                                     // 8: front crack tip (t0)
+        {2.0 - w, 1.7, 4.0},                                                 // 9: left lip 0 (l0)
+        {2.0 - w, 2.3, 4.0},                                                 // 10: left lip 1 (l1)
+        {2.0, 3.0, 4.0},                                                     // 11: back crack tip (t1)
+        {2.0 + w, 2.3, 4.0},                                                 // 12: right lip 1 (r1)
+        {2.0 + w, 1.7, 4.0}                                                  // 13: right lip 0 (r0)
+    };
+    const std::vector<std::array<int, 3>> faces{
+        // Bottom (outward: -z)
+        {0, 3, 2}, {0, 2, 1},
+        // Front (outward: -y) and Right (outward: +x)
+        {0, 1, 5}, {0, 5, 4}, {1, 2, 6}, {1, 6, 5},
+        // Back (outward: +y) and Left (outward: -x)
+        {2, 3, 7}, {2, 7, 6}, {3, 0, 4}, {3, 4, 7},
+        // Top (outward: +z) surrounding the central crack
+        {4, 5, 8},    // front strip below crack
+        {4, 8, 9},    // left side connecting to crack lip
+        {4, 9, 10},
+        {4, 10, 11},
+        {4, 11, 7},   // left corner to back crack tip
+        {7, 11, 6},   // back strip above crack
+        {5, 6, 11},   // right corner to back crack tip
+        {5, 11, 12},  // right side connecting to crack lip
+        {5, 12, 13},
+        {5, 13, 8}
+    };
+    return meshFromFaces(points, faces, unit);
+}
+
 Mesh SampleMeshes::createSampleDefectiveMesh(Unit unit) {
     const Mesh cube = createCubeMesh(10.0, unit);
 

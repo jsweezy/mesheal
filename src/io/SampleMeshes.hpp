@@ -269,6 +269,13 @@ struct SampleMeshes {
     /// long edge of a cap (apex (5, 4 - 8.7e-4, 1), angle 179.9 degrees, the 14th face). One 4-edge hole.
     [[nodiscard]] static Mesh createBoundaryCapPlateMesh(Unit unit = Unit::Millimeter);
 
+    /// A 4 mm cube [0, 4]^3 with a clean, clearly visible crack (gap `gap`, default 0.04 mm) on its
+    /// top face: 1 shell, 6 open edges, and zero other defects (no thin faces, no self-intersections,
+    /// no non-manifold geometry). Designed specifically to demonstrate Mesh > Modify > Weld and
+    /// Mesh > Modify > Merge by Distance (preserving cracks).
+    /// File > Load Sample > "Cube with a visible crack".
+    [[nodiscard]] static Mesh createVisibleCrackCubeMesh(double gap = 0.04, Unit unit = Unit::Millimeter);
+
     /// Generates a clean 12-triangle cube mesh injected with 3 known defective triangles:
     ///   - Face 12 (`kZeroAreaFaceIndex`): collinear zero-area triangle (A = 0, h_min = 0)
     ///   - Face 13 (`kMicroscopicFaceIndex`): microscopic-area triangle (A = 5e-9, h_min ~ 7.07e-5; well

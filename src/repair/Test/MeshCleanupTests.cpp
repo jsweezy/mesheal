@@ -1,5 +1,7 @@
 #include "core/Settings.hpp"
+#include "diagnostics/HoleLoops.hpp"
 #include "diagnostics/MeshChecks.hpp"
+#include "diagnostics/SelfIntersections.hpp"
 #include "diagnostics/ShellRelations.hpp"
 #include "io/SampleMeshes.hpp"
 #include "io/StlReader.hpp"
@@ -709,6 +711,45 @@ TEST_CASE("A seam along the scope's edge closes onto the side outside the scope"
         const std::vector<std::uint8_t> nothing(scope.size(), 0);
         REQUIRE(ogun::mergeByDistance(seam, kFixAllWeld, nothing, true).verticesMerged == 0);
     }
+}
+
+TEST_CASE("Cube with a visible crack: clean single-shell mesh with only a crack defect, healed by weld", "[repair][cleanup][weld][crack]") {
+    const ogun::Mesh mesh = ogun::SampleMeshes::createVisibleCrackCubeMesh(0.04);
+
+    // Verify diagnostics: exactly 1 shell, 6 open edges, and zero other defects
+    CHECK(shellCount(mesh) == 1);
+    CHECK(ogun::checkOpenEdges(mesh).infoCount == 6);
+    CHECK(ogun::checkOpenEdges(mesh).size() == 1);
+    CHECK(ogun::checkNonManifoldEdges(mesh).empty());
+    CHECK(ogun::checkNonManifoldVertices(mesh).empty());
+    CHECK(ogun::checkSelfIntersections(mesh, ogun::CheckParams{}).empty());
+
+    // Hole loops: correctly classified as a Crack
+    const std::vector<ogun::HoleLoop> holes = ogun::findHoleLoops(mesh);
+    REQUIRE(holes.size() == 1);
+    CHECK(holes[0].shape == ogun::HoleShape::Crack);
+    CHECK(holes[0].edges.size() == 6);
+
+    // 1. weldOpenEdges with default distance (0.05 mm) closes the crack completely
+    const ogun::MergeByDistanceResult welded = ogun::weldOpenEdges(mesh, 0.05);
+    REQUIRE(welded.success);
+    CHECK(welded.verticesMerged == 2);
+    CHECK(closedManifold(welded.mesh));
+    CHECK(ogun::checkOpenEdges(welded.mesh).empty());
+    CHECK(shellCount(welded.mesh) == 1);
+
+    // 2. mergeByDistance with preserveOpenEdges = true preserves the crack
+    const ogun::MergeByDistanceResult preserved = ogun::mergeByDistance(mesh, 0.05, {}, false, {}, true);
+    REQUIRE(preserved.success);
+    CHECK(preserved.verticesMerged == 0);
+    CHECK(ogun::checkOpenEdges(preserved.mesh).infoCount == 6);
+
+    // 3. mergeByDistance with preserveOpenEdges = false closes the crack
+    const ogun::MergeByDistanceResult merged = ogun::mergeByDistance(mesh, 0.05, {}, false, {}, false);
+    REQUIRE(merged.success);
+    CHECK(merged.verticesMerged == 2);
+    CHECK(closedManifold(merged.mesh));
+    CHECK(ogun::checkOpenEdges(merged.mesh).empty());
 }
 
 TEST_CASE("Fix All's weld changes nothing on the bunny and the Turkey", "[repair][merge][weld][.slow]") {
