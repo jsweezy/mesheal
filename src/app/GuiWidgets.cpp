@@ -19,6 +19,30 @@ std::string modShortcut(const char* key) {
 }
 
 void tooltip(const char* text) {
+    if (!text || text[0] == '\0') {
+        return;
+    }
+    // Suppress tooltips while dragging or interacting with widgets so values underneath stay visible
+    if (ImGui::IsItemActive() || ImGui::IsAnyItemActive()) {
+        return;
+    }
+
+    const ImGuiID id = ImGui::GetItemID();
+    static ImGuiID s_suppressedId = 0;
+    if (id != 0 && s_suppressedId == id) {
+        if (!ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            s_suppressedId = 0;
+        } else {
+            return;
+        }
+    }
+
+    // Right-clicking the item dismisses its tooltip until the mouse leaves the item
+    if (id != 0 && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+        s_suppressedId = id;
+        return;
+    }
+
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_AllowWhenDisabled)) {
         ImGui::BeginTooltip();
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28.0f);
