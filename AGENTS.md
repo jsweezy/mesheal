@@ -12,6 +12,8 @@
 - Two build trees exist:
   - **`build/`**: Debug build (`CMAKE_BUILD_TYPE=Debug`) for targeted unit tests and debugging.
   - **`build_release/`**: Release build (`CMAKE_BUILD_TYPE=Release`) for running the app on large meshes, performance profiling, and running full test suites.
+- **Always run tests for the Release build (`build_release/`) unless actively debugging**:
+  - In `build_release/`, optimized `-O3` binaries run the entire 465-test suite in ~13–20 seconds (`ctest --test-dir build_release -j 4` or `./build_release/src/<path>/ogun_*_tests`).
+  - Running tests in `build/` (Debug) takes 5+ minutes due to unoptimized execution of heavy mesh operations (e.g. Turkey 259k faces, bunny). Only run tests in `build/` when actively debugging an issue that requires debug symbols or unoptimized assertions.
 - Build release with: `cmake --build build_release -j 2`
-- Running the full 460-test suite in `build/` (Debug) takes 5+ minutes due to unoptimized execution of heavy mesh operations (e.g. Turkey 259k faces, bunny). In `build_release/`, optimized `-O3` binaries run the entire suite in ~20–30 seconds.
-- When running tests, establish a baseline timing, target specific test tags/names during iteration (e.g. `ogun_app_tests "[app][weld]"`), and use an explicit timeout with a buffer to ensure tests do not hang in an infinite loop.
+- When running tests, establish a baseline timing, target specific test tags/names during iteration when helpful (e.g. `ogun_app_tests "[app][weld]"`), and use an explicit timeout with a buffer to ensure tests do not hang in an infinite loop.
