@@ -163,6 +163,26 @@ TEST_CASE("ShellBrowser keeps visibility and selection across a rebuild", "[app]
     REQUIRE(shells.shell(1).selected);
     REQUIRE_FALSE(shells.shell(0).visible);
 
+    // Reducing down to a single shell unhides it and turns off shell hiding
+    const std::vector<Eigen::Index> onlyHidden = shells.facesOf(std::array<std::size_t, 1>{0});
+    shells.rebuild(ogun::extractFaces(dropped, onlyHidden));
+    REQUIRE(shells.size() == 1);
+    REQUIRE_FALSE(shells.multiShell());
+    REQUIRE(shells.shell(0).visible);
+    REQUIRE(shells.visibleCount() == 1);
+    REQUIRE(shells.selectedCount() == 0);
+    REQUIRE_FALSE(shells.isolated());
+
+    shells.setVisible(0, false);
+    REQUIRE(shells.visibleCount() == 1);
+    shells.hideAll();
+    REQUIRE(shells.visibleCount() == 1);
+    shells.click(0, false, false, identity(1));
+    shells.hideSelected();
+    REQUIRE(shells.visibleCount() == 1);
+    REQUIRE_FALSE(shells.toggleIsolate());
+    REQUIRE(shells.visibleCount() == 1);
+
     shells.clear();
     REQUIRE(shells.size() == 0);
 }

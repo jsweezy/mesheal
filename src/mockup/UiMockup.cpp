@@ -2562,6 +2562,13 @@ void UiMockup::applyMerge(const std::vector<int>& roots) {
 }
 
 void UiMockup::onShellVisibilityChanged() {
+    if (!hasShellPanel()) {
+        for (ShellFlags& f : shellFlags_) {
+            f.visible = true;
+            f.selected = false;
+        }
+        isolateRestore_.reset();
+    }
     registerMesh();
     pruneOutOfScope();
 }

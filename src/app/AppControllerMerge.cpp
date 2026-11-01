@@ -325,7 +325,9 @@ bool AppController::applyMergeResult(FinishedMerge finished) {
     pushUndoEntry("Merge " + std::to_string(finished.operandIds.size()) + " Shells");
     const Eigen::Index firstMerged = r.firstMergedFace;
     finishMeshEdit(std::move(r.mesh));
-    selectShellsWhere([&](std::size_t s) { return shells_.shell(s).faces.front() >= firstMerged; });
+    if (shells_.multiShell()) {
+        selectShellsWhere([&](std::size_t s) { return shells_.shell(s).faces.front() >= firstMerged; });
+    }
 
     std::string cavities;
     if (r.cavitiesKept > 0) {

@@ -113,6 +113,9 @@ void ShellBrowser::rebuild(const Mesh& mesh) {
         }
         shell.bbox = boxOfFaces(mesh, shell.faces);
     }
+    if (!multiShell()) {
+        return;
+    }
 
     // Carry the view state over: exact match (face count and box) first, then the best box overlap
     const double tol = settings::kShellMatchBoxTolerance * std::max(mesh.boundingBox().diagonal(), 1.0e-12);
@@ -198,6 +201,9 @@ void ShellBrowser::recountSelection() noexcept {
 }
 
 void ShellBrowser::setVisible(std::size_t s, bool visible) {
+    if (!multiShell() && !visible) {
+        return;
+    }
     revision_ = nextRevision();
     if (s < shells_.size()) {
         shells_[s].visible = visible;
@@ -213,6 +219,9 @@ void ShellBrowser::showAll() {
 }
 
 void ShellBrowser::hideAll() {
+    if (!multiShell()) {
+        return;
+    }
     revision_ = nextRevision();
     for (ShellInfo& shell : shells_) {
         shell.visible = false;
@@ -223,6 +232,9 @@ void ShellBrowser::hideAll() {
 }
 
 void ShellBrowser::hideSelected() {
+    if (!multiShell()) {
+        return;
+    }
     revision_ = nextRevision();
     for (ShellInfo& shell : shells_) {
         if (shell.selected) {
@@ -234,6 +246,9 @@ void ShellBrowser::hideSelected() {
 }
 
 bool ShellBrowser::toggleIsolate() {
+    if (!multiShell()) {
+        return false;
+    }
     revision_ = nextRevision();
     if (isolateRestore_ && (selectedCount_ == 0 || selectionMatchesVisible())) {
         for (std::size_t s = 0; s < shells_.size(); ++s) {

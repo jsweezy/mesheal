@@ -522,12 +522,17 @@ bool AppController::applyFixAllRow(RepairCandidate& row, const std::string& labe
         break;
     }
     case FixAllScopeKind::Shells:
-        selectShellsWhere([&](std::size_t s) {
-            const std::vector<Eigen::Index>& faces = shells_.shell(s).faces;
-            return std::any_of(faces.begin(), faces.end(), faceInScope);
-        });
+        if (shells_.multiShell()) {
+            selectShellsWhere([&](std::size_t s) {
+                const std::vector<Eigen::Index>& faces = shells_.shell(s).faces;
+                return std::any_of(faces.begin(), faces.end(), faceInScope);
+            });
+        }
         break;
     case FixAllScopeKind::Whole: {
+        if (!shells_.multiShell()) {
+            break;
+        }
         // The merged shells, as the Merge Shells operator selects them
         std::vector<std::uint8_t> merged(shells_.size(), 0);
         for (const FixAllStepReport& step : result.steps) {

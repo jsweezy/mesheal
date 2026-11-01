@@ -1485,6 +1485,9 @@ void AppController::showAllShells() {
 }
 
 void AppController::hideAllShells() {
+    if (!shells_.multiShell()) {
+        return;
+    }
     shells_.hideAll();
     onShellsChanged();
     postStatusMessage("All shells hidden. Tick Vis in the Shells panel to show the ones to work on.");

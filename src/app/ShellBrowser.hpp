@@ -28,9 +28,9 @@ struct ShellInfo {
 /// selected shells, or the visible shells when none is selected.
 class ShellBrowser {
 public:
-    /// Recomputes the shells of `mesh`. Visibility, selection and the nested tag carry over from the
-    /// previous shells that match (same face count and box, otherwise the most overlapping box), so
-    /// they survive edits; shells with no match start visible and unselected.
+    /// Recomputes the shells of `mesh`. When more than one shell remains, visibility, selection and the
+    /// nested tag carry over from the previous shells that match (same face count and box, otherwise the
+    /// most overlapping box), so they survive edits; a single-shell mesh is always visible and unselected.
     void rebuild(const Mesh& mesh);
 
     /// Forgets every shell and its state (a new mesh was loaded).

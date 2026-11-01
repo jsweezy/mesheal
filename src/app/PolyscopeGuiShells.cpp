@@ -312,6 +312,14 @@ void PolyscopeGui::drawMergeShellsOperator() {
                         "(shells wound inward inside a solid) are kept as they are, never filled.");
     ImGui::PopTextWrapPos();
     const MergeChecklist list = controller_.mergeChecklist();
+    if (!controller_.shells().multiShell()) {
+        ImGui::TextWrapped("The mesh now has a single shell.");
+        if (ImGui::Button("Close")) {
+            controller_.closeTool();
+            requestSync();
+        }
+        return;
+    }
     if (list.shells.size() < 2) {
         ImGui::TextWrapped("Select two or more shells in the Shells panel (Select... > All for everything).");
         if (ImGui::Button("Close")) {

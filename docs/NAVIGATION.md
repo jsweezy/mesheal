@@ -99,7 +99,7 @@ The **Shells** panel (left column, between Navigate and Structures) appears only
 | `Click` / `Ctrl/Cmd + Click` / `Shift + Click` | Selects one shell / adds or removes one / selects a range, as in the defect list. |
 | `Double-Click` | Selects the shell and frames it. |
 | `Right-Click` | Frame, Isolate / Un-isolate, Hide, Hide All, Show All, Delete, Save As (one STL, or one STL per shell). *Merge...* stays greyed out until Merge Shells exists (Milestone 4). |
-| Vis checkbox (header: all) | Shows or hides a shell (or all). Hidden shells are cut from the 3D view and never edited, but are still saved. |
+| Vis checkbox (header: all) | Shows or hides a shell (or all). Hidden shells are cut from the 3D view and never edited, but are still saved. Whenever an edit (such as deleting or merging shells) reduces the mesh to a single shell, shell hiding is turned off and the remaining shell is automatically unhidden. |
 | `Select...` | All, None, Invert, Visible shells, Unhealthy, Nested inside another shell, Smaller than N faces. |
 
 ---

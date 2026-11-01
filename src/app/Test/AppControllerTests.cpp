@@ -1119,6 +1119,23 @@ TEST_CASE("AppController deletes the selected shells as one undoable step",
     REQUIRE(controller.shells().shell(far).selected);
     REQUIRE_FALSE(controller.shells().shell(sample).visible);
     REQUIRE_FALSE(controller.isModified());
+
+    // Hiding all shells and deleting all but one unhides the remaining shell; undo restores the hidden state
+    controller.hideAllShells();
+    REQUIRE(controller.shells().visibleCount() == 0);
+    REQUIRE(controller.buildBaseMeshDisplay().isCut);
+    controller.selectShellsWhere([&](std::size_t s) { return s != far; });
+    REQUIRE(controller.deleteSelectedShells());
+    REQUIRE(controller.shells().size() == 1);
+    REQUIRE_FALSE(controller.shells().multiShell());
+    REQUIRE(controller.shells().visibleCount() == 1);
+    REQUIRE(controller.shells().shell(0).visible);
+    REQUIRE(controller.shells().selectedCount() == 0);
+    REQUIRE_FALSE(controller.buildBaseMeshDisplay().isCut);
+
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.shells().size() == 5);
+    REQUIRE(controller.shells().visibleCount() == 0);
 }
 
 TEST_CASE("AppController Fix All heals only the shells in scope and undo restores them",
@@ -1389,6 +1406,25 @@ TEST_CASE("AppController merges the selected shells with Manifold as one undo st
     REQUIRE(controller.mesh().V == before.V);
     REQUIRE(controller.shells().size() == 3);
     REQUIRE(controller.shells().selectedCount() == 2);
+
+    // Merging down to 1 shell unhides everything and clears shell selection
+    controller.selectShellsWhere([](std::size_t s) { return s == 2; });
+    REQUIRE(controller.deleteSelectedShells());
+    REQUIRE(controller.shells().size() == 2);
+    controller.hideAllShells();
+    REQUIRE(controller.shells().visibleCount() == 0);
+    controller.selectShellsWhere([](std::size_t) { return true; });
+    REQUIRE(controller.mergeSelectedShells());
+    REQUIRE(controller.shells().size() == 1);
+    REQUIRE_FALSE(controller.shells().multiShell());
+    REQUIRE(controller.shells().visibleCount() == 1);
+    REQUIRE(controller.shells().shell(0).visible);
+    REQUIRE(controller.shells().selectedCount() == 0);
+    REQUIRE_FALSE(controller.buildBaseMeshDisplay().isCut);
+
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.shells().size() == 2);
+    REQUIRE(controller.shells().visibleCount() == 0);
 }
 
 TEST_CASE("AppController Merge Shells is blocked by a shell Manifold rejects", "[app][controller][shells][merge]") {
