@@ -29,6 +29,7 @@ target_link_libraries(ogun_repair
         ogun::mesh
         ogun::diagnostics
         CGAL::CGAL
+        $<$<TARGET_EXISTS:CGAL::TBB_support>:CGAL::TBB_support>
     PRIVATE
         ogun::warnings
 )

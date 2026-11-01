@@ -331,14 +331,21 @@ TEST_CASE("Voxel Heal & Remesh and Precision Isosurface operators preview, apply
     params.isosurfaceSmoothingPasses = 1;
     controller.setGlobalRepairParams(params);
 
+    controller.recheckCategory(ogun::DefectCategory::ThinFaces);
+    controller.recheckCategory(ogun::DefectCategory::InvertedShells);
     controller.previewGlobalRepair();
     const ogun::RepairCandidate* isoCand = controller.shownGlobalCandidate();
     REQUIRE(isoCand != nullptr);
     REQUIRE(isoCand->success);
     REQUIRE(isoCand->metrics.watertight());
     REQUIRE(isoCand->metrics.intersectingFacesAfter == 0);
+    REQUIRE(isoCand->metrics.thinFacesAfter == 0);
     REQUIRE(controller.applyGlobalRepair());
     REQUIRE(controller.lastUndoActionLabel() == "Precision Isosurface (FEA Grade)");
+    REQUIRE(controller.categoryHealth(ogun::DefectCategory::ThinFaces).status != ogun::HealthStatus::Stale);
+    REQUIRE(controller.categoryHealth(ogun::DefectCategory::InvertedShells).status != ogun::HealthStatus::Stale);
+    REQUIRE(controller.rowCount(ogun::DefectCategory::ThinFaces) == 0);
+    REQUIRE(controller.rowCount(ogun::DefectCategory::InvertedShells) == 0);
     REQUIRE(controller.undoLastModification());
     REQUIRE(controller.mesh().F == before.F);
     REQUIRE(controller.mesh().V == before.V);

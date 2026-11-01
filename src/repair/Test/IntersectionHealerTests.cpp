@@ -5,6 +5,7 @@
 
 #include "diagnostics/MeshChecks.hpp"
 #include "diagnostics/SelfIntersections.hpp"
+#include "diagnostics/ThinFaceChecker.hpp"
 #include "io/SampleMeshes.hpp"
 
 #include <catch2/catch_approx.hpp>
@@ -348,7 +349,13 @@ TEST_CASE("Voxel Heal & Remesh and Precision Isosurface heal overlapping cubes i
     REQUIRE_FALSE(isoOut.empty());
     REQUIRE(isoStatus.find("Isosurface extracted") != std::string::npos);
     REQUIRE(crossings(isoOut) == 0);
+    REQUIRE(ogun::ThinFaceChecker::check(isoOut).defects.empty());
     REQUIRE(closedManifold(isoOut));
+
+    const ogun::Mesh simplified = ogun::simplifyToFaceCount(isoOut, 64);
+    REQUIRE(crossings(simplified) == 0);
+    REQUIRE(ogun::ThinFaceChecker::check(simplified).defects.empty());
+    REQUIRE(closedManifold(simplified));
 
     // Cancellation via stop_token returns an empty mesh with status "Cancelled."
     std::stop_source stopSource;

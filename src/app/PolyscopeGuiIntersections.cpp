@@ -257,6 +257,20 @@ void PolyscopeGui::drawRepairAllOperator() {
                            "simulation-ready triangles (guaranteed >= 30 deg angles) that adaptively shrink to hug tight "
                            "curves and mechanical fillets without stair-stepping. Slower than Voxel Remesh.",
                            controller_.shells().scoped() ? "the shells in scope" : "the whole mesh");
+    }
+    if ((slot == ToolSlot::AlphaWrap || slot == ToolSlot::VoxelHealRemesh || slot == ToolSlot::PrecisionIsosurface) &&
+        controller_.shells().scoped()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, gui::kDefectColor);
+        ImGui::TextWrapped("Scope: %s of %s shells selected (unselected shells are left untouched).",
+                           withThousands(controller_.shells().selectedCount()).c_str(),
+                           withThousands(controller_.shells().size()).c_str());
+        ImGui::PopStyleColor();
+        if (ImGui::SmallButton("Use whole mesh")) {
+            controller_.showAllShells();
+            controller_.selectShellsWhere([](std::size_t) { return false; });
+            requestSync();
+        }
+        tooltip("Clear the shell selection so the rebuild unites and remeshes all shells together.");
     } else if (slot == ToolSlot::Decimate || slot == ToolSlot::MergeVertices || slot == ToolSlot::Weld) {
         const std::size_t inScope = controller_.operatorScopeFaceCount();
         const std::string scope = controller_.selectedFaceCount() > 0

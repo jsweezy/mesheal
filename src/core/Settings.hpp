@@ -110,7 +110,7 @@ inline constexpr int    kMaxRemeshSmoothingPasses         = 10;     // Maximum s
 inline constexpr double kDefaultTaubinLambda              = 0.50;   // Taubin smoothing forward Laplacian step factor (removes Marching Cubes terracing)
 inline constexpr double kDefaultTaubinMu                  = -0.53;  // Taubin smoothing backward inflation step factor (prevents volume shrinkage)
 inline constexpr double kDefaultIsosurfaceChordRatio      = 0.10;   // Precision Isosurface: default chord tolerance as a fraction of target mesh size
-inline constexpr double kMinIsosurfaceChordRatio          = 0.01;   // Precision Isosurface: tightest chord tolerance ratio (finest curve tessellation)
+inline constexpr double kMinIsosurfaceChordRatio          = 0.05;   // Precision Isosurface: tightest chord tolerance ratio (finest curve tessellation)
 inline constexpr double kMaxIsosurfaceChordRatio          = 1.00;   // Precision Isosurface: loosest chord tolerance ratio (1.0 = uniform sizing everywhere)
 inline constexpr double kDefaultIsosurfaceMinFacetAngleDeg = 30.0;  // Precision Isosurface: minimum triangle angle (deg) in CGAL Delaunay refinement
 inline constexpr double kDefaultIsosurfaceRelativeErrorBound = 1.0e-4; // Precision Isosurface: relative bisection root-finding error bound on W = 0.5

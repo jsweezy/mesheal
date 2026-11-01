@@ -482,6 +482,12 @@ bool AppController::applyGlobalRepair() {
                                                                : "Repair All Intersections (" + label + ")");
     finishMeshEdit(std::move(repaired));
     recheckCategory(DefectCategory::Intersections);
+    if (health_[DefectCategory::ThinFaces].status != HealthStatus::NotRun) {
+        recheckCategory(DefectCategory::ThinFaces);
+    }
+    if (health_[DefectCategory::InvertedShells].status != HealthStatus::NotRun) {
+        recheckCategory(DefectCategory::InvertedShells);
+    }
     lastRepairStatusMessage_ = "Applied " + label + ".";
     postStatusMessage(lastRepairStatusMessage_);
     return true;

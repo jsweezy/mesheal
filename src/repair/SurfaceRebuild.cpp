@@ -2,8 +2,15 @@
 
 #include "core/Constants.hpp"
 #include "core/Settings.hpp"
+#include "diagnostics/MeshChecks.hpp"
+#include "diagnostics/SelfIntersections.hpp"
+#include "diagnostics/ShellRelations.hpp"
+#include "diagnostics/ThinFaceChecker.hpp"
 #include "mesh/CgalMesh.hpp"
+#include "repair/IntersectionHealer.hpp"
 #include "repair/RepairMetrics.hpp"
+#include "repair/SliverHealer.hpp"
+#include "repair/TopologyCleanup.hpp"
 
 #include <Eigen/Geometry>
 
@@ -12,8 +19,10 @@
 #include <CGAL/Mesh_criteria_3.h>
 #include <CGAL/Mesh_triangulation_3.h>
 #include <CGAL/Polygon_mesh_processing/autorefinement.h>
+#include <CGAL/Polygon_mesh_processing/orientation.h>
 #include <CGAL/Polygon_mesh_processing/remesh.h>
 #include <CGAL/Polygon_mesh_processing/repair_polygon_soup.h>
+#include <CGAL/Polygon_mesh_processing/tangential_relaxation.h>
 #include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/Bounded_normal_change_filter.h>
 #include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/Face_count_stop_predicate.h>
 #include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/GarlandHeckbert_policies.h>
@@ -209,7 +218,86 @@ bool applyTaubinSmoothing(Mesh& mesh, int passes, std::stop_token stopToken) {
     return !stopToken.stop_requested();
 }
 
-struct StopMeshingException : std::exception {};
+/// Post-rebuild cleanup: removes degenerate/duplicate faces, strips microscopic noise shells,
+/// and heals any residual thin/sliver faces or local self-intersection islands.
+Mesh polishRebuiltMesh(Mesh result, std::stop_token stopToken = {}) {
+    if (result.empty() || stopToken.stop_requested()) {
+        return result;
+    }
+    result = removeRepeatedVertexFaces(result).mesh;
+    result = removeDuplicateFaces(result).mesh;
+    if (result.empty() || stopToken.stop_requested()) {
+        return result;
+    }
+
+    const std::vector<std::vector<Eigen::Index>> shells = shellsLargestFirst(result);
+    if (shells.size() > 1) {
+        const std::vector<ShellFacts> facts = describeShells(result, shells);
+        const double modelDiag = result.boundingBox().diagonal();
+        std::vector<Eigen::Index> keepFaces;
+        keepFaces.reserve(static_cast<std::size_t>(result.numFaces()));
+        bool droppedAny = false;
+        for (std::size_t s = 0; s < shells.size(); ++s) {
+            const bool isTinyNoise = s > 0 &&
+                (shells[s].size() < 12 ||
+                 facts[s].box.diagonal() < settings::kDefaultFixAllTinyShellFraction * modelDiag);
+            if (isTinyNoise) {
+                droppedAny = true;
+            } else {
+                keepFaces.insert(keepFaces.end(), shells[s].begin(), shells[s].end());
+            }
+        }
+        if (droppedAny && !keepFaces.empty()) {
+            std::sort(keepFaces.begin(), keepFaces.end());
+            result = compacted(extractFaces(result, keepFaces));
+        }
+    }
+    if (stopToken.stop_requested()) {
+        return result;
+    }
+
+    const auto isClosedManifold = [](const Mesh& m) {
+        return !m.empty() && checkOpenEdges(m).empty() && checkNonManifoldEdges(m).empty();
+    };
+
+    if (!ThinFaceChecker::check(result).defects.empty()) {
+        SliverHealOptions opts;
+        opts.stopToken = stopToken;
+        RepairResults healed = SliverHealer::healAllThinFaces(result, {}, {}, opts);
+        if (healed.success && !healed.cancelled && isClosedManifold(healed.mesh)) {
+            result = std::move(healed.mesh);
+        }
+    }
+    if (stopToken.stop_requested()) {
+        return result;
+    }
+
+    const std::size_t xingsBefore = checkSelfIntersections(result, CheckParams{}, stopToken).size();
+    if (xingsBefore > 0 && !stopToken.stop_requested()) {
+        IslandBatchResult islands = healIntersectionIslands(result, CheckParams{}, {}, {}, {}, stopToken);
+        if (islands.success && islands.islandsAfter < islands.islandsBefore && isClosedManifold(islands.mesh)) {
+            result = std::move(islands.mesh);
+        }
+        if (!stopToken.stop_requested() && !checkSelfIntersections(result, CheckParams{}, stopToken).empty()) {
+            Mesh united = selfUnion(result);
+            if (isClosedManifold(united) && checkSelfIntersections(united, CheckParams{}, stopToken).empty()) {
+                result = std::move(united);
+            }
+        }
+        if (!stopToken.stop_requested() && !ThinFaceChecker::check(result).defects.empty()) {
+            SliverHealOptions opts;
+            opts.stopToken = stopToken;
+            RepairResults healed = SliverHealer::healAllThinFaces(result, {}, {}, opts);
+            if (healed.success && !healed.cancelled && isClosedManifold(healed.mesh) &&
+                checkSelfIntersections(healed.mesh, CheckParams{}, stopToken).empty()) {
+                result = std::move(healed.mesh);
+            }
+        }
+    }
+
+    result.recomputeNormals();
+    return result;
+}
 
 } // namespace
 
@@ -506,10 +594,18 @@ Mesh voxelHealAndRemesh(const Mesh& mesh, double targetEdgeLength, int smoothing
         return {};
     }
 
+    if (CGAL::is_closed(surface)) {
+        PMP::orient_to_bound_a_volume(surface);
+    }
     Mesh result = fromCgalSurfaceMesh(surface, mesh.fileUnit);
     if (signedVolume(result) < 0.0) {
         result.F.col(1).swap(result.F.col(2));
         result.recomputeNormals();
+    }
+    result = polishRebuiltMesh(std::move(result), stopToken);
+    if (stopToken.stop_requested()) {
+        setStatus(statusOut, "Cancelled.");
+        return {};
     }
     std::array<char, 160> text{};
     std::snprintf(text.data(), text.size(),
@@ -541,7 +637,7 @@ Mesh precisionIsosurfaceRemesh(const Mesh& mesh, double targetEdgeLength, double
                                          settings::kMaxRemeshSmoothingPasses);
     const double minAllowedEdgeLength = maxSpan / static_cast<double>(settings::kMaxRemeshGridCells);
     const double effectiveEdgeLength = std::max(targetEdgeLength, minAllowedEdgeLength);
-    const double chordDistance = effectiveEdgeLength * clampedChordRatio;
+    const double chordDistance = std::max(effectiveEdgeLength * clampedChordRatio, 0.25 * minAllowedEdgeLength);
     const double facetRadius = effectiveEdgeLength / kSqrt3;
 
     // Normalize input to a unit diagonal centered at the origin for float BVH evaluation
@@ -651,7 +747,7 @@ Mesh precisionIsosurfaceRemesh(const Mesh& mesh, double targetEdgeLength, double
     }
 
     using MeshDomain = CGAL::Labeled_mesh_domain_3<CgalKernel>;
-    using MeshTr = CGAL::Mesh_triangulation_3<MeshDomain, CGAL::Default, CGAL::Sequential_tag>::type;
+    using MeshTr = CGAL::Mesh_triangulation_3<MeshDomain, CGAL::Default, CGAL::Parallel_if_available_tag>::type;
     using C3t3 = CGAL::Mesh_complex_3_in_triangulation_3<MeshTr>;
     using MeshCriteria = CGAL::Mesh_criteria_3<MeshTr>;
 
@@ -659,7 +755,7 @@ Mesh precisionIsosurfaceRemesh(const Mesh& mesh, double targetEdgeLength, double
     const auto windingOracle = [&](const CgalPoint3& p) -> double {
         if (stopToken.stop_requested()) {
             stopFlag.store(true, std::memory_order_relaxed);
-            throw StopMeshingException{};
+            return 1.0;
         }
         const Eigen::RowVector3f q(
             static_cast<float>((p.x() - center.x()) * scale),
@@ -674,6 +770,7 @@ Mesh precisionIsosurfaceRemesh(const Mesh& mesh, double targetEdgeLength, double
     const CgalKernel::Sphere_3 boundingSphere(sphereCenter, sphereRadius * sphereRadius);
 
     CgalSurfaceMesh surface;
+    CgalSurfaceMesh rawSurface;
     try {
         MeshDomain domain = MeshDomain::create_implicit_mesh_domain(
             windingOracle,
@@ -685,6 +782,10 @@ Mesh precisionIsosurfaceRemesh(const Mesh& mesh, double targetEdgeLength, double
         std::vector<std::pair<CgalPoint3, MeshDomain::Index>> initialPoints;
         initialPoints.reserve(24);
         for (const auto& [pA, pB] : crossingSegments) {
+            if (stopToken.stop_requested()) {
+                setStatus(statusOut, "Cancelled.");
+                return {};
+            }
             if (initialPoints.size() >= 24) {
                 break;
             }
@@ -725,20 +826,16 @@ Mesh precisionIsosurfaceRemesh(const Mesh& mesh, double targetEdgeLength, double
             setStatus(statusOut, "Isosurface extraction produced no triangles.");
             return {};
         }
+        if (CGAL::is_closed(surface)) {
+            PMP::orient_to_bound_a_volume(surface);
+        }
 
         if (clampedPasses > 0) {
-            PMP::isotropic_remeshing(
-                faces(surface),
-                effectiveEdgeLength,
+            rawSurface = surface;
+            PMP::tangential_relaxation(
                 surface,
-                CGAL::parameters::number_of_iterations(static_cast<unsigned int>(clampedPasses))
-                    .do_split(false)
-                    .do_collapse(false)
-                    .protect_constraints(false));
+                CGAL::parameters::number_of_iterations(static_cast<unsigned int>(clampedPasses)));
         }
-    } catch (const StopMeshingException&) {
-        setStatus(statusOut, "Cancelled.");
-        return {};
     } catch (const std::exception& e) {
         setStatus(statusOut, std::string("Precision isosurface failed: ") + e.what());
         return {};
@@ -753,6 +850,28 @@ Mesh precisionIsosurfaceRemesh(const Mesh& mesh, double targetEdgeLength, double
     if (signedVolume(result) < 0.0) {
         result.F.col(1).swap(result.F.col(2));
         result.recomputeNormals();
+    }
+    result = polishRebuiltMesh(std::move(result), stopToken);
+    if (clampedPasses > 0 && !stopToken.stop_requested() &&
+        (!checkSelfIntersections(result, CheckParams{}, stopToken).empty() ||
+         !ThinFaceChecker::check(result).defects.empty())) {
+        Mesh rawResult = fromCgalSurfaceMesh(rawSurface, mesh.fileUnit);
+        if (signedVolume(rawResult) < 0.0) {
+            rawResult.F.col(1).swap(rawResult.F.col(2));
+            rawResult.recomputeNormals();
+        }
+        rawResult = polishRebuiltMesh(std::move(rawResult), stopToken);
+        const std::size_t relDefects =
+            checkSelfIntersections(result, CheckParams{}, stopToken).size() + ThinFaceChecker::check(result).defects.size();
+        const std::size_t rawDefects =
+            checkSelfIntersections(rawResult, CheckParams{}, stopToken).size() + ThinFaceChecker::check(rawResult).defects.size();
+        if (rawDefects < relDefects) {
+            result = std::move(rawResult);
+        }
+    }
+    if (stopToken.stop_requested()) {
+        setStatus(statusOut, "Cancelled.");
+        return {};
     }
     std::array<char, 160> text{};
     std::snprintf(text.data(), text.size(),
@@ -783,7 +902,7 @@ Mesh simplifyToFaceCount(const Mesh& mesh, std::size_t targetFaces) {
                            .get_placement(policies.get_placement())
                            .filter(filter));
     surface.collect_garbage();
-    return fromCgalSurfaceMesh(surface, mesh.fileUnit);
+    return polishRebuiltMesh(fromCgalSurfaceMesh(surface, mesh.fileUnit));
 }
 
 } // namespace ogun
