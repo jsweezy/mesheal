@@ -173,6 +173,12 @@ void AppController::refreshGlobalParams() {
     globalParams_.checkParams = checkParams();
     globalParams_.islandSettings = islandSettings_;
     globalParams_.holeSettings = holeSettings_;
+    if (!(globalParams_.remeshTargetSize > 0.0) && !mesh_.empty()) {
+        const double maxSpan = mesh_.boundingBox().extents().maxCoeff();
+        if (maxSpan > 0.0) {
+            globalParams_.remeshTargetSize = maxSpan / static_cast<double>(settings::kDefaultRemeshGridCells);
+        }
+    }
 }
 
 void AppController::openRepairAll(ToolSlot slot, GlobalRepairMethod method) {
@@ -192,6 +198,14 @@ void AppController::openRepairAllHoles() {
 
 void AppController::openAlphaWrap() {
     openRepairAll(ToolSlot::AlphaWrap, GlobalRepairMethod::AlphaWrap);
+}
+
+void AppController::openVoxelHealRemesh() {
+    openRepairAll(ToolSlot::VoxelHealRemesh, GlobalRepairMethod::VoxelHealRemesh);
+}
+
+void AppController::openPrecisionIsosurface() {
+    openRepairAll(ToolSlot::PrecisionIsosurface, GlobalRepairMethod::PrecisionIsosurface);
 }
 
 void AppController::openDecimate() {
@@ -228,6 +242,19 @@ void AppController::setGlobalRepairParams(const GlobalRepairParams& params) {
         std::clamp(globalParams_.weldDistance, settings::kMinWeldDistance, settings::kMaxWeldDistance);
     globalParams_.windingResolution = std::clamp(globalParams_.windingResolution, settings::kMinWindingGridResolution,
                                                  settings::kMaxWindingGridResolution);
+    if (globalParams_.remeshTargetSize > 0.0) {
+        globalParams_.remeshTargetSize =
+            std::clamp(globalParams_.remeshTargetSize, settings::kMinRemeshTargetSize, settings::kMaxRemeshTargetSize);
+    }
+    globalParams_.voxelSmoothingPasses = std::clamp(globalParams_.voxelSmoothingPasses,
+                                                    settings::kMinRemeshSmoothingPasses,
+                                                    settings::kMaxRemeshSmoothingPasses);
+    globalParams_.isosurfaceSmoothingPasses = std::clamp(globalParams_.isosurfaceSmoothingPasses,
+                                                         settings::kMinRemeshSmoothingPasses,
+                                                         settings::kMaxRemeshSmoothingPasses);
+    globalParams_.isosurfaceChordRatio = std::clamp(globalParams_.isosurfaceChordRatio,
+                                                    settings::kMinIsosurfaceChordRatio,
+                                                    settings::kMaxIsosurfaceChordRatio);
 }
 
 void AppController::previewGlobalRepair() {
@@ -444,13 +471,15 @@ bool AppController::applyGlobalRepair() {
     }
     const std::string label = globalRepairMethodLabel(candidate->method);
     Mesh repaired = candidate->mesh;
-    pushUndoEntry(activeTool_ == ToolSlot::AlphaWrap       ? std::string("Alpha Wrap")
-                  : activeTool_ == ToolSlot::Decimate      ? std::string("Decimate")
-                  : activeTool_ == ToolSlot::MergeVertices ? std::string("Merge by Distance")
-                  : activeTool_ == ToolSlot::Weld          ? std::string("Weld")
-                  : activeTool_ == ToolSlot::FixAll        ? "Rebuild (" + label + ")"
-                  : activeTool_ == ToolSlot::RepairAllHoles ? "Repair All Holes (" + label + ")"
-                                                            : "Repair All Intersections (" + label + ")");
+    pushUndoEntry(activeTool_ == ToolSlot::AlphaWrap           ? std::string("Shrink-Wrap (Outer Envelope)")
+                  : activeTool_ == ToolSlot::VoxelHealRemesh   ? std::string("Voxel Heal & Remesh (Fast)")
+                  : activeTool_ == ToolSlot::PrecisionIsosurface ? std::string("Precision Isosurface (FEA Grade)")
+                  : activeTool_ == ToolSlot::Decimate          ? std::string("Decimate")
+                  : activeTool_ == ToolSlot::MergeVertices     ? std::string("Merge by Distance")
+                  : activeTool_ == ToolSlot::Weld              ? std::string("Weld")
+                  : activeTool_ == ToolSlot::FixAll            ? "Rebuild (" + label + ")"
+                  : activeTool_ == ToolSlot::RepairAllHoles    ? "Repair All Holes (" + label + ")"
+                                                               : "Repair All Intersections (" + label + ")");
     finishMeshEdit(std::move(repaired));
     recheckCategory(DefectCategory::Intersections);
     lastRepairStatusMessage_ = "Applied " + label + ".";

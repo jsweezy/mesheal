@@ -4,6 +4,7 @@
 #include "app/GuiWidgets.hpp"
 #include "app/PolyscopeGui.hpp"
 #include "core/Settings.hpp"
+#include "repair/SurfaceRebuild.hpp"
 
 #include <imgui.h>
 
@@ -47,7 +48,14 @@ struct GlobalMethodOption {
     const char* help;
 };
 
-constexpr std::array<GlobalMethodOption, 8> kGlobalMethodOptions = {{
+const char* displayGlobalMethodName(GlobalRepairMethod method) noexcept {
+    if (method == GlobalRepairMethod::AlphaWrap) {
+        return "Shrink-Wrap (Outer Envelope)";
+    }
+    return globalRepairMethodLabel(method);
+}
+
+constexpr std::array<GlobalMethodOption, 10> kGlobalMethodOptions = {{
     {GlobalRepairMethod::FillHoles, "keeps every other face exactly",
      "Surgical: each hole gets its recommended fill (Flat holes Fill Flat, Curved holes Fill Smooth, cracks "
      "Close Crack), or the method chosen below. Every existing face is kept; holes over the size limit and open "
@@ -61,10 +69,19 @@ constexpr std::array<GlobalMethodOption, 8> kGlobalMethodOptions = {{
     {GlobalRepairMethod::WindingRebuild, "new surface from a grid",
      "Marching cubes of the winding number on a regular grid: always closed, merges overlaps and closes "
      "holes (the winding number spans them), but every face is new and detail below the grid size is lost."},
-    {GlobalRepairMethod::AlphaWrap, "new surface wrapped around the input",
-     "CGAL alpha wrap: guaranteed watertight, 2-manifold and free of crossings. Every face is new; cavities "
-     "smaller than alpha and shells nested inside others are lost. Holes narrower than about alpha are spanned; "
-     "through bigger ones the wrap follows the inside, and an open sheet becomes a thin closed shell."},
+    {GlobalRepairMethod::AlphaWrap, "watertight outer casing around the geometry",
+     "Best for 3D printing external shells and enveloping thin, zero-volume sheets. Creates a guaranteed "
+     "watertight outer casing around the geometry. Warning: This will slightly inflate the model and "
+     "completely fill in any enclosed internal voids or hollow cavities."},
+    {GlobalRepairMethod::VoxelHealRemesh, "uniform 3D grid + Taubin de-terracing + isotropic remesh",
+     "Best for organic models, 3D scans, and rapid manifold conversion. Rebuilds the model using a uniform "
+     "3D grid to quickly resolve all self-intersections, stitch holes, and generate even, uniform triangles. "
+     "Preserves internal hollow cavities. Note: Very sharp mechanical edges may be slightly softened."},
+    {GlobalRepairMethod::PrecisionIsosurface, "exact level-set Delaunay meshing (>= 30 deg angles)",
+     "Best for engineering parts, CAD exports, and finite element simulation. Traces the exact mathematical "
+     "boundary of the volume using Delaunay refinement. Generates high-quality, simulation-ready triangles "
+     "(guaranteed >= 30 deg angles) that adaptively shrink to hug tight curves and mechanical fillets without "
+     "stair-stepping. Slower than Voxel Remesh."},
     {GlobalRepairMethod::Decimate, "fewer faces, same shape",
      "Garland-Heckbert edge collapse (CGAL) down to the chosen fraction of the faces. Collapses that would flip a "
      "face are skipped; hole rims and the edge of a face selection never move, so the rest of the mesh is kept "
@@ -221,10 +238,24 @@ void PolyscopeGui::drawRepairAllOperator() {
     const CategoryHealth& row = controller_.categoryHealth(target);
     const ToolSlot slot = controller_.activeTool();
     const bool wrapOnly =
-        slot == ToolSlot::AlphaWrap || slot == ToolSlot::Decimate || slot == ToolSlot::MergeVertices || slot == ToolSlot::Weld;
+        slot == ToolSlot::AlphaWrap || slot == ToolSlot::VoxelHealRemesh || slot == ToolSlot::PrecisionIsosurface ||
+        slot == ToolSlot::Decimate || slot == ToolSlot::MergeVertices || slot == ToolSlot::Weld;
     if (slot == ToolSlot::AlphaWrap) {
-        ImGui::TextWrapped("Wraps %s in a new surface that is always watertight, manifold and free of "
-                           "self-intersections. Every face is new: detail smaller than alpha is lost.",
+        ImGui::TextWrapped("Best for 3D printing external shells and enveloping thin, zero-volume sheets (%s). "
+                           "Creates a guaranteed watertight outer casing around the geometry. Warning: This will "
+                           "slightly inflate the model and completely fill in any enclosed internal voids or hollow cavities.",
+                           controller_.shells().scoped() ? "the shells in scope" : "the whole mesh");
+    } else if (slot == ToolSlot::VoxelHealRemesh) {
+        ImGui::TextWrapped("Best for organic models, 3D scans, and rapid manifold conversion (%s). Rebuilds the model "
+                           "using a uniform 3D grid to quickly resolve all self-intersections, stitch holes, and generate "
+                           "even, uniform triangles. Preserves internal hollow cavities. Note: Very sharp mechanical edges "
+                           "may be slightly softened.",
+                           controller_.shells().scoped() ? "the shells in scope" : "the whole mesh");
+    } else if (slot == ToolSlot::PrecisionIsosurface) {
+        ImGui::TextWrapped("Best for engineering parts, CAD exports, and finite element simulation (%s). Traces the exact "
+                           "mathematical boundary of the volume using Delaunay refinement. Generates high-quality, "
+                           "simulation-ready triangles (guaranteed >= 30 deg angles) that adaptively shrink to hug tight "
+                           "curves and mechanical fillets without stair-stepping. Slower than Voxel Remesh.",
                            controller_.shells().scoped() ? "the shells in scope" : "the whole mesh");
     } else if (slot == ToolSlot::Decimate || slot == ToolSlot::MergeVertices || slot == ToolSlot::Weld) {
         const std::size_t inScope = controller_.operatorScopeFaceCount();
@@ -266,7 +297,7 @@ void PolyscopeGui::drawRepairAllOperator() {
         if (std::find(methods.begin(), methods.end(), option.method) == methods.end()) {
             continue;
         }
-        const std::string label = std::string(globalRepairMethodLabel(option.method)) + "##global";
+        const std::string label = std::string(displayGlobalMethodName(option.method)) + "##global";
         if (ImGui::RadioButton(label.c_str(), controller_.globalRepairMethod() == option.method)) {
             controller_.setGlobalRepairMethod(option.method);
             requestSync();
@@ -300,7 +331,7 @@ void PolyscopeGui::drawRepairAllOperator() {
     if (running) {
         ImGui::SameLine();
         const std::optional<GlobalRepairMethod> current = controller_.globalRepairCurrentMethod();
-        ImGui::TextColored(gui::kRunningColor, "%s...", current ? globalRepairMethodLabel(*current) : "Working");
+        ImGui::TextColored(gui::kRunningColor, "%s...", current ? displayGlobalMethodName(*current) : "Working");
     }
 
     drawGlobalCandidateTable();
@@ -327,7 +358,7 @@ void PolyscopeGui::drawRepairAllOperator() {
     if (shown != nullptr) {
         const RepairMetrics& m = shown->metrics;
         ImGui::TextWrapped("%s: %.1f%% of faces unchanged, shells %s -> %s, thin faces %s -> %s, %.2f s.",
-                           globalRepairMethodLabel(shown->method), 100.0 * m.unchangedFraction,
+                           displayGlobalMethodName(shown->method), 100.0 * m.unchangedFraction,
                            withThousands(m.shellsBefore).c_str(), withThousands(m.shellsAfter).c_str(),
                            withThousands(m.thinFacesBefore).c_str(), withThousands(m.thinFacesAfter).c_str(),
                            m.elapsedMs / 1000.0);
@@ -345,7 +376,7 @@ void PolyscopeGui::drawRepairAllOperator() {
     const bool canApply = shown != nullptr && shown->success && !running;
     ImGui::BeginDisabled(!canApply);
     ImGui::PushStyleColor(ImGuiCol_Button, gui::kFixAllButtonColor);
-    const std::string applyLabel = canApply ? std::string("Apply ") + globalRepairMethodLabel(shown->method) : std::string("Apply");
+    const std::string applyLabel = canApply ? std::string("Apply ") + displayGlobalMethodName(shown->method) : std::string("Apply");
     if (ImGui::Button(applyLabel.c_str()) && controller_.applyGlobalRepair()) {
         requestSync(true);
     }
@@ -485,6 +516,81 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
         changed |= ImGui::Checkbox("Simplify to the original face count##wrap", &params.simplifyRebuild);
         break;
     }
+    case GlobalRepairMethod::VoxelHealRemesh: {
+        const BoundingBox bbox = controller_.meshBounds();
+        const double maxSpan = std::max(bbox.extents().maxCoeff(), settings::kMinRemeshTargetSize);
+        const double minSize = std::max(settings::kMinRemeshTargetSize, maxSpan / static_cast<double>(settings::kMaxRemeshGridCells));
+        const double maxSize = std::max(minSize, maxSpan / static_cast<double>(settings::kMinRemeshGridCells));
+        double targetSize = effectiveRemeshTargetSize(params, maxSpan);
+        const std::string sizeLabel = "Target Mesh Size (" + std::string(unitSymbol(controller_.fileUnit())) + ")##voxel";
+        if (ImGui::SliderScalar(sizeLabel.c_str(), ImGuiDataType_Double, &targetSize, &minSize, &maxSize, "%.4g",
+                                ImGuiSliderFlags_Logarithmic)) {
+            params.remeshTargetSize = std::clamp(targetSize, settings::kMinRemeshTargetSize, settings::kMaxRemeshTargetSize);
+            changed = true;
+        }
+        tooltip("Controls the average triangle edge length and grid detail of the output mesh. Smaller values capture "
+                "finer details and sharper corners, but increase triangle count and processing time. "
+                "Ctrl+click (Control, not Cmd) to type a value.");
+        const std::array<int, 3> grid = estimateVoxelGridDimensions(bbox, targetSize);
+        ImGui::TextDisabled("Grid: %d x %d x %d", grid[0], grid[1], grid[2]);
+
+        changed |= ImGui::SliderInt("Smoothing Passes##voxel", &params.voxelSmoothingPasses,
+                                    settings::kMinRemeshSmoothingPasses, settings::kMaxRemeshSmoothingPasses);
+        tooltip("Controls how many times the mesh is relaxed (volume-preserving Taubin de-terracing + isotropic "
+                "relaxation) after extraction. Higher values remove 'stair-step' artifacts and create more uniform "
+                "triangles, while 0 preserves raw extracted edges.");
+
+        ImGui::BeginDisabled(true);
+        double disabledChordPct = 100.0 * params.isosurfaceChordRatio;
+        ImGui::SliderScalar("Curve Fidelity / Chord Tolerance##voxel_disabled", ImGuiDataType_Double, &disabledChordPct,
+                            &settings::kMinIsosurfaceChordRatio, &settings::kMaxIsosurfaceChordRatio, "N/A");
+        ImGui::EndDisabled();
+        tooltip("Disabled for Voxel Heal & Remesh (uses a uniform 3D voxel grid). Select Precision Isosurface (FEA Grade) "
+                "for curvature-adaptive chord tolerance.");
+
+        changed |= ImGui::Checkbox("Simplify to the original face count##voxel", &params.simplifyRebuild);
+        break;
+    }
+    case GlobalRepairMethod::PrecisionIsosurface: {
+        const BoundingBox bbox = controller_.meshBounds();
+        const double maxSpan = std::max(bbox.extents().maxCoeff(), settings::kMinRemeshTargetSize);
+        const double minSize = std::max(settings::kMinRemeshTargetSize, maxSpan / static_cast<double>(settings::kMaxRemeshGridCells));
+        const double maxSize = std::max(minSize, maxSpan / static_cast<double>(settings::kMinRemeshGridCells));
+        double targetSize = effectiveRemeshTargetSize(params, maxSpan);
+        const std::string sizeLabel = "Target Mesh Size (" + std::string(unitSymbol(controller_.fileUnit())) + ")##iso";
+        if (ImGui::SliderScalar(sizeLabel.c_str(), ImGuiDataType_Double, &targetSize, &minSize, &maxSize, "%.4g",
+                                ImGuiSliderFlags_Logarithmic)) {
+            params.remeshTargetSize = std::clamp(targetSize, settings::kMinRemeshTargetSize, settings::kMaxRemeshTargetSize);
+            changed = true;
+        }
+        tooltip("Controls the average triangle edge length of the output mesh. Smaller values capture finer details "
+                "and sharper corners, but increase triangle count and processing time. "
+                "Ctrl+click (Control, not Cmd) to type a value.");
+
+        changed |= ImGui::SliderInt("Smoothing Passes##iso", &params.isosurfaceSmoothingPasses,
+                                    settings::kMinRemeshSmoothingPasses, settings::kMaxRemeshSmoothingPasses);
+        tooltip("Controls how many times the mesh is relaxed after extraction. Higher values create more uniform "
+                "triangles, while 0 preserves raw Delaunay-extracted edges.");
+
+        double chordPct = 100.0 * params.isosurfaceChordRatio;
+        const double minPct = 100.0 * settings::kMinIsosurfaceChordRatio;
+        const double maxPct = 100.0 * settings::kMaxIsosurfaceChordRatio;
+        if (ImGui::SliderScalar("Curve Fidelity / Chord Tolerance##iso", ImGuiDataType_Double, &chordPct,
+                                &minPct, &maxPct, "%.0f%%", ImGuiSliderFlags_Logarithmic)) {
+            params.isosurfaceChordRatio = std::clamp(chordPct / 100.0,
+                                                     settings::kMinIsosurfaceChordRatio,
+                                                     settings::kMaxIsosurfaceChordRatio);
+            changed = true;
+        }
+        tooltip("Controls how tightly triangles must hug curved surfaces. Lower values force the mesher to place "
+                "smaller, denser triangles along curved walls and fillets while keeping flat areas coarse.");
+        ImGui::TextDisabled("chord distance = %s (%.0f%% of target size)",
+                            lengthText(targetSize * params.isosurfaceChordRatio, controller_.fileUnit()).c_str(),
+                            100.0 * params.isosurfaceChordRatio);
+
+        changed |= ImGui::Checkbox("Simplify to the original face count##iso", &params.simplifyRebuild);
+        break;
+    }
     }
     ImGui::PopItemWidth();
     if (changed) {
@@ -552,7 +658,7 @@ void PolyscopeGui::drawGlobalCandidateTable() {
         if (!current || !c.success) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
         }
-        if (ImGui::Selectable(rebuildRow ? fixAllRebuildRowLabel(c).c_str() : globalRepairMethodLabel(c.method), shown == &c,
+        if (ImGui::Selectable(rebuildRow ? fixAllRebuildRowLabel(c).c_str() : displayGlobalMethodName(c.method), shown == &c,
                               ImGuiSelectableFlags_SpanAllColumns)) {
             clicked = c.method;
             clickedRebuild = rebuildRow;

@@ -2,6 +2,7 @@
 
 #include "mesh/Mesh.hpp"
 
+#include <array>
 #include <cstddef>
 #include <functional>
 #include <stop_token>
@@ -31,6 +32,27 @@ namespace ogun {
 /// `resolution` cells along the longest side. A new surface that unions overlapping parts and
 /// closes small holes.
 [[nodiscard]] Mesh windingNumberRebuild(const Mesh& mesh, int resolution, std::string* statusOut = nullptr);
+
+/// Returns the clamped Marching Cubes grid dimensions `(nx, ny, nz)` used by `voxelHealAndRemesh`
+/// for a mesh with `bbox` at `targetEdgeLength`.
+[[nodiscard]] std::array<int, 3> estimateVoxelGridDimensions(const BoundingBox& bbox, double targetEdgeLength) noexcept;
+
+/// Pipeline A — Voxel Heal & Remesh (Fast):
+/// Evaluates the generalized winding number (`w = 0.5`) on an off-lattice voxel grid sized from
+/// `targetEdgeLength`, extracts the Marching Cubes isosurface, applies `smoothingPasses` passes of
+/// volume-preserving Taubin (`lambda = 0.50, mu = -0.53`) de-terracing, and runs CGAL isotropic
+/// remeshing at `targetEdgeLength`.
+[[nodiscard]] Mesh voxelHealAndRemesh(const Mesh& mesh, double targetEdgeLength, int smoothingPasses,
+                                      std::string* statusOut = nullptr, std::stop_token stopToken = {});
+
+/// Pipeline B — Precision Isosurface (FEA Grade):
+/// Meshes the exact `w = 0.5` winding-number level set via `CGAL::make_mesh_3` (`surface_only()`,
+/// `manifold()`) with Delaunay ball radius `targetEdgeLength / sqrt(3)` and chord distance
+/// `targetEdgeLength * chordRatio`, followed by `smoothingPasses` passes of tangential relaxation
+/// and valence-improving flips.
+[[nodiscard]] Mesh precisionIsosurfaceRemesh(const Mesh& mesh, double targetEdgeLength, double chordRatio,
+                                             int smoothingPasses, std::string* statusOut = nullptr,
+                                             std::stop_token stopToken = {});
 
 /// Garland-Heckbert edge-collapse simplification down to at most `targetFaces` faces. Returns the
 /// input unchanged when it is already small enough or cannot be converted.

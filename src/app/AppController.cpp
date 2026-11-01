@@ -167,6 +167,7 @@ void AppController::setMesh(Mesh mesh, std::string sourceLabel) {
     selectedCategory_.reset();
     resetFixAllState();
     activeTool_ = ToolSlot::None;
+    globalParams_.remeshTargetSize = 0.0;
     shells_.clear();
     replaceMeshPreservingHistory(std::move(mesh));
     resetHealthReport();
@@ -259,7 +260,11 @@ void AppController::scaleMeshCoordinatesToUnit(Unit targetUnit) {
     ogun::scaleMeshToUnit(scaled, targetUnit);
     thresholds_ = thresholds_.convertedToUnit(oldUnit, targetUnit);
     // Keeps its physical size; deliberately not clamped to the slider range
-    globalParams_.mergeDistance *= unitConversionFactor(oldUnit, targetUnit);
+    const double factor = unitConversionFactor(oldUnit, targetUnit);
+    globalParams_.mergeDistance *= factor;
+    if (globalParams_.remeshTargetSize > 0.0) {
+        globalParams_.remeshTargetSize *= factor;
+    }
     finishMeshEdit(std::move(scaled));
     postStatusMessage("Scaled coordinates from " + std::string(unitSymbol(oldUnit)) + " to " +
                       std::string(unitSymbol(targetUnit)) + ".");

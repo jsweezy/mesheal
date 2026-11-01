@@ -119,6 +119,8 @@ enum class ToolSlot {
     RepairAllIntersections,
     RepairAllHoles,
     AlphaWrap,
+    VoxelHealRemesh,
+    PrecisionIsosurface,
     Decimate,
     MergeVertices,
     Weld,
@@ -1113,8 +1115,14 @@ public:
     /// Opens "Operation: Repair All Holes" in the Tool slot (deselects any row).
     void openRepairAllHoles();
 
-    /// Opens "Operation: Alpha Wrap" (Mesh > Clean Up): the same operator with only the wrap.
+    /// Opens "Operation: Shrink-Wrap (Outer Envelope)" (Mesh > Modify): the same operator with only the wrap.
     void openAlphaWrap();
+
+    /// Opens "Operation: Voxel Heal & Remesh (Fast)" (Mesh > Modify).
+    void openVoxelHealRemesh();
+
+    /// Opens "Operation: Precision Isosurface (FEA Grade)" (Mesh > Modify).
+    void openPrecisionIsosurface();
 
     // -------------------------------------------------------------------------
     // Face selection: Shift+click, box (B) and circle (C) in the viewport (AppControllerSelection.cpp).
@@ -1194,6 +1202,10 @@ public:
         switch (activeTool_) {
         case ToolSlot::AlphaWrap:
             return kWrapMethods;
+        case ToolSlot::VoxelHealRemesh:
+            return kVoxelRemeshMethods;
+        case ToolSlot::PrecisionIsosurface:
+            return kPrecisionIsosurfaceMethods;
         case ToolSlot::Decimate:
             return kDecimateMethods;
         case ToolSlot::MergeVertices:
@@ -1210,7 +1222,8 @@ public:
     /// True for the Repair All operators and the Mesh-menu operators built on them.
     [[nodiscard]] bool repairAllOpen() const noexcept {
         return activeTool_ == ToolSlot::RepairAllIntersections || activeTool_ == ToolSlot::RepairAllHoles ||
-               activeTool_ == ToolSlot::AlphaWrap || activeTool_ == ToolSlot::Decimate ||
+               activeTool_ == ToolSlot::AlphaWrap || activeTool_ == ToolSlot::VoxelHealRemesh ||
+               activeTool_ == ToolSlot::PrecisionIsosurface || activeTool_ == ToolSlot::Decimate ||
                activeTool_ == ToolSlot::MergeVertices || activeTool_ == ToolSlot::Weld ||
                activeTool_ == ToolSlot::FixAll;
     }

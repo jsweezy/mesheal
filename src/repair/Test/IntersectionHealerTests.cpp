@@ -332,3 +332,48 @@ TEST_CASE("Self-union per shell keeps crossing shells apart", "[repair][intersec
     REQUIRE(c.metrics.intersectingFacesAfter > 0);  // ... so they still cross each other
     REQUIRE(islandsOf(c.mesh).empty());             // but nothing crosses within a shell
 }
+
+TEST_CASE("Voxel Heal & Remesh and Precision Isosurface heal overlapping cubes into a closed manifold",
+          "[repair][intersections][global][remesh]") {
+    const ogun::Mesh cubes = twoOverlappingCubes();
+    std::string voxelStatus;
+    const ogun::Mesh voxelOut = ogun::voxelHealAndRemesh(cubes, 0.75, 3, &voxelStatus);
+    REQUIRE_FALSE(voxelOut.empty());
+    REQUIRE(voxelStatus.find("Grid ") != std::string::npos);
+    REQUIRE(crossings(voxelOut) == 0);
+    REQUIRE(closedManifold(voxelOut));
+
+    std::string isoStatus;
+    const ogun::Mesh isoOut = ogun::precisionIsosurfaceRemesh(cubes, 1.0, 0.10, 1, &isoStatus);
+    REQUIRE_FALSE(isoOut.empty());
+    REQUIRE(isoStatus.find("Isosurface extracted") != std::string::npos);
+    REQUIRE(crossings(isoOut) == 0);
+    REQUIRE(closedManifold(isoOut));
+
+    // Cancellation via stop_token returns an empty mesh with status "Cancelled."
+    std::stop_source stopSource;
+    stopSource.request_stop();
+    std::string cancelStatus;
+    REQUIRE(ogun::voxelHealAndRemesh(cubes, 0.75, 3, &cancelStatus, stopSource.get_token()).empty());
+    REQUIRE(cancelStatus == "Cancelled.");
+    REQUIRE(ogun::precisionIsosurfaceRemesh(cubes, 1.0, 0.10, 1, &cancelStatus, stopSource.get_token()).empty());
+    REQUIRE(cancelStatus == "Cancelled.");
+}
+
+TEST_CASE("Precision Isosurface rejects an open flat sheet without hanging", "[repair][intersections][global][remesh]") {
+    ogun::Mesh sheet;
+    sheet.V.resize(4, 3);
+    sheet.V << 0.0, 0.0, 0.0,
+               10.0, 0.0, 0.0,
+               10.0, 10.0, 0.0,
+               0.0, 10.0, 0.01;
+    sheet.F.resize(2, 3);
+    sheet.F << 0, 1, 2,
+               0, 2, 3;
+    sheet.recomputeNormals();
+
+    std::string status;
+    const ogun::Mesh out = ogun::precisionIsosurfaceRemesh(sheet, 1.0, 0.10, 1, &status);
+    REQUIRE(out.empty());
+    REQUIRE(status.find("no enclosed volume") != std::string::npos);
+}

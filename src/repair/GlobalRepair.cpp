@@ -247,6 +247,10 @@ const char* globalRepairMethodLabel(GlobalRepairMethod method) noexcept {
         return "Winding-number rebuild";
     case GlobalRepairMethod::AlphaWrap:
         return "Alpha wrap";
+    case GlobalRepairMethod::VoxelHealRemesh:
+        return "Voxel Heal & Remesh (Fast)";
+    case GlobalRepairMethod::PrecisionIsosurface:
+        return "Precision Isosurface (FEA Grade)";
     case GlobalRepairMethod::Decimate:
         return "Decimate";
     case GlobalRepairMethod::MergeVertices:
@@ -273,12 +277,24 @@ double alphaWrapOffset(const GlobalRepairParams& params, double alpha) noexcept 
     return alpha / ratio;
 }
 
+double effectiveRemeshTargetSize(const GlobalRepairParams& params, double maxSpan) noexcept {
+    if (params.remeshTargetSize > 0.0) {
+        return params.remeshTargetSize;
+    }
+    const double safeSpan = maxSpan > 0.0 ? maxSpan : 1.0;
+    return safeSpan / static_cast<double>(settings::kDefaultRemeshGridCells);
+}
+
 bool GlobalRepairParams::operator==(const GlobalRepairParams& other) const noexcept {
     return unionCrossingShells == other.unionCrossingShells && alphaWrapDetail == other.alphaWrapDetail &&
            alphaWrapOffsetRatio == other.alphaWrapOffsetRatio && decimateRatio == other.decimateRatio &&
            mergeDistance == other.mergeDistance && mergeKeepSurfacesApart == other.mergeKeepSurfacesApart &&
            mergePreserveOpenEdges == other.mergePreserveOpenEdges && weldDistance == other.weldDistance &&
            windingResolution == other.windingResolution &&
+           remeshTargetSize == other.remeshTargetSize &&
+           voxelSmoothingPasses == other.voxelSmoothingPasses &&
+           isosurfaceSmoothingPasses == other.isosurfaceSmoothingPasses &&
+           isosurfaceChordRatio == other.isosurfaceChordRatio &&
            simplifyRebuild == other.simplifyRebuild && islandSettings.dilationRings == other.islandSettings.dilationRings &&
            islandSettings.cgalMaxSteps == other.islandSettings.cgalMaxSteps &&
            holeMethod == other.holeMethod && holeSettings == other.holeSettings &&
@@ -360,6 +376,19 @@ RepairCandidate runGlobalRepair(
         repaired = alphaWrap(scoped, alpha, alphaWrapOffset(params, alpha), &status, stopToken);
         break;
     }
+    case GlobalRepairMethod::VoxelHealRemesh: {
+        const double maxSpan = scoped.boundingBox().extents().maxCoeff();
+        const double targetEdge = effectiveRemeshTargetSize(params, maxSpan);
+        repaired = voxelHealAndRemesh(scoped, targetEdge, params.voxelSmoothingPasses, &status, stopToken);
+        break;
+    }
+    case GlobalRepairMethod::PrecisionIsosurface: {
+        const double maxSpan = scoped.boundingBox().extents().maxCoeff();
+        const double targetEdge = effectiveRemeshTargetSize(params, maxSpan);
+        repaired = precisionIsosurfaceRemesh(
+            scoped, targetEdge, params.isosurfaceChordRatio, params.isosurfaceSmoothingPasses, &status, stopToken);
+        break;
+    }
     case GlobalRepairMethod::Decimate:
     case GlobalRepairMethod::MergeVertices:
     case GlobalRepairMethod::Weld:
@@ -367,7 +396,8 @@ RepairCandidate runGlobalRepair(
         break; // runInPlace / runFixAllCandidate
     }
     if (params.simplifyRebuild && !repaired.empty() &&
-        (method == GlobalRepairMethod::WindingRebuild || method == GlobalRepairMethod::AlphaWrap)) {
+        (method == GlobalRepairMethod::WindingRebuild || method == GlobalRepairMethod::AlphaWrap ||
+         method == GlobalRepairMethod::VoxelHealRemesh || method == GlobalRepairMethod::PrecisionIsosurface)) {
         repaired = simplifyToFaceCount(repaired, static_cast<std::size_t>(scoped.numFaces()));
         status += " Simplified to " + std::to_string(repaired.numFaces()) + " faces.";
     }

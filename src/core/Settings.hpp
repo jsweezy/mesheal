@@ -98,6 +98,22 @@ inline constexpr double kMaxWeldDistance                = 10.0;   // Weld distan
 inline constexpr int    kDefaultWindingGridResolution     = 128;    // Winding-number rebuild: grid cells along the longest bbox side
 inline constexpr int    kMinWindingGridResolution         = 16;     // Lowest winding-number grid resolution offered
 inline constexpr int    kMaxWindingGridResolution         = 512;    // Highest winding-number grid resolution offered
+inline constexpr int    kDefaultRemeshGridCells           = 128;    // Voxel / Isosurface remesh: default target size = longest bbox span / this cell count
+inline constexpr int    kMinRemeshGridCells               = 16;     // Coarsest slider bound for target mesh size (longest bbox span / 16)
+inline constexpr int    kMaxRemeshGridCells               = 256;    // Finest slider bound for target mesh size (longest bbox span / 256)
+inline constexpr double kMinRemeshTargetSize              = 1.0e-5; // Minimum allowed target mesh size in file coordinates (unitless)
+inline constexpr double kMaxRemeshTargetSize              = 1.0e5;  // Maximum allowed target mesh size in file coordinates (unitless)
+inline constexpr int    kDefaultVoxelSmoothingPasses      = 3;      // Voxel Heal & Remesh (Fast): default Taubin + isotropic smoothing passes
+inline constexpr int    kDefaultIsosurfaceSmoothingPasses = 1;      // Precision Isosurface (FEA Grade): default tangential relaxation passes
+inline constexpr int    kMinRemeshSmoothingPasses         = 0;      // Minimum smoothing passes for Voxel Heal & Remesh and Precision Isosurface
+inline constexpr int    kMaxRemeshSmoothingPasses         = 10;     // Maximum smoothing passes for Voxel Heal & Remesh and Precision Isosurface
+inline constexpr double kDefaultTaubinLambda              = 0.50;   // Taubin smoothing forward Laplacian step factor (removes Marching Cubes terracing)
+inline constexpr double kDefaultTaubinMu                  = -0.53;  // Taubin smoothing backward inflation step factor (prevents volume shrinkage)
+inline constexpr double kDefaultIsosurfaceChordRatio      = 0.10;   // Precision Isosurface: default chord tolerance as a fraction of target mesh size
+inline constexpr double kMinIsosurfaceChordRatio          = 0.01;   // Precision Isosurface: tightest chord tolerance ratio (finest curve tessellation)
+inline constexpr double kMaxIsosurfaceChordRatio          = 1.00;   // Precision Isosurface: loosest chord tolerance ratio (1.0 = uniform sizing everywhere)
+inline constexpr double kDefaultIsosurfaceMinFacetAngleDeg = 30.0;  // Precision Isosurface: minimum triangle angle (deg) in CGAL Delaunay refinement
+inline constexpr double kDefaultIsosurfaceRelativeErrorBound = 1.0e-4; // Precision Isosurface: relative bisection root-finding error bound on W = 0.5
 
 // -----------------------------------------------------------------------------
 // Holes (open edges): shape classification and filling

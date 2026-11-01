@@ -454,7 +454,9 @@ void PolyscopeGui::drawRightColumn(float top, float bottom) {
     std::string title = slot == ToolSlot::UnitsAndScale            ? std::string("Operation: Units & Scale")
                         : slot == ToolSlot::RepairAllIntersections ? std::string("Operation: Repair All Intersections")
                         : slot == ToolSlot::RepairAllHoles         ? std::string("Operation: Repair All Holes")
-                        : slot == ToolSlot::AlphaWrap              ? std::string("Operation: Alpha Wrap")
+                        : slot == ToolSlot::AlphaWrap              ? std::string("Operation: Shrink-Wrap (Outer Envelope)")
+                        : slot == ToolSlot::VoxelHealRemesh        ? std::string("Operation: Voxel Heal & Remesh (Fast)")
+                        : slot == ToolSlot::PrecisionIsosurface    ? std::string("Operation: Precision Isosurface (FEA Grade)")
                         : slot == ToolSlot::Decimate               ? std::string("Operation: Decimate")
                         : slot == ToolSlot::MergeVertices          ? std::string("Operation: Merge by Distance")
                         : slot == ToolSlot::Weld                   ? std::string("Operation: Weld")
@@ -775,12 +777,28 @@ void PolyscopeGui::drawMeshMenu() {
     }
     tooltip("Weld open boundary vertices together across seams and cracks within a distance (default 0.05) "
             "without modifying interior faces. Preview, then apply.");
-    if (ImGui::MenuItem("Alpha Wrap...", nullptr, false, hasMesh)) {
+    if (ImGui::MenuItem("Shrink-Wrap (Outer Envelope)...", nullptr, false, hasMesh)) {
         controller_.openAlphaWrap();
         requestSync();
     }
-    tooltip("Shrink-wrap the mesh (or the shells in scope) into a new watertight, manifold surface without "
-            "self-intersections (CGAL 3D Alpha Wrapping). Set alpha and the offset (alpha / x), preview, then apply.");
+    tooltip("Best for 3D printing external shells and enveloping thin, zero-volume sheets. Creates a guaranteed "
+            "watertight outer casing around the geometry. Warning: This will slightly inflate the model and "
+            "completely fill in any enclosed internal voids or hollow cavities.");
+    if (ImGui::MenuItem("Voxel Heal & Remesh (Fast)...", nullptr, false, hasMesh)) {
+        controller_.openVoxelHealRemesh();
+        requestSync();
+    }
+    tooltip("Best for organic models, 3D scans, and rapid manifold conversion. Rebuilds the model using a uniform "
+            "3D grid to quickly resolve all self-intersections, stitch holes, and generate even, uniform triangles. "
+            "Preserves internal hollow cavities. Note: Very sharp mechanical edges may be slightly softened.");
+    if (ImGui::MenuItem("Precision Isosurface (FEA Grade)...", nullptr, false, hasMesh)) {
+        controller_.openPrecisionIsosurface();
+        requestSync();
+    }
+    tooltip("Best for engineering parts, CAD exports, and finite element simulation. Traces the exact mathematical "
+            "boundary of the volume using Delaunay refinement. Generates high-quality, simulation-ready triangles "
+            "(guaranteed >= 30 deg angles) that adaptively shrink to hug tight curves and mechanical fillets without "
+            "stair-stepping. Slower than Voxel Remesh.");
     if (ImGui::MenuItem("Delete Selected Faces", "X / Del", false, controller_.selectedFaceCount() > 0)) {
         deleteSelection();
     }
@@ -797,7 +815,6 @@ void PolyscopeGui::drawMeshMenu() {
     tooltip("Selects the shells smaller than N faces in the Shells panel (Select... sets N).");
     plannedMenuItem("Remove Degenerate Faces...", "Planned (P5). Fix All on the Degenerate faces row (Mesh Health) does this now.");
     plannedMenuItem("Remove Duplicate Faces", "Planned (P5). Fix All on the Duplicate faces row (Mesh Health) does this now.");
-    plannedMenuItem("Remesh...", "Planned.");
     ImGui::Separator();
     if (ImGui::MenuItem("Mesh Info", nullptr, showMeshInfo_)) {
         showMeshInfo_ = !showMeshInfo_;

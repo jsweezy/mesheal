@@ -273,9 +273,72 @@ TEST_CASE("Mesh > Clean Up > Alpha Wrap: one method, offset, apply and undo", "[
     REQUIRE(controller.globalPreviewShown());
 
     REQUIRE(controller.applyGlobalRepair());
-    REQUIRE(controller.lastUndoActionLabel() == "Alpha Wrap");
+    REQUIRE(controller.lastUndoActionLabel() == "Shrink-Wrap (Outer Envelope)");
     REQUIRE(controller.shells().size() == 2);
     REQUIRE(crossings(controller.mesh()) > 0); // the second cube was left alone
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().F == before.F);
+    REQUIRE(controller.mesh().V == before.V);
+}
+
+TEST_CASE("Voxel Heal & Remesh and Precision Isosurface operators preview, apply and undo", "[app][intersections]") {
+    ogun::AppController controller;
+    controller.setBackgroundChecks(false);
+    controller.setMesh(ogun::SampleMeshes::createFoldedCubeMesh(), "folded");
+    const ogun::Mesh before = controller.mesh();
+
+    // Voxel Heal & Remesh (Fast)
+    controller.openVoxelHealRemesh();
+    REQUIRE(controller.activeTool() == ogun::ToolSlot::VoxelHealRemesh);
+    REQUIRE(controller.repairAllOpen());
+    REQUIRE(controller.globalRepairMethods().size() == 1);
+    REQUIRE(controller.globalRepairMethod() == ogun::GlobalRepairMethod::VoxelHealRemesh);
+
+    ogun::GlobalRepairParams params = controller.globalRepairParams();
+    REQUIRE(params.remeshTargetSize > 0.0);
+    params.voxelSmoothingPasses = 99;
+    controller.setGlobalRepairParams(params);
+    REQUIRE(controller.globalRepairParams().voxelSmoothingPasses == ogun::settings::kMaxRemeshSmoothingPasses);
+    params.remeshTargetSize = 0.75;
+    params.voxelSmoothingPasses = 2;
+    controller.setGlobalRepairParams(params);
+
+    controller.previewGlobalRepair();
+    const ogun::RepairCandidate* voxelCand = controller.shownGlobalCandidate();
+    REQUIRE(voxelCand != nullptr);
+    REQUIRE(voxelCand->success);
+    REQUIRE(voxelCand->metrics.watertight());
+    REQUIRE(voxelCand->metrics.intersectingFacesAfter == 0);
+    REQUIRE(controller.applyGlobalRepair());
+    REQUIRE(controller.lastUndoActionLabel() == "Voxel Heal & Remesh (Fast)");
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().F == before.F);
+    REQUIRE(controller.mesh().V == before.V);
+
+    // Precision Isosurface (FEA Grade)
+    controller.openPrecisionIsosurface();
+    REQUIRE(controller.activeTool() == ogun::ToolSlot::PrecisionIsosurface);
+    REQUIRE(controller.repairAllOpen());
+    REQUIRE(controller.globalRepairMethods().size() == 1);
+    REQUIRE(controller.globalRepairMethod() == ogun::GlobalRepairMethod::PrecisionIsosurface);
+
+    params = controller.globalRepairParams();
+    params.isosurfaceChordRatio = 0.0001;
+    controller.setGlobalRepairParams(params);
+    REQUIRE(controller.globalRepairParams().isosurfaceChordRatio == ogun::settings::kMinIsosurfaceChordRatio);
+    params.remeshTargetSize = 1.0;
+    params.isosurfaceChordRatio = 0.15;
+    params.isosurfaceSmoothingPasses = 1;
+    controller.setGlobalRepairParams(params);
+
+    controller.previewGlobalRepair();
+    const ogun::RepairCandidate* isoCand = controller.shownGlobalCandidate();
+    REQUIRE(isoCand != nullptr);
+    REQUIRE(isoCand->success);
+    REQUIRE(isoCand->metrics.watertight());
+    REQUIRE(isoCand->metrics.intersectingFacesAfter == 0);
+    REQUIRE(controller.applyGlobalRepair());
+    REQUIRE(controller.lastUndoActionLabel() == "Precision Isosurface (FEA Grade)");
     REQUIRE(controller.undoLastModification());
     REQUIRE(controller.mesh().F == before.F);
     REQUIRE(controller.mesh().V == before.V);

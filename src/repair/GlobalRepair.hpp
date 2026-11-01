@@ -27,11 +27,13 @@ enum class GlobalRepairMethod {
     FillHoles,       ///< Every hole gets its recommended fill (or the chosen one); other faces are kept exactly
     PatchIslands,    ///< Every within-shell island gets its recommended local repair (+ fallbacks)
     SelfUnion,       ///< Cut along every crossing and keep the outer surface; keeps other faces exactly
-    WindingRebuild,  ///< New surface: marching cubes of the winding number on a grid
-    AlphaWrap,       ///< New surface: CGAL alpha wrap (always watertight and manifold)
-    Decimate,        ///< Mesh > Simplify > Decimate: edge collapse of the faces in scope
-    MergeVertices,   ///< Mesh > Modify > Merge by Distance: merge by distance in scope
-    Weld             ///< Mesh > Modify > Weld: weld open edges across cracks
+    WindingRebuild,      ///< New surface: marching cubes of the winding number on a grid
+    AlphaWrap,           ///< New surface: CGAL alpha wrap (always watertight and manifold)
+    VoxelHealRemesh,     ///< Mesh > Modify > Voxel Heal & Remesh (Fast): winding-number MC + Taubin + isotropic remeshing
+    PrecisionIsosurface, ///< Mesh > Modify > Precision Isosurface (FEA Grade): CGAL make_mesh_3 on w = 0.5 + relaxation
+    Decimate,            ///< Mesh > Simplify > Decimate: edge collapse of the faces in scope
+    MergeVertices,       ///< Mesh > Modify > Merge by Distance: merge by distance in scope
+    Weld                 ///< Mesh > Modify > Weld: weld open edges across cracks
 };
 
 inline constexpr std::array<GlobalRepairMethod, 4> kGlobalRepairMethods = {
@@ -80,7 +82,15 @@ struct GlobalRepairParams {
     double weldDistance = settings::kDefaultWeldDistance;
     /// Winding-number rebuild: grid cells along the longest side.
     int windingResolution = settings::kDefaultWindingGridResolution;
-    /// Rebuilds (winding / wrap): simplify back to the in-scope face count when larger.
+    /// Voxel Heal & Remesh / Precision Isosurface: target triangle edge length in file units (<= 0 = maxSpan / 128).
+    double remeshTargetSize = 0.0;
+    /// Voxel Heal & Remesh: Taubin de-terracing passes (0-10, default 3).
+    int voxelSmoothingPasses = settings::kDefaultVoxelSmoothingPasses;
+    /// Precision Isosurface: post-extraction tangential relaxation passes (0-10, default 1).
+    int isosurfaceSmoothingPasses = settings::kDefaultIsosurfaceSmoothingPasses;
+    /// Precision Isosurface: chord distance as a fraction of target mesh size (0.01-1.0, default 0.10).
+    double isosurfaceChordRatio = settings::kDefaultIsosurfaceChordRatio;
+    /// Rebuilds (winding / wrap / voxel / isosurface): simplify back to the in-scope face count when larger.
     bool simplifyRebuild = false;
     IntersectionRepairSettings islandSettings{};
     /// Fill each hole: the method for every hole (None = each hole's recommended fill) and the limits.
@@ -98,8 +108,13 @@ struct GlobalRepairParams {
 [[nodiscard]] double alphaWrapAlpha(const GlobalRepairParams& params, double diag) noexcept;
 [[nodiscard]] double alphaWrapOffset(const GlobalRepairParams& params, double alpha) noexcept;
 
+/// Effective target edge length for Voxel Heal & Remesh and Precision Isosurface given longest bbox span `maxSpan`.
+[[nodiscard]] double effectiveRemeshTargetSize(const GlobalRepairParams& params, double maxSpan) noexcept;
+
 /// The Mesh-menu operators built on the same panel offer one method each.
 inline constexpr std::array<GlobalRepairMethod, 1> kWrapMethods = {GlobalRepairMethod::AlphaWrap};
+inline constexpr std::array<GlobalRepairMethod, 1> kVoxelRemeshMethods = {GlobalRepairMethod::VoxelHealRemesh};
+inline constexpr std::array<GlobalRepairMethod, 1> kPrecisionIsosurfaceMethods = {GlobalRepairMethod::PrecisionIsosurface};
 inline constexpr std::array<GlobalRepairMethod, 1> kDecimateMethods = {GlobalRepairMethod::Decimate};
 inline constexpr std::array<GlobalRepairMethod, 1> kMergeMethods = {GlobalRepairMethod::MergeVertices};
 inline constexpr std::array<GlobalRepairMethod, 1> kWeldMethods = {GlobalRepairMethod::Weld};

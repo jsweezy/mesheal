@@ -6,6 +6,7 @@ namespace ogun {
 
 // Fundamental mathematical constants
 inline constexpr double kPi = std::numbers::pi;
+inline constexpr double kSqrt3 = std::numbers::sqrt3;
 inline constexpr double kDegToRad = kPi / 180.0;
 inline constexpr double kRadToDeg = 180.0 / kPi;
 
