@@ -29,11 +29,11 @@ enum class GlobalRepairMethod {
     SelfUnion,       ///< Cut along every crossing and keep the outer surface; keeps other faces exactly
     WindingRebuild,      ///< New surface: marching cubes of the winding number on a grid
     AlphaWrap,           ///< New surface: CGAL alpha wrap (always watertight and manifold)
-    VoxelHealRemesh,     ///< Mesh > Modify > Voxel Heal & Remesh (Fast): winding-number MC + Taubin + isotropic remeshing
-    PrecisionIsosurface, ///< Mesh > Modify > Precision Isosurface (FEA Grade): CGAL make_mesh_3 on w = 0.5 + relaxation
+    VoxelHealRemesh,     ///< Repair > Remesh > Voxel Heal & Remesh (Fast): winding-number MC + Taubin + isotropic remeshing
+    PrecisionIsosurface, ///< Repair > Remesh > Precision Isosurface (FEA Grade): CGAL make_mesh_3 on w = 0.5 + relaxation
     Decimate,            ///< Mesh > Simplify > Decimate: edge collapse of the faces in scope
     MergeVertices,       ///< Mesh > Modify > Merge by Distance: merge by distance in scope
-    Weld                 ///< Mesh > Modify > Weld: weld open edges across cracks
+    Weld                 ///< Repair > Weld / Mesh > Modify > Weld: weld open edges across cracks
 };
 
 inline constexpr std::array<GlobalRepairMethod, 4> kGlobalRepairMethods = {

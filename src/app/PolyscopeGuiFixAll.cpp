@@ -1126,7 +1126,7 @@ void PolyscopeGui::drawFixAllReport() {
         const std::vector<FixAllResultLine> lines = fixAllResultLines(run->result, false);
         if (std::any_of(lines.begin(), lines.end(), [](const FixAllResultLine& l) { return l.rebuildShell >= 0; })) {
             ImGui::TextDisabled("A shell is rebuilt in the preview, before Apply: undo, preview again and use Rebuild shell #k.... "
-                                "Mesh > Modify > Shrink-Wrap (Outer Envelope)... also wraps shells you select.");
+                                "Repair > Shrink-Wrap (Outer Envelope)... also wraps shells you select.");
         }
     }
     ImGui::Spacing();

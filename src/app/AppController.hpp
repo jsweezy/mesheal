@@ -1115,13 +1115,13 @@ public:
     /// Opens "Operation: Repair All Holes" in the Tool slot (deselects any row).
     void openRepairAllHoles();
 
-    /// Opens "Operation: Shrink-Wrap (Outer Envelope)" (Mesh > Modify): the same operator with only the wrap.
+    /// Opens "Operation: Shrink-Wrap (Outer Envelope)" (Repair > Remesh): the same operator with only the wrap.
     void openAlphaWrap();
 
-    /// Opens "Operation: Voxel Heal & Remesh (Fast)" (Mesh > Modify).
+    /// Opens "Operation: Voxel Heal & Remesh (Fast)" (Repair > Remesh).
     void openVoxelHealRemesh();
 
-    /// Opens "Operation: Precision Isosurface (FEA Grade)" (Mesh > Modify).
+    /// Opens "Operation: Precision Isosurface (FEA Grade)" (Repair > Remesh).
     void openPrecisionIsosurface();
 
     // -------------------------------------------------------------------------
@@ -1189,7 +1189,7 @@ public:
     /// Opens "Operation: Merge by Distance" (Mesh > Modify > Merge by Distance) on the same operator.
     void openMergeVertices();
 
-    /// Opens "Operation: Weld" (Mesh > Modify > Weld) on the same operator.
+    /// Opens "Operation: Weld" (Mesh > Modify > Weld and Repair > Weld) on the same operator.
     void openWeld();
 
     /// Row the open Repair All operator repairs: Intersections or OpenEdges (Alpha Wrap: Intersections).

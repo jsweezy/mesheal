@@ -777,28 +777,6 @@ void PolyscopeGui::drawMeshMenu() {
     }
     tooltip("Weld open boundary vertices together across seams and cracks within a distance (default 0.05) "
             "without modifying interior faces. Preview, then apply.");
-    if (ImGui::MenuItem("Shrink-Wrap (Outer Envelope)...", nullptr, false, hasMesh)) {
-        controller_.openAlphaWrap();
-        requestSync();
-    }
-    tooltip("Best for 3D printing external shells and enveloping thin, zero-volume sheets. Creates a guaranteed "
-            "watertight outer casing around the geometry. Warning: This will slightly inflate the model and "
-            "completely fill in any enclosed internal voids or hollow cavities.");
-    if (ImGui::MenuItem("Voxel Heal & Remesh (Fast)...", nullptr, false, hasMesh)) {
-        controller_.openVoxelHealRemesh();
-        requestSync();
-    }
-    tooltip("Best for organic models, 3D scans, and rapid manifold conversion. Rebuilds the model using a uniform "
-            "3D grid to quickly resolve all self-intersections, stitch holes, and generate even, uniform triangles. "
-            "Preserves internal hollow cavities. Note: Very sharp mechanical edges may be slightly softened.");
-    if (ImGui::MenuItem("Precision Isosurface (FEA Grade)...", nullptr, false, hasMesh)) {
-        controller_.openPrecisionIsosurface();
-        requestSync();
-    }
-    tooltip("Best for engineering parts, CAD exports, and finite element simulation. Traces the exact mathematical "
-            "boundary of the volume using Delaunay refinement. Generates high-quality, simulation-ready triangles "
-            "(guaranteed >= 30 deg angles) that adaptively shrink to hug tight curves and mechanical fillets without "
-            "stair-stepping. Slower than Voxel Remesh.");
     if (ImGui::MenuItem("Delete Selected Faces", "X / Del", false, controller_.selectedFaceCount() > 0)) {
         deleteSelection();
     }
@@ -826,24 +804,48 @@ void PolyscopeGui::drawRepairMenu() {
     if (!ImGui::BeginMenu("Repair")) {
         return;
     }
-    if (ImGui::MenuItem("Check Mesh", "F5", false, controller_.hasMesh())) {
+    const bool hasMesh = controller_.hasMesh();
+    if (ImGui::MenuItem("Check Mesh", "F5", false, hasMesh)) {
         checkMesh();
     }
-    if (ImGui::MenuItem("Fix All...", "Shift+F5", false, controller_.hasMesh())) {
+    if (ImGui::MenuItem("Fix All...", "Shift+F5", false, hasMesh)) {
         openFixAllPanel(true);
     }
     tooltip("Repair every problem in the scope (the selection, or the whole mesh), repeating the sequence up to the number of "
             "passes you set, with a preview and before / after numbers. Nothing changes until Apply.");
-    if (ImGui::MenuItem("Fix All, One Pass...", "Alt+Shift+F5", false, controller_.hasMesh())) {
+    if (ImGui::MenuItem("Fix All, One Pass...", "Alt+Shift+F5", false, hasMesh)) {
         openFixAllPanel(false);
     }
     tooltip("Run the Fix All sequence once and preview it, so you can see each step's effect. Run it again for the next pass.");
-    if (ImGui::MenuItem("Rebuild Watertight Surface...", nullptr, false, controller_.hasMesh())) {
+    if (ImGui::MenuItem("Rebuild Watertight Surface...", nullptr, false, hasMesh)) {
         openFixAllPanel(true, true);
     }
     tooltip("Open the Fix All panel on its Rebuild side: replace the shells in scope with a new, always watertight surface (alpha wrap, "
             "winding-number rebuild or self-union), with a preview and a comparison with Repair. No original face is kept. Nothing "
             "changes until Apply.");
+    ImGui::SeparatorText("Remesh");
+    if (ImGui::MenuItem("Shrink-Wrap (Outer Envelope)...", nullptr, false, hasMesh)) {
+        controller_.openAlphaWrap();
+        requestSync();
+    }
+    tooltip("Best for 3D printing external shells and enveloping thin, zero-volume sheets. Creates a guaranteed "
+            "watertight outer casing around the geometry. Warning: This will slightly inflate the model and "
+            "completely fill in any enclosed internal voids or hollow cavities.");
+    if (ImGui::MenuItem("Voxel Heal & Remesh (Fast)...", nullptr, false, hasMesh)) {
+        controller_.openVoxelHealRemesh();
+        requestSync();
+    }
+    tooltip("Best for organic models, 3D scans, and rapid manifold conversion. Rebuilds the model using a uniform "
+            "3D grid to quickly resolve all self-intersections, stitch holes, and generate even, uniform triangles. "
+            "Preserves internal hollow cavities. Note: Very sharp mechanical edges may be slightly softened.");
+    if (ImGui::MenuItem("Precision Isosurface (FEA Grade)...", nullptr, false, hasMesh)) {
+        controller_.openPrecisionIsosurface();
+        requestSync();
+    }
+    tooltip("Best for engineering parts, CAD exports, and finite element simulation. Traces the exact mathematical "
+            "boundary of the volume using Delaunay refinement. Generates high-quality, simulation-ready triangles "
+            "(guaranteed >= 30 deg angles) that adaptively shrink to hug tight curves and mechanical fillets without "
+            "stair-stepping. Slower than Voxel Remesh.");
     ImGui::Separator();
     for (const DefectCategory category : kAllDefectCategories) {
         const CategoryInfo& info = categoryInfo(category);
@@ -857,11 +859,19 @@ void PolyscopeGui::drawRepairMenu() {
                                   (count > 0 ? " (" + withThousands(count) + ")" : std::string()) +
                                   (repairAll ? "..." : "");
         // Repair All opens a comparison panel, so it is offered even before the row is checked
-        if (ImGui::MenuItem(label.c_str(), nullptr, false, info.hasFixAll && (count > 0 || (repairAll && controller_.hasMesh())))) {
+        if (ImGui::MenuItem(label.c_str(), nullptr, false, info.hasFixAll && (count > 0 || (repairAll && hasMesh)))) {
             fixAll(category);
         }
         if (!info.hasFixAll) {
             tooltip("Planned (P4).");
+        }
+        if (category == DefectCategory::OpenEdges) {
+            if (ImGui::MenuItem("Weld...", nullptr, false, hasMesh)) {
+                controller_.openWeld();
+                requestSync();
+            }
+            tooltip("Weld open boundary vertices together across seams and cracks within a distance (default 0.05) "
+                    "without modifying interior faces. Preview, then apply.");
         }
     }
     ImGui::EndMenu();
