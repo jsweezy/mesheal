@@ -1527,7 +1527,7 @@ TEST_CASE("Rebuild shell: a shell Fix All left open is wrapped and merged; a reb
         CHECK(rebuild.suggested);
         CHECK(rebuild.closed);
         CHECK(rebuild.merged);
-        CHECK(rebuild.label == "+ Alpha wrap #2");
+        CHECK(rebuild.label == "+ Shrink-Wrap (Outer Envelope) #2");
         CHECK(rebuild.note == "wrapped, then merged");
         CHECK(shellCount(wrap.mesh) == 1);
         CHECK(wrap.metrics.shellsBefore == 3);
@@ -1536,7 +1536,7 @@ TEST_CASE("Rebuild shell: a shell Fix All left open is wrapped and merged; a reb
         CHECK(wrap.metrics.openEdgesAfter == 0);
         CHECK(wrap.metrics.nonManifoldEdgesAfter == 0);
         CHECK(wrap.metrics.intersectingFacesAfter == 0);
-        CHECK(wrap.statusMessage.starts_with("Alpha wrap #2: wrapped, then merged. "));
+        CHECK(wrap.statusMessage.starts_with("Shrink-Wrap (Outer Envelope) #2: wrapped, then merged. "));
         CHECK(wrap.fixAll->faceShell.size() == static_cast<std::size_t>(wrap.mesh.numFaces()));
         // Its pass merged only the wrapped shell's group, and phase 1 did not run
         const ogun::FixAllResult& pass = wrap.fixAll->result;

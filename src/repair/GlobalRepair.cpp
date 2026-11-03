@@ -246,7 +246,7 @@ const char* globalRepairMethodLabel(GlobalRepairMethod method) noexcept {
     case GlobalRepairMethod::WindingRebuild:
         return "Winding-number rebuild";
     case GlobalRepairMethod::AlphaWrap:
-        return "Alpha wrap";
+        return "Shrink-Wrap (Outer Envelope)";
     case GlobalRepairMethod::VoxelHealRemesh:
         return "Voxel Heal & Remesh (Fast)";
     case GlobalRepairMethod::PrecisionIsosurface:

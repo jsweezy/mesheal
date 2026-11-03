@@ -838,7 +838,7 @@ TEST_CASE("Fix All + Rebuild in the background: Cancel stops the alpha wrap mid-
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(200)); // inside the wrap
     CHECK(controller.globalRepairCurrentMethod() == ogun::GlobalRepairMethod::AlphaWrap);
-    CHECK(controller.fixAllRebuildStatusText().starts_with("Rebuilding #2: alpha wrap (1 of 3)... "));
+    CHECK(controller.fixAllRebuildStatusText().starts_with("Rebuilding #2: shrink-Wrap (Outer Envelope) (1 of 3)... "));
 
     const auto start = std::chrono::steady_clock::now();
     controller.cancelGlobalRepair(); // the status bar's Cancel

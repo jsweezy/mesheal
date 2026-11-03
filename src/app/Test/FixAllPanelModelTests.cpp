@@ -365,11 +365,11 @@ TEST_CASE("Fix All Rebuild: the residue line offers the button, the rows are tag
     controller.rebuildFixAllShell(it->rebuildShell);
     const std::vector<ogun::RepairCandidate>& rows = controller.fixAllRebuilds();
     REQUIRE(rows.size() == ogun::kShellRebuildMethods.size());
-    CHECK(ogun::fixAllRebuildRowLabel(rows[0]) == "+ Alpha wrap #2  (suggested)");
+    CHECK(ogun::fixAllRebuildRowLabel(rows[0]) == "+ Shrink-Wrap (Outer Envelope) #2  (suggested)");
     CHECK(ogun::fixAllRebuildRowLabel(rows[1]) == "+ Self-union #2");
     CHECK(ogun::fixAllRebuildRowLabel(*controller.fixAllCandidate()) == "Fix All");
     REQUIRE(rows[0].success);
-    CHECK(ogun::fixAllRebuiltLine(*rows[0].fixAll->rebuild) == "Shell #2 rebuilt by alpha wrap and merged.");
+    CHECK(ogun::fixAllRebuiltLine(*rows[0].fixAll->rebuild) == "Shell #2 rebuilt by shrink-Wrap (Outer Envelope) and merged.");
 
     // Show the row, Apply the shown row: one undo step "Fix All + Rebuild #2", the Report knows the rebuild
     controller.showFixAllRebuild(ogun::GlobalRepairMethod::AlphaWrap);
@@ -377,7 +377,7 @@ TEST_CASE("Fix All Rebuild: the residue line offers the button, the rows are tag
     CHECK(controller.lastUndoActionLabel() == "Fix All + Rebuild #2");
     REQUIRE(controller.fixAllShown() != nullptr);
     REQUIRE(controller.fixAllShown()->rebuild.has_value());
-    CHECK(ogun::fixAllRebuiltLine(*controller.fixAllShown()->rebuild) == "Shell #2 rebuilt by alpha wrap and merged.");
+    CHECK(ogun::fixAllRebuiltLine(*controller.fixAllShown()->rebuild) == "Shell #2 rebuilt by shrink-Wrap (Outer Envelope) and merged.");
 }
 
 TEST_CASE("Fix All Rebuild side: a whole-scope rebuild previews and applies as one undo step", "[app][fixall][gui][rebuild][undo]") {
@@ -396,7 +396,7 @@ TEST_CASE("Fix All Rebuild side: a whole-scope rebuild previews and applies as o
     CHECK(controller.fixAllState() == ogun::FixAllPanelState::Plan); // no Fix All row: the Rebuild side stays in the plan
     CHECK(controller.mesh().F == before.F);
     REQUIRE(controller.applyGlobalRepair());
-    CHECK(controller.lastUndoActionLabel() == "Rebuild (Alpha wrap)");
+    CHECK(controller.lastUndoActionLabel() == "Rebuild (Shrink-Wrap (Outer Envelope))");
     REQUIRE(controller.undoLastModification());
     CHECK(controller.mesh().F == before.F);
     CHECK(controller.mesh().V == before.V);

@@ -90,15 +90,15 @@ struct RebuildMethodOption {
 /// The Rebuild side's methods, the suggested one first.
 constexpr std::array<RebuildMethodOption, 3> kRebuildMethodOptions = {{
     {GlobalRepairMethod::AlphaWrap, "always watertight; moves outward, fills small gaps",
-     "CGAL alpha wrap: a new closed surface wrapped around the input. Guaranteed watertight, 2-manifold and free of "
-     "crossings. Every face is new; pockets and cavities narrower than alpha are filled and the surface moves outward by "
-     "the offset. An open sheet becomes a thin closed skin."},
-    {GlobalRepairMethod::WindingRebuild, "closes holes; loses small detail",
-     "Marching cubes of the winding number on a regular grid: always closed, merges overlaps and closes holes, but every "
-     "face is new and detail smaller than a grid cell is lost."},
-    {GlobalRepairMethod::SelfUnion, "keeps uncrossed faces; needs closed shells",
-     "Exact cut along every crossing, then keeps only the outer surface. Faces that are not crossed are kept exactly. It "
-     "does not close holes, so open shells stay open."},
+     "Shrink-Wrap (Outer Envelope): a guaranteed watertight, 2-manifold outer casing around the geometry. Every "
+     "face is new; pockets and cavities narrower than alpha are filled, and the surface moves outward by the offset. "
+     "Best for external shells and zero-volume sheets."},
+    {GlobalRepairMethod::VoxelHealRemesh, "uniform 3D grid + Taubin smoothing + isotropic remesh",
+     "Voxel Heal & Remesh (Fast): evaluates the winding number on a 3D grid, extracts a watertight isosurface, applies Taubin "
+     "de-terracing to remove voxel stair-stepping, and generates clean, uniform equilateral triangles. Preserves internal cavities."},
+    {GlobalRepairMethod::PrecisionIsosurface, "exact level-set Delaunay meshing (>= 30 deg angles)",
+     "Precision Isosurface (FEA Grade): meshes the exact winding-number level set with Delaunay refinement (guaranteed >= 30 deg "
+     "angles) and tangential relaxation. Hugs tight curves and fillets without stair-stepping. Best for CAD and simulation."},
 }};
 
 } // namespace
@@ -989,8 +989,8 @@ void PolyscopeGui::drawFixAllSwitch() {
         ImGui::SameLine();
     }
     changed |= ImGui::RadioButton("Rebuild  new watertight surface", &side, 1);
-    tooltip("Replace the shells with a new surface (alpha wrap, winding-number rebuild or self-union). Alpha wrap is always "
-            "watertight, but no original face survives and small gaps and cavities are filled in. Compare the two before you choose.");
+    tooltip("Replace the shells with a new surface (Shrink-Wrap, Voxel Heal & Remesh, or Precision Isosurface). "
+            "All rebuild methods produce a guaranteed closed surface. Compare them with Repair before you choose.");
     if (changed && (side == 1) != fixAllRebuildSide_) {
         controller_.backToFixAllPlan(); // drops the other side's previews: the mesh is unchanged
         fixAllRebuildSide_ = side == 1;

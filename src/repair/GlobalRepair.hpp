@@ -53,9 +53,9 @@ inline constexpr std::array<GlobalRepairMethod, 3> kHoleRepairMethods = {
 /// The Fix All operator: the repair run and the three rebuilds it is compared with.
 inline constexpr std::array<GlobalRepairMethod, 4> kFixAllMethods = {
     GlobalRepairMethod::FixAll,
-    GlobalRepairMethod::SelfUnion,
-    GlobalRepairMethod::WindingRebuild,
     GlobalRepairMethod::AlphaWrap,
+    GlobalRepairMethod::VoxelHealRemesh,
+    GlobalRepairMethod::PrecisionIsosurface,
 };
 
 [[nodiscard]] const char* globalRepairMethodLabel(GlobalRepairMethod method) noexcept;

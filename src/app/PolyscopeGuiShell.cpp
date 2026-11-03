@@ -817,13 +817,7 @@ void PolyscopeGui::drawRepairMenu() {
         openFixAllPanel(false);
     }
     tooltip("Run the Fix All sequence once and preview it, so you can see each step's effect. Run it again for the next pass.");
-    if (ImGui::MenuItem("Rebuild Watertight Surface...", nullptr, false, hasMesh)) {
-        openFixAllPanel(true, true);
-    }
-    tooltip("Open the Fix All panel on its Rebuild side: replace the shells in scope with a new, always watertight surface (alpha wrap, "
-            "winding-number rebuild or self-union), with a preview and a comparison with Repair. No original face is kept. Nothing "
-            "changes until Apply.");
-    ImGui::SeparatorText("Remesh");
+    ImGui::SeparatorText("Remesh & Watertight Rebuild");
     if (ImGui::MenuItem("Shrink-Wrap (Outer Envelope)...", nullptr, false, hasMesh)) {
         controller_.openAlphaWrap();
         requestSync();
@@ -1635,7 +1629,7 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"F5", "Check Mesh: runs every Mesh Health row in the background"},
         {"Shift + F5", "Fix All...: opens Operation: Fix All with the saved number of passes (3 unless changed in Preferences > Fix All). Follows the selection (faces, else shells, else the whole mesh). Preview first; nothing changes until Apply"},
         {"Alt + Shift + F5", "Fix All, One Pass...: the same panel with Passes = 1 (Option+Shift+F5 on macOS), to step the repair by hand"},
-        {"Repair > Rebuild Watertight Surface...", "Opens the Fix All panel on its Rebuild side (no key): a new, always watertight surface instead of repairing the faces. Gaps narrower than alpha and inner cavities are filled and no original face is kept; compare it with Repair before you Apply"},
+        {"Repair > Remesh & Watertight Rebuild", "Rebuilds a watertight surface when local repairs cannot fix severe defects: Shrink-Wrap (Outer Envelope), Voxel Heal & Remesh (Fast), and Precision Isosurface (FEA Grade). Fix All also includes a Rebuild switch"},
         {"Ctrl/Cmd + Z", "Undoes the last mesh modification (repair, Fix All / Fix Selected, Scale, Transform, Decimate, Merge by Distance, Weld, Delete Faces / Shells), one step at a time. "
                          "Undoing a Scale or Transform re-frames the camera (Home)"},
         {"Ctrl/Cmd + O / S / Shift+S", "Open, Save (overwrite, asks the first time), Save As"},
