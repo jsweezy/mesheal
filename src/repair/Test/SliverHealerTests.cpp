@@ -1,7 +1,11 @@
 #include "repair/SliverHealer.hpp"
 
 #include "core/Constants.hpp"
+#include "diagnostics/MeshChecks.hpp"
+#include "diagnostics/MeshHealth.hpp"
 #include "diagnostics/ThinFaceChecker.hpp"
+#include "repair/FixAll.hpp"
+#include "repair/TopologyCleanup.hpp"
 #include "io/SampleMeshes.hpp"
 #include "io/StlReader.hpp"
 #include "mesh/CgalMesh.hpp"
@@ -819,3 +823,39 @@ TEST_CASE("SliverHealer heals curved-surface cap on turkey_single_cap", "[repair
     CHECK(rScoped.remainingThinFaces == 0);
     CHECK(rScoped.edgeFlips == 1);
 }
+
+TEST_CASE("SliverHealer heals all thin faces on cuboctahedron_faces.stl via link-condition fallback",
+          "[repair][sliver][cuboctahedron]") {
+    const std::filesystem::path stlPath =
+        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / "cuboctahedron_faces.stl";
+    if (!std::filesystem::exists(stlPath)) {
+        return;
+    }
+    const ogun::Mesh mesh = ogun::loadStl(stlPath);
+    REQUIRE(mesh.numFaces() == 112);
+
+    // Initial mesh has 33 thin/sliver faces
+    const ogun::ThinFaceReport thinReport = ogun::ThinFaceChecker::check(mesh, {});
+    REQUIRE(thinReport.numDefects() == 33);
+
+    // Single-face repair preview and execution on Face 33 (which violates CGAL's Euler link condition)
+    const ogun::SingleFaceRepairPreview preview = ogun::SliverHealer::previewSingleFaceRepair(mesh, 33);
+    REQUIRE(preview.valid);
+    CHECK(preview.appliedAction == ogun::HealAction::CollapseShortestEdge);
+
+    const ogun::RepairResults singleRes =
+        ogun::SliverHealer::healSingleFace(mesh, 33, ogun::HealAction::CollapseShortestEdge);
+    REQUIRE(singleRes.success);
+    CHECK(singleRes.remainingThinFaces < thinReport.numDefects());
+
+    // SliverHealer heals all 33 thin faces (CGAL passes heal 31, raw collapse fallback heals the remaining 2)
+    const ogun::RepairResults results = ogun::SliverHealer::healAllThinFaces(mesh);
+    REQUIRE(results.success);
+    CHECK(results.remainingThinFaces == 0);
+    CHECK(results.edgeCollapses == 25);
+
+    const ogun::ThinFaceReport afterReport = ogun::ThinFaceChecker::check(results.mesh, {});
+    REQUIRE(afterReport.numDefects() == 0);
+}
+
+

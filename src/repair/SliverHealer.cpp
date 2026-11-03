@@ -1,6 +1,7 @@
 #include "repair/SliverHealer.hpp"
 #include "core/Constants.hpp"
 #include "diagnostics/ReliableNormal.hpp"
+#include "repair/TopologyCleanup.hpp"
 
 #include <CGAL/boost/graph/Euler_operations.h>
 #include <CGAL/boost/graph/iterator.h>
@@ -1051,6 +1052,181 @@ void cancel(const Mesh& mesh, RepairResults& results) {
     results.statusMessage = "Cancelled.";
 }
 
+void composeFaceMap(std::vector<Eigen::Index>& total, const std::vector<Eigen::Index>& next) {
+    for (Eigen::Index& row : total) {
+        if (row >= 0 && static_cast<std::size_t>(row) < next.size()) {
+            row = next[static_cast<std::size_t>(row)];
+        }
+    }
+}
+
+bool collapseShortestEdgeRaw(
+    Mesh& mesh,
+    Eigen::Index faceIndex,
+    std::span<const std::uint8_t> pinned,
+    const ThinFaceThresholds& thresholds,
+    const SliverHealerSettings& settings,
+    std::vector<Eigen::Index>* pFaceMap = nullptr) {
+    (void)thresholds;
+    if (mesh.numFaces() <= 4 || mesh.numVertices() <= 4) {
+        return false;
+    }
+    if (faceIndex < 0 || faceIndex >= mesh.numFaces()) {
+        return false;
+    }
+    const Eigen::Index v0 = mesh.F(faceIndex, 0);
+    const Eigen::Index v1 = mesh.F(faceIndex, 1);
+    const Eigen::Index v2 = mesh.F(faceIndex, 2);
+    if (v0 < 0 || v1 < 0 || v2 < 0 ||
+        v0 >= mesh.numVertices() || v1 >= mesh.numVertices() || v2 >= mesh.numVertices()) {
+        return false;
+    }
+    if (v0 == v1 || v1 == v2 || v2 == v0) {
+        return false;
+    }
+
+    const double d01 = (mesh.V.row(v0) - mesh.V.row(v1)).squaredNorm();
+    const double d12 = (mesh.V.row(v1) - mesh.V.row(v2)).squaredNorm();
+    const double d20 = (mesh.V.row(v2) - mesh.V.row(v0)).squaredNorm();
+
+    Eigen::Index src = v0, tgt = v1;
+    if (d12 < d01 && d12 < d20) {
+        src = v1;
+        tgt = v2;
+    } else if (d20 < d01 && d20 < d12) {
+        src = v2;
+        tgt = v0;
+    }
+
+    const bool pinnedSrc = !pinned.empty() && static_cast<std::size_t>(src) < pinned.size() && pinned[static_cast<std::size_t>(src)] != 0;
+    const bool pinnedTgt = !pinned.empty() && static_cast<std::size_t>(tgt) < pinned.size() && pinned[static_cast<std::size_t>(tgt)] != 0;
+    if (pinnedSrc && pinnedTgt) {
+        return false;
+    }
+
+    if (pinnedSrc) {
+        std::swap(src, tgt);
+    }
+
+    const Eigen::Vector3d pSrc = mesh.V.row(src).transpose();
+    const Eigen::Vector3d pTgt = mesh.V.row(tgt).transpose();
+
+    std::array<Eigen::Vector3d, 3> candidates;
+    std::size_t numCandidates = 0;
+    if (pinnedTgt) {
+        candidates[0] = pTgt;
+        numCandidates = 1;
+    } else {
+        candidates = {0.5 * (pSrc + pTgt), pTgt, pSrc};
+        numCandidates = 3;
+    }
+
+    std::vector<Eigen::Index> incidentFaces;
+    for (Eigen::Index fi = 0; fi < mesh.numFaces(); ++fi) {
+        if (fi == faceIndex) continue;
+        for (int k = 0; k < 3; ++k) {
+            if (mesh.F(fi, k) == src || mesh.F(fi, k) == tgt) {
+                incidentFaces.push_back(fi);
+                break;
+            }
+        }
+    }
+
+    int bestCandidate = -1;
+    double bestMinDot = -std::numeric_limits<double>::infinity();
+
+    for (std::size_t c = 0; c < numCandidates; ++c) {
+        const Eigen::Vector3d& newPos = candidates[c];
+        double minDot = 1.0;
+        bool valid = true;
+
+        for (const Eigen::Index fi : incidentFaces) {
+            Triangle before, after;
+            int matches = 0;
+            for (std::size_t k = 0; k < 3; ++k) {
+                const Eigen::Index vk = mesh.F(fi, static_cast<int>(k));
+                before[k] = mesh.V.row(vk).transpose();
+                if (vk == src || vk == tgt) {
+                    after[k] = newPos;
+                    ++matches;
+                } else {
+                    after[k] = before[k];
+                }
+            }
+            if (matches >= 2) {
+                continue;
+            }
+            const Eigen::Vector3d nBefore = areaNormal(before);
+            const double areaBefore = 0.5 * nBefore.norm();
+            if (areaBefore < 1e-9) {
+                continue;
+            }
+            const Eigen::Vector3d nAfter = areaNormal(after);
+            const double areaAfter = 0.5 * nAfter.norm();
+            if (areaAfter < 1e-9) {
+                valid = false;
+                break;
+            }
+            const double dot = nBefore.normalized().dot(nAfter.normalized());
+            minDot = std::min(minDot, dot);
+            if (dot < settings.clusterMinNormalDot) {
+                valid = false;
+                break;
+            }
+        }
+
+        if (valid && minDot > bestMinDot) {
+            bestMinDot = minDot;
+            bestCandidate = static_cast<int>(c);
+        }
+    }
+
+    if (bestCandidate < 0) {
+        return false;
+    }
+
+    mesh.V.row(tgt) = candidates[static_cast<std::size_t>(bestCandidate)].transpose();
+
+    std::vector<Eigen::Vector3i> kept;
+    kept.reserve(static_cast<std::size_t>(mesh.numFaces()));
+    std::vector<Eigen::Index> stepMap(static_cast<std::size_t>(mesh.numFaces()), -1);
+
+    for (Eigen::Index fi = 0; fi < mesh.numFaces(); ++fi) {
+        Eigen::Vector3i tri = mesh.F.row(fi);
+        for (std::size_t k = 0; k < 3; ++k) {
+            if (tri(static_cast<int>(k)) == static_cast<int>(src)) {
+                tri(static_cast<int>(k)) = static_cast<int>(tgt);
+            }
+        }
+        if (tri(0) != tri(1) && tri(1) != tri(2) && tri(2) != tri(0)) {
+            stepMap[static_cast<std::size_t>(fi)] = static_cast<Eigen::Index>(kept.size());
+            kept.push_back(tri);
+        }
+    }
+
+    if (kept.size() < 4) {
+        return false;
+    }
+
+    mesh.F.resize(static_cast<Eigen::Index>(kept.size()), 3);
+    for (std::size_t fi = 0; fi < kept.size(); ++fi) {
+        mesh.F.row(static_cast<Eigen::Index>(fi)) = kept[fi];
+    }
+
+    const auto dedup = removeDuplicateFaces(mesh);
+    if (dedup.mesh.numFaces() < 4) {
+        return false;
+    }
+
+    mesh = std::move(dedup.mesh);
+
+    if (pFaceMap && !pFaceMap->empty()) {
+        composeFaceMap(*pFaceMap, stepMap);
+        composeFaceMap(*pFaceMap, dedup.faceMap);
+    }
+    return true;
+}
+
 } // namespace
 
 const char* sliverTypeLabel(SliverType type) noexcept {
@@ -1267,6 +1443,20 @@ SingleFaceRepairPreview SliverHealer::previewSingleFaceRepair(
         return preview;
     }
     if (!applyHealAction(patch, center, preview.appliedAction, settings, &preview.statusMessage, thresholds)) {
+        if (preview.appliedAction == HealAction::CollapseShortestEdge) {
+            const double offset = settings.previewOffsetFactor * boundingDiagonal(patch);
+            Mesh rawPatch = fromCgalSurfaceMesh(patch, unit, offset);
+            if (collapseShortestEdgeRaw(rawPatch, static_cast<Eigen::Index>(center.idx()), {}, thresholds, settings)) {
+                preview.previewPatchMesh = std::move(rawPatch);
+                preview.valid = true;
+                preview.statusMessage = "Collapsed the shortest edge.";
+                preview.sourceFaceIndices.reserve(sourceFaces.size());
+                for (const CgalFaceIndex f : sourceFaces) {
+                    preview.sourceFaceIndices.push_back(static_cast<Eigen::Index>(f.idx()));
+                }
+                return preview;
+            }
+        }
         return preview;
     }
     const double offset = settings.previewOffsetFactor * boundingDiagonal(patch);
@@ -1305,6 +1495,7 @@ RepairResults SliverHealer::healSingleFace(
     const SliverHealerSettings& settings) {
     RepairResults results;
     results.mesh = mesh;
+    results.faceMap = identityMap(mesh.numFaces());
     results.initialThinFaces = ThinFaceChecker::check(mesh, thresholds).numDefects();
     results.remainingThinFaces = results.initialThinFaces;
 
@@ -1319,6 +1510,17 @@ RepairResults SliverHealer::healSingleFace(
         return results;
     }
     if (!applyHealAction(surface, face, action, settings, &results.statusMessage, thresholds)) {
+        if (action == HealAction::CollapseShortestEdge) {
+            Mesh rawMesh = mesh;
+            if (collapseShortestEdgeRaw(rawMesh, faceIndex, {}, thresholds, settings, &results.faceMap)) {
+                results.mesh = std::move(rawMesh);
+                results.remainingThinFaces = ThinFaceChecker::check(results.mesh, thresholds).numDefects();
+                results.edgeCollapses = 1;
+                results.success = true;
+                results.statusMessage = "Collapsed the shortest edge.";
+                return results;
+            }
+        }
         return results;
     }
     countAction(results, action);
@@ -1479,6 +1681,24 @@ RepairResults SliverHealer::healFaces(
     }
 
     if (healed == 0 && remainingDefects >= initialCount) {
+        bool rawSaved = false;
+        Mesh rawMesh = mesh;
+        for (const Eigen::Index fi : faceIndices) {
+            if (collapseShortestEdgeRaw(rawMesh, fi, options.pinnedVertices, thresholds, settings, &results.faceMap)) {
+                ++results.edgeCollapses;
+                ++healed;
+                rawSaved = true;
+                break;
+            }
+        }
+        if (rawSaved) {
+            results.mesh = std::move(rawMesh);
+            results.remainingThinFaces = ThinFaceChecker::check(results.mesh, thresholds).numDefects();
+            results.success = true;
+            results.statusMessage = "Repaired " + std::to_string(healed) + " of " + std::to_string(initialCount) +
+                                    " selected faces (" + std::to_string(results.remainingThinFaces) + " thin faces remaining).";
+            return results;
+        }
         leaveUnchanged(mesh, results);
         results.statusMessage = "None of the " + std::to_string(initialCount) + " selected faces could be repaired safely.";
         return results;
@@ -1486,6 +1706,42 @@ RepairResults SliverHealer::healFaces(
     surface.collect_garbage();
     finishTracked(surface, mesh, tracked, results);
     results.remainingThinFaces = ThinFaceChecker::check(results.mesh, thresholds).numDefects();
+
+    if (results.remainingThinFaces > 0 && !options.stopToken.stop_requested()) {
+        for (int rawIter = 0; rawIter < settings.maxBatchIterations; ++rawIter) {
+            if (options.stopToken.stop_requested()) {
+                break;
+            }
+            bool collapsedAny = false;
+            for (const Eigen::Index origFace : faceIndices) {
+                if (options.stopToken.stop_requested()) {
+                    break;
+                }
+                if (origFace >= 0 && static_cast<std::size_t>(origFace) < results.faceMap.size()) {
+                    const Eigen::Index currFace = results.faceMap[static_cast<std::size_t>(origFace)];
+                    if (currFace >= 0 && currFace < results.mesh.numFaces()) {
+                        const auto defect = ThinFaceChecker::evaluateTriangle(
+                            results.mesh.V.row(results.mesh.F(currFace, 0)).transpose(),
+                            results.mesh.V.row(results.mesh.F(currFace, 1)).transpose(),
+                            results.mesh.V.row(results.mesh.F(currFace, 2)).transpose(),
+                            thresholds);
+                        if (defect.isDefective()) {
+                            if (collapseShortestEdgeRaw(results.mesh, currFace, options.pinnedVertices, thresholds, settings, &results.faceMap)) {
+                                ++results.edgeCollapses;
+                                ++healed;
+                                collapsedAny = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            if (!collapsedAny) {
+                break;
+            }
+        }
+        results.remainingThinFaces = ThinFaceChecker::check(results.mesh, thresholds).numDefects();
+    }
     results.success = true;
     healed = initialCount > remainingDefects ? initialCount - remainingDefects : healed;
     results.statusMessage = "Repaired " + std::to_string(healed) + " of " + std::to_string(initialCount) +
@@ -1578,6 +1834,36 @@ RepairResults SliverHealer::healAllThinFaces(
 
     finishTracked(surface, mesh, tracked, results);
     results.remainingThinFaces = ThinFaceChecker::check(results.mesh, thresholds).numDefects();
+
+    // Pass 4: Raw shortest-edge collapse for remaining needles that violated CGAL's Euler link-condition
+    if (results.remainingThinFaces > 0 && !stop.stop_requested()) {
+        for (int rawIter = 0; rawIter < settings.maxBatchIterations; ++rawIter) {
+            if (stop.stop_requested()) {
+                break;
+            }
+            const auto report = ThinFaceChecker::check(results.mesh, thresholds);
+            if (report.numDefects() == 0) {
+                break;
+            }
+            bool collapsedAny = false;
+            for (const auto& defect : report.defects) {
+                if (stop.stop_requested()) {
+                    break;
+                }
+                if (defect.faceIndex < results.mesh.numFaces()) {
+                    if (collapseShortestEdgeRaw(results.mesh, defect.faceIndex, options.pinnedVertices, thresholds, settings, &results.faceMap)) {
+                        ++results.edgeCollapses;
+                        collapsedAny = true;
+                        break;
+                    }
+                }
+            }
+            if (!collapsedAny) {
+                break;
+            }
+        }
+        results.remainingThinFaces = ThinFaceChecker::check(results.mesh, thresholds).numDefects();
+    }
     results.success = results.remainingThinFaces < results.initialThinFaces || results.initialThinFaces == 0;
     results.statusMessage = "Healed " + std::to_string(results.initialThinFaces - std::min(results.initialThinFaces, results.remainingThinFaces)) +
                             " of " + std::to_string(results.initialThinFaces) + " thin faces (" +

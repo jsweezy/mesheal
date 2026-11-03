@@ -2282,3 +2282,32 @@ TEST_CASE("AppController Flip shells: Flip all and Flip outer only on a box writ
     REQUIRE_FALSE(controller.flipShells(none));
     REQUIRE_FALSE(controller.canUndo());
 }
+
+TEST_CASE("AppController on cuboctahedron_faces.stl sliver repair", "[app][sliver][cuboctahedron]") {
+    const std::filesystem::path stlPath =
+        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / "cuboctahedron_faces.stl";
+    if (!std::filesystem::exists(stlPath)) {
+        return;
+    }
+
+    ogun::AppController controller;
+    controller.setMesh(ogun::loadStl(stlPath), "cuboctahedron_faces.stl");
+
+    REQUIRE(thinCount(controller) == 33);
+
+    // Batch fix heals all 33 thin faces down to 0
+    REQUIRE(controller.fixAllThinFaces());
+    REQUIRE(thinCount(controller) == 0);
+
+    // Verify undo restores the original mesh
+    REQUIRE(controller.canUndo());
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(thinCount(controller) == 33);
+
+    // Re-heal
+    REQUIRE(controller.fixAllThinFaces());
+    REQUIRE(thinCount(controller) == 0);
+}
+
+
+
