@@ -1,8 +1,13 @@
 #include "app/AppController.hpp"
+#include "app/FileOpenQueue.hpp"
 #include "app/PolyscopeGui.hpp"
 #include "app/UserPreferences.hpp"
 #include "app/RecentFiles.hpp"
 #include "io/ConfigDirectory.hpp"
+
+#ifdef __APPLE__
+#include "app/MacFileOpenHandler.h"
+#endif
 
 #include <filesystem>
 #include <iostream>
@@ -10,6 +15,11 @@
 
 int main(int argc, char** argv) {
     ogun::AppController controller;
+#ifdef __APPLE__
+    ogun::installMacFileOpenHandler([&controller]() {
+        return controller.hasMesh();
+    });
+#endif
     // Check Mesh after load runs on a worker, so the window opens (with Cancel) while it runs
     controller.setBackgroundChecks(true);
     // Saved preferences first: the weld floor and thin-face thresholds apply to the file loaded below
@@ -18,6 +28,7 @@ int main(int argc, char** argv) {
 
     const std::filesystem::path recentFile = ogun::recentFilesPath(ogun::configDirectory());
 
+    std::filesystem::path initialPath;
     if (argc > 1) {
         const std::string_view arg1(argv[1]);
         if (arg1 == "-h" || arg1 == "--help") {
@@ -27,13 +38,25 @@ int main(int argc, char** argv) {
             return 0;
         }
 
-        const std::filesystem::path stlPath(arg1);
-        if (!controller.loadStlFile(stlPath)) {
+        // Ignore macOS LaunchServices internal process serial number arguments (e.g. -psn_0_123456)
+        if (!arg1.starts_with("-psn_") && !arg1.starts_with("-")) {
+            initialPath = std::filesystem::path(arg1);
+        }
+    }
+
+    if (initialPath.empty()) {
+        if (auto pending = ogun::FileOpenQueue::instance().popFile()) {
+            initialPath = *pending;
+        }
+    }
+
+    if (!initialPath.empty()) {
+        if (!controller.loadStlFile(initialPath)) {
             std::cerr << "Warning: " << controller.lastErrorMessage() << "\n";
         } else {
             ogun::RecentFiles recent(recentFile);
             recent.load();
-            recent.add(stlPath);
+            recent.add(initialPath);
             if (std::string error; !recent.save(&error)) {
                 std::cerr << "Warning: could not save the recent files list: " << error << "\n";
             }

@@ -13,6 +13,7 @@ add_library(ogun_app_controller STATIC
     AppControllerTransform.cpp
     DefectBrowser.cpp
     FaceSelection.cpp
+    FileOpenQueue.cpp
     FixAllPanelModel.cpp
     FixAllPlanRunner.cpp
     FramePacer.cpp
@@ -69,8 +70,49 @@ if(OGUN_BUILD_GUI)
     )
 
     if(APPLE)
-        set_source_files_properties(MacAppIcon.cpp PROPERTIES
+        set(OGUN_ICNS_RESOURCE "${CMAKE_SOURCE_DIR}/assets/icons/ogun.icns")
+        set_source_files_properties("${OGUN_ICNS_RESOURCE}" PROPERTIES
+            MACOSX_PACKAGE_LOCATION "Resources"
+        )
+        target_sources(ogun PRIVATE
+            "${OGUN_ICNS_RESOURCE}"
+            MacFileOpenHandler.mm
+        )
+        set_source_files_properties(MacAppIcon.cpp MacFileOpenHandler.mm PROPERTIES
             COMPILE_OPTIONS "-x;objective-c++"
+        )
+        set_target_properties(ogun PROPERTIES
+            MACOSX_BUNDLE TRUE
+            MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in"
+            MACOSX_BUNDLE_BUNDLE_NAME "Ogun"
+            MACOSX_BUNDLE_EXECUTABLE_NAME "ogun"
+            MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.jsweezy.ogun"
+            MACOSX_BUNDLE_ICON_FILE "ogun.icns"
+            MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+            MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        )
+        target_link_libraries(ogun PRIVATE "-framework Cocoa")
+
+        # Symlink build_dir/ogun -> build_dir/ogun.app/Contents/MacOS/ogun for CLI testing & scripts
+        add_custom_command(TARGET ogun POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E create_symlink
+                "ogun.app/Contents/MacOS/ogun"
+                "${CMAKE_CURRENT_BINARY_DIR}/ogun"
+            COMMENT "Creating symlink ${CMAKE_CURRENT_BINARY_DIR}/ogun -> ogun.app/Contents/MacOS/ogun"
+        )
+
+        install(TARGETS ogun BUNDLE DESTINATION /Applications)
+    elseif(UNIX)
+        install(TARGETS ogun RUNTIME DESTINATION bin)
+        install(FILES "${CMAKE_SOURCE_DIR}/packaging/linux/ogun.desktop"
+            DESTINATION share/applications
+        )
+        install(FILES "${CMAKE_SOURCE_DIR}/packaging/linux/ogun-mime.xml"
+            DESTINATION share/mime/packages
+            RENAME ogun.xml
+        )
+        install(FILES "${CMAKE_SOURCE_DIR}/assets/icons/ogun.png"
+            DESTINATION share/icons/hicolor/512x512/apps
         )
     endif()
 

@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
+    <key>CFBundleIdentifier</key>
+    <string>io.github.jsweezy.ogun</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>Ogun</string>
+    <key>CFBundleDisplayName</key>
+    <string>Ogun</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>${PROJECT_VERSION}</string>
+    <key>CFBundleVersion</key>
+    <string>${PROJECT_VERSION}</string>
+    <key>CFBundleIconFile</key>
+    <string>ogun.icns</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSSupportsAutomaticGraphicsSwitching</key>
+    <true/>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>STL 3D Model</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>CFBundleTypeIconFile</key>
+            <string>ogun.icns</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>stl</string>
+                <string>STL</string>
+            </array>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.standard-tesselated-geometry-format</string>
+                <string>model/stl</string>
+            </array>
+        </dict>
+    </array>
+    <key>UTImportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>public.standard-tesselated-geometry-format</string>
+            <key>UTTypeDescription</key>
+            <string>STL 3D Model</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+                <string>public.3d-content</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>stl</string>
+                    <string>STL</string>
+                </array>
+                <key>public.mime-type</key>
+                <array>
+                    <string>model/stl</string>
+                    <string>application/sla</string>
+                </array>
+            </dict>
+        </dict>
+    </array>
+</dict>
+</plist>

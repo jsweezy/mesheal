@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Ogun
+GenericName=STL Mesh Repair Tool
+Comment=Inspect, repair, and heal 3D STL meshes for engineering and simulation
+Exec=ogun %f
+Icon=ogun
+Terminal=false
+Categories=Graphics;3DGraphics;Engineering;
+MimeType=model/stl;application/sla;model/x.stl-ascii;model/x.stl-binary;
+StartupNotify=true
+StartupWMClass=ogun

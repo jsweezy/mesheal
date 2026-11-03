@@ -1,4 +1,5 @@
 #include "app/PolyscopeGui.hpp"
+#include "app/FileOpenQueue.hpp"
 #include "app/GuiWidgets.hpp"
 #include "core/Constants.hpp"
 #include "core/Settings.hpp"
@@ -275,6 +276,19 @@ void PolyscopeGui::run() {
     polyscope::init();
     polyscope::state::doDefaultMouseInteraction = false;
     gImGuiScrollCallback = glfwSetScrollCallback(glfwGetCurrentContext(), scrollCallback);
+    FileOpenQueue::instance().setWakeCallback([]() {
+        glfwPostEmptyEvent();
+    });
+    glfwSetDropCallback(glfwGetCurrentContext(), [](GLFWwindow*, int count, const char** paths) {
+        if (paths == nullptr || count <= 0) {
+            return;
+        }
+        for (int i = 0; i < count; ++i) {
+            if (paths[i] != nullptr) {
+                FileOpenQueue::instance().postFile(std::filesystem::path(paths[i]));
+            }
+        }
+    });
     polyscope::view::bgColor = savedPreferences_.backgroundColor;
     applyTransparencyModeForPreview();
     loadAndApplyApplicationIcon();
@@ -365,6 +379,9 @@ void PolyscopeGui::paceFrame() {
 
 void PolyscopeGui::drawUiFrame() {
     paceFrame();
+    while (auto pendingPath = FileOpenQueue::instance().popFile()) {
+        openStlFile(*pendingPath);
+    }
     if (controller_.pollBackgroundChecks()) {
         requestSync();
     }

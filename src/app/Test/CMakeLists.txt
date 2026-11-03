@@ -3,6 +3,7 @@ add_executable(ogun_app_tests
     AppControllerTests.cpp
     DefectBrowserTests.cpp
     FaceSelectionTests.cpp
+    FileOpenQueueTests.cpp
     FixAllPanelModelTests.cpp
     FixAllRepairTests.cpp
     FramePacerTests.cpp

@@ -20,6 +20,7 @@ These are the bindings of the default **Ogun** mouse scheme. *Edit > Preferences
 | **Toggle Face in the Face Selection** | `Shift + Left-Click` (no drag) | Adds the face under the cursor to the **face selection** (magenta), or removes it. Faces cut away by a slice plane are clicked through. *Decimate*, *Merge by Distance* and *Weld* work on the selected faces when there are any. |
 | **Box / Circle Select Faces** | `B` then drag / `C` then paint | See the keyboard table. In these modes the left mouse button selects instead of orbiting. |
 | **Select Shell** | `Alt + Left-Click` (`Alt + Ctrl/Cmd + Left-Click` toggles) | Multi-shell meshes: selects the whole shell under the cursor in the **Shells** panel (or adds / removes it). A plain click never changes the shell selection, so working on a set of shells is never undone by clicking a defect. |
+| **Drag & Drop STL** | Drag file from file manager into 3D view | Dragging any `.stl` file directly into the 3D viewport immediately loads and centers that mesh in the active window. |
 
 ### Mouse Schemes (Edit > Preferences > Mouse)
 

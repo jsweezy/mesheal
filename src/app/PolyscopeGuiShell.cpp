@@ -1604,6 +1604,7 @@ void PolyscopeGui::drawNavigationHelpWindow() {
                             inputs(MouseAction::ClearPick) + " clears the Polyscope pick."},
         {"Select Shell", inputs(MouseAction::SelectShell) + " a face selects its whole shell in the Shells panel (multi-shell meshes); with Ctrl/Cmd added it adds or removes it. A plain click never changes the shell selection."},
         {"Toggle Face", inputs(MouseAction::ToggleFace) + " a face adds it to or removes it from the face selection (Decimate, Merge by Distance and Weld then work on the selected faces). Faces a slice plane cuts away are clicked through"},
+        {"Drag & Drop STL", "Drag an .stl file from Finder / file manager directly into the 3D viewport to load and inspect it immediately"},
     });
 
     ImGui::Spacing();
