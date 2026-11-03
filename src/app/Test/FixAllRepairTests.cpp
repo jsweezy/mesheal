@@ -203,6 +203,7 @@ TEST_CASE("Fix All: plan, preview without a change, Apply as one undo step, undo
     REQUIRE(candidate != nullptr);
     REQUIRE(candidate->success);
     REQUIRE(candidate->fixAll != nullptr);
+
     CHECK(controller.candidateIsCurrent(*candidate));
     CHECK(controller.shownGlobalCandidate() == candidate);
     CHECK(controller.globalPreviewShown());
@@ -1174,4 +1175,37 @@ TEST_CASE("Fix All on Turkey without shell 28 runs multiple passes to heal all t
     REQUIRE(controller.rowCount(ogun::DefectCategory::NonManifoldEdges) == 0);
     REQUIRE(controller.rowCount(ogun::DefectCategory::Intersections) == 0);
     REQUIRE(controller.rowCount(ogun::DefectCategory::Degenerate) == 0);
+}
+
+TEST_CASE("Fix All on cupcakemakerplunger heals all defects in multiple passes", "[app][repair][cupcake]") {
+    const std::filesystem::path cupcakePath =
+        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / "cupcakemakerplunger.stl";
+    REQUIRE(std::filesystem::exists(cupcakePath));
+
+    ogun::AppController controller;
+    REQUIRE(controller.loadStlFile(cupcakePath));
+    const std::size_t initialThin = controller.rowCount(ogun::DefectCategory::ThinFaces);
+    WARN("Initial thin faces on cupcake: " << initialThin);
+
+    controller.openFixAll(4);
+    controller.waitForFixAllPlan();
+    controller.previewFixAll(false);
+    controller.waitForFixAll();
+
+    const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+    REQUIRE(candidate != nullptr);
+    REQUIRE(candidate->success);
+    REQUIRE(candidate->fixAll != nullptr);
+
+    CHECK(candidate->fixAll->result.passesRun <= 4);
+    CHECK(candidate->fixAll->result.stopReason == ogun::FixAllStopReason::Clean);
+    CHECK(candidate->fixAll->result.countsAfter.thinFaces == 0);
+    CHECK(candidate->fixAll->result.countsAfter.openEdges == 0);
+
+    REQUIRE(controller.applyFixAll());
+    CHECK(controller.rowCount(ogun::DefectCategory::ThinFaces) == 0);
+    CHECK(controller.rowCount(ogun::DefectCategory::OpenEdges) == 0);
+    CHECK(controller.rowCount(ogun::DefectCategory::Intersections) == 0);
+    CHECK(controller.rowCount(ogun::DefectCategory::NonManifoldEdges) == 0);
+    CHECK(controller.rowCount(ogun::DefectCategory::Degenerate) == 0);
 }

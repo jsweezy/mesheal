@@ -234,6 +234,7 @@ bool canFlipEdge(
 bool canSplitNeighborEdge(
     const CgalSurfaceMesh& mesh,
     CgalHalfedgeIndex h,
+    const ThinFaceThresholds& thresholds,
     const SliverHealerSettings& settings,
     std::string* reason) {
     const auto fail = [reason](const char* msg) {
@@ -279,6 +280,10 @@ bool canSplitNeighborEdge(
 
     if (n1.normalized().dot(nOppHat) < settings.minNormalDot || n2.normalized().dot(nOppHat) < settings.minNormalDot) {
         return fail("Split would fold or invert the neighbor face.");
+    }
+    if (ThinFaceChecker::evaluateTriangle(t1[0], t1[1], t1[2], thresholds).isDefective() ||
+        ThinFaceChecker::evaluateTriangle(t2[0], t2[1], t2[2], thresholds).isDefective()) {
+        return fail("Split would still leave a thin / sliver triangle.");
     }
     return true;
 }
@@ -705,10 +710,9 @@ bool splitNeighborEdge(
     const ThinFaceThresholds& thresholds,
     const SliverHealerSettings& settings,
     std::string& status) {
-    (void)thresholds;
     const CgalHalfedgeIndex hLong = longestHalfedge(mesh, f);
     std::string err;
-    if (canSplitNeighborEdge(mesh, hLong, settings, &err)) {
+    if (canSplitNeighborEdge(mesh, hLong, thresholds, settings, &err)) {
         CGAL::Euler::flip_edge(hLong, mesh);
         status = "Split the neighbor face across the longest edge.";
         return true;
@@ -900,8 +904,8 @@ std::array<HealAction, 6> fallbackOrder(HealAction recommended) {
                  HealAction::FlipLongestEdge, HealAction::CollapseShortestEdge, HealAction::RemoveDegenerateFace};
         break;
     case HealAction::CollapseShortestEdge:
-        order = {HealAction::CollapseShortestEdge, HealAction::SnapCollinearCollapse, HealAction::SplitNeighborEdge,
-                 HealAction::DissolveCollinearVertex, HealAction::FlipLongestEdge, HealAction::RemoveDegenerateFace};
+        order = {HealAction::CollapseShortestEdge, HealAction::SnapCollinearCollapse, HealAction::FlipLongestEdge,
+                 HealAction::SplitNeighborEdge, HealAction::DissolveCollinearVertex, HealAction::RemoveDegenerateFace};
         break;
     case HealAction::RemoveDegenerateFace:
     case HealAction::None:
@@ -1134,21 +1138,24 @@ SliverAnalysis SliverHealer::analyzeFace(
         }
     }
 
+    if (!analysis.violatesThresholds) {
+        analysis.type = SliverType::Healthy;
+        analysis.recommendedAction = HealAction::None;
+        return analysis;
+    }
+
     if (analysis.edgeRatio < settings.needleEdgeRatio) {
         analysis.type = SliverType::Needle;
     } else if (analysis.maxAngleDeg > settings.capAngleDeg) {
         analysis.type = SliverType::Cap;
-    } else if (analysis.violatesThresholds) {
+    } else {
         analysis.type = SliverType::Microscopic;
     }
 
-    if (analysis.type != SliverType::Healthy) {
-        const bool zeroArea = !hasReliableNormal(tri);
-        if (analysis.numBorderEdges == 3 || (analysis.numBorderEdges >= 2 && zeroArea)) {
-            analysis.type = SliverType::DanglingFlap;
-        }
+    const bool zeroArea = !hasReliableNormal(tri);
+    if (analysis.numBorderEdges == 3 || (analysis.numBorderEdges >= 2 && zeroArea)) {
+        analysis.type = SliverType::DanglingFlap;
     }
-
     switch (analysis.type) {
     case SliverType::Healthy:
         analysis.recommendedAction = HealAction::None;
@@ -1164,7 +1171,7 @@ SliverAnalysis SliverHealer::analyzeFace(
             analysis.recommendedAction = HealAction::DissolveCollinearVertex;
         } else if (canSnapCollinear(mesh, face, settings, nullptr)) {
             analysis.recommendedAction = HealAction::SnapCollinearCollapse;
-        } else if (canSplitNeighborEdge(mesh, hs[iLong], settings, nullptr)) {
+        } else if (canSplitNeighborEdge(mesh, hs[iLong], thresholds, settings, nullptr)) {
             analysis.recommendedAction = HealAction::SplitNeighborEdge;
         } else {
             analysis.recommendedAction = HealAction::SnapCollinearCollapse;
@@ -1323,6 +1330,76 @@ RepairResults SliverHealer::healSingleFace(
     return results;
 }
 
+void runPmpCleanup(
+    CgalSurfaceMesh& surface,
+    const std::vector<CgalFaceIndex>& remaining,
+    const Mesh& mesh,
+    const SliverHealerSettings& settings,
+    const SliverHealOptions& options,
+    RepairResults& results) {
+    if (remaining.empty()) {
+        return;
+    }
+    const std::optional<PinMap> pins = pinMap(surface);
+    std::optional<CgalSurfaceMesh> beforeCleanup;
+    if (pins) {
+        beforeCleanup = surface;
+    }
+    auto creaseMap = surface.add_property_map<CgalEdgeIndex, bool>("e:ogun_crease", false).first;
+    PMP::detect_sharp_edges(surface, settings.creaseAngleDeg, creaseMap);
+    bool cleanupFailed = false;
+    try {
+        if (pins) {
+            for (const CgalEdgeIndex e : surface.edges()) {
+                const CgalHalfedgeIndex h = surface.halfedge(e);
+                if (isPinned(pins, surface.source(h)) && isPinned(pins, surface.target(h))) {
+                    put(creaseMap, e, true);
+                }
+            }
+            PMP::remove_almost_degenerate_faces(
+                remaining,
+                surface,
+                CGAL::parameters::cap_threshold(std::cos(settings.capAngleDeg * kDegToRad))
+                    .needle_threshold(1.0 / settings.needleEdgeRatio)
+                    .edge_is_constrained_map(creaseMap)
+                    .vertex_is_constrained_map(*pins));
+        } else {
+            PMP::remove_almost_degenerate_faces(
+                remaining,
+                surface,
+                CGAL::parameters::cap_threshold(std::cos(settings.capAngleDeg * kDegToRad))
+                    .needle_threshold(1.0 / settings.needleEdgeRatio)
+                    .edge_is_constrained_map(creaseMap));
+        }
+    } catch (const std::exception&) {
+        cleanupFailed = true; // leave the mesh as healed by passes 1-2
+    }
+    surface.remove_property_map(creaseMap);
+
+    // CGAL keeps a constrained vertex but may not promise its position: undo the pass if one moved
+    if (pins && !cleanupFailed) {
+        const VertexOriginMap origin = *surface.property_map<CgalVertexIndex, std::int64_t>(kVertexOriginProperty);
+        const PinMap after = *pinMap(surface);
+        std::size_t pinnedLeft = 0;
+        bool moved = false;
+        for (const CgalVertexIndex v : surface.vertices()) {
+            if (get(after, v) == 0) {
+                continue;
+            }
+            ++pinnedLeft;
+            const std::int64_t o = get(origin, v);
+            moved = moved || o < 0 || pointOf(surface, v) != Eigen::Vector3d(mesh.V.row(static_cast<Eigen::Index>(o)).transpose());
+        }
+        const auto pinnedBefore = static_cast<std::size_t>(
+            std::count_if(options.pinnedVertices.begin(), options.pinnedVertices.end(), [](std::uint8_t p) { return p != 0; }));
+        if (moved || pinnedLeft < pinnedBefore) {
+            surface = std::move(*beforeCleanup);
+        }
+    }
+    surface.collect_garbage();
+    results.usedPmpCleanup = true;
+}
+
 RepairResults SliverHealer::healFaces(
     const Mesh& mesh,
     const std::vector<Eigen::Index>& faceIndices,
@@ -1383,7 +1460,25 @@ RepairResults SliverHealer::healFaces(
         }
     }
 
-    if (healed == 0) {
+    surface.collect_garbage();
+    std::vector<CgalFaceIndex> remaining;
+    for (const CgalFaceIndex f : faces) {
+        if (isLiveFace(surface, f) && evaluateCgalFace(surface, f, thresholds).isDefective()) {
+            remaining.push_back(f);
+        }
+    }
+    if (!remaining.empty()) {
+        runPmpCleanup(surface, remaining, mesh, settings, options, results);
+    }
+
+    std::size_t remainingDefects = 0;
+    for (const CgalFaceIndex f : faces) {
+        if (isLiveFace(surface, f) && evaluateCgalFace(surface, f, thresholds).isDefective()) {
+            ++remainingDefects;
+        }
+    }
+
+    if (healed == 0 && remainingDefects >= initialCount) {
         leaveUnchanged(mesh, results);
         results.statusMessage = "None of the " + std::to_string(initialCount) + " selected faces could be repaired safely.";
         return results;
@@ -1392,6 +1487,7 @@ RepairResults SliverHealer::healFaces(
     finishTracked(surface, mesh, tracked, results);
     results.remainingThinFaces = ThinFaceChecker::check(results.mesh, thresholds).numDefects();
     results.success = true;
+    healed = initialCount > remainingDefects ? initialCount - remainingDefects : healed;
     results.statusMessage = "Repaired " + std::to_string(healed) + " of " + std::to_string(initialCount) +
                             " selected faces (" + std::to_string(results.remainingThinFaces) + " thin faces remaining).";
     return results;
@@ -1477,64 +1573,7 @@ RepairResults SliverHealer::healAllThinFaces(
     surface.collect_garbage();
     const std::vector<CgalFaceIndex> remaining = collectThinFaces(surface, thresholds);
     if (!remaining.empty()) {
-        const std::optional<PinMap> pins = pinMap(surface);
-        std::optional<CgalSurfaceMesh> beforeCleanup;
-        if (pins) {
-            beforeCleanup = surface;
-        }
-        auto creaseMap = surface.add_property_map<CgalEdgeIndex, bool>("e:ogun_crease", false).first;
-        PMP::detect_sharp_edges(surface, settings.creaseAngleDeg, creaseMap);
-        bool cleanupFailed = false;
-        try {
-            if (pins) {
-                for (const CgalEdgeIndex e : surface.edges()) {
-                    const CgalHalfedgeIndex h = surface.halfedge(e);
-                    if (isPinned(pins, surface.source(h)) && isPinned(pins, surface.target(h))) {
-                        put(creaseMap, e, true);
-                    }
-                }
-                PMP::remove_almost_degenerate_faces(
-                    remaining,
-                    surface,
-                    CGAL::parameters::cap_threshold(std::cos(settings.capAngleDeg * kDegToRad))
-                        .needle_threshold(1.0 / settings.needleEdgeRatio)
-                        .edge_is_constrained_map(creaseMap)
-                        .vertex_is_constrained_map(*pins));
-            } else {
-                PMP::remove_almost_degenerate_faces(
-                    remaining,
-                    surface,
-                    CGAL::parameters::cap_threshold(std::cos(settings.capAngleDeg * kDegToRad))
-                        .needle_threshold(1.0 / settings.needleEdgeRatio)
-                        .edge_is_constrained_map(creaseMap));
-            }
-        } catch (const std::exception&) {
-            cleanupFailed = true; // leave the mesh as healed by passes 1-2
-        }
-        surface.remove_property_map(creaseMap);
-
-        // CGAL keeps a constrained vertex but may not promise its position: undo the pass if one moved
-        if (pins && !cleanupFailed) {
-            const VertexOriginMap origin = *surface.property_map<CgalVertexIndex, std::int64_t>(kVertexOriginProperty);
-            const PinMap after = *pinMap(surface);
-            std::size_t pinnedLeft = 0;
-            bool moved = false;
-            for (const CgalVertexIndex v : surface.vertices()) {
-                if (get(after, v) == 0) {
-                    continue;
-                }
-                ++pinnedLeft;
-                const std::int64_t o = get(origin, v);
-                moved = moved || o < 0 || pointOf(surface, v) != Eigen::Vector3d(mesh.V.row(static_cast<Eigen::Index>(o)).transpose());
-            }
-            const auto pinnedBefore = static_cast<std::size_t>(
-                std::count_if(options.pinnedVertices.begin(), options.pinnedVertices.end(), [](std::uint8_t p) { return p != 0; }));
-            if (moved || pinnedLeft < pinnedBefore) {
-                surface = std::move(*beforeCleanup);
-            }
-        }
-        surface.collect_garbage();
-        results.usedPmpCleanup = true;
+        runPmpCleanup(surface, remaining, mesh, settings, options, results);
     }
 
     finishTracked(surface, mesh, tracked, results);
