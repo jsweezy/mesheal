@@ -6,6 +6,7 @@
 #include <CGAL/boost/graph/iterator.h>
 #include <CGAL/Polygon_mesh_processing/detect_features.h>
 #include <CGAL/Polygon_mesh_processing/repair_degeneracies.h>
+#include <CGAL/Polygon_mesh_processing/triangulate_faces.h>
 
 #include <Eigen/Geometry>
 
@@ -230,6 +231,104 @@ bool canFlipEdge(
     return true;
 }
 
+bool canSplitNeighborEdge(
+    const CgalSurfaceMesh& mesh,
+    CgalHalfedgeIndex h,
+    const SliverHealerSettings& settings,
+    std::string* reason) {
+    const auto fail = [reason](const char* msg) {
+        if (reason) {
+            *reason = msg;
+        }
+        return false;
+    };
+
+    const CgalHalfedgeIndex oh = mesh.opposite(h);
+    if (mesh.is_border(h) || mesh.is_border(oh)) {
+        return fail("Longest edge lies on an open border; there is no neighbor face to split.");
+    }
+    const CgalVertexIndex s = mesh.source(h);
+    const CgalVertexIndex t = mesh.target(h);
+    const CgalVertexIndex a = mesh.target(mesh.next(h));
+    const CgalVertexIndex o = mesh.target(mesh.next(oh));
+    if (a == o || mesh.halfedge(a, o) != CgalSurfaceMesh::null_halfedge()) {
+        return fail("Split diagonal already exists; splitting would create a duplicate edge.");
+    }
+    if (const std::optional<PinMap> pins = pinMap(mesh); isPinned(pins, s) && isPinned(pins, t)) {
+        return fail("Both ends of the longest edge are pinned (the edge of the scope); it stays as it is.");
+    }
+
+    const Eigen::Vector3d ps = pointOf(mesh, s);
+    const Eigen::Vector3d pt = pointOf(mesh, t);
+    const Eigen::Vector3d pa = pointOf(mesh, a);
+    const Eigen::Vector3d po = pointOf(mesh, o);
+
+    const Triangle opp{pt, ps, po};
+    if (!hasReliableNormal(opp)) {
+        return fail("Neighbor face across the longest edge is degenerate.");
+    }
+    const Eigen::Vector3d nOppHat = areaNormal(opp).normalized();
+
+    const Triangle t1{ps, po, pa};
+    const Triangle t2{po, pt, pa};
+    const Eigen::Vector3d n1 = areaNormal(t1);
+    const Eigen::Vector3d n2 = areaNormal(t2);
+    if (!hasReliableNormal(t1) || !hasReliableNormal(t2)) {
+        return fail("Split would create a zero-area triangle.");
+    }
+
+    if (n1.normalized().dot(nOppHat) < settings.minNormalDot || n2.normalized().dot(nOppHat) < settings.minNormalDot) {
+        return fail("Split would fold or invert the neighbor face.");
+    }
+    return true;
+}
+
+bool canDissolveCollinearVertex(
+    const CgalSurfaceMesh& mesh,
+    CgalFaceIndex f,
+    const SliverHealerSettings& settings,
+    std::string* reason) {
+    const auto fail = [reason](const char* msg) {
+        if (reason) {
+            *reason = msg;
+        }
+        return false;
+    };
+
+    const CgalHalfedgeIndex hLong = longestHalfedge(mesh, f);
+    const CgalVertexIndex apex = mesh.target(mesh.next(hLong));
+
+    if (mesh.is_border(apex)) {
+        return fail("Collinear vertex lies on an open border; cannot dissolve.");
+    }
+    if (const std::optional<PinMap> pins = pinMap(mesh); isPinned(pins, apex)) {
+        return fail("Collinear vertex is pinned (on the edge of the scope); it stays as it is.");
+    }
+
+    int count = 0;
+    Eigen::Vector3d refNormal = Eigen::Vector3d::Zero();
+    for (const CgalFaceIndex adj : CGAL::faces_around_target(mesh.halfedge(apex), mesh)) {
+        if (adj == CgalSurfaceMesh::null_face()) {
+            return fail("Collinear vertex is on an open boundary.");
+        }
+        const Triangle tri = facePoints(mesh, adj);
+        if (!hasReliableNormal(tri)) {
+            continue;
+        }
+        const Eigen::Vector3d n = areaNormal(tri).normalized();
+        if (count == 0) {
+            refNormal = n;
+        } else if (n.dot(refNormal) < settings.coplanarDot) {
+            return fail("Incident faces around the vertex are not coplanar (vertex lies on a feature crease or curve).");
+        }
+        ++count;
+    }
+    if (count < 3) {
+        return fail("Collinear vertex has fewer than 3 incident faces.");
+    }
+    return true;
+}
+
 // Smallest n_old . n_new over faces surviving the collapse of edge(h) to `newPos`
 // (-infinity if a non-degenerate face would become degenerate).
 double worstNormalDot(const CgalSurfaceMesh& mesh, CgalHalfedgeIndex h, const Eigen::Vector3d& newPos) {
@@ -266,27 +365,32 @@ double worstNormalDot(const CgalSurfaceMesh& mesh, CgalHalfedgeIndex h, const Ei
     return worst;
 }
 
-// Collapses edge(h) to the candidate position that best preserves the surrounding normals.
-bool collapseEdgeSafely(
-    CgalSurfaceMesh& mesh,
+// Checks if edge(h) can be safely collapsed to one of candidates[0..numCandidates-1].
+bool canCollapseEdgeSafely(
+    const CgalSurfaceMesh& mesh,
     CgalHalfedgeIndex h,
     const std::array<Eigen::Vector3d, 3>& candidates,
     std::size_t numCandidates,
     const SliverHealerSettings& settings,
-    std::string& status) {
+    std::size_t* chosenCandidate = nullptr,
+    std::string* reason = nullptr) {
+    const auto fail = [reason](const char* msg) {
+        if (reason) {
+            *reason = msg;
+        }
+        return false;
+    };
+
     const CgalEdgeIndex e = mesh.edge(h);
     if (!CGAL::Euler::does_satisfy_link_condition(e, mesh)) {
-        status = "Collapse violates the topological link condition (the surface would become non-manifold).";
-        return false;
+        return fail("Collapse violates the topological link condition (the surface would become non-manifold).");
     }
 
-    // A pinned end stays where it is: only its own position is a candidate
     const std::optional<PinMap> pins = pinMap(mesh);
     const bool pinned0 = isPinned(pins, mesh.source(h));
     const bool pinned1 = isPinned(pins, mesh.target(h));
     if (pinned0 && pinned1) {
-        status = "Both ends of the edge are pinned (the edge of the scope); it stays as it is.";
-        return false;
+        return fail("Both ends of the edge are pinned (the edge of the scope); it stays as it is.");
     }
     const CgalVertexIndex pinnedEnd = pinned0 ? mesh.source(h) : mesh.target(h);
     const Eigen::Vector3d pinnedPoint = pointOf(mesh, pinnedEnd);
@@ -304,15 +408,38 @@ bool collapseEdgeSafely(
         }
     }
     if (best == numCandidates) {
-        status = "The collapse would move a pinned vertex (the edge of the scope).";
-        return false;
+        return fail("The collapse would move a pinned vertex (the edge of the scope).");
     }
     if (!(bestDot > settings.minNormalDot)) {
-        status = "Collapse would invert or degenerate neighboring faces.";
+        return fail("Collapse would invert or degenerate neighboring faces.");
+    }
+    if (chosenCandidate) {
+        *chosenCandidate = best;
+    }
+    return true;
+}
+
+// Collapses edge(h) to the candidate position that best preserves the surrounding normals.
+bool collapseEdgeSafely(
+    CgalSurfaceMesh& mesh,
+    CgalHalfedgeIndex h,
+    const std::array<Eigen::Vector3d, 3>& candidates,
+    std::size_t numCandidates,
+    const SliverHealerSettings& settings,
+    std::string& status) {
+    std::size_t best = 0;
+    std::string err;
+    if (!canCollapseEdgeSafely(mesh, h, candidates, numCandidates, settings, &best, &err)) {
+        status = err;
         return false;
     }
 
-    // The pinned vertex may be the one CGAL removes: the kept one then takes over its pin and origin
+    const CgalEdgeIndex e = mesh.edge(h);
+    const std::optional<PinMap> pins = pinMap(mesh);
+    const bool pinned0 = isPinned(pins, mesh.source(h));
+    const bool pinned1 = isPinned(pins, mesh.target(h));
+    const CgalVertexIndex pinnedEnd = pinned0 ? mesh.source(h) : mesh.target(h);
+
     const std::optional<VertexOriginMap> origin = mesh.property_map<CgalVertexIndex, std::int64_t>(kVertexOriginProperty);
     const std::int64_t pinnedOrigin = (pinned0 || pinned1) && origin ? get(*origin, pinnedEnd) : -1;
     const CgalVertexIndex kept = CGAL::Euler::collapse_edge(e, mesh);
@@ -324,6 +451,39 @@ bool collapseEdgeSafely(
         }
     }
     return true;
+}
+
+bool canSnapCollinear(
+    const CgalSurfaceMesh& mesh,
+    CgalFaceIndex f,
+    const SliverHealerSettings& settings,
+    std::string* reason = nullptr) {
+    const CgalHalfedgeIndex hLong = longestHalfedge(mesh, f);
+    const CgalVertexIndex apex = mesh.target(mesh.next(hLong));
+    std::array<CgalHalfedgeIndex, 2> arms{mesh.next(hLong), mesh.prev(hLong)};
+    std::array<CgalVertexIndex, 2> corners{mesh.target(hLong), mesh.source(hLong)};
+    if (halfedgeLength(mesh, arms[1]) < halfedgeLength(mesh, arms[0])) {
+        std::swap(arms[0], arms[1]);
+        std::swap(corners[0], corners[1]);
+    }
+
+    std::string lastErr;
+    for (std::size_t i = 0; i < 2; ++i) {
+        if (mesh.is_border(apex) && !mesh.is_border(corners[i])) {
+            lastErr = "Snapping would pull an open border vertex into the interior.";
+            continue;
+        }
+        const std::array<Eigen::Vector3d, 3> candidates{pointOf(mesh, corners[i]), {}, {}};
+        std::string err;
+        if (canCollapseEdgeSafely(mesh, arms[i], candidates, 1, settings, nullptr, &err)) {
+            return true;
+        }
+        lastErr = std::move(err);
+    }
+    if (reason) {
+        *reason = lastErr.empty() ? "Cap vertex cannot be snapped onto either corner." : lastErr;
+    }
+    return false;
 }
 
 double vertexLocalScale(const CgalSurfaceMesh& mesh, CgalVertexIndex v) {
@@ -539,6 +699,57 @@ bool collapseMicroCluster(
     return false;
 }
 
+bool splitNeighborEdge(
+    CgalSurfaceMesh& mesh,
+    CgalFaceIndex f,
+    const ThinFaceThresholds& thresholds,
+    const SliverHealerSettings& settings,
+    std::string& status) {
+    (void)thresholds;
+    const CgalHalfedgeIndex hLong = longestHalfedge(mesh, f);
+    std::string err;
+    if (canSplitNeighborEdge(mesh, hLong, settings, &err)) {
+        CGAL::Euler::flip_edge(hLong, mesh);
+        status = "Split the neighbor face across the longest edge.";
+        return true;
+    }
+    status = err.empty() ? "Cannot split neighbor face." : err;
+    return false;
+}
+
+bool dissolveCollinearVertex(
+    CgalSurfaceMesh& mesh,
+    CgalFaceIndex f,
+    const ThinFaceThresholds& thresholds,
+    const SliverHealerSettings& settings,
+    std::string& status) {
+    (void)thresholds;
+    std::string err;
+    if (!canDissolveCollinearVertex(mesh, f, settings, &err)) {
+        status = err.empty() ? "Cannot dissolve collinear vertex." : err;
+        return false;
+    }
+
+    const CgalHalfedgeIndex hLong = longestHalfedge(mesh, f);
+    const CgalVertexIndex apex = mesh.target(mesh.next(hLong));
+    const CgalHalfedgeIndex hIn = mesh.halfedge(apex);
+
+    const CgalHalfedgeIndex hRet = CGAL::Euler::remove_center_vertex(hIn, mesh);
+    const CgalFaceIndex mergedFace = mesh.face(hRet);
+    if (mergedFace == CgalSurfaceMesh::null_face()) {
+        status = "Failed to merge incident faces around collinear vertex.";
+        return false;
+    }
+
+    if (!PMP::triangulate_face(mergedFace, mesh)) {
+        status = "Failed to retriangulate coplanar patch after dissolving vertex.";
+        return false;
+    }
+
+    status = "Dissolved the collinear vertex and retriangulated the coplanar patch.";
+    return true;
+}
+
 bool flipLongestEdge(
     CgalSurfaceMesh& mesh,
     CgalFaceIndex f,
@@ -651,6 +862,7 @@ bool removeDegenerateFace(CgalSurfaceMesh& mesh, CgalFaceIndex f, std::string& s
 
 void countAction(RepairResults& results, HealAction action) {
     switch (action) {
+    case HealAction::SplitNeighborEdge:
     case HealAction::FlipLongestEdge:
         ++results.edgeFlips;
         break;
@@ -658,6 +870,7 @@ void countAction(RepairResults& results, HealAction action) {
     case HealAction::SnapCollinearCollapse:
         ++results.edgeCollapses;
         break;
+    case HealAction::DissolveCollinearVertex:
     case HealAction::RemoveDegenerateFace:
         ++results.facesRemoved;
         break;
@@ -667,25 +880,34 @@ void countAction(RepairResults& results, HealAction action) {
 }
 
 // Recommended action first, followed by every other repair as a fallback.
-std::array<HealAction, 4> fallbackOrder(HealAction recommended) {
-    if (recommended == HealAction::FlipLongestEdge) {
-        return {
-            HealAction::FlipLongestEdge,
-            HealAction::SnapCollinearCollapse,
-            HealAction::CollapseShortestEdge,
-            HealAction::RemoveDegenerateFace};
-    }
-    constexpr std::array<HealAction, 4> kAll{
-        HealAction::CollapseShortestEdge,
-        HealAction::SnapCollinearCollapse,
-        HealAction::FlipLongestEdge,
-        HealAction::RemoveDegenerateFace};
-    std::array<HealAction, 4> order{recommended, HealAction::None, HealAction::None, HealAction::None};
-    std::size_t n = 1;
-    for (const HealAction a : kAll) {
-        if (a != recommended && n < order.size()) {
-            order[n++] = a;
-        }
+std::array<HealAction, 6> fallbackOrder(HealAction recommended) {
+    std::array<HealAction, 6> order;
+    switch (recommended) {
+    case HealAction::FlipLongestEdge:
+        order = {HealAction::FlipLongestEdge, HealAction::DissolveCollinearVertex, HealAction::SnapCollinearCollapse,
+                 HealAction::SplitNeighborEdge, HealAction::CollapseShortestEdge, HealAction::RemoveDegenerateFace};
+        break;
+    case HealAction::DissolveCollinearVertex:
+        order = {HealAction::DissolveCollinearVertex, HealAction::FlipLongestEdge, HealAction::SnapCollinearCollapse,
+                 HealAction::SplitNeighborEdge, HealAction::CollapseShortestEdge, HealAction::RemoveDegenerateFace};
+        break;
+    case HealAction::SnapCollinearCollapse:
+        order = {HealAction::SnapCollinearCollapse, HealAction::CollapseShortestEdge, HealAction::SplitNeighborEdge,
+                 HealAction::DissolveCollinearVertex, HealAction::FlipLongestEdge, HealAction::RemoveDegenerateFace};
+        break;
+    case HealAction::SplitNeighborEdge:
+        order = {HealAction::SplitNeighborEdge, HealAction::DissolveCollinearVertex, HealAction::SnapCollinearCollapse,
+                 HealAction::FlipLongestEdge, HealAction::CollapseShortestEdge, HealAction::RemoveDegenerateFace};
+        break;
+    case HealAction::CollapseShortestEdge:
+        order = {HealAction::CollapseShortestEdge, HealAction::SnapCollinearCollapse, HealAction::SplitNeighborEdge,
+                 HealAction::DissolveCollinearVertex, HealAction::FlipLongestEdge, HealAction::RemoveDegenerateFace};
+        break;
+    case HealAction::RemoveDegenerateFace:
+    case HealAction::None:
+        order = {HealAction::RemoveDegenerateFace, HealAction::CollapseShortestEdge, HealAction::SnapCollinearCollapse,
+                 HealAction::SplitNeighborEdge, HealAction::DissolveCollinearVertex, HealAction::FlipLongestEdge};
+        break;
     }
     return order;
 }
@@ -847,6 +1069,10 @@ const char* healActionLabel(HealAction action) noexcept {
     switch (action) {
     case HealAction::None:
         return "None";
+    case HealAction::SplitNeighborEdge:
+        return "Split Neighbor Face";
+    case HealAction::DissolveCollinearVertex:
+        return "Dissolve Collinear Vertex";
     case HealAction::FlipLongestEdge:
         return "Flip Longest Edge";
     case HealAction::CollapseShortestEdge:
@@ -931,10 +1157,20 @@ SliverAnalysis SliverHealer::analyzeFace(
     case SliverType::Microscopic:
         analysis.recommendedAction = HealAction::CollapseShortestEdge;
         break;
-    case SliverType::Cap:
-        analysis.recommendedAction = analysis.longestEdgeFlippable ? HealAction::FlipLongestEdge
-                                                                   : HealAction::SnapCollinearCollapse;
+    case SliverType::Cap: {
+        if (analysis.longestEdgeFlippable) {
+            analysis.recommendedAction = HealAction::FlipLongestEdge;
+        } else if (canDissolveCollinearVertex(mesh, face, settings, nullptr)) {
+            analysis.recommendedAction = HealAction::DissolveCollinearVertex;
+        } else if (canSnapCollinear(mesh, face, settings, nullptr)) {
+            analysis.recommendedAction = HealAction::SnapCollinearCollapse;
+        } else if (canSplitNeighborEdge(mesh, hs[iLong], settings, nullptr)) {
+            analysis.recommendedAction = HealAction::SplitNeighborEdge;
+        } else {
+            analysis.recommendedAction = HealAction::SnapCollinearCollapse;
+        }
         break;
+    }
     case SliverType::DanglingFlap:
         analysis.recommendedAction = HealAction::RemoveDegenerateFace;
         break;
@@ -970,6 +1206,12 @@ bool SliverHealer::applyHealAction(
         switch (action) {
         case HealAction::None:
             status = "No repair action selected.";
+            break;
+        case HealAction::SplitNeighborEdge:
+            ok = splitNeighborEdge(mesh, face, thresholds, settings, status);
+            break;
+        case HealAction::DissolveCollinearVertex:
+            ok = dissolveCollinearVertex(mesh, face, thresholds, settings, status);
             break;
         case HealAction::FlipLongestEdge:
             ok = flipLongestEdge(mesh, face, thresholds, settings, status);
@@ -1189,6 +1431,8 @@ RepairResults SliverHealer::healAllThinFaces(
             }
             const SliverAnalysis a = analyzeFace(surface, f, thresholds, settings);
             const bool pass1 = a.recommendedAction == HealAction::FlipLongestEdge ||
+                               a.recommendedAction == HealAction::SplitNeighborEdge ||
+                               a.recommendedAction == HealAction::DissolveCollinearVertex ||
                                a.recommendedAction == HealAction::RemoveDegenerateFace;
             if (pass1 && applyHealAction(surface, f, a.recommendedAction, settings, nullptr, thresholds)) {
                 countAction(results, a.recommendedAction);

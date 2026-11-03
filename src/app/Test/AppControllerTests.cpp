@@ -529,7 +529,8 @@ TEST_CASE("AppController rejects an unsafe single-face commit without recording 
     controller.pickFace(0);
     controller.setSelectedHealAction(ogun::HealAction::RemoveDegenerateFace);
     REQUIRE_FALSE(controller.commitSelectedFaceRepair());
-    REQUIRE_FALSE(controller.lastRepairStatusMessage().empty());
+    REQUIRE(controller.lastRepairStatusMessage().find("Repair blocked:") != std::string::npos);
+    REQUIRE(controller.lastRepairStatusMessage().find("No changes were made.") != std::string::npos);
     REQUIRE_FALSE(controller.canUndo());
     REQUIRE(controller.mesh().F == before.F);
 }

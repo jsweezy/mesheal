@@ -869,10 +869,11 @@ TEST_CASE("Fix All heals a cap on a hole's rim and fills the hole in the same pa
     const std::vector<ogun::HoleLoop> before = ogun::findHoleLoops(plate);
     REQUIRE(before.size() == 1);
     REQUIRE(before[0].edgeCount() == 4);
-    // Ogun's healer collapses the cap's apex before CGAL's clean-up pass could remove the cap: the hole
+    // Ogun's healer dissolves the cap's apex before CGAL's clean-up pass could remove the cap: the hole
     // keeps its 4 edges (CGAL's `remove_almost_degenerate_faces` would enlarge it)
     const ogun::RepairResults all = ogun::SliverHealer::healAllThinFaces(plate);
-    REQUIRE(all.edgeCollapses == 1);
+    REQUIRE(all.success);
+    REQUIRE(all.facesRemoved == 1);
     REQUIRE_FALSE(all.usedPmpCleanup);
     const std::vector<ogun::HoleLoop> afterAll = ogun::findHoleLoops(all.mesh);
     REQUIRE(afterAll.size() == 1);
@@ -880,7 +881,7 @@ TEST_CASE("Fix All heals a cap on a hole's rim and fills the hole in the same pa
 
     const ogun::FixAllResult result = run(plate);
     REQUIRE(result.countsBefore.thinFaces == 1);
-    REQUIRE(stepOf(result, FixAllStageId::Slivers)->detail == "Healed 1 of 1 thin face (0 flips, 1 collapse)");
+    REQUIRE(stepOf(result, FixAllStageId::Slivers)->detail == "Healed 1 of 1 thin face (0 flips, 0 collapses)");
     REQUIRE(stepOf(result, FixAllStageId::FillHoles)->detail == "Filled 1 of 1 hole");
     REQUIRE(result.passesRun == 1);
     REQUIRE(result.stopReason == FixAllStopReason::Clean);

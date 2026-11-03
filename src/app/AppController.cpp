@@ -1145,7 +1145,7 @@ bool AppController::commitSelectedFaceRepair() {
     const std::string faceLabel = "Face #" + std::to_string(faceIndex);
     RepairResults results = SliverHealer::healSingleFace(mesh_, faceIndex, action, thresholds_);
     if (!results.success) {
-        lastRepairStatusMessage_ = faceLabel + ": " + results.statusMessage;
+        lastRepairStatusMessage_ = "Repair blocked: " + faceLabel + ": " + results.statusMessage + " No changes were made.";
         postStatusMessage(lastRepairStatusMessage_, true);
         return false;
     }

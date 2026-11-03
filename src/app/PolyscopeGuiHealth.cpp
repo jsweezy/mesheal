@@ -23,7 +23,9 @@ struct HealActionOption {
     const char* label;
 };
 
-constexpr std::array<HealActionOption, 4> kHealActionOptions = {{
+constexpr std::array<HealActionOption, 6> kHealActionOptions = {{
+    {HealAction::SplitNeighborEdge, "Split Neighbor Face (Preserve Geometry / Creases)"},
+    {HealAction::DissolveCollinearVertex, "Dissolve Collinear Vertex (Retriangulate Coplanar Patch)"},
     {HealAction::FlipLongestEdge, "Flip Longest Edge (Best for Coplanar Caps)"},
     {HealAction::CollapseShortestEdge, "Collapse Shortest Edge (Best for Needles)"},
     {HealAction::SnapCollinearCollapse, "Snap Collinear Vertex (Cap on Feature Crease)"},
@@ -983,20 +985,25 @@ void PolyscopeGui::drawThinFaceInspector() {
             requestSync();
         }
     }
+    const bool unsafe = !preview.valid && controller_.selectedHealAction() != HealAction::None;
     if (!preview.statusMessage.empty()) {
-        const bool unsafe = !preview.valid && controller_.selectedHealAction() != HealAction::None;
         ImGui::PushStyleColor(ImGuiCol_Text, unsafe ? gui::kErrorColor : gui::kOkColor);
-        ImGui::TextWrapped("%s%s", unsafe ? "Warning: " : "", preview.statusMessage.c_str());
+        ImGui::TextWrapped("%s%s", unsafe ? "Blocked: " : "", preview.statusMessage.c_str());
         ImGui::PopStyleColor();
     }
     ImGui::TextDisabled("Preview display options: Display > Repair preview.");
 
-    ImGui::BeginDisabled(controller_.selectedHealAction() == HealAction::None);
+    const bool canCommit = controller_.selectedHealAction() != HealAction::None && preview.valid;
+    ImGui::BeginDisabled(!canCommit);
     if (ImGui::Button("Commit Repair (R)") && controller_.commitSelectedFaceRepair()) {
         requestSync(true);
     }
     ImGui::EndDisabled();
-    tooltip("Apply the chosen strategy to this face (one undo step).");
+    if (!canCommit && controller_.selectedHealAction() != HealAction::None) {
+        tooltip(("Repair strategy is blocked: " + preview.statusMessage).c_str());
+    } else {
+        tooltip("Apply the chosen strategy to this face (one undo step).");
+    }
     ImGui::SameLine();
     if (ImGui::Button("Frame (.)")) {
         focusCameraOnSelection(FocusNormalSide::AutoToggleNormal);

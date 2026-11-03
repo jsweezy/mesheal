@@ -262,7 +262,7 @@ TEST_CASE("FlipLongestEdge rejects creases and non-convex quads", "[repair][flip
         const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(surface, ogun::CgalFaceIndex(0));
         CHECK(a.type == ogun::SliverType::Cap);
         CHECK_FALSE(a.longestEdgeFlippable);
-        CHECK(a.recommendedAction == ogun::HealAction::SnapCollinearCollapse);
+        CHECK(a.recommendedAction == ogun::HealAction::DissolveCollinearVertex);
 
         std::string status;
         CHECK_FALSE(ogun::SliverHealer::applyHealAction(
@@ -287,7 +287,7 @@ TEST_CASE("FlipLongestEdge rejects creases and non-convex quads", "[repair][flip
         const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(surface, ogun::CgalFaceIndex(0));
         CHECK(a.type == ogun::SliverType::Cap);
         CHECK_FALSE(a.longestEdgeFlippable);
-        CHECK(a.recommendedAction == ogun::HealAction::SnapCollinearCollapse);
+        CHECK(a.recommendedAction == ogun::HealAction::DissolveCollinearVertex);
 
         std::string status;
         CHECK_FALSE(ogun::SliverHealer::applyHealAction(
@@ -348,6 +348,75 @@ TEST_CASE("SnapCollinearCollapse snaps a creased cap onto its corner vertex", "[
     };
     CHECK(hasVertex(mesh.V.row(0)));
     CHECK(hasVertex(mesh.V.row(1)));
+}
+
+TEST_CASE("DissolveCollinearVertex dissolves apex and retriangulates coplanar patch", "[repair][dissolve]") {
+    const double apexY = capApexForAngle(179.5);
+    // Neighbor face across longest edge is at a 90 deg crease (z = -1), so FlipLongestEdge is rejected.
+    // Incident faces around the apex are all coplanar in the XY plane -> DissolveCollinearVertex recommended.
+    const ogun::Mesh mesh = makeCapMesh(apexY, {0.0, 0.0, -1.0});
+    ogun::CgalSurfaceMesh surface;
+    REQUIRE(ogun::toCgalSurfaceMesh(mesh, surface));
+    const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(surface, ogun::CgalFaceIndex(0));
+    CHECK(a.type == ogun::SliverType::Cap);
+    CHECK_FALSE(a.longestEdgeFlippable);
+    CHECK(a.recommendedAction == ogun::HealAction::DissolveCollinearVertex);
+
+    const ogun::RepairResults r =
+        ogun::SliverHealer::healSingleFace(mesh, 0, ogun::HealAction::DissolveCollinearVertex);
+    REQUIRE(r.success);
+    CHECK(r.facesRemoved >= 1);
+    CHECK(r.mesh.numVertices() == mesh.numVertices() - 1);
+    CHECK(ogun::ThinFaceChecker::check(r.mesh).empty());
+}
+
+TEST_CASE("SplitNeighborEdge splits neighbor face without moving vertex on a crease", "[repair][split]") {
+    const double apexY = capApexForAngle(179.5);
+    ogun::Mesh mesh;
+    mesh.V.resize(6, 3);
+    mesh.V << -1.0, 0.0, 1.0,     // 0: s
+               1.0, 0.0, 1.0,     // 1: t
+               0.0, apexY, 1.0,   // 2: apex
+               0.0, -1.0, 0.0,    // 3: o (creased neighbor face across s-t)
+              -1.0, apexY, 0.0,   // 4: wall bottom left
+               1.0, apexY, 0.0;   // 5: wall bottom right
+    mesh.F.resize(5, 3);
+    mesh.F << 0, 1, 2,  // cap
+              1, 0, 3,  // neighbor across s-t
+              0, 2, 4,  // wall
+              2, 1, 5,  // wall
+              2, 5, 4;  // wall
+    mesh.recomputeNormals();
+
+    ogun::CgalSurfaceMesh surface;
+    REQUIRE(ogun::toCgalSurfaceMesh(mesh, surface));
+    auto pins = surface.add_property_map<ogun::CgalVertexIndex, std::uint8_t>(
+        ogun::SliverHealer::kPinnedVertexProperty, 0).first;
+    pins[ogun::CgalVertexIndex(2)] = 1; // Pin apex (must stay fixed in place)
+
+    const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(surface, ogun::CgalFaceIndex(0));
+    CHECK(a.type == ogun::SliverType::Cap);
+    CHECK_FALSE(a.longestEdgeFlippable);
+    // Apex is pinned and on a crease: cannot dissolve or collapse, so SplitNeighborEdge is recommended.
+    CHECK(a.recommendedAction == ogun::HealAction::SplitNeighborEdge);
+
+    std::string status;
+    CHECK(ogun::SliverHealer::applyHealAction(
+        surface, ogun::CgalFaceIndex(0), ogun::HealAction::SplitNeighborEdge, {}, &status));
+    CHECK(status.find("Split the neighbor face") != std::string::npos);
+
+    // Verify all original vertex coordinates are exactly preserved
+    for (Eigen::Index i = 0; i < mesh.numVertices(); ++i) {
+        bool found = false;
+        for (const auto v : surface.vertices()) {
+            const auto p = surface.point(v);
+            if ((Eigen::Vector3d(p.x(), p.y(), p.z()) - mesh.V.row(i).transpose()).norm() < 1e-12) {
+                found = true;
+                break;
+            }
+        }
+        CHECK(found);
+    }
 }
 
 TEST_CASE("RemoveDegenerateFace removes only dangling faces", "[repair][remove]") {

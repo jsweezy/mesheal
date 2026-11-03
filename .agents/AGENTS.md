@@ -1,5 +1,10 @@
 # Agent Guidelines for Ogun (STL Repair Tool)
 
+## 0. Answer Questions Immediately and Directly
+
+- **Always prioritize answering the user's questions**: When the user asks a question, immediately address and answer it directly in your response.
+- **Do not start background builds, test suites, or unrelated tool operations when asked a question**: Provide the answer upfront first. Do not make the user wait through builds or command runs to get an answer.
+
 ## 1. Keep Documentation, Punch List & In-App Help Up-to-Date
 
 Whenever you add, modify, or remove features, workflows, UI controls, diagnostics, or viewport interactions, you **must** update all relevant documentation and in-app help before completing your task:
@@ -68,4 +73,10 @@ Whenever you add, modify, or remove features, workflows, UI controls, diagnostic
   - Use `inline constexpr` at namespace scope.
   - Prefix constant names with `k` in camelCase (e.g., `kPi`, `kDegToRad`, `kDefaultHighlightPointRadius`, `kDefaultNeedleEdgeRatio`).
   - Place a clear, descriptive one-line comment beside every setting in `src/core/Settings.hpp` indicating its purpose, units, and geometric significance so settings are easy to find and modify.
+
+## 7. Test Files and STL Assets
+
+- **NEVER reference files outside the repository in tests**: Unit and integration tests must NEVER probe, open, or reference paths in `~/Downloads`, `~/Desktop`, `/tmp`, or any other directory outside the repository workspace. Tests must be 100% self-contained and reproducible on any machine or CI environment.
+- **Prefer self-contained in-memory geometry**: Tests should construct synthetic meshes in memory (using `SampleMeshes`, parametric generators, or local vertex/face matrices) or use existing files already committed under `examples/`.
+- **Licensing for new STL assets**: Never add an external STL file to the repository without copying in its license and attribution. Avoid adding external STLs whenever the behavior can be verified with synthetic geometry.
 

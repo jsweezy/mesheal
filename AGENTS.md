@@ -1,5 +1,9 @@
 # Agent instructions
 
+## Communication & Answering Questions
+
+- **Always answer user questions directly and immediately**: When the user asks a question, stop other activities, do not trigger new build or test jobs, and provide a clear, direct answer first before proceeding with any code edits or commands.
+
 ## Commits
 
 - ALWAYS make commits as jsweezy (`Jeremy Sweezy <19966001+jsweezy@users.noreply.github.com>`). NEVER as Claude.
@@ -17,3 +21,9 @@
   - Running tests in `build/` (Debug) takes 5+ minutes due to unoptimized execution of heavy mesh operations (e.g. Turkey 259k faces, bunny). Only run tests in `build/` when actively debugging an issue that requires debug symbols or unoptimized assertions.
 - Build release with: `cmake --build build_release -j 2`
 - When running tests, establish a baseline timing, target specific test tags/names during iteration when helpful (e.g. `ogun_app_tests "[app][weld]"`), and use an explicit timeout with a buffer to ensure tests do not hang in an infinite loop.
+
+## Test Files and STL Assets
+
+- **NEVER reference files outside the repository in tests**: Tests must NEVER reference or probe paths in `~/Downloads`, `~/Desktop`, `/tmp`, or any other directory outside the repository.
+- **Prefer self-contained in-memory geometry**: Tests should construct synthetic meshes in memory (using `SampleMeshes`, parametric generators, or local vertex/face matrices) or use existing files already committed under `examples/`.
+- **Licensing for new STL assets**: Never add an external STL file to the repository without copying in its license and attribution. Avoid adding external STLs if the behavior can be verified with synthetic geometry.

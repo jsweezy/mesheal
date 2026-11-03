@@ -30,10 +30,12 @@ enum class SliverType {
 /// Local repair strategy applied to a single face.
 enum class HealAction {
     None,
-    FlipLongestEdge,        ///< Swap the cap's longest edge with the neighbor's diagonal.
-    CollapseShortestEdge,   ///< Collapse the shortest edge (needle / microscopic dissolution).
-    SnapCollinearCollapse,  ///< Collapse the cap's shorter side-arm into its fixed corner vertex.
-    RemoveDegenerateFace    ///< Remove an isolated / dangling degenerate face.
+    FlipLongestEdge,         ///< Swap the cap's longest edge with the neighbor's diagonal.
+    CollapseShortestEdge,    ///< Collapse the shortest edge (needle / microscopic dissolution).
+    SnapCollinearCollapse,   ///< Collapse the cap's shorter side-arm into its fixed corner vertex.
+    RemoveDegenerateFace,    ///< Remove an isolated / dangling degenerate face.
+    SplitNeighborEdge,       ///< Split the neighbor face across the cap's longest edge (conforming subdivision).
+    DissolveCollinearVertex  ///< Dissolve the collinear apex vertex and retriangulate its coplanar cavity.
 };
 
 [[nodiscard]] const char* sliverTypeLabel(SliverType type) noexcept;
