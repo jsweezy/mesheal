@@ -29,3 +29,13 @@ _deps/
 imgui.ini
 .polyscope.ini
 
+# Python & Benchmark caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+benchmarks/cache/
+benchmarks/results/
+cache/
+*_fixed_*.stl
+

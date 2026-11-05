@@ -46,6 +46,8 @@ Unlike 3D printing repair tools—which often voxelize or aggressively alter geo
 
 ## Documentation
 
+- **[docs/CLI.md](docs/CLI.md)**: Headless CLI commands, collision-free auto-naming, and JSON metrics streaming.
+- **[docs/BENCHMARKS.md](docs/BENCHMARKS.md)**: Python benchmarking framework, FixSTL dataset integration, and local STL caching.
 - **[docs/NAVIGATION.md](docs/NAVIGATION.md)**: 3D viewport mouse controls, keyboard shortcuts (`.`, `Shift+.`, `N`, `R`, `G`, `Esc`, `F5`, `Home`/`H`, `?`/`F1`), selection mechanics, and clipping plane usage.
 - **[VISION.md](VISION.md)**: Physical simulation motivation, multi-scale tolerance philosophy, decoupled architecture, and licensing rationale.
 - **[UI_DESIGN.md](UI_DESIGN.md)**: GUI design (P1-P3 built): menu bar, Mesh Health panel, per-defect Tool panels, operator panels, large-defect-count handling, implementation notes, and the remaining phases.
