@@ -7,6 +7,7 @@
 
 #ifdef __APPLE__
 #include "app/MacAppIcon.hpp"
+#include "app/MacFileOpenHandler.h"
 #endif
 
 #include <GLFW/glfw3.h>
@@ -274,6 +275,11 @@ void PolyscopeGui::run() {
     polyscope::options::buildDefaultGuiPanels = false;
 
     polyscope::init();
+#ifdef __APPLE__
+    installMacFileOpenHandler([this]() {
+        return controller_.hasMesh();
+    });
+#endif
     polyscope::state::doDefaultMouseInteraction = false;
     gImGuiScrollCallback = glfwSetScrollCallback(glfwGetCurrentContext(), scrollCallback);
     FileOpenQueue::instance().setWakeCallback([]() {
@@ -378,6 +384,13 @@ void PolyscopeGui::paceFrame() {
 }
 
 void PolyscopeGui::drawUiFrame() {
+#ifdef __APPLE__
+    static bool sMacLaunchCompleted = false;
+    if (!sMacLaunchCompleted) {
+        sMacLaunchCompleted = true;
+        markMacInitialLaunchComplete();
+    }
+#endif
     paceFrame();
     while (auto pendingPath = FileOpenQueue::instance().popFile()) {
         openStlFile(*pendingPath);

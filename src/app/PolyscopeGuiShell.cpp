@@ -4,6 +4,10 @@
 #include "core/Settings.hpp"
 #include "ogun/Version.hpp"
 
+#ifdef __APPLE__
+#include "app/MacFileOpenHandler.h"
+#endif
+
 #include <imgui.h>
 #include <polyscope/polyscope.h>
 #include <polyscope/render/engine.h>
@@ -900,6 +904,9 @@ void PolyscopeGui::openFileDialog() {
 }
 
 void PolyscopeGui::openStlFile(const std::filesystem::path& path) {
+#ifdef __APPLE__
+    setMacCurrentLoadedPath(path);
+#endif
     if (!controller_.loadStlFile(path)) {
         return;
     }

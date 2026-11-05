@@ -46,3 +46,4 @@ if command -v xdg-mime >/dev/null 2>&1; then
 fi
 
 echo "Ogun desktop integration installed successfully!"
+

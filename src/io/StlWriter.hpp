@@ -3,6 +3,7 @@
 #include "mesh/Mesh.hpp"
 
 #include <filesystem>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <string_view>
@@ -25,6 +26,14 @@ bool saveStl(
     const Mesh& mesh,
     StlFormat format = StlFormat::Binary,
     std::string* errorOut = nullptr);
+
+/// Resolves an available output file path without overwriting inputPath.
+/// If userOutput is specified, validates that it does not point to the same file as inputPath.
+/// If userOutput is omitted, automatically finds the next available `<stem>_fixed_N.stl` path
+/// (checking N = 1, 2, 3...) that does not exist on disk.
+[[nodiscard]] std::filesystem::path resolveAvailableOutputPath(
+    const std::filesystem::path& inputPath,
+    const std::optional<std::filesystem::path>& userOutput = std::nullopt);
 
 } // namespace ogun
 

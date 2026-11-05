@@ -69,3 +69,4 @@ On Linux, double-clicking multiple STL files in Nautilus (GNOME Files), Dolphin 
 
 ### 4. Drag & Drop
 Dragging an `.stl` file from your Linux file manager directly into an open Ogun 3D viewport immediately loads that model into the window.
+

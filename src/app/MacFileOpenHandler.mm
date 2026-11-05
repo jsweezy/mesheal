@@ -3,14 +3,122 @@
 
 #ifdef __APPLE__
 #import <Cocoa/Cocoa.h>
+#import <objc/runtime.h>
 #endif
 
+#include <chrono>
 #include <iostream>
 
 #ifdef __APPLE__
 
 namespace {
+
 std::function<bool()> gIsBusyPredicate;
+bool gInitialLaunchComplete = false;
+bool gDisableRelaunch = false;
+std::filesystem::path gCurrentLoadedPath;
+std::filesystem::path gLastSpawnedPath;
+std::chrono::steady_clock::time_point gLastSpawnedTime{};
+
+NSString* normalizeToFilesystemPath(NSString* input) {
+    if (input == nil || [input length] == 0) {
+        return nil;
+    }
+    if ([input hasPrefix:@"file://"]) {
+        NSURL* url = [NSURL URLWithString:input];
+        if (url != nil) {
+            return [url path];
+        }
+    }
+    return input;
+}
+
+void handleResolvedPath(NSString* rawPath) {
+    if (rawPath == nil) {
+        return;
+    }
+    NSString* cleanPath = normalizeToFilesystemPath(rawPath);
+    if (cleanPath == nil || [cleanPath length] == 0) {
+        return;
+    }
+    const std::filesystem::path stlPath([cleanPath UTF8String]);
+
+    std::error_code ec;
+    // 1. Ignore if already loaded in this window
+    if (!gCurrentLoadedPath.empty()) {
+        if (stlPath == gCurrentLoadedPath || std::filesystem::equivalent(stlPath, gCurrentLoadedPath, ec)) {
+            return;
+        }
+    }
+
+    // 2. During cold start, this is the launch document. Always load directly into this instance.
+    if (!gInitialLaunchComplete || gDisableRelaunch) {
+        gCurrentLoadedPath = stlPath;
+        ogun::FileOpenQueue::instance().postFile(stlPath);
+        return;
+    }
+
+    // 3. Debounce rapid duplicate events for the same path
+    const auto now = std::chrono::steady_clock::now();
+    if (stlPath == gLastSpawnedPath && (now - gLastSpawnedTime) < std::chrono::seconds(3)) {
+        return;
+    }
+
+    // 4. If this instance already has a mesh loaded, spawn a separate instance for the new file
+    const bool isBusy = gIsBusyPredicate ? gIsBusyPredicate() : false;
+    if (isBusy) {
+        gLastSpawnedPath = stlPath;
+        gLastSpawnedTime = now;
+        ogun::launchNewMacAppInstance(stlPath);
+    } else {
+        gCurrentLoadedPath = stlPath;
+        ogun::FileOpenQueue::instance().postFile(stlPath);
+    }
+}
+
+BOOL OgunOpenFile(id self, SEL _cmd, NSApplication* sender, NSString* filename) {
+    (void)self;
+    (void)_cmd;
+    (void)sender;
+    handleResolvedPath(filename);
+    return YES;
+}
+
+void OgunOpenFiles(id self, SEL _cmd, NSApplication* sender, NSArray<NSString*>* filenames) {
+    (void)self;
+    (void)_cmd;
+    for (NSString* file in filenames) {
+        handleResolvedPath(file);
+    }
+    [sender replyToOpenOrPrint:NSApplicationDelegateReplySuccess];
+}
+
+void OgunOpenURLs(id self, SEL _cmd, NSApplication* application, NSArray<NSURL*>* urls) {
+    (void)self;
+    (void)_cmd;
+    (void)application;
+    for (NSURL* url in urls) {
+        if ([url isFileURL]) {
+            handleResolvedPath([url path]);
+        }
+    }
+}
+
+void injectOpenFileMethodsIntoClass(Class cls) {
+    if (cls == nil) {
+        return;
+    }
+    if (!class_respondsToSelector(cls, @selector(application:openFile:))) {
+        class_addMethod(cls, @selector(application:openFile:), (IMP)OgunOpenFile, "c@:@@");
+    }
+    if (!class_respondsToSelector(cls, @selector(application:openFiles:))) {
+        class_addMethod(cls, @selector(application:openFiles:), (IMP)OgunOpenFiles, "v@:@@");
+    }
+    if (!class_respondsToSelector(cls, @selector(application:openURLs:))) {
+        class_addMethod(cls, @selector(application:openURLs:), (IMP)OgunOpenURLs, "v@:@@");
+    }
+}
+
 } // namespace
 
 @interface OgunAppleEventHandler : NSObject
@@ -29,42 +137,27 @@ std::function<bool()> gIsBusyPredicate;
     }
 
     const NSInteger count = [docList numberOfItems];
-    auto handlePath = [](NSString* nsPath) {
-        if (nsPath == nil || [nsPath length] == 0) {
-            return;
-        }
-        const std::filesystem::path stlPath([nsPath UTF8String]);
-        const bool isBusy = gIsBusyPredicate ? gIsBusyPredicate() : false;
-        if (isBusy) {
-            ogun::launchNewMacAppInstance(stlPath);
-        } else {
-            ogun::FileOpenQueue::instance().postFile(stlPath);
-        }
-    };
-
     if (count > 0) {
         for (NSInteger i = 1; i <= count; ++i) {
             NSAppleEventDescriptor* item = [docList descriptorAtIndex:i];
-            NSString* path = nil;
-            if ([item stringValue] != nil) {
-                path = [item stringValue];
-            } else if ([item data] != nil) {
-                NSURL* url = [NSURL URLWithString:[[NSString alloc] initWithData:[item data] encoding:NSUTF8StringEncoding]];
-                if (url != nil && [url isFileURL]) {
-                    path = [url path];
+            NSString* path = [item stringValue];
+            if (path == nil) {
+                NSAppleEventDescriptor* furl = [item coerceToDescriptorType:typeFileURL];
+                if (furl != nil && [furl data] != nil) {
+                    path = [[NSString alloc] initWithData:[furl data] encoding:NSUTF8StringEncoding];
                 }
             }
-            handlePath(path);
+            handleResolvedPath(path);
         }
     } else {
         NSString* path = [docList stringValue];
-        if (path == nil && [docList data] != nil) {
-            NSURL* url = [NSURL URLWithString:[[NSString alloc] initWithData:[docList data] encoding:NSUTF8StringEncoding]];
-            if (url != nil && [url isFileURL]) {
-                path = [url path];
+        if (path == nil) {
+            NSAppleEventDescriptor* furl = [docList coerceToDescriptorType:typeFileURL];
+            if (furl != nil && [furl data] != nil) {
+                path = [[NSString alloc] initWithData:[furl data] encoding:NSUTF8StringEncoding];
             }
         }
-        handlePath(path);
+        handleResolvedPath(path);
     }
 }
 
@@ -83,15 +176,36 @@ namespace ogun {
 void installMacFileOpenHandler(std::function<bool()> isBusyPredicate) {
     @autoreleasepool {
         gIsBusyPredicate = std::move(isBusyPredicate);
+
+        if (NSApp != nil && [NSApp delegate] != nil) {
+            injectOpenFileMethodsIntoClass([[NSApp delegate] class]);
+        }
+        Class glfwDelegateClass = objc_getClass("GLFWApplicationDelegate");
+        if (glfwDelegateClass != nil) {
+            injectOpenFileMethodsIntoClass(glfwDelegateClass);
+        }
+
         if (gAppleEventHandler == nil) {
             gAppleEventHandler = [[OgunAppleEventHandler alloc] init];
-            [[NSAppleEventManager sharedAppleEventManager]
-                setEventHandler:gAppleEventHandler
-                    andSelector:@selector(handleOpenDocumentsEvent:withReplyEvent:)
-                  forEventClass:kCoreEventClass
-                     andEventID:kAEOpenDocuments];
         }
+        [[NSAppleEventManager sharedAppleEventManager]
+            setEventHandler:gAppleEventHandler
+                andSelector:@selector(handleOpenDocumentsEvent:withReplyEvent:)
+              forEventClass:kCoreEventClass
+                 andEventID:kAEOpenDocuments];
     }
+}
+
+void disableMacRelaunch() {
+    gDisableRelaunch = true;
+}
+
+void markMacInitialLaunchComplete() {
+    gInitialLaunchComplete = true;
+}
+
+void setMacCurrentLoadedPath(const std::filesystem::path& path) {
+    gCurrentLoadedPath = path;
 }
 
 bool launchNewMacAppInstance(const std::filesystem::path& stlPath) {
@@ -103,7 +217,9 @@ bool launchNewMacAppInstance(const std::filesystem::path& stlPath) {
                 NSWorkspaceOpenConfiguration* config = [NSWorkspaceOpenConfiguration configuration];
                 config.createsNewApplicationInstance = YES;
                 if (!stlPath.empty()) {
-                    config.arguments = @[pathStr];
+                    config.arguments = @[pathStr, @"--no-relaunch"];
+                } else {
+                    config.arguments = @[@"--no-relaunch"];
                 }
                 [[NSWorkspace sharedWorkspace] openApplicationAtURL:bundleUrl
                                                       configuration:config
@@ -128,6 +244,10 @@ bool launchNewMacAppInstance(const std::filesystem::path& stlPath) {
         if (!stlPath.empty()) {
             [args addObject:@"--args"];
             [args addObject:pathStr];
+            [args addObject:@"--no-relaunch"];
+        } else {
+            [args addObject:@"--args"];
+            [args addObject:@"--no-relaunch"];
         }
         [task setArguments:args];
         @try {
@@ -145,6 +265,14 @@ bool launchNewMacAppInstance(const std::filesystem::path& stlPath) {
 
 void installMacFileOpenHandler(std::function<bool()> isBusyPredicate) {
     (void)isBusyPredicate;
+}
+
+void disableMacRelaunch() {}
+
+void markMacInitialLaunchComplete() {}
+
+void setMacCurrentLoadedPath(const std::filesystem::path& path) {
+    (void)path;
 }
 
 bool launchNewMacAppInstance(const std::filesystem::path& stlPath) {

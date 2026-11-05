@@ -11,6 +11,7 @@ add_library(ogun_app_controller STATIC
     AppControllerOrientation.cpp
     AppControllerSelection.cpp
     AppControllerTransform.cpp
+    CliRunner.cpp
     DefectBrowser.cpp
     FaceSelection.cpp
     FileOpenQueue.cpp
@@ -82,10 +83,11 @@ if(OGUN_BUILD_GUI)
             COMPILE_OPTIONS "-x;objective-c++"
         )
         set_target_properties(ogun PROPERTIES
+            OUTPUT_NAME "Ogun"
             MACOSX_BUNDLE TRUE
             MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in"
             MACOSX_BUNDLE_BUNDLE_NAME "Ogun"
-            MACOSX_BUNDLE_EXECUTABLE_NAME "ogun"
+            MACOSX_BUNDLE_EXECUTABLE_NAME "Ogun"
             MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.jsweezy.ogun"
             MACOSX_BUNDLE_ICON_FILE "ogun.icns"
             MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
@@ -93,12 +95,12 @@ if(OGUN_BUILD_GUI)
         )
         target_link_libraries(ogun PRIVATE "-framework Cocoa")
 
-        # Symlink build_dir/ogun -> build_dir/ogun.app/Contents/MacOS/ogun for CLI testing & scripts
+        # Symlink build_dir/ogun -> build_dir/Ogun.app/Contents/MacOS/Ogun for CLI testing & scripts
         add_custom_command(TARGET ogun POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E create_symlink
-                "ogun.app/Contents/MacOS/ogun"
+                "Ogun.app/Contents/MacOS/Ogun"
                 "${CMAKE_CURRENT_BINARY_DIR}/ogun"
-            COMMENT "Creating symlink ${CMAKE_CURRENT_BINARY_DIR}/ogun -> ogun.app/Contents/MacOS/ogun"
+            COMMENT "Creating symlink ${CMAKE_CURRENT_BINARY_DIR}/ogun -> Ogun.app/Contents/MacOS/Ogun"
         )
 
         install(TARGETS ogun BUNDLE DESTINATION /Applications)

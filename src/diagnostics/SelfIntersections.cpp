@@ -264,6 +264,20 @@ private:
         for (const int v : vi) {
             shared += static_cast<int>(std::count(vj.begin(), vj.end(), v));
         }
+        if (shared < 2) {
+            int geomShared = 0;
+            const auto& triA = tree_.triangle(i);
+            const auto& triB = tree_.triangle(j);
+            for (std::size_t ca = 0; ca < 3; ++ca) {
+                for (std::size_t cb = 0; cb < 3; ++cb) {
+                    if ((triA[ca] - triB[cb]).squaredNorm() <= tol_ * tol_) {
+                        ++geomShared;
+                        break;
+                    }
+                }
+            }
+            shared = std::max(shared, geomShared);
+        }
         const TriTriHit hit = intersectTriangles(tree_.triangle(i), tree_.triangle(j), shared, tol_);
         const bool contact = !hit.hit && query_.contacts && trianglesWithin(tree_.triangle(i), tree_.triangle(j), tol_);
         if (hit.hit || contact) {

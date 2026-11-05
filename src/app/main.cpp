@@ -1,4 +1,5 @@
 #include "app/AppController.hpp"
+#include "app/CliRunner.hpp"
 #include "app/FileOpenQueue.hpp"
 #include "app/PolyscopeGui.hpp"
 #include "app/UserPreferences.hpp"
@@ -14,6 +15,17 @@
 #include <string_view>
 
 int main(int argc, char** argv) {
+    const ogun::CliOptions cli = ogun::parseCliArguments(argc, argv);
+    if (ogun::isHeadlessCommand(cli)) {
+        return ogun::executeCliCommand(cli);
+    }
+
+    if (cli.noRelaunch) {
+#ifdef __APPLE__
+        ogun::disableMacRelaunch();
+#endif
+    }
+
     ogun::AppController controller;
 #ifdef __APPLE__
     ogun::installMacFileOpenHandler([&controller]() {
@@ -28,22 +40,7 @@ int main(int argc, char** argv) {
 
     const std::filesystem::path recentFile = ogun::recentFilesPath(ogun::configDirectory());
 
-    std::filesystem::path initialPath;
-    if (argc > 1) {
-        const std::string_view arg1(argv[1]);
-        if (arg1 == "-h" || arg1 == "--help") {
-            std::cout << "Usage: " << argv[0] << " [path/to/model.stl]\n"
-                      << "  Launches Ogun STL inspection and repair viewer.\n"
-                      << "  If no STL file path is provided, nothing is loaded: use File > Open or File > Load Sample.\n";
-            return 0;
-        }
-
-        // Ignore macOS LaunchServices internal process serial number arguments (e.g. -psn_0_123456)
-        if (!arg1.starts_with("-psn_") && !arg1.starts_with("-")) {
-            initialPath = std::filesystem::path(arg1);
-        }
-    }
-
+    std::filesystem::path initialPath = cli.inputPath;
     if (initialPath.empty()) {
         if (auto pending = ogun::FileOpenQueue::instance().popFile()) {
             initialPath = *pending;
@@ -54,6 +51,9 @@ int main(int argc, char** argv) {
         if (!controller.loadStlFile(initialPath)) {
             std::cerr << "Warning: " << controller.lastErrorMessage() << "\n";
         } else {
+#ifdef __APPLE__
+            ogun::setMacCurrentLoadedPath(initialPath);
+#endif
             ogun::RecentFiles recent(recentFile);
             recent.load();
             recent.add(initialPath);

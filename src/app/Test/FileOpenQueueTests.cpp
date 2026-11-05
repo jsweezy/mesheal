@@ -72,3 +72,4 @@ TEST_CASE("FileOpenQueue enqueues, dequeues and clears paths", "[app][file_queue
         REQUIRE_FALSE(queue.hasPendingFiles());
     }
 }
+

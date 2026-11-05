@@ -1,6 +1,7 @@
 #include "app/AppController.hpp"
 #include "app/FixAllPanelModel.hpp"
 #include "diagnostics/MeshChecks.hpp"
+#include "diagnostics/SelfIntersections.hpp"
 #include "io/SampleMeshes.hpp"
 #include "repair/RepairMetrics.hpp"
 
@@ -1203,9 +1204,48 @@ TEST_CASE("Fix All on cupcakemakerplunger heals all defects in multiple passes",
     CHECK(candidate->fixAll->result.countsAfter.openEdges == 0);
 
     REQUIRE(controller.applyFixAll());
+    const auto hits = ogun::findFacePairs(controller.mesh(), 1e-6, {});
+    if (hits) {
+        WARN("Total intersection hits after Fix All: " << hits->size());
+        for (const auto& hit : *hits) {
+            WARN("Hit: (" << hit.a << ", " << hit.b << ") hit=" << hit.hit << " coplanar=" << hit.coplanar << " touching=" << hit.touching);
+        }
+    }
     CHECK(controller.rowCount(ogun::DefectCategory::ThinFaces) == 0);
     CHECK(controller.rowCount(ogun::DefectCategory::OpenEdges) == 0);
     CHECK(controller.rowCount(ogun::DefectCategory::Intersections) == 0);
     CHECK(controller.rowCount(ogun::DefectCategory::NonManifoldEdges) == 0);
     CHECK(controller.rowCount(ogun::DefectCategory::Degenerate) == 0);
+}
+
+TEST_CASE("Fix All on cuboctahedron_faces heals all defects", "[app][repair][cuboctahedron]") {
+    const std::filesystem::path cubPath =
+        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / "cuboctahedron_faces.stl";
+    REQUIRE(std::filesystem::exists(cubPath));
+
+    ogun::AppController controller;
+    REQUIRE(controller.loadStlFile(cubPath));
+
+    controller.openFixAll(4);
+    controller.waitForFixAllPlan();
+    controller.previewFixAll(false);
+    controller.waitForFixAll();
+
+    const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+    REQUIRE(candidate != nullptr);
+    REQUIRE(candidate->success);
+    REQUIRE(candidate->fixAll != nullptr);
+
+    CHECK(candidate->fixAll->result.countsAfter.thinFaces == 0);
+    CHECK(candidate->fixAll->result.countsAfter.nonManifoldEdges == 0);
+    CHECK(candidate->fixAll->result.countsAfter.openEdges == 0);
+    CHECK(candidate->fixAll->result.countsAfter.duplicateFaces == 0);
+
+    REQUIRE(controller.applyFixAll());
+    CHECK(controller.rowCount(ogun::DefectCategory::ThinFaces) == 0);
+    CHECK(controller.rowCount(ogun::DefectCategory::OpenEdges) == 0);
+    CHECK(controller.rowCount(ogun::DefectCategory::NonManifoldEdges) == 0);
+    CHECK(controller.rowCount(ogun::DefectCategory::Degenerate) == 0);
+    CHECK(controller.rowCount(ogun::DefectCategory::Duplicates) == 0);
+    CHECK(controller.rowCount(ogun::DefectCategory::Intersections) == 0);
 }

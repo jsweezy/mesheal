@@ -133,5 +133,39 @@ bool saveStl(
     }
 }
 
+std::filesystem::path resolveAvailableOutputPath(
+    const std::filesystem::path& inputPath,
+    const std::optional<std::filesystem::path>& userOutput) {
+    if (userOutput.has_value() && !userOutput->empty()) {
+        std::error_code ec;
+        const bool eq = std::filesystem::equivalent(inputPath, *userOutput, ec);
+        if (!ec && eq) {
+            throw std::invalid_argument("Output file path must not overwrite input file: " + inputPath.string());
+        }
+        // Also check normalized weakly_canonical paths if files do not exist yet
+        const auto inCanon = std::filesystem::weakly_canonical(inputPath, ec);
+        const auto outCanon = std::filesystem::weakly_canonical(*userOutput, ec);
+        if (inCanon == outCanon) {
+            throw std::invalid_argument("Output file path must not overwrite input file: " + inputPath.string());
+        }
+        return *userOutput;
+    }
+
+    const std::filesystem::path parent = inputPath.parent_path();
+    std::string stem = inputPath.stem().string();
+    std::string ext = inputPath.extension().string();
+    if (ext.empty()) {
+        ext = ".stl";
+    }
+
+    for (std::size_t i = 1;; ++i) {
+        const std::string filename = stem + "_fixed_" + std::to_string(i) + ext;
+        const std::filesystem::path candidate = parent.empty() ? std::filesystem::path(filename) : (parent / filename);
+        if (!std::filesystem::exists(candidate)) {
+            return candidate;
+        }
+    }
+}
+
 } // namespace ogun
 

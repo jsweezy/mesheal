@@ -1,6 +1,7 @@
 add_executable(ogun_app_tests
     AboutInfoTests.cpp
     AppControllerTests.cpp
+    CliRunnerTests.cpp
     DefectBrowserTests.cpp
     FaceSelectionTests.cpp
     FileOpenQueueTests.cpp
