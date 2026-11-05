@@ -132,3 +132,4 @@ class ModelCache:
             files_stls = [n for n in stls if "files/" in n.lower()]
             chosen = files_stls[0] if files_stls else stls[0]
             return zf.read(chosen)
+

@@ -56,3 +56,4 @@ struct CliOptions {
 int executeCliCommand(const CliOptions& options);
 
 } // namespace ogun
+
