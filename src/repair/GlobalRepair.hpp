@@ -25,6 +25,7 @@ namespace ogun {
 enum class GlobalRepairMethod {
     FixAll,          ///< Fix All: every Mesh Health row repaired in passes (`runFixAll`); faces outside the scope kept exactly
     FillHoles,       ///< Every hole gets its recommended fill (or the chosen one); other faces are kept exactly
+    HealThinFaces,   ///< Every thin / sliver face healed by edge flips and collapses (`SliverHealer::healAllThinFaces`)
     PatchIslands,    ///< Every within-shell island gets its recommended local repair (+ fallbacks)
     SelfUnion,       ///< Cut along every crossing and keep the outer surface; keeps other faces exactly
     WindingRebuild,      ///< New surface: marching cubes of the winding number on a grid
@@ -50,6 +51,11 @@ inline constexpr std::array<GlobalRepairMethod, 3> kHoleRepairMethods = {
     GlobalRepairMethod::AlphaWrap,
 };
 
+/// Repair All Thin / Sliver Faces: the sliver healer alone (its result is previewed with its volume change).
+inline constexpr std::array<GlobalRepairMethod, 1> kThinRepairMethods = {
+    GlobalRepairMethod::HealThinFaces,
+};
+
 /// The Fix All operator: the repair run and the three rebuilds it is compared with.
 inline constexpr std::array<GlobalRepairMethod, 4> kFixAllMethods = {
     GlobalRepairMethod::FixAll,
@@ -60,7 +66,7 @@ inline constexpr std::array<GlobalRepairMethod, 4> kFixAllMethods = {
 
 [[nodiscard]] const char* globalRepairMethodLabel(GlobalRepairMethod method) noexcept;
 
-/// Methods offered by the Repair All operator of `target` (Intersections or OpenEdges).
+/// Methods offered by the Repair All operator of `target` (Intersections, OpenEdges or ThinFaces).
 [[nodiscard]] std::span<const GlobalRepairMethod> globalRepairMethodsFor(DefectCategory target) noexcept;
 
 struct GlobalRepairParams {

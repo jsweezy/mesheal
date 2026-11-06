@@ -13,6 +13,10 @@
 
 namespace ogun {
 
+using gui::dimensionSuffix;
+using gui::signedPercent;
+using gui::signedThousands;
+using gui::significant;
 using gui::tooltip;
 using gui::withThousands;
 
@@ -117,8 +121,7 @@ void PolyscopeGui::checkMesh() {
 }
 
 void PolyscopeGui::fixAll(DefectCategory category) {
-    if ((category == DefectCategory::ThinFaces && controller_.fixAllThinFaces()) ||
-        (category == DefectCategory::NonManifoldEdges && controller_.fixAllNonManifoldEdges()) ||
+    if ((category == DefectCategory::NonManifoldEdges && controller_.fixAllNonManifoldEdges()) ||
         (category == DefectCategory::NonManifoldVertices && controller_.fixAllNonManifoldVertices()) ||
         (category == DefectCategory::Degenerate && controller_.fixAllDegenerateFaces()) ||
         (category == DefectCategory::Duplicates && controller_.fixAllDuplicateFaces()) ||
@@ -131,6 +134,10 @@ void PolyscopeGui::fixAll(DefectCategory category) {
         requestSync();
     } else if (category == DefectCategory::OpenEdges) {
         controller_.openRepairAllHoles();
+        requestSync();
+    } else if (category == DefectCategory::ThinFaces) {
+        // Collapses can eat thin walls: preview the result and its volume change before applying
+        controller_.openRepairAllThinFaces();
         requestSync();
     }
 }
@@ -303,13 +310,10 @@ void PolyscopeGui::drawMeshInfo() {
     if (!showMeshInfo_) {
         return;
     }
-    const Mesh& mesh = controller_.mesh();
     const std::string sym(unitSymbol(controller_.fileUnit()));
     const BoundingBox bbox = controller_.meshBounds();
     const Eigen::Vector3d ext = bbox.extents();
-    ImGui::Text("Vertices %s   Triangles %s",
-                withThousands(static_cast<std::size_t>(mesh.numVertices())).c_str(),
-                withThousands(static_cast<std::size_t>(mesh.numFaces())).c_str());
+    drawMeshStatsTable();
     ImGui::Text("Size: %.4g x %.4g x %.4g %s", ext.x(), ext.y(), ext.z(), sym.c_str());
     ImGui::Text("Min: (%.4g, %.4g, %.4g)", bbox.min.x(), bbox.min.y(), bbox.min.z());
     ImGui::Text("Max: (%.4g, %.4g, %.4g)", bbox.max.x(), bbox.max.y(), bbox.max.z());
@@ -317,6 +321,77 @@ void PolyscopeGui::drawMeshInfo() {
     const CategoryHealth& shells = controller_.categoryHealth(DefectCategory::Shells);
     if (shells.result && shells.status == HealthStatus::Ok) {
         ImGui::Text("Shells: %s", withThousands(shells.result->infoCount).c_str());
+    }
+}
+
+void PolyscopeGui::drawMeshStatsTable() {
+    const MeshStats& now = controller_.meshStats();
+    const std::optional<MeshStats>& original = controller_.originalMeshStats();
+    const Unit unit = controller_.fileUnit();
+    const bool changed = original && (original->vertices != now.vertices || original->faces != now.faces ||
+                                      original->volume != now.volume || original->area != now.area);
+    const ImGuiTableFlags flags = ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg;
+    if (!ImGui::BeginTable("MeshStats", changed ? 4 : 2, flags)) {
+        return;
+    }
+    ImGui::TableSetupColumn("");
+    ImGui::TableSetupColumn("Now");
+    if (changed) {
+        ImGui::TableSetupColumn("Loaded");
+        ImGui::TableSetupColumn("Change");
+        ImGui::TableHeadersRow();
+    }
+    const auto countRow = [&](const char* name, Eigen::Index value, Eigen::Index before) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted(name);
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextUnformatted(withThousands(static_cast<std::size_t>(value)).c_str());
+        if (changed) {
+            ImGui::TableSetColumnIndex(2);
+            ImGui::TextDisabled("%s", withThousands(static_cast<std::size_t>(before)).c_str());
+            ImGui::TableSetColumnIndex(3);
+            const long long delta = static_cast<long long>(value) - static_cast<long long>(before);
+            if (delta == 0) {
+                ImGui::TextDisabled("0");
+            } else {
+                ImGui::TextUnformatted(signedThousands(delta).c_str());
+            }
+        }
+    };
+    const auto measureRow = [&](const char* name, double value, double before, ValueDimension dimension, bool warn) {
+        const std::string suffix = " " + dimensionSuffix(dimension, unit);
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted(name);
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextUnformatted((significant(value) + suffix).c_str());
+        if (changed) {
+            ImGui::TableSetColumnIndex(2);
+            ImGui::TextDisabled("%s", (significant(before) + suffix).c_str());
+            ImGui::TableSetColumnIndex(3);
+            const double percent = before != 0.0 ? 100.0 * (value - before) / std::abs(before) : 0.0;
+            if (value == before) {
+                ImGui::TextDisabled("0");
+            } else if (warn && std::abs(percent) >= settings::kVolumeChangeWarnPercent) {
+                ImGui::TextColored(gui::kDefectColor, "%s", signedPercent(percent).c_str());
+                tooltip(("The volume changed by " + significant(value - before, 4) + suffix +
+                         " since the mesh was loaded. A repair may have removed real geometry: Ctrl/Cmd+Z undoes it.")
+                            .c_str());
+            } else {
+                ImGui::TextUnformatted(signedPercent(percent).c_str());
+                tooltip((significant(value - before, 4) + suffix).c_str());
+            }
+        }
+    };
+    countRow("Vertices", now.vertices, original ? original->vertices : 0);
+    countRow("Triangles", now.faces, original ? original->faces : 0);
+    measureRow("Volume", now.volume, original ? original->volume : 0.0, ValueDimension::Volume, true);
+    tooltip("Sum of the signed shell volumes. Only meaningful when every shell is closed; overlapping shells count twice.");
+    measureRow("Area", now.area, original ? original->area : 0.0, ValueDimension::Area, false);
+    ImGui::EndTable();
+    if (changed) {
+        ImGui::TextDisabled("Loaded: the mesh as it was opened.");
     }
 }
 
@@ -592,7 +667,8 @@ void PolyscopeGui::drawCategoryActions(DefectCategory category) {
 
     if (!info.infoOnly) {
         ImGui::BeginDisabled(!info.hasFixAll || count == 0 || !controller_.browsableResult());
-        const bool repairAll = category == DefectCategory::Intersections || category == DefectCategory::OpenEdges;
+        const bool repairAll = category == DefectCategory::Intersections || category == DefectCategory::OpenEdges ||
+                               category == DefectCategory::ThinFaces;
         const std::string fixAllLabel = (repairAll ? "Repair All " : "Fix All ") + withThousands(count) + (repairAll ? "..." : "");
         ImGui::PushStyleColor(ImGuiCol_Button, gui::kFixAllButtonColor);
         if (ImGui::Button(fixAllLabel.c_str())) {
@@ -616,6 +692,9 @@ void PolyscopeGui::drawCategoryActions(DefectCategory category) {
                 : category == DefectCategory::OpenEdges
                     ? "Compare whole-mesh repairs (fill each hole, winding-number rebuild, alpha wrap) with a preview "
                       "and before / after numbers, then apply one."
+                : category == DefectCategory::ThinFaces
+                    ? "Preview healing every thin / sliver face (edge flips and collapses) with before / after "
+                      "numbers (faces, volume, area, deviation), then apply it or close without changing the mesh."
                 : repairAll      ? "Compare whole-mesh repairs (patch each island, self-union, winding-number rebuild, "
                                    "alpha wrap) with a preview and before / after numbers, then apply one."
                 : controller_.shells().scoped() ? "Repair every defect of this type in the shells in scope, in one undoable step."
@@ -796,7 +875,7 @@ void PolyscopeGui::drawDefectSummary() {
     ImGui::Spacing();
     ImGui::TextWrapped(
         "%s defects are highlighted in 3D. That is more than the list cap (%s), so no list is shown. "
-        "Use Fix All, click a highlighted face, step through them worst first with Next / Prev "
+        "Use Fix All / Repair All, click a highlighted face, step through them worst first with Next / Prev "
         "(N / Shift+N), or pick a histogram bin. The list appears at %s or fewer.",
         withThousands(visible).c_str(), withThousands(listCap).c_str(), withThousands(listCap).c_str());
 

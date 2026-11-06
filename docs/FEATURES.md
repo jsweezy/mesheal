@@ -72,3 +72,4 @@ For severely corrupted meshes, Ogun provides whole-surface reconstruction pipeli
 - **Blender Selection**: Box select (`B`), circle select (`C`), select all (`A`), clear selection (`Alt+A`), invert selection (`Ctrl+I`).
 - **Origin to Selection**: Sets mesh origin to the area-weighted centroid of active facet selections.
 - **Translate / Rotate**: Precise numeric translation ($X, Y, Z$) and Euler rotation in degrees ($R_z R_y R_x$) with interactive 3D preview and universal undo.
+

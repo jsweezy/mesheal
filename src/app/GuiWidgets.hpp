@@ -29,6 +29,15 @@ inline const ImVec4 kFixAllButtonColor(0.20f, 0.45f, 0.25f, 1.0f);
 /// "20000" -> "20,000".
 [[nodiscard]] std::string withThousands(std::size_t value);
 
+/// Signed count with thousands separators: "+12", "-1,204", "0".
+[[nodiscard]] std::string signedThousands(long long delta);
+
+/// Signed percentage: "+1.2%", "-35%".
+[[nodiscard]] std::string signedPercent(double percent);
+
+/// Plain number with `digits` significant digits ("41234.6", "0.00123").
+[[nodiscard]] std::string significant(double value, int digits = 6);
+
 /// Shortcut label with the platform modifier, e.g. "Cmd+S".
 [[nodiscard]] std::string modShortcut(const char* key);
 

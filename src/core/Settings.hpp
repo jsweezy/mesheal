@@ -170,6 +170,7 @@ inline constexpr float kMinViewportWidthPx     = 400.0f;          // Below this 
 inline constexpr float kFixAllBodyMinShare     = 0.4f;            // Fix All panel: its scrolling body keeps at least this share of the panel height (the panel scrolls to the buttons below)
 inline constexpr float kFixAllBodyMinLines     = 8.0f;            // Fix All panel: ... and at least this many text lines
 inline constexpr double kStatusMessageSeconds  = 8.0;             // Seconds a status-bar message stays before reverting to "Ready"
+inline constexpr double kVolumeChangeWarnPercent = 1.0;          // Volume change (%) shown as a warning in previews, Mesh Info and the status bar
 inline constexpr double kIdleFrameIntervalSeconds = 0.5;          // Longest wait between frames while idle (no input, job or animation)
 inline constexpr double kIdleAfterActivitySeconds = 0.75;         // Full frame rate continues this long after the last input, so hovers and tooltips settle
 inline constexpr double kFrameBudgetShare      = 0.95;            // Share of 1 / maxFPS slept between active frames (Polyscope's own cap uses 95 %)

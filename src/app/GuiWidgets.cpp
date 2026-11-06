@@ -14,6 +14,23 @@ std::string withThousands(std::size_t value) {
     return digits;
 }
 
+std::string signedThousands(long long delta) {
+    const std::string digits = withThousands(static_cast<std::size_t>(delta < 0 ? -delta : delta));
+    return delta > 0 ? "+" + digits : delta < 0 ? "-" + digits : digits;
+}
+
+std::string signedPercent(double percent) {
+    char buffer[32];
+    std::snprintf(buffer, sizeof(buffer), "%+.3g%%", percent);
+    return buffer;
+}
+
+std::string significant(double value, int digits) {
+    char buffer[48];
+    std::snprintf(buffer, sizeof(buffer), "%.*g", digits, value);
+    return buffer;
+}
+
 std::string modShortcut(const char* key) {
     return std::string(kModKey) + "+" + key;
 }

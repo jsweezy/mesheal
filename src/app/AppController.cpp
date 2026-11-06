@@ -170,6 +170,7 @@ void AppController::setMesh(Mesh mesh, std::string sourceLabel) {
     globalParams_.remeshTargetSize = 0.0;
     shells_.clear();
     replaceMeshPreservingHistory(std::move(mesh));
+    originalStats_ = mesh_.empty() ? std::nullopt : std::optional<MeshStats>(meshStats());
     resetHealthReport();
     syncBrowserResult();
     if (checkMeshAfterLoad_ && !mesh_.empty()) {
@@ -2120,6 +2121,17 @@ BoundingBox AppController::activeSelectionOrMeshBounds() const noexcept {
         frameBoundsCache_.emplace(key, computeActiveSelectionOrMeshBounds());
     }
     return frameBoundsCache_->second;
+}
+
+MeshStats MeshStats::of(const Mesh& mesh) {
+    return MeshStats{mesh.numVertices(), mesh.numFaces(), signedVolume(mesh), surfaceArea(mesh)};
+}
+
+const MeshStats& AppController::meshStats() const {
+    if (!meshStatsCache_ || meshStatsCache_->first != meshGeneration_) {
+        meshStatsCache_.emplace(meshGeneration_, MeshStats::of(mesh_));
+    }
+    return meshStatsCache_->second;
 }
 
 const BoundingBox& AppController::meshBounds() const noexcept {

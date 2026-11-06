@@ -1,0 +1,1 @@
+../packaging/macos/install-app.sh

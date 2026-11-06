@@ -62,6 +62,7 @@ private:
     void drawRepairMenu();
     void drawHelpMenu();
     void drawStatusBar(float top, float height);
+    void drawStatusBarDelta();
     void drawLeftColumn(float top, float bottom, float rightColumnLeft);
     void drawRightColumn(float top, float bottom);
     void drawPreferencesWindow(float top, float bottom, float rightColumnLeft);
@@ -120,6 +121,7 @@ private:
     void drawHealthPanel();
     void drawHealthRow(DefectCategory category);
     void drawMeshInfo();
+    void drawMeshStatsTable();
     void drawToolPanel();
     void drawCategoryTool(DefectCategory category);
     bool drawCategoryWarnings(const CategoryResult& result); ///< True when a flip button changed the mesh

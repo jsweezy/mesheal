@@ -7,6 +7,7 @@
 #include "repair/FixAllDetail.hpp"
 #include "repair/MergePlan.hpp"
 #include "repair/MeshCleanup.hpp"
+#include "repair/SliverHealer.hpp"
 #include "repair/SurfaceRebuild.hpp"
 
 #include <algorithm>
@@ -239,6 +240,8 @@ const char* globalRepairMethodLabel(GlobalRepairMethod method) noexcept {
         return "Fix All";
     case GlobalRepairMethod::FillHoles:
         return "Fill each hole";
+    case GlobalRepairMethod::HealThinFaces:
+        return "Heal thin faces";
     case GlobalRepairMethod::PatchIslands:
         return "Patch each island";
     case GlobalRepairMethod::SelfUnion:
@@ -264,6 +267,9 @@ const char* globalRepairMethodLabel(GlobalRepairMethod method) noexcept {
 std::span<const GlobalRepairMethod> globalRepairMethodsFor(DefectCategory target) noexcept {
     if (target == DefectCategory::OpenEdges) {
         return kHoleRepairMethods;
+    }
+    if (target == DefectCategory::ThinFaces) {
+        return kThinRepairMethods;
     }
     return kGlobalRepairMethods;
 }
@@ -354,6 +360,16 @@ RepairCandidate runGlobalRepair(
         status = batch.statusMessage;
         if (batch.success) {
             repaired = std::move(batch.mesh);
+        }
+        break;
+    }
+    case GlobalRepairMethod::HealThinFaces: {
+        RepairResults healed = SliverHealer::healAllThinFaces(scoped, params.checkParams.thinThresholds);
+        status = healed.statusMessage;
+        if (healed.success && healed.initialThinFaces == 0) {
+            status = "No thin / sliver faces to heal.";
+        } else if (healed.success) {
+            repaired = std::move(healed.mesh);
         }
         break;
     }

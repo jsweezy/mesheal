@@ -196,6 +196,11 @@ void AppController::openRepairAllHoles() {
     openRepairAll(ToolSlot::RepairAllHoles, GlobalRepairMethod::FillHoles);
 }
 
+void AppController::openRepairAllThinFaces() {
+    openRepairAll(ToolSlot::RepairAllThinFaces, GlobalRepairMethod::HealThinFaces);
+    previewGlobalRepair(); // one method: show its result and volume change right away
+}
+
 void AppController::openAlphaWrap() {
     openRepairAll(ToolSlot::AlphaWrap, GlobalRepairMethod::AlphaWrap);
 }
@@ -479,6 +484,7 @@ bool AppController::applyGlobalRepair() {
                   : activeTool_ == ToolSlot::Weld              ? std::string("Weld")
                   : activeTool_ == ToolSlot::FixAll            ? "Rebuild (" + label + ")"
                   : activeTool_ == ToolSlot::RepairAllHoles    ? "Repair All Holes (" + label + ")"
+                  : activeTool_ == ToolSlot::RepairAllThinFaces ? std::string("Repair All Thin / Sliver Faces")
                                                                : "Repair All Intersections (" + label + ")");
     finishMeshEdit(std::move(repaired));
     recheckCategory(DefectCategory::Intersections);

@@ -111,6 +111,16 @@ struct ShellHealth {
 /// Status-bar watertight badge: green only when open and non-manifold edges both checked to 0.
 enum class WatertightState { Unknown, Watertight, NotWatertight };
 
+/// Size of a mesh, for Mesh Info and the status bar: now and as loaded.
+struct MeshStats {
+    Eigen::Index vertices = 0;
+    Eigen::Index faces = 0;
+    double volume = 0.0; ///< Sum of signed tetrahedron volumes (meaningful for closed shells only)
+    double area = 0.0;
+
+    [[nodiscard]] static MeshStats of(const Mesh& mesh);
+};
+
 /// What the right-column Tool slot shows (one tool at a time).
 enum class ToolSlot {
     None,
@@ -118,6 +128,7 @@ enum class ToolSlot {
     UnitsAndScale,
     RepairAllIntersections,
     RepairAllHoles,
+    RepairAllThinFaces,
     AlphaWrap,
     VoxelHealRemesh,
     PrecisionIsosurface,
@@ -549,6 +560,15 @@ public:
 
     /// The mesh's bounding box, cached per mesh generation (the viewport reads it every frame).
     [[nodiscard]] const BoundingBox& meshBounds() const noexcept;
+
+    /// Vertices, faces, volume and area of the current mesh (cached per mesh generation).
+    [[nodiscard]] const MeshStats& meshStats() const;
+
+    /// The same numbers for the mesh as it was loaded (empty before a load). Edits, undo and redo keep it;
+    /// loading another mesh replaces it.
+    [[nodiscard]] const std::optional<MeshStats>& originalMeshStats() const noexcept {
+        return originalStats_;
+    }
 
     // -------------------------------------------------------------------------
     // Selected Row, Filters, Multi-Selection & Focus (Tool panel)
@@ -1115,6 +1135,9 @@ public:
     /// Opens "Operation: Repair All Holes" in the Tool slot (deselects any row).
     void openRepairAllHoles();
 
+    /// Opens "Operation: Repair All Thin / Sliver Faces" and starts its preview.
+    void openRepairAllThinFaces();
+
     /// Opens "Operation: Shrink-Wrap (Outer Envelope)" (Repair > Remesh): the same operator with only the wrap.
     void openAlphaWrap();
 
@@ -1192,9 +1215,11 @@ public:
     /// Opens "Operation: Weld" (Mesh > Modify > Weld and Repair > Weld) on the same operator.
     void openWeld();
 
-    /// Row the open Repair All operator repairs: Intersections or OpenEdges (Alpha Wrap: Intersections).
+    /// Row the open Repair All operator repairs: Intersections, OpenEdges or ThinFaces (Alpha Wrap: Intersections).
     [[nodiscard]] DefectCategory globalRepairTarget() const noexcept {
-        return activeTool_ == ToolSlot::RepairAllHoles ? DefectCategory::OpenEdges : DefectCategory::Intersections;
+        return activeTool_ == ToolSlot::RepairAllHoles       ? DefectCategory::OpenEdges
+               : activeTool_ == ToolSlot::RepairAllThinFaces ? DefectCategory::ThinFaces
+                                                             : DefectCategory::Intersections;
     }
 
     /// Methods the open operator offers.
@@ -1222,7 +1247,7 @@ public:
     /// True for the Repair All operators and the Mesh-menu operators built on them.
     [[nodiscard]] bool repairAllOpen() const noexcept {
         return activeTool_ == ToolSlot::RepairAllIntersections || activeTool_ == ToolSlot::RepairAllHoles ||
-               activeTool_ == ToolSlot::AlphaWrap || activeTool_ == ToolSlot::VoxelHealRemesh ||
+               activeTool_ == ToolSlot::RepairAllThinFaces || activeTool_ == ToolSlot::AlphaWrap || activeTool_ == ToolSlot::VoxelHealRemesh ||
                activeTool_ == ToolSlot::PrecisionIsosurface || activeTool_ == ToolSlot::Decimate ||
                activeTool_ == ToolSlot::MergeVertices || activeTool_ == ToolSlot::Weld ||
                activeTool_ == ToolSlot::FixAll;
@@ -1704,6 +1729,8 @@ private:
     std::uint64_t healthRevision_ = 0; ///< Bumped whenever a row's result is replaced or dropped
     mutable std::optional<std::pair<FrameBoundsKey, BoundingBox>> frameBoundsCache_;
     mutable std::optional<std::pair<std::uint64_t, BoundingBox>> meshBoundsCache_; ///< Keyed on meshGeneration_
+    mutable std::optional<std::pair<std::uint64_t, MeshStats>> meshStatsCache_;    ///< Keyed on meshGeneration_
+    std::optional<MeshStats> originalStats_;
     mutable std::optional<MergeRoles> mergeRolesCache_;
     /// operatorScopeFaceCount, keyed on the mesh generation, face selection, shells and active tool
     mutable std::optional<std::pair<std::array<std::uint64_t, 4>, std::size_t>> operatorScopeCountCache_;

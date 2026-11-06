@@ -564,6 +564,61 @@ TEST_CASE("AppController fixAllThinFaces heals the sample mesh and can be undone
     REQUIRE_FALSE(controller.canUndo());
 }
 
+TEST_CASE("Repair All Thin / Sliver Faces previews the heal with its numbers before applying",
+          "[app][controller][repair][global][undo]") {
+    ogun::AppController controller;
+    controller.loadSampleDefectiveMesh();
+    const ogun::Mesh before = controller.mesh();
+    REQUIRE(thinCount(controller) == 2);
+
+    // Opening the operator computes the preview, but leaves the mesh alone
+    controller.openRepairAllThinFaces();
+    REQUIRE(controller.activeTool() == ogun::ToolSlot::RepairAllThinFaces);
+    REQUIRE(controller.repairAllOpen());
+    REQUIRE(controller.globalRepairTarget() == ogun::DefectCategory::ThinFaces);
+    REQUIRE(controller.globalRepairMethods().size() == 1);
+    const ogun::RepairCandidate* shown = controller.shownGlobalCandidate();
+    REQUIRE(shown != nullptr);
+    REQUIRE(shown->success);
+    REQUIRE(shown->method == ogun::GlobalRepairMethod::HealThinFaces);
+    REQUIRE(shown->metrics.thinFacesBefore == 2);
+    REQUIRE(shown->metrics.thinFacesAfter == 0);
+    REQUIRE(shown->metrics.facesAfter < shown->metrics.facesBefore);
+    REQUIRE(shown->metrics.volumeBefore != 0.0);
+    REQUIRE_FALSE(controller.canUndo());
+    REQUIRE(controller.mesh().F == before.F);
+
+    REQUIRE(controller.applyGlobalRepair());
+    REQUIRE(controller.lastUndoActionLabel() == "Repair All Thin / Sliver Faces");
+    REQUIRE(thinCount(controller) == 0);
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().F == before.F);
+}
+
+TEST_CASE("Mesh stats keep the loaded mesh to show the change of every edit", "[app][controller][undo]") {
+    ogun::AppController controller;
+    REQUIRE_FALSE(controller.originalMeshStats().has_value());
+    controller.loadSampleDefectiveMesh();
+    REQUIRE(controller.originalMeshStats().has_value());
+    const ogun::MeshStats loaded = *controller.originalMeshStats();
+    REQUIRE(loaded.faces == controller.mesh().numFaces());
+    REQUIRE(loaded.vertices == controller.mesh().numVertices());
+    REQUIRE(loaded.volume == controller.meshStats().volume);
+    REQUIRE(loaded.area > 0.0);
+
+    REQUIRE(controller.fixAllThinFaces());
+    REQUIRE(controller.meshStats().faces < loaded.faces);
+    REQUIRE(controller.originalMeshStats()->faces == loaded.faces); // the baseline survives edits
+
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.meshStats().faces == loaded.faces);
+    REQUIRE(controller.meshStats().volume == loaded.volume);
+
+    // Loading again sets a new baseline
+    controller.loadSampleDefectiveMesh();
+    REQUIRE(controller.originalMeshStats()->faces == controller.meshStats().faces);
+}
+
 TEST_CASE("AppController fixAllThinFaces on isolated Turkey shell 27 heals all slivers in one pass",
           "[app][controller][repair][batch][turkey]") {
     ogun::AppController controller;

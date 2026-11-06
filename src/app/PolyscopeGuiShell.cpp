@@ -28,6 +28,10 @@
 namespace ogun {
 
 using gui::modShortcut;
+using gui::dimensionSuffix;
+using gui::signedPercent;
+using gui::signedThousands;
+using gui::significant;
 using gui::tooltip;
 using gui::withThousands;
 
@@ -458,6 +462,7 @@ void PolyscopeGui::drawRightColumn(float top, float bottom) {
     std::string title = slot == ToolSlot::UnitsAndScale            ? std::string("Operation: Units & Scale")
                         : slot == ToolSlot::RepairAllIntersections ? std::string("Operation: Repair All Intersections")
                         : slot == ToolSlot::RepairAllHoles         ? std::string("Operation: Repair All Holes")
+                        : slot == ToolSlot::RepairAllThinFaces     ? std::string("Operation: Repair All Thin / Sliver Faces")
                         : slot == ToolSlot::AlphaWrap              ? std::string("Operation: Shrink-Wrap (Outer Envelope)")
                         : slot == ToolSlot::VoxelHealRemesh        ? std::string("Operation: Voxel Heal & Remesh (Fast)")
                         : slot == ToolSlot::PrecisionIsosurface    ? std::string("Operation: Precision Isosurface (FEA Grade)")
@@ -1010,6 +1015,34 @@ void PolyscopeGui::saveTo(const std::string& path, StlFormat format) {
 // Status bar
 // -----------------------------------------------------------------------------
 
+void PolyscopeGui::drawStatusBarDelta() {
+    // Change since the file was loaded, only once there is one
+    const std::optional<MeshStats>& original = controller_.originalMeshStats();
+    if (!original) {
+        return;
+    }
+    const MeshStats& now = controller_.meshStats();
+    const long long dVerts = static_cast<long long>(now.vertices) - static_cast<long long>(original->vertices);
+    const long long dFaces = static_cast<long long>(now.faces) - static_cast<long long>(original->faces);
+    const double dVolPercent =
+        original->volume != 0.0 ? 100.0 * (now.volume - original->volume) / std::abs(original->volume) : 0.0;
+    if (dVerts == 0 && dFaces == 0 && now.volume == original->volume) {
+        return;
+    }
+    ImGui::SameLine();
+    const bool warn = std::abs(dVolPercent) >= settings::kVolumeChangeWarnPercent;
+    const std::string text = "(V " + signedThousands(dVerts) + "  T " + signedThousands(dFaces) + "  Vol " +
+                             signedPercent(dVolPercent) + ")";
+    ImGui::TextColored(warn ? gui::kDefectColor : gui::kInfoColor, "%s", text.c_str());
+    const std::string volume = dimensionSuffix(ValueDimension::Volume, controller_.fileUnit());
+    tooltip(("Change since the mesh was loaded.\nVertices " + withThousands(static_cast<std::size_t>(original->vertices)) +
+             " -> " + withThousands(static_cast<std::size_t>(now.vertices)) + "\nTriangles " +
+             withThousands(static_cast<std::size_t>(original->faces)) + " -> " +
+             withThousands(static_cast<std::size_t>(now.faces)) + "\nVolume " + significant(original->volume) + " -> " +
+             significant(now.volume) + " " + volume + (warn ? "\nA large volume change: a repair may have removed real geometry." : ""))
+                .c_str());
+}
+
 void PolyscopeGui::drawStatusBar(float top, float height) {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     ImGui::SetNextWindowPos(ImVec2(0.0f, top), ImGuiCond_Always);
@@ -1063,6 +1096,7 @@ void PolyscopeGui::drawStatusBar(float top, float height) {
         ImGui::Text("V %s   T %s",
                     withThousands(static_cast<std::size_t>(mesh.numVertices())).c_str(),
                     withThousands(static_cast<std::size_t>(mesh.numFaces())).c_str());
+        drawStatusBarDelta();
         divider();
         const std::string sym(unitSymbol(unit));
         const BoundingBox bbox = controller_.meshBounds();

@@ -29,6 +29,16 @@ Run test suite:
 ctest --test-dir build_release -j 4
 ```
 
+Install desktop app (optional):
+- **macOS** (installs `Ogun.app` into `/Applications` & creates `~/.local/bin/ogun`):
+  ```bash
+  ./packaging/macos/install-app.sh
+  ```
+- **Linux** (installs desktop entry, MIME association, and `~/.local/bin/ogun`):
+  ```bash
+  ./packaging/linux/install-user-desktop.sh
+  ```
+
 ---
 
 ## Three Ways to Use Ogun

@@ -17,6 +17,10 @@
 
 namespace ogun {
 
+using gui::dimensionSuffix;
+using gui::signedPercent;
+using gui::signedThousands;
+using gui::significant;
 using gui::tooltip;
 using gui::withThousands;
 
@@ -55,11 +59,15 @@ const char* displayGlobalMethodName(GlobalRepairMethod method) noexcept {
     return globalRepairMethodLabel(method);
 }
 
-constexpr std::array<GlobalMethodOption, 10> kGlobalMethodOptions = {{
+constexpr std::array<GlobalMethodOption, 11> kGlobalMethodOptions = {{
     {GlobalRepairMethod::FillHoles, "keeps every other face exactly",
      "Surgical: each hole gets its recommended fill (Flat holes Fill Flat, Curved holes Fill Smooth, cracks "
      "Close Crack), or the method chosen below. Every existing face is kept; holes over the size limit and open "
      "chains stay open."},
+    {GlobalRepairMethod::HealThinFaces, "flips and collapses, then a clean-up pass",
+     "Every thin / sliver face gets its recommended heal (edge flip, or collapse of its short edge), repeated "
+     "until no more improve, then a clean-up pass that keeps feature creases. Collapses move vertices: check the "
+     "volume change and the deviation before applying."},
     {GlobalRepairMethod::PatchIslands, "keeps every other face exactly",
      "Surgical: each island (crossings within a shell) gets its recommended per-island repair, falling back to "
      "the others. Crossings between shells are left alone."},
@@ -281,6 +289,13 @@ void PolyscopeGui::drawRepairAllOperator() {
                            : slot == ToolSlot::Weld   ? "Welds open boundary edges in"
                                                       : "Merges close vertices in",
                            scope.c_str());
+    } else if (target == DefectCategory::ThinFaces) {
+        if (row.status == HealthStatus::Defects || row.status == HealthStatus::Ok) {
+            ImGui::TextWrapped("%s thin / sliver faces%s.", withThousands(controller_.rowCount(DefectCategory::ThinFaces)).c_str(),
+                               controller_.shells().scoped() ? " (shells in scope)" : "");
+        } else {
+            ImGui::TextDisabled("Thin / sliver faces not checked yet. The preview measures them anyway.");
+        }
     } else if (target == DefectCategory::OpenEdges) {
         if (row.status == HealthStatus::Defects || row.status == HealthStatus::Ok) {
             const std::size_t holes = controller_.holeCountInScope();
@@ -300,7 +315,7 @@ void PolyscopeGui::drawRepairAllOperator() {
                             "The preview measures them anyway.");
     }
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-    ImGui::TextWrapped(wrapOnly ? "Preview shows the result and its numbers before anything is applied."
+    ImGui::TextWrapped(wrapOnly || controller_.globalRepairMethods().size() == 1 ? "Preview shows the result and its numbers before anything is applied."
                                 : "Compare surgical and coarse repairs, then apply the one that suits this model. Every "
                                   "method shows its changes before anything is applied.");
     ImGui::PopStyleColor();
@@ -376,6 +391,24 @@ void PolyscopeGui::drawRepairAllOperator() {
                            withThousands(m.shellsBefore).c_str(), withThousands(m.shellsAfter).c_str(),
                            withThousands(m.thinFacesBefore).c_str(), withThousands(m.thinFacesAfter).c_str(),
                            m.elapsedMs / 1000.0);
+        const std::string volumeUnit = dimensionSuffix(ValueDimension::Volume, controller_.fileUnit());
+        const bool bigVolumeChange = std::abs(m.volumeChangePercent()) >= settings::kVolumeChangeWarnPercent;
+        ImGui::PushStyleColor(ImGuiCol_Text, bigVolumeChange ? gui::kDefectColor : ImGui::GetStyleColorVec4(ImGuiCol_Text));
+        ImGui::TextWrapped("Volume %s -> %s %s (%s), faces %s -> %s.", significant(m.volumeBefore).c_str(),
+                           significant(m.volumeAfter).c_str(), volumeUnit.c_str(), percentText(m.volumeChangePercent()).c_str(),
+                           withThousands(static_cast<std::size_t>(m.facesBefore)).c_str(),
+                           withThousands(static_cast<std::size_t>(m.facesAfter)).c_str());
+        ImGui::PopStyleColor();
+        if (bigVolumeChange) {
+            tooltip("A large volume change: the repair may have removed or flattened real geometry (thin walls, "
+                    "small features). Compare Result and Original, or Color by deviation, before applying.");
+        }
+        if (m.intersectingFacesAfter > m.intersectingFacesBefore) {
+            ImGui::PushStyleColor(ImGuiCol_Text, gui::kDefectColor);
+            ImGui::TextWrapped("Intersecting faces %s -> %s: the repair makes faces cross.",
+                               withThousands(m.intersectingFacesBefore).c_str(), withThousands(m.intersectingFacesAfter).c_str());
+            ImGui::PopStyleColor();
+        }
         if (!shown->statusMessage.empty()) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
             ImGui::TextWrapped("%s", shown->statusMessage.c_str());
@@ -431,6 +464,9 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
                             withThousands(holes.maxPatchFaces).c_str());
         break;
     }
+    case GlobalRepairMethod::HealThinFaces:
+        ImGui::TextDisabled("Limits: the Thin / sliver faces tool settings.");
+        break;
     case GlobalRepairMethod::FixAll:
         break; // Fix All's settings are on its own panel
     case GlobalRepairMethod::PatchIslands:
@@ -631,8 +667,9 @@ void PolyscopeGui::drawGlobalCandidateTable() {
     ImGui::TableSetupColumn("Method");
     ImGui::TableSetupColumn("Shells");
     const bool holes = controller_.globalRepairTarget() == DefectCategory::OpenEdges;
+    const bool thin = controller_.globalRepairTarget() == DefectCategory::ThinFaces;
     ImGui::TableSetupColumn("Closed");
-    ImGui::TableSetupColumn(holes ? "Open edges" : "Crossings");
+    ImGui::TableSetupColumn(holes ? "Open edges" : thin ? "Thin" : "Crossings");
     ImGui::TableSetupColumn("dV");
     ImGui::TableSetupColumn("dA");
     ImGui::TableSetupColumn("Max dev");
@@ -644,7 +681,7 @@ void PolyscopeGui::drawGlobalCandidateTable() {
         "Click a row to show that result.",
         "Shells in scope: before -> after (a merge or a deletion lowers it).",
         "Watertight and manifold: no open and no non-manifold edges.",
-        holes ? "Open edges after (before)." : "Intersecting faces after (before).",
+        holes ? "Open edges after (before)." : thin ? "Thin / sliver faces after (before)." : "Intersecting faces after (before).",
         "Volume change (sum of signed shell volumes: overlapping shells count twice before a union).",
         "Surface area change.",
         "Farthest point of the result from the original surface: how far new surface strays.",
@@ -696,7 +733,10 @@ void PolyscopeGui::drawGlobalCandidateTable() {
                          " non-manifold edges").c_str());
             }
             ImGui::TableSetColumnIndex(3);
-            if (holes) {
+            if (thin) {
+                ImGui::TextColored(m.thinFacesAfter == 0 ? gui::kOkColor : gui::kDefectColor, "%s (%s)",
+                                   withThousands(m.thinFacesAfter).c_str(), withThousands(m.thinFacesBefore).c_str());
+            } else if (holes) {
                 ImGui::TextColored(m.openEdgesAfter == 0 ? gui::kOkColor : gui::kDefectColor, "%s (%s)",
                                    withThousands(m.openEdgesAfter).c_str(), withThousands(m.openEdgesBefore).c_str());
                 tooltip((withThousands(m.intersectingFacesAfter) + " intersecting faces after (" +
