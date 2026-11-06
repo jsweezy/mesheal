@@ -41,6 +41,10 @@ struct IntersectionRepairSettings {
     double creaseAngleDeg = settings::kDefaultCreaseAngleDeg;
     double smoothCollarMinAngleDeg = settings::kDefaultSmoothCollarMinAngleDeg;
     double previewOffsetFactor = settings::kDefaultPreviewOffsetFactor;
+    /// Batch repair (`healIntersectionIslands`): undo a round whose new faces lie farther than this share of the
+    /// shell's bounding-box diagonal from the old surface (a fill bulging over a wall). Removed faces are not
+    /// measured (a union rightly drops inner parts), nor the volume (overlaps count twice in it). <= 0: off.
+    double maxDeviationFraction = settings::kDefaultIslandMaxDeviation;
 };
 
 /// Faces of one shell that cross each other or touch crossing faces (one repair unit).
@@ -130,7 +134,7 @@ struct IslandRepairPreview {
 /// Batch repair of the within-shell islands of the faces in scope (Fix Selected / Repair All
 /// "Patch each island"). Each shell is repaired in rounds: every island gets its recommended
 /// method, the shell is re-checked, and the islands left get their next fallback. A round that
-/// makes the shell worse is undone. With `seedFaces`, only islands containing one of them are
+/// makes the shell worse, or changes its shape past the settings' limits, is undone. With `seedFaces`, only islands containing one of them are
 /// repaired in the first round.
 struct IslandBatchResult {
     bool success = false;  ///< True if anything changed
@@ -139,6 +143,7 @@ struct IslandBatchResult {
     std::size_t islandsBefore = 0;
     std::size_t islandsAfter = 0;
     int rounds = 0;
+    int roundsRefusedForShape = 0; ///< Rounds undone because they changed the shape too much
 };
 
 [[nodiscard]] IslandBatchResult healIntersectionIslands(

@@ -78,6 +78,9 @@ struct FaceGeometryKeyHash {
 
 [[nodiscard]] double surfaceArea(const Mesh& mesh) noexcept;
 
+/// Farthest sample (vertices and face centroids) of `from` from the surface of `to`: 0 for an empty `from`.
+[[nodiscard]] double maxSurfaceDistance(const Mesh& from, const Mesh& to);
+
 /// Distance from each vertex of `mesh` to the surface of `reference` (for "Color by deviation").
 [[nodiscard]] Eigen::VectorXd vertexDeviation(const Mesh& mesh, const Mesh& reference);
 

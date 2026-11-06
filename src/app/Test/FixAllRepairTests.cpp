@@ -1227,7 +1227,40 @@ std::filesystem::path tomCornerPath() {
            "tom_x_axis_corner.stl";
 }
 
+std::filesystem::path tomShuttlePath() {
+    // Same CAD project (examples/tom_x_axis_shuttle_license.md): small crossings next to large walls
+    return std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" /
+           "tom_x_axis_shuttle.stl";
+}
+
 } // namespace
+
+TEST_CASE("Fix All on a CAD shuttle keeps its walls", "[app][repair][fixall][tom-shuttle]") {
+    // The island step once cut out whole walls (faces 1802, 1805, 2253 among them) to undo 6 small crossings:
+    // +2.3 % volume, surface lost by 6 mm
+    REQUIRE(std::filesystem::exists(tomShuttlePath()));
+    ogun::AppController controller;
+    REQUIRE(controller.loadStlFile(tomShuttlePath()));
+    const ogun::Mesh before = controller.mesh();
+
+    controller.openFixAll(3);
+    controller.waitForFixAllPlan();
+    controller.previewFixAll(false);
+    controller.waitForFixAll();
+    const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+    REQUIRE(candidate != nullptr);
+    REQUIRE(candidate->success);
+    REQUIRE(candidate->fixAll != nullptr);
+    CHECK(candidate->fixAll->result.stopReason == ogun::FixAllStopReason::Clean);
+
+    REQUIRE(controller.applyFixAll());
+    CHECK(controller.rowCount(ogun::DefectCategory::Intersections) == 0);
+    CHECK(controller.rowCount(ogun::DefectCategory::ThinFaces) == 0);
+    const ogun::RepairMetrics shape = ogun::computeRepairGeometryMetrics(before, controller.mesh());
+    CHECK(std::abs(shape.volumeChangePercent()) < 0.5);
+    CHECK(shape.maxDeviation < 1.0);
+    CHECK(shape.maxLost < 1.0); // mm; the part is 68 x 84 x 35 mm
+}
 
 TEST_CASE("Repair All Thin / Sliver Faces on a CAD corner keeps its shape", "[app][repair][thin][tom-corner]") {
     // The healer once cut this part's volume by 9.4 % (a snap dragged a corner 18 mm and turned a wall into a

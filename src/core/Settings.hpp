@@ -80,6 +80,7 @@ inline constexpr int    kMaxIntersectionDilationRings     = 4;    // Upper bound
 inline constexpr int    kDefaultCgalRepairMaxSteps        = 7;    // Region-growing steps of CGAL's local self-intersection repair (CGAL default)
 inline constexpr double kDefaultSmoothCollarMinAngleDeg   = 3.0;  // Mean collar dihedral (deg) above which an island sits on a curved surface (Fill Smooth)
 inline constexpr int    kMaxIslandRepairRounds            = 4;    // Repair All "Patch each island": rounds of recommended method + fallbacks
+inline constexpr double kDefaultIslandMaxDeviation        = 0.01;  // Patch each island: a round whose new faces lie farther than this share (1 %) of the shell's diagonal from the old surface is undone
 inline constexpr double kDefaultAlphaWrapDetail           = 100.0;  // Alpha wrap: alpha = bbox diagonal / detail (larger = tighter, slower)
 inline constexpr double kMinAlphaWrapDetail               = 10.0;   // Lowest alpha-wrap detail offered
 inline constexpr double kMaxAlphaWrapDetail               = 1000.0; // Highest alpha-wrap detail offered (very slow on big meshes)

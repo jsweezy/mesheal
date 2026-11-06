@@ -138,6 +138,10 @@ Eigen::VectorXd vertexDeviation(const Mesh& mesh, const Mesh& reference) {
     return sqrD.cwiseSqrt();
 }
 
+double maxSurfaceDistance(const Mesh& from, const Mesh& to) {
+    return maxDistance(surfaceSamples(from), to);
+}
+
 RepairMetrics computeRepairGeometryMetrics(const Mesh& before, const Mesh& after, std::stop_token stopToken) {
     RepairMetrics m;
     m.facesBefore = before.numFaces();

@@ -7,6 +7,7 @@
 #include "diagnostics/SelfIntersections.hpp"
 #include "diagnostics/ThinFaceChecker.hpp"
 #include "io/SampleMeshes.hpp"
+#include "io/StlReader.hpp"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -15,6 +16,8 @@
 #include <Eigen/Geometry>
 
 #include <array>
+#include <cmath>
+#include <filesystem>
 #include <cstdio>
 #include <numeric>
 #include <vector>
@@ -199,6 +202,34 @@ TEST_CASE("Batch island repair: all islands, or only the seeded ones", "[repair]
     REQUIRE(some.success);
     REQUIRE(some.islandsBefore == 1);
     REQUIRE(islandsOf(some.mesh).size() == 1); // the poke-through is untouched
+}
+
+TEST_CASE("Batch island repair keeps a CAD part's walls when a fill would bulge over them",
+          "[repair][intersections][batch][tom-shuttle]") {
+    // CAD part by teil3 (CC BY-SA, examples/tom_x_axis_shuttle_license.md): 6 small crossings next to large walls
+    const std::filesystem::path path =
+        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / "tom_x_axis_shuttle.stl";
+    REQUIRE(std::filesystem::exists(path));
+    const ogun::Mesh shuttle = ogun::loadStl(path);
+    REQUIRE(islandsOf(shuttle).size() == 6);
+
+    // Without the guard the first round's fills cut whole walls out and bulge over them (the old behaviour)
+    ogun::IntersectionRepairSettings unguarded;
+    unguarded.maxDeviationFraction = 0.0;
+    const ogun::IslandBatchResult old = ogun::healIntersectionIslands(shuttle, ogun::CheckParams{}, {}, {}, unguarded);
+    REQUIRE(old.success);
+    CHECK(ogun::maxSurfaceDistance(shuttle, old.mesh) > 5.0); // mm of wall lost
+
+    // With it that round is undone and the next method cuts along the crossings: nothing moves
+    const ogun::IslandBatchResult r = ogun::healIntersectionIslands(shuttle, ogun::CheckParams{});
+    REQUIRE(r.success);
+    CHECK(r.islandsAfter == 0);
+    CHECK(crossings(r.mesh) == 0);
+    CHECK(r.roundsRefusedForShape >= 1);
+    CHECK(r.statusMessage.find("would have changed the shape") != std::string::npos);
+    CHECK(ogun::maxSurfaceDistance(shuttle, r.mesh) < 0.01);
+    CHECK(ogun::maxSurfaceDistance(r.mesh, shuttle) < 0.01);
+    CHECK(ogun::signedVolume(r.mesh) == Catch::Approx(ogun::signedVolume(shuttle)).epsilon(1e-4));
 }
 
 TEST_CASE("Global repairs merge overlapping cubes into one clean shell", "[repair][intersections][global]") {

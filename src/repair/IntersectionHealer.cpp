@@ -425,6 +425,18 @@ Mesh repairShell(const Mesh& shell, const std::vector<IslandJob>& jobs, const In
     return changed ? current : Mesh{};
 }
 
+/// False when a round's result `after` puts new surface farther from the shell `before` than the limit. A cut
+/// along the crossings (self-union) only splits old faces and drops what ends up inside, so its new faces lie on
+/// the old surface; a fill that bulges over a CAD wall to undo a small crossing does not. Faces removed are not
+/// measured: an inner part a union drops (a post sealed inside a cup) is far from the result but no damage.
+bool keepsShape(const Mesh& before, const Mesh& after, const IntersectionRepairSettings& settings) {
+    if (settings.maxDeviationFraction <= 0.0) {
+        return true;
+    }
+    const double limit = settings.maxDeviationFraction * before.boundingBox().diagonal();
+    return maxSurfaceDistance(extractFaces(after, faceDiff(before, after).added), before) <= limit;
+}
+
 double minAngleDeg(const Mesh& mesh, std::span<const Eigen::Index> faces) {
     double best = 180.0;
     for (const Eigen::Index f : faces) {
@@ -785,6 +797,10 @@ IslandBatchResult healIntersectionIslands(
             if (after.size() >= crossings && crossings > 0) {
                 continue; // this round made nothing better: undo it, next fallback
             }
+            if (!keepsShape(shellMesh, candidate, settings)) {
+                ++result.roundsRefusedForShape;
+                continue; // it would remove or move real surface: undo it, next fallback
+            }
             // New faces become targets too (a patch that crosses must be repaired again)
             if (!seedFaces.empty()) {
                 for (const Eigen::Index f : faceDiff(shellMesh, candidate).added) {
@@ -815,7 +831,13 @@ IslandBatchResult healIntersectionIslands(
     result.success = faceDiff(mesh, result.mesh).removed.size() > 0;
     result.statusMessage = "Repaired " + std::to_string(result.islandsBefore - std::min(result.islandsBefore, islandsLeft)) +
                            " of " + std::to_string(result.islandsBefore) + " islands" +
-                           (islandsLeft > 0 ? " (" + std::to_string(islandsLeft) + " left)" : "") + ".";
+                           (islandsLeft > 0 ? " (" + std::to_string(islandsLeft) + " left)" : "") + "." +
+                           (result.roundsRefusedForShape > 0
+                                ? " " + std::to_string(result.roundsRefusedForShape) +
+                                      (result.roundsRefusedForShape == 1 ? " repair round was undone because it"
+                                                                         : " repair rounds were undone because they") +
+                                      " would have changed the shape."
+                                : "");
     if (!result.success) {
         result.statusMessage = "No island could be repaired.";
     }
