@@ -437,6 +437,12 @@ void PolyscopeGui::drawUiFrame() {
             requestSync(true);
         }
     }
+    if (deleteHoleRimsRequested_) {
+        deleteHoleRimsRequested_ = false;
+        if (controller_.deleteHoleRims()) {
+            requestSync(true);
+        }
+    }
     if (deleteShellsRequested_) {
         deleteShellsRequested_ = false;
         if (controller_.deleteSelectedShells()) {
@@ -986,7 +992,13 @@ void PolyscopeGui::applyBaseMeshStyleToPolyscope() {
     psMesh->setEdgeColor(toGlm(appearance.baseMesh.edgeColor));
     psMesh->setEdgeWidth(appearance.baseMesh.effectiveEdgeWidth());
     psMesh->setSmoothShade(appearance.smoothShade);
-    switch (appearance.backFaceMode) {
+    // Polyscope paints Darker / Custom back faces in their own color and ignores the per-face colors, so
+    // the selected tint would not show when looking at faces from behind (inside a volume). While faces
+    // are selected, back faces take the face colors, like the front.
+    const BackFaceMode backFaceMode =
+        controller_.selectedFaceCount() > 0 && appearance.backFaceMode != BackFaceMode::Cull ? BackFaceMode::Identical
+                                                                                               : appearance.backFaceMode;
+    switch (backFaceMode) {
     case BackFaceMode::Identical:
         psMesh->setBackFacePolicy(polyscope::BackFacePolicy::Identical);
         break;

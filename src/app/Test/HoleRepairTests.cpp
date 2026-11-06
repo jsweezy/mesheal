@@ -300,3 +300,21 @@ TEST_CASE("Hole counts and Fill each hole follow the shell scope", "[app][holes]
     REQUIRE(controller.applyGlobalRepair());
     REQUIRE(ogun::checkOpenEdges(controller.mesh()).size() == 3); // the other holes stay open
 }
+
+TEST_CASE("Delete Rim removes the faces along the focused or selected holes", "[app][holes][undo]") {
+    ogun::AppController controller;
+    loadHolesSample(controller);
+    const Eigen::Index facesBefore = controller.mesh().numFaces();
+
+    controller.selectCategory(DefectCategory::OpenEdges);
+    controller.focusDefect(0);
+    REQUIRE(controller.holeInspectorActive());
+    const std::size_t rim = controller.focusedHole()->faces.size();
+    REQUIRE(controller.hasHoleRimToDelete());
+    REQUIRE(controller.deleteHoleRims());
+    REQUIRE(controller.mesh().numFaces() == facesBefore - static_cast<Eigen::Index>(rim));
+    REQUIRE(controller.lastUndoActionLabel().find("Delete Hole Rim") == 0);
+
+    REQUIRE(controller.undoLastModification());
+    REQUIRE(controller.mesh().numFaces() == facesBefore);
+}

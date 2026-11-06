@@ -148,4 +148,53 @@ bool AppController::fixSelectedHoles() {
     return true;
 }
 
+bool AppController::hasHoleRimToDelete() const {
+    const CategoryResult* result = browser_.result();
+    return result != nullptr && result->category == DefectCategory::OpenEdges &&
+           (browser_.selectedCount() > 0 || focusedHole_.has_value());
+}
+
+bool AppController::deleteHoleRims() {
+    if (!hasHoleRimToDelete()) {
+        postStatusMessage("Select a hole first (Open edges list).");
+        return false;
+    }
+    const CategoryResult* result = browser_.result();
+    const std::vector<HoleLoop>& holes = holeLoops();
+    std::unordered_set<int> chosen;
+    for (const std::size_t element : browser_.selectedElements()) {
+        const DefectElement& e = result->elements[element];
+        if (const int h = findHoleOfEdge(holes, e.edge[0], e.edge[1]); h >= 0) {
+            chosen.insert(h);
+        }
+    }
+    if (chosen.empty() && focusedHole_) {
+        chosen.insert(static_cast<int>(*focusedHole_));
+    }
+    std::vector<std::uint8_t> drop(static_cast<std::size_t>(mesh_.numFaces()), 0);
+    for (const int h : chosen) {
+        for (const Eigen::Index f : holes[static_cast<std::size_t>(h)].faces) {
+            drop[static_cast<std::size_t>(f)] = 1;
+        }
+    }
+    const auto count = static_cast<std::size_t>(std::count(drop.begin(), drop.end(), std::uint8_t{1}));
+    if (count == 0 || count == static_cast<std::size_t>(mesh_.numFaces())) {
+        postStatusMessage(count == 0 ? "The selected edges are not on a hole rim." : "Deleting the rim would leave no mesh.", true);
+        return false;
+    }
+    std::vector<Eigen::Index> keep;
+    keep.reserve(static_cast<std::size_t>(mesh_.numFaces()) - count);
+    for (Eigen::Index f = 0; f < mesh_.numFaces(); ++f) {
+        if (drop[static_cast<std::size_t>(f)] == 0) {
+            keep.push_back(f);
+        }
+    }
+    const std::string label = "Delete Hole Rim (" + std::to_string(chosen.size()) + (chosen.size() == 1 ? " hole, " : " holes, ") +
+                              std::to_string(count) + (count == 1 ? " face)" : " faces)");
+    pushUndoEntry(label);
+    finishMeshEdit(extractFaces(mesh_, keep));
+    postStatusMessage(label + ".");
+    return true;
+}
+
 } // namespace ogun

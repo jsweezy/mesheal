@@ -1115,6 +1115,12 @@ public:
     /// Fills the holes of the selected open edges with their recommended methods (one undo step).
     bool fixSelectedHoles();
 
+    /// True when Delete would remove hole rims: open edges are shown with holes selected or one in the Inspector.
+    [[nodiscard]] bool hasHoleRimToDelete() const;
+
+    /// Deletes the faces along the rim of the selected holes (the focused hole when none is selected), one undo step.
+    bool deleteHoleRims();
+
     [[nodiscard]] const HoleFillSettings& holeFillSettings() const noexcept {
         return holeSettings_;
     }

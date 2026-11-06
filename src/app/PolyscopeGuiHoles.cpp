@@ -109,6 +109,11 @@ void PolyscopeGui::drawHoleInspector() {
     tooltip(canCommit ? "Apply the chosen fill to this hole (one undo step)."
                       : "Pick a method whose preview is valid and crosses no other faces.");
     ImGui::SameLine();
+    if (ImGui::Button("Delete Rim (Del)")) {
+        deleteHoleRimsRequested_ = true;
+    }
+    tooltip("Delete the faces along this hole's rim (one undo step), widening the hole. Delete also does it for every selected hole.");
+    ImGui::SameLine();
     if (ImGui::Button("Frame (.)")) {
         focusCameraOnSelection(FocusNormalSide::AutoToggleNormal);
     }

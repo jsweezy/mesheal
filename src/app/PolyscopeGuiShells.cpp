@@ -493,6 +493,8 @@ void PolyscopeGui::deleteSelectedShells() {
 void PolyscopeGui::deleteSelection() {
     if (controller_.selectedFaceCount() > 0) {
         deleteFacesRequested_ = true;
+    } else if (controller_.hasHoleRimToDelete()) {
+        deleteHoleRimsRequested_ = true;
     } else if (controller_.shells().selectedCount() > 0) {
         deleteShellsRequested_ = true;
     }

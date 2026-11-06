@@ -317,6 +317,7 @@ private:
     // Shells panel
     int smallShellFaces_ = settings::kDefaultSmallShellFaces;
     bool deleteShellsRequested_ = false;
+    bool deleteHoleRimsRequested_ = false;
     bool deleteFacesRequested_ = false;
 
     // 3D sync
