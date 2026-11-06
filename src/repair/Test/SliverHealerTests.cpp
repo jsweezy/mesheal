@@ -4,7 +4,9 @@
 #include "diagnostics/MeshChecks.hpp"
 #include "diagnostics/MeshHealth.hpp"
 #include "diagnostics/ThinFaceChecker.hpp"
+#include "diagnostics/SelfIntersections.hpp"
 #include "repair/FixAll.hpp"
+#include "repair/RepairMetrics.hpp"
 #include "repair/TopologyCleanup.hpp"
 #include "io/SampleMeshes.hpp"
 #include "io/StlReader.hpp"
@@ -192,6 +194,160 @@ bool allNormalsAlign(const ogun::Mesh& mesh, const Eigen::Vector3d& n, double mi
         }
     }
     return true;
+}
+
+
+// ---- CAD-style test geometry (built in memory) ----------------------------------------------------------------
+
+ogun::Mesh meshFromPoints(const std::vector<Eigen::Vector3d>& points, const std::vector<std::array<int, 3>>& tris) {
+    ogun::Mesh mesh;
+    mesh.V.resize(static_cast<Eigen::Index>(points.size()), 3);
+    for (std::size_t i = 0; i < points.size(); ++i) {
+        mesh.V.row(static_cast<Eigen::Index>(i)) = points[i].transpose();
+    }
+    mesh.F.resize(static_cast<Eigen::Index>(tris.size()), 3);
+    for (std::size_t i = 0; i < tris.size(); ++i) {
+        mesh.F.row(static_cast<Eigen::Index>(i)) << tris[i][0], tris[i][1], tris[i][2];
+    }
+    mesh.recomputeNormals();
+    return mesh;
+}
+
+// Open patch of a CAD part, modelled on a real tessellated corner: the front wall (plane y = 0) ends in a nearly
+// straight top edge L - A - R (z 5.75 / 5.7 / 5.7) whose vertex A is a true corner: the ceiling (z = 5.7) and
+// the step wall (x = 12) meet the wall there. A cap sliver (L, A, R) sits on that edge next to a second sliver
+// (L, R, B) whose vertex B is a fold, so no flip, dissolve or split can heal the cap. The ceiling is fanned from
+// A into long needles. The old healer snapped A onto R and tilted the step wall.
+// Face 2 is the cap.
+constexpr Eigen::Index kCornerCapFace = 2;
+
+ogun::Mesh makeCornerPatch(int needleSegments = 180) {
+    std::vector<Eigen::Vector3d> P;
+    const auto add = [&](double x, double y, double z) {
+        P.emplace_back(x, y, z);
+        return static_cast<int>(P.size()) - 1;
+    };
+    const int BL = add(-30, 0, 0), B12 = add(12, 0, 0), A = add(12, 0, 5.7), L = add(-30, 0, 5.75);
+    const int R = add(30, 0, 5.7), B = add(-6.4532, 0, 5.75), TL = add(-30, 0, 17);
+    const int TM = add(-6.4532, 0, 17), TR = add(30, 5.27, 17);
+    const int C = add(12, 36, 5.7), D = add(12, 36, 0), E = add(30, 36, 5.7);
+    std::vector<std::array<int, 3>> T;
+    T.push_back({BL, B12, L});
+    T.push_back({B12, A, L});
+    T.push_back({L, A, R}); // the cap (face 2)
+    T.push_back({L, R, B});
+    T.push_back({L, B, TL});
+    T.push_back({B, TM, TL});
+    T.push_back({B, TR, TM});
+    T.push_back({B, R, TR});
+    T.push_back({B12, D, C});
+    T.push_back({B12, C, A});
+    int prev = R;
+    for (int i = 1; i <= needleSegments; ++i) {
+        const int q = (i == needleSegments) ? E : add(30, 36.0 * i / needleSegments, 5.7);
+        T.push_back({A, q, prev});
+        prev = q;
+    }
+    T.push_back({A, C, E});
+    return meshFromPoints(P, T);
+}
+
+// Flat strip [0, 40] x [0, 1] (or two halves folded 90 degrees along the rung at x = 20) triangulated badly: fans
+// from two corners over the far edges. Every triangle is a long needle that Delaunay flips turn into compact ones.
+ogun::Mesh makeFannedStrip(bool fold) {
+    constexpr int kCells = 20;
+    std::vector<Eigen::Vector3d> P;
+    std::array<int, kCells + 1> b{};
+    std::array<int, kCells + 1> t{};
+    for (int i = 0; i <= kCells; ++i) {
+        const double x = 2.0 * i;
+        for (int row = 0; row < 2; ++row) {
+            P.push_back(fold && x > 20.0 ? Eigen::Vector3d(20.0, row, x - 20.0) : Eigen::Vector3d(x, row, 0.0));
+            (row == 0 ? b : t)[static_cast<std::size_t>(i)] = static_cast<int>(P.size()) - 1;
+        }
+    }
+    const auto B = [&](int i) { return b[static_cast<std::size_t>(i)]; };
+    const auto Tp = [&](int i) { return t[static_cast<std::size_t>(i)]; };
+    std::vector<std::array<int, 3>> T;
+    const int mid = fold ? kCells / 2 : kCells;
+    for (int i = 0; i < mid; ++i) {
+        T.push_back({B(0), Tp(i + 1), Tp(i)});
+        T.push_back({Tp(mid), B(i), B(i + 1)});
+    }
+    if (fold) {
+        for (int i = mid; i < kCells; ++i) {
+            T.push_back({B(mid), Tp(i + 1), Tp(i)});
+            T.push_back({Tp(kCells), B(i), B(i + 1)});
+        }
+    }
+    return meshFromPoints(P, T);
+}
+
+// Flat 40 x 40 plate (z = 0) with a 96-sided hole of radius 3 whose wall goes 3 down. The plate is fanned from its
+// four corners into needles whose short edge is a hole-rim segment, like a CAD hole.
+ogun::Mesh makeHolePlate() {
+    constexpr int kSides = 96;
+    constexpr double kRadius = 3.0;
+    std::vector<Eigen::Vector3d> P;
+    const auto add = [&](double x, double y, double z) {
+        P.emplace_back(x, y, z);
+        return static_cast<int>(P.size()) - 1;
+    };
+    const std::array<int, 4> corner{add(40, 40, 0), add(0, 40, 0), add(0, 0, 0), add(40, 0, 0)};
+    std::array<int, kSides> top{};
+    std::array<int, kSides> bottom{};
+    for (int k = 0; k < kSides; ++k) {
+        const double a = 2.0 * ogun::kPi * k / kSides;
+        top[static_cast<std::size_t>(k)] = add(20 + kRadius * std::cos(a), 20 + kRadius * std::sin(a), 0.0);
+    }
+    for (int k = 0; k < kSides; ++k) {
+        const double a = 2.0 * ogun::kPi * k / kSides;
+        bottom[static_cast<std::size_t>(k)] = add(20 + kRadius * std::cos(a), 20 + kRadius * std::sin(a), -3.0);
+    }
+    const auto Top = [&](int k) { return top[static_cast<std::size_t>(k % kSides)]; };
+    const auto Bot = [&](int k) { return bottom[static_cast<std::size_t>(k % kSides)]; };
+    std::vector<std::array<int, 3>> T;
+    for (int q = 0; q < 4; ++q) {
+        const int c = corner[static_cast<std::size_t>(q)];
+        for (int k = 24 * q; k < 24 * q + 24; ++k) {
+            T.push_back({c, Top(k + 1), Top(k)});
+        }
+        T.push_back({c, corner[static_cast<std::size_t>((q + 1) % 4)], Top(24 * (q + 1))});
+    }
+    for (int k = 0; k < kSides; ++k) {
+        T.push_back({Top(k), Top(k + 1), Bot(k)});
+        T.push_back({Bot(k), Top(k + 1), Bot(k + 1)});
+    }
+    return meshFromPoints(P, T);
+}
+
+bool hasVertexAt(const ogun::Mesh& mesh, const Eigen::Vector3d& p) {
+    for (Eigen::Index i = 0; i < mesh.numVertices(); ++i) {
+        if ((mesh.V.row(i).transpose() - p).norm() == 0.0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool hasEdgeBetween(const ogun::Mesh& mesh, const Eigen::Vector3d& p, const Eigen::Vector3d& q) {
+    const auto at = [&](Eigen::Index f, int k) { return Eigen::Vector3d(mesh.V.row(mesh.F(f, k)).transpose()); };
+    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+        for (int k = 0; k < 3; ++k) {
+            if ((at(f, k) == p && at(f, (k + 1) % 3) == q) || (at(f, k) == q && at(f, (k + 1) % 3) == p)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool sameMesh(const ogun::Mesh& a, const ogun::Mesh& b) {
+    return a.V.rows() == b.V.rows() && a.F.rows() == b.F.rows() && a.V == b.V && a.F == b.F;
+}
+
+std::size_t countIntersectingFaces(const ogun::Mesh& mesh) {
+    return ogun::checkSelfIntersections(mesh, ogun::CheckParams{}).size();
 }
 
 } // namespace
@@ -624,7 +780,11 @@ TEST_CASE("The aspect-110 Small face is collapsed along its shortest edge", "[re
     CHECK(a.type == ogun::SliverType::Microscopic);
     CHECK(a.recommendedAction == ogun::HealAction::CollapseShortestEdge);
 
-    const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(mesh);
+    // The Delaunay flip pass would heal this planar patch without a collapse (see the flip-first test below);
+    // switch it off to keep exercising the collapse of the shortest edge.
+    ogun::SliverHealerSettings noFlips;
+    noFlips.delaunayFlipFirst = false;
+    const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(mesh, {}, noFlips);
     REQUIRE(r.success);
     CHECK(r.initialThinFaces == 1);
     CHECK(r.remainingThinFaces == 0);
@@ -752,7 +912,10 @@ TEST_CASE("Pinned vertices never move in the sliver healer", "[repair][batch][pi
 
 TEST_CASE("The batch sliver heals return face and vertex maps in input order", "[repair][batch][maps]") {
     const NeedleCube cube = makeNeedleCube();
-    const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(cube.mesh);
+    // Isolate the collapse: the Delaunay flip pass may re-corner faces next to the needle (they keep their map entry).
+    ogun::SliverHealerSettings noFlips;
+    noFlips.delaunayFlipFirst = false;
+    const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(cube.mesh, {}, noFlips);
     REQUIRE(r.success);
     REQUIRE(r.faceMap.size() == static_cast<std::size_t>(cube.mesh.numFaces()));
     Eigen::Index next = 0;
@@ -858,4 +1021,262 @@ TEST_CASE("SliverHealer heals all thin faces on cuboctahedron_faces.stl via link
     REQUIRE(afterReport.numDefects() == 0);
 }
 
+TEST_CASE("The flip pass heals a fan of needles on a flat strip without moving a vertex", "[repair][batch][flip-first]") {
+    const bool fold = GENERATE(false, true);
+    CAPTURE(fold);
+    const ogun::Mesh strip = makeFannedStrip(fold);
+    const std::size_t thinBefore = ogun::ThinFaceChecker::check(strip).numDefects();
+    REQUIRE(thinBefore >= 10);
 
+    const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(strip);
+    REQUIRE(r.success);
+    CHECK(r.remainingThinFaces == 0);
+    CHECK(r.edgeFlips > 0);
+    CHECK(r.edgeCollapses == 0);
+    CHECK(r.facesRemoved == 0);
+    // Same vertices, same positions, same face count: only the diagonals changed
+    CHECK(r.mesh.V == strip.V);
+    CHECK(r.mesh.numFaces() == strip.numFaces());
+    CHECK(ogun::surfaceArea(r.mesh) == Catch::Approx(ogun::surfaceArea(strip)).epsilon(1e-12));
+    CHECK(ogun::signedVolume(r.mesh) == Catch::Approx(ogun::signedVolume(strip)).margin(1e-9));
+    CHECK(ogun::computeRepairGeometryMetrics(strip, r.mesh).maxDeviation < 1e-9);
+
+    if (fold) {
+        // The crease between the two halves (the rung at x = 20) is never flipped
+        CHECK(hasEdgeBetween(r.mesh, {20.0, 0.0, 0.0}, {20.0, 1.0, 0.0}));
+    }
+}
+
+TEST_CASE("The scoped heal flips the listed thin faces without moving a vertex", "[repair][selected][flip-first]") {
+    const ogun::Mesh strip = makeFannedStrip(false);
+    const ogun::ThinFaceReport before = ogun::ThinFaceChecker::check(strip);
+    REQUIRE(before.numDefects() >= 10);
+
+    const ogun::RepairResults r = ogun::SliverHealer::healFaces(strip, before.faceIndices);
+    REQUIRE(r.success);
+    CHECK(r.edgeFlips > 0);
+    CHECK(r.edgeCollapses == 0);
+    CHECK(r.remainingThinFaces == 0);
+    CHECK(r.mesh.V == strip.V);
+    CHECK(r.mesh.numFaces() == strip.numFaces());
+    CHECK(ogun::surfaceArea(r.mesh) == Catch::Approx(ogun::surfaceArea(strip)).epsilon(1e-12));
+}
+
+// A flat quad cut into a cap (apex 0.002 off the long edge, aspect 500) and an ordinary triangle below it.
+// Flipping the shared edge gives two well-shaped triangles; the ordinary one is not thin, so it is never listed.
+ogun::Mesh makeCapOnQuad() {
+    const std::vector<Eigen::Vector3d> P = {{0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, {0.5, 0.002, 0.0}, {0.5, -0.5, 0.0}};
+    return meshFromPoints(P, {{0, 1, 2}, {1, 0, 3}});
+}
+
+TEST_CASE("The scoped heal flips a thin face with a neighbour that is not thin", "[repair][selected][flip-first]") {
+    // Fix All heals only the listed thin faces. The flip partner of a lone cap is a normal triangle, so a flip
+    // limited to listed faces could never run (the last cap of the Turkey Fix All test was left that way).
+    const ogun::Mesh quad = makeCapOnQuad();
+    const ogun::ThinFaceReport before = ogun::ThinFaceChecker::check(quad);
+    REQUIRE(before.faceIndices == std::vector<Eigen::Index>{0});
+
+    const ogun::RepairResults r = ogun::SliverHealer::healFaces(quad, {0});
+    REQUIRE(r.success);
+    CHECK(r.edgeFlips == 1);
+    CHECK(r.edgeCollapses == 0);
+    CHECK(r.remainingThinFaces == 0);
+    CHECK(r.mesh.V == quad.V); // no vertex moved
+    CHECK(r.mesh.numFaces() == 2);
+    CHECK(ogun::surfaceArea(r.mesh) == Catch::Approx(ogun::surfaceArea(quad)).epsilon(1e-12));
+}
+
+TEST_CASE("A needle whose long edge flips into two healthy triangles is flipped, not collapsed", "[repair][needle][flip]") {
+    // Needle 0-1-2 (short edge 1-2, aspect over 100) and a neighbour across its long edge 0-2. Collapsing the
+    // short edge moves a vertex and can leave another needle; the flip moves nothing.
+    const std::vector<Eigen::Vector3d> P = {{0.0, 0.0, 0.0}, {10.0, 0.0, 0.0}, {10.3, 0.08, 0.0}, {6.0, 3.0, 0.0}};
+    const ogun::Mesh mesh = meshFromPoints(P, {{0, 1, 2}, {0, 2, 3}});
+    REQUIRE(ogun::ThinFaceChecker::check(mesh).faceIndices == std::vector<Eigen::Index>{0});
+
+    const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(mesh, 0);
+    REQUIRE(a.type == ogun::SliverType::Needle);
+    CHECK(a.recommendedAction == ogun::HealAction::FlipLongestEdge);
+
+    ogun::SliverHealerSettings noFlipPass; // the action itself, not the Delaunay pass in front of it
+    noFlipPass.delaunayFlipFirst = false;
+    const ogun::RepairResults r = ogun::SliverHealer::healFaces(mesh, {0}, {}, noFlipPass);
+    REQUIRE(r.success);
+    CHECK(r.edgeFlips == 1);
+    CHECK(r.edgeCollapses == 0);
+    CHECK(r.remainingThinFaces == 0);
+    CHECK(r.mesh.V == mesh.V);
+}
+
+TEST_CASE("The scoped heal also heals the thin faces its own flips and repairs leave", "[repair][selected][flip-first]") {
+    // One listed needle in a fan of needles: each flip or collapse can pass the needle on to a neighbour that
+    // was not listed. Those join the list, so the call does not stop with thin faces next to where it worked.
+    const ogun::Mesh strip = makeFannedStrip(false);
+    const ogun::ThinFaceReport before = ogun::ThinFaceChecker::check(strip);
+    REQUIRE(before.numDefects() >= 10);
+
+    const ogun::RepairResults r = ogun::SliverHealer::healFaces(strip, {before.faceIndices.front()});
+    REQUIRE(r.success);
+    CHECK(r.remainingThinFaces == 0);
+}
+
+TEST_CASE("The scoped heal never flips an edge on the rim of a pinned scope", "[repair][selected][flip-first][pinned]") {
+    // Both ends of the shared edge pinned (Fix All pins the vertices a scope shares with the rest of the mesh)
+    const ogun::Mesh quad = makeCapOnQuad();
+    const std::vector<std::uint8_t> pinned = {1, 1, 0, 0};
+    ogun::SliverHealOptions options;
+    options.pinnedVertices = pinned;
+    const ogun::RepairResults r = ogun::SliverHealer::healFaces(quad, {0}, {}, {}, options);
+    CHECK(r.edgeFlips == 0);
+    for (const int v : {0, 1}) { // still there, at the same place (a collapse may renumber the free vertices)
+        CHECK(hasVertexAt(r.mesh, quad.V.row(v).transpose()));
+    }
+}
+
+TEST_CASE("The flip pass ends on a fan of nearly cocircular points", "[repair][batch][flip-first]") {
+    // 400 points on a circle, fanned from one of them: every edge is a near tie for the Delaunay test, the case
+    // where rounding could flip two edges back and forth. A deterministic 1e-9 wobble breaks the exact ties.
+    constexpr int kPoints = 400;
+    std::vector<Eigen::Vector3d> P;
+    for (int i = 0; i < kPoints; ++i) {
+        const double a = 2.0 * ogun::kPi * i / kPoints;
+        const double r = 10.0 * (1.0 + 1.0e-9 * std::sin(7.0 * i));
+        P.emplace_back(r * std::cos(a), r * std::sin(a), 0.0);
+    }
+    std::vector<std::array<int, 3>> T;
+    for (int i = 1; i + 1 < kPoints; ++i) {
+        T.push_back({0, i, i + 1});
+    }
+    const ogun::Mesh fan = meshFromPoints(P, T);
+    REQUIRE(ogun::ThinFaceChecker::check(fan).numDefects() > 100);
+
+    ogun::SliverHealerSettings flipsOnly;
+    flipsOnly.maxBatchIterations = 1;
+    const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(fan, {}, flipsOnly);
+    // It returns: the flips end even though nearly every edge is a tie (collapses may follow; not checked here)
+    CHECK(r.edgeFlips > 0);
+}
+
+TEST_CASE("Snap is refused at a corner vertex where walls meet", "[repair][snap][corner]") {
+    const ogun::Mesh patch = makeCornerPatch(30);
+    const Eigen::Vector3d corner(12.0, 0.0, 5.7);
+    REQUIRE(hasVertexAt(patch, corner));
+
+    const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(patch, kCornerCapFace);
+    REQUIRE(a.type == ogun::SliverType::Cap);
+    CHECK_FALSE(a.longestEdgeFlippable);
+
+    // Even with the old, permissive normal limit the corner must not slide onto R: the step wall would tilt
+    for (const double minNormalDot : {ogun::settings::kDefaultMinNormalDot, 0.1}) {
+        CAPTURE(minNormalDot);
+        ogun::SliverHealerSettings settings;
+        settings.minNormalDot = minNormalDot;
+        ogun::CgalSurfaceMesh surface;
+        REQUIRE(ogun::toCgalSurfaceMesh(patch, surface));
+        std::string status;
+        CHECK_FALSE(ogun::SliverHealer::applyHealAction(
+            surface, ogun::CgalFaceIndex(static_cast<std::uint32_t>(kCornerCapFace)), ogun::HealAction::SnapCollinearCollapse, settings, &status));
+        CHECK_FALSE(status.empty());
+        const ogun::RepairResults single =
+            ogun::SliverHealer::healSingleFace(patch, kCornerCapFace, ogun::HealAction::SnapCollinearCollapse, {}, settings);
+        CHECK_FALSE(single.success);
+        CHECK(sameMesh(single.mesh, patch));
+    }
+}
+
+TEST_CASE("healAllThinFaces leaves a CAD corner and its step wall in place", "[repair][batch][corner]") {
+    // Measured on the previous healer (snap onto R, minNormalDot 0.1): signed volume -290 -> -1971, area +74 %,
+    // surface moved by 11.8 mm. Now the flip pass and the guarded snap keep the part.
+    const ogun::Mesh patch = makeCornerPatch();
+    const std::size_t thinBefore = ogun::ThinFaceChecker::check(patch).numDefects();
+    REQUIRE(thinBefore >= 100);
+    REQUIRE(countIntersectingFaces(patch) == 0);
+
+    const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(patch);
+    REQUIRE(r.success);
+    CHECK(r.remainingThinFaces == 0);
+    CHECK(r.edgeFlips > 0);
+
+    const ogun::RepairMetrics m = ogun::computeRepairGeometryMetrics(patch, r.mesh);
+    CHECK(m.maxDeviation < 0.01);
+    CHECK(std::abs(m.volumeAfter - m.volumeBefore) < 0.01 * std::abs(m.volumeBefore));
+    CHECK(std::abs(m.areaAfter - m.areaBefore) < 0.01 * m.areaBefore);
+    CHECK(countIntersectingFaces(r.mesh) == 0);
+    // The corner and the step wall's base survive exactly
+    CHECK(hasVertexAt(r.mesh, {12.0, 0.0, 5.7}));
+    CHECK(hasVertexAt(r.mesh, {12.0, 36.0, 0.0}));
+    CHECK(hasVertexAt(r.mesh, {30.0, 0.0, 5.7}));
+}
+
+TEST_CASE("The safety net rejects a heal that moves the surface too far", "[repair][batch][safety]") {
+    const ogun::Mesh plate = makeHolePlate();
+    REQUIRE(ogun::ThinFaceChecker::check(plate).numDefects() >= 50);
+
+    SECTION("with the default limit the rim collapses stay inside it") {
+        const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(plate);
+        REQUIRE(r.success);
+        CHECK(r.remainingThinFaces == 0);
+        CHECK(ogun::computeRepairGeometryMetrics(plate, r.mesh).maxDeviation <= 0.01 * plate.boundingBox().diagonal());
+    }
+
+    SECTION("a tight deviation limit returns the input unchanged and says why") {
+        ogun::SliverHealerSettings settings;
+        settings.maxDeviationFraction = 1.0e-4;
+        const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(plate, {}, settings);
+        CHECK_FALSE(r.success);
+        CHECK(sameMesh(r.mesh, plate));
+        CHECK(r.edgeCollapses == 0);
+        CHECK(r.remainingThinFaces == r.initialThinFaces);
+        CHECK(r.statusMessage.find("not applied") != std::string::npos);
+        CHECK(r.statusMessage.find("move the surface by up to") != std::string::npos);
+        CHECK(r.statusMessage.find("left unchanged") != std::string::npos);
+        CHECK(r.statusMessage.find("mm") != std::string::npos);
+
+        // Switched off, the same heal goes through (and is what the net caught)
+        settings.enableSafetyNet = false;
+        const ogun::RepairResults unchecked = ogun::SliverHealer::healAllThinFaces(plate, {}, settings);
+        CHECK(unchecked.success);
+        CHECK_FALSE(sameMesh(unchecked.mesh, plate));
+    }
+
+    SECTION("the scoped heal is guarded too") {
+        ogun::SliverHealerSettings settings;
+        settings.maxDeviationFraction = 1.0e-4;
+        const ogun::ThinFaceReport thin = ogun::ThinFaceChecker::check(plate);
+        const ogun::RepairResults r = ogun::SliverHealer::healFaces(plate, thin.faceIndices, {}, settings);
+        CHECK_FALSE(r.success);
+        CHECK(sameMesh(r.mesh, plate));
+        CHECK(r.statusMessage.find("not applied") != std::string::npos);
+    }
+}
+
+TEST_CASE("The safety net rejects a volume change on a closed mesh only", "[repair][batch][safety]") {
+    // A sphere with a needle next to a vertex: collapsing it moves the curved surface a hair, so the volume changes
+    ogun::Mesh sphere = ogun::SampleMeshes::createSphereMesh(8, 12, 5.0);
+    const Eigen::Index f = nearestFace(sphere, {2.0, 2.0, 4.0});
+    const Eigen::Vector3d c = vertexOf(sphere, f, 2);
+    const Eigen::Vector3d centroid = (vertexOf(sphere, f, 0) + vertexOf(sphere, f, 1) + c) / 3.0;
+    splitFace(sphere, f, c + 1e-5 * (centroid - c).normalized());
+    REQUIRE(isClosedManifold(sphere));
+    REQUIRE(ogun::ThinFaceChecker::check(sphere).numDefects() >= 1);
+
+    ogun::SliverHealerSettings strict;
+    strict.maxVolumeChange = 1.0e-14;
+    strict.maxDeviationFraction = 1.0; // only the volume can trip the net
+    const ogun::RepairResults rejected = ogun::SliverHealer::healAllThinFaces(sphere, {}, strict);
+    CHECK_FALSE(rejected.success);
+    CHECK(sameMesh(rejected.mesh, sphere));
+    CHECK(rejected.statusMessage.find("change the volume by") != std::string::npos);
+    CHECK(rejected.statusMessage.find("left unchanged") != std::string::npos);
+
+    // The default limit (0.5 %) accepts this harmless heal
+    const ogun::RepairResults accepted = ogun::SliverHealer::healAllThinFaces(sphere);
+    CHECK(accepted.success);
+    CHECK(accepted.remainingThinFaces == 0);
+
+    // An open mesh has no meaningful volume: the same tiny volume limit does not reject it
+    ogun::Mesh open = makeCornerPatch(30);
+    ogun::SliverHealerSettings volumeOnly;
+    volumeOnly.maxVolumeChange = 1.0e-14;
+    const ogun::RepairResults openResult = ogun::SliverHealer::healAllThinFaces(open, {}, volumeOnly);
+    CHECK(openResult.success);
+}

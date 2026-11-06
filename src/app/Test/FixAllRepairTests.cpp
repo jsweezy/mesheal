@@ -1164,12 +1164,13 @@ TEST_CASE("Fix All on Turkey without shell 28 runs multiple passes to heal all t
     REQUIRE(candidate->success);
     REQUIRE(candidate->fixAll != nullptr);
 
-    // Verify multiple passes were run and stopped clean with 0 thin faces
-    CHECK(candidate->fixAll->result.passesRun >= 2);
+    // Verify the run healed all thin faces and stopped clean. It once needed 3 passes; flips with the thin faces'
+    // neighbours and healing the faces a repair leaves thin within the same step now finish it in one.
+    CHECK(candidate->fixAll->result.passesRun >= 1);
     CHECK(candidate->fixAll->result.stopReason == ogun::FixAllStopReason::Clean);
     CHECK(candidate->fixAll->result.countsAfter.thinFaces == 0);
 
-    // Apply Fix All and verify 0 defects remain on the mesh
+    // Apply Fix All and verify no defect remains on the mesh
     REQUIRE(controller.applyFixAll());
     REQUIRE(controller.rowCount(ogun::DefectCategory::ThinFaces) == 0);
     REQUIRE(controller.rowCount(ogun::DefectCategory::OpenEdges) == 0);
@@ -1216,6 +1217,73 @@ TEST_CASE("Fix All on cupcakemakerplunger heals all defects in multiple passes",
     CHECK(controller.rowCount(ogun::DefectCategory::Intersections) == 0);
     CHECK(controller.rowCount(ogun::DefectCategory::NonManifoldEdges) == 0);
     CHECK(controller.rowCount(ogun::DefectCategory::Degenerate) == 0);
+}
+
+namespace {
+
+std::filesystem::path tomCornerPath() {
+    // CAD part by teil3 (CC BY-SA, examples/tom_x_axis_corner_license.md): flat faces fanned into needles
+    return std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" /
+           "tom_x_axis_corner.stl";
+}
+
+} // namespace
+
+TEST_CASE("Repair All Thin / Sliver Faces on a CAD corner keeps its shape", "[app][repair][thin][tom-corner]") {
+    // The healer once cut this part's volume by 9.4 % (a snap dragged a corner 18 mm and turned a wall into a
+    // ramp), moved the surface by 5.7 mm and made 44 faces cross
+    REQUIRE(std::filesystem::exists(tomCornerPath()));
+    ogun::AppController controller;
+    REQUIRE(controller.loadStlFile(tomCornerPath()));
+    REQUIRE(controller.mesh().numFaces() == 6272);
+    REQUIRE(controller.rowCount(ogun::DefectCategory::ThinFaces) == 927);
+
+    controller.openRepairAllThinFaces();
+    const ogun::RepairCandidate* shown = controller.shownGlobalCandidate();
+    REQUIRE(shown != nullptr);
+    REQUIRE(shown->success);
+    const ogun::RepairMetrics& m = shown->metrics;
+    CHECK(m.thinFacesBefore == 927);
+    CHECK(m.thinFacesAfter == 0);
+    CHECK(std::abs(m.volumeChangePercent()) < 0.5);
+    CHECK(m.maxDeviation < 1.0); // mm; the part is 60 x 78 x 17 mm
+    CHECK(m.intersectingFacesBefore == 0);
+    CHECK(m.intersectingFacesAfter == 0);
+
+    REQUIRE(controller.applyGlobalRepair());
+    CHECK(controller.rowCount(ogun::DefectCategory::ThinFaces) == 0);
+    CHECK(controller.rowCount(ogun::DefectCategory::Intersections) == 0);
+}
+
+TEST_CASE("Fix All on a CAD corner heals every thin face", "[app][repair][fixall][tom-corner]") {
+    // Fix All once stopped on a repeated state with 2 needles: a flip passed one on to an unlisted neighbour,
+    // and the other was collapsed into a new needle 10 times instead of flipped
+    REQUIRE(std::filesystem::exists(tomCornerPath()));
+    ogun::AppController controller;
+    REQUIRE(controller.loadStlFile(tomCornerPath()));
+    const ogun::Mesh before = controller.mesh();
+
+    controller.openFixAll(3);
+    controller.waitForFixAllPlan();
+    controller.previewFixAll(false);
+    controller.waitForFixAll();
+    const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+    REQUIRE(candidate != nullptr);
+    REQUIRE(candidate->success);
+    REQUIRE(candidate->fixAll != nullptr);
+    CHECK(candidate->fixAll->result.stopReason == ogun::FixAllStopReason::Clean);
+    CHECK(candidate->fixAll->result.countsAfter.thinFaces == 0);
+
+    REQUIRE(controller.applyFixAll());
+    CHECK(controller.rowCount(ogun::DefectCategory::ThinFaces) == 0);
+    CHECK(controller.rowCount(ogun::DefectCategory::OpenEdges) == 0);
+    CHECK(controller.rowCount(ogun::DefectCategory::NonManifoldEdges) == 0);
+    CHECK(controller.rowCount(ogun::DefectCategory::Intersections) == 0);
+    // It also fills the holes, so the volume moves a little (+0.16 %, 0.30 mm when this test was written)
+    const ogun::RepairMetrics shape = ogun::computeRepairGeometryMetrics(before, controller.mesh());
+    CHECK(std::abs(shape.volumeChangePercent()) < 0.5);
+    CHECK(shape.maxDeviation < 1.0);
+    CHECK(shape.maxLost < 1.0);
 }
 
 TEST_CASE("Fix All on cuboctahedron_faces heals all defects", "[app][repair][cuboctahedron]") {

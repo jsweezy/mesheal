@@ -60,7 +60,7 @@ inline constexpr double kLegacyThinFaceMaxAspectRatio   = 1000.0; // Old default
 inline constexpr double kDefaultNeedleEdgeRatio      = 0.05;      // l_min / l_max below this ratio classifies face as Needle
 inline constexpr double kDefaultCapAngleDeg          = 170.0;     // Maximum interior angle (deg) above which face is classified as Cap
 inline constexpr double kDefaultCoplanarDot          = 0.95;      // Minimum normal alignment dot product for coplanar flips
-inline constexpr double kDefaultMinNormalDot         = 0.1;       // Minimum n_old . n_new around collapsed edges to prevent inversion
+inline constexpr double kDefaultMinNormalDot         = 0.9;       // Minimum n_old . n_new around collapsed edges (about 25 degrees of tilt): 0.1 let a corner snap tilt a wall by 72 degrees and cost 9 % of a CAD part's volume
 inline constexpr double kDefaultCreaseAngleDeg       = 60.0;      // Dihedral angle (deg) protecting feature edges during PMP cleanup
 inline constexpr double kDefaultPreviewOffsetFactor  = 1.0e-4;    // Patch normal offset factor along bbox diagonal (prevents Z-fighting)
 inline constexpr int    kDefaultPreviewRings         = 2;         // Adjacent topological vertex rings extracted for preview
@@ -68,6 +68,9 @@ inline constexpr int    kDefaultMaxBatchIterations   = 10;        // Max iterati
 inline constexpr double kDefaultClusterMinNormalDot  = 0.5;       // Micro-cluster collapse: minimum n_old . n_new over significant surviving faces
 inline constexpr double kDefaultTinyFaceAreaFraction = 1.0e-3;    // Micro-cluster collapse: faces below this fraction of the largest neighbor area ignore the normal test (noise)
 inline constexpr int    kDefaultMaxMicroClusterSize  = 64;        // Micro-cluster collapse: maximum vertices gathered around a needle's short edge
+inline constexpr double kDefaultFlipFlatDot          = 0.9999;    // Delaunay flip pass: two faces count as one flat patch when n_a . n_b >= this (about 0.8 degrees); creases never flip
+inline constexpr double kDefaultHealMaxVolumeChange  = 0.005;     // Safety net: a heal that changes a closed mesh's volume by more than this share (0.5 %) is rejected
+inline constexpr double kDefaultHealMaxDeviation     = 0.01;      // Safety net: a heal that moves the surface by more than this share (1 %) of the bounding-box diagonal is rejected
 
 // -----------------------------------------------------------------------------
 // Intersecting-Face Repair (per island and Repair All)

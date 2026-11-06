@@ -1,6 +1,8 @@
 #include "repair/SliverHealer.hpp"
 #include "core/Constants.hpp"
 #include "diagnostics/ReliableNormal.hpp"
+#include "diagnostics/MeshChecks.hpp"
+#include "repair/RepairMetrics.hpp"
 #include "repair/TopologyCleanup.hpp"
 
 #include <CGAL/boost/graph/Euler_operations.h>
@@ -14,11 +16,13 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <exception>
 #include <limits>
 #include <numeric>
 #include <optional>
 #include <set>
+#include <unordered_set>
 #include <span>
 #include <vector>
 
@@ -335,6 +339,50 @@ bool canDissolveCollinearVertex(
     return true;
 }
 
+// The (up to) two faces on either side of edge(h); the second is null on an open border.
+std::array<CgalFaceIndex, 2> facesOfEdge(const CgalSurfaceMesh& mesh, CgalHalfedgeIndex h) {
+    return {mesh.face(h), mesh.is_border(mesh.opposite(h)) ? CgalSurfaceMesh::null_face() : mesh.face(mesh.opposite(h))};
+}
+
+// Can the cap vertex `apex` move by `move` (onto its corner) without bending the surface? Yes when every face
+// around it other than `ignored` lies in one plane (within settings.coplanarDot, the test of
+// `canDissolveCollinearVertex`), or when it slides along a straight crease: every such face contains the move
+// direction, so each stays in its own plane. At a corner where a wall meets the edge (a T-junction of two or
+// three planes) neither holds: the wall's normal points along the move, and the move would tilt it. An
+// open-border apex is judged on the faces it has.
+bool apexMoveKeepsSurface(
+    const CgalSurfaceMesh& mesh,
+    CgalVertexIndex apex,
+    std::array<CgalFaceIndex, 2> ignored,
+    const Eigen::Vector3d& move,
+    const SliverHealerSettings& settings,
+    std::string* reason) {
+    std::vector<Eigen::Vector3d> normals;
+    for (const CgalFaceIndex adj : CGAL::faces_around_target(mesh.halfedge(apex), mesh)) {
+        if (adj == CgalSurfaceMesh::null_face() || adj == ignored[0] || adj == ignored[1]) {
+            continue;
+        }
+        const Triangle tri = facePoints(mesh, adj);
+        if (hasReliableNormal(tri)) {
+            normals.push_back(areaNormal(tri).normalized());
+        }
+    }
+    const bool flat = std::all_of(normals.begin(), normals.end(), [&](const Eigen::Vector3d& n) {
+        return n.dot(normals.front()) >= settings.coplanarDot;
+    });
+    if (flat) {
+        return true;
+    }
+    const double sideways = std::sqrt(std::max(0.0, 1.0 - settings.coplanarDot * settings.coplanarDot));
+    const bool slides = move.norm() > 0.0 && std::all_of(normals.begin(), normals.end(), [&](const Eigen::Vector3d& n) {
+        return std::abs(n.dot(move.normalized())) <= sideways;
+    });
+    if (!slides && reason) {
+        *reason = "The cap vertex is a corner where faces of different planes meet; moving it would tilt them.";
+    }
+    return slides;
+}
+
 // Smallest n_old . n_new over faces surviving the collapse of edge(h) to `newPos`
 // (-infinity if a non-degenerate face would become degenerate).
 double worstNormalDot(const CgalSurfaceMesh& mesh, CgalHalfedgeIndex h, const Eigen::Vector3d& newPos) {
@@ -481,6 +529,10 @@ bool canSnapCollinear(
         }
         const std::array<Eigen::Vector3d, 3> candidates{pointOf(mesh, corners[i]), {}, {}};
         std::string err;
+        if (!apexMoveKeepsSurface(mesh, apex, facesOfEdge(mesh, arms[i]), candidates[0] - pointOf(mesh, apex), settings, &err)) {
+            lastErr = std::move(err);
+            continue;
+        }
         if (canCollapseEdgeSafely(mesh, arms[i], candidates, 1, settings, nullptr, &err)) {
             return true;
         }
@@ -782,6 +834,132 @@ bool flipLongestEdge(
     return false;
 }
 
+double angleAt(const Eigen::Vector3d& apex, const Eigen::Vector3d& p, const Eigen::Vector3d& q) {
+    const Eigen::Vector3d u = p - apex;
+    const Eigen::Vector3d v = q - apex;
+    return std::atan2(u.cross(v).norm(), u.dot(v));
+}
+
+// Lawson's rule on one interior edge: flip when the two angles opposite it add up to more than 180 degrees
+// (the edge is not locally Delaunay) and the flip keeps the surface: a flat patch (the two faces within
+// settings.flipFlatDot, never a crease), a convex quad, and both new faces facing the old way.
+bool shouldFlipForDelaunay(
+    const CgalSurfaceMesh& mesh,
+    CgalHalfedgeIndex h,
+    const SliverHealerSettings& settings,
+    const std::unordered_set<std::uint32_t>* allowedFaces) {
+    const CgalHalfedgeIndex oh = mesh.opposite(h);
+    if (mesh.is_border(h) || mesh.is_border(oh)) {
+        return false;
+    }
+    if (allowedFaces && (!allowedFaces->count(mesh.face(h).idx()) || !allowedFaces->count(mesh.face(oh).idx()))) {
+        return false;
+    }
+    const CgalVertexIndex s = mesh.source(h);
+    const CgalVertexIndex t = mesh.target(h);
+    const CgalVertexIndex a = mesh.target(mesh.next(h));
+    const CgalVertexIndex o = mesh.target(mesh.next(oh));
+    if (a == o || mesh.halfedge(a, o) != CgalSurfaceMesh::null_halfedge()) {
+        return false;
+    }
+    if (const std::optional<PinMap> pins = pinMap(mesh); isPinned(pins, s) && isPinned(pins, t)) {
+        return false;
+    }
+    const Eigen::Vector3d ps = pointOf(mesh, s);
+    const Eigen::Vector3d pt = pointOf(mesh, t);
+    const Eigen::Vector3d pa = pointOf(mesh, a);
+    const Eigen::Vector3d po = pointOf(mesh, o);
+
+    const Triangle f0{ps, pt, pa};
+    const Triangle f1{pt, ps, po};
+    if (!hasReliableNormal(f0) || !hasReliableNormal(f1)) {
+        return false;
+    }
+    const Eigen::Vector3d n0 = areaNormal(f0).normalized();
+    const double flatDot = std::max(settings.flipFlatDot, std::cos(settings.creaseAngleDeg * kDegToRad));
+    if (n0.dot(areaNormal(f1).normalized()) < flatDot) {
+        return false;
+    }
+    const Triangle t1{ps, po, pa};
+    const Triangle t2{po, pt, pa};
+    if (!hasReliableNormal(t1) || !hasReliableNormal(t2) ||
+        areaNormal(t1).normalized().dot(n0) < flatDot || areaNormal(t2).normalized().dot(n0) < flatDot) {
+        return false;
+    }
+    constexpr double kAngleEps = 1.0e-9;
+    return angleAt(pa, ps, pt) + angleAt(po, pt, ps) > kPi + kAngleEps;
+}
+
+// Delaunay flip pass: flips edges of `seeds` (and, as flips ripple outward, the edges around each flip) until
+// every one is locally Delaunay. On the flat part of a CAD mesh this turns fans of long needles into compact
+// triangles without moving a single vertex. Returns the number of flips; `allowedFaces` (if any) keeps the
+// pass inside a face scope.
+//
+// Termination: each flip strictly raises the opposite-angle sum test, so in exact arithmetic the pass ends on
+// its own and an edge, once flipped away, never comes back (Lawson). Rounding on a nearly flat, slightly warped
+// patch could still flip two edges back and forth, so a flip that would recreate an edge this pass already
+// removed is refused. That makes the pass finite without capping how many flips a large fan may need.
+std::size_t delaunayFlipPass(
+    CgalSurfaceMesh& mesh,
+    const std::vector<CgalFaceIndex>& seeds,
+    const SliverHealerSettings& settings,
+    const std::unordered_set<std::uint32_t>* allowedFaces,
+    const std::stop_token& stop) {
+    if (!settings.delaunayFlipFirst || seeds.empty()) {
+        return 0;
+    }
+    std::vector<CgalEdgeIndex> work;
+    std::vector<std::uint8_t> queued(mesh.num_edges(), 0);
+    const auto push = [&](CgalEdgeIndex e) {
+        if (e.idx() < queued.size() && queued[e.idx()] == 0 && !mesh.is_removed(e)) {
+            queued[e.idx()] = 1;
+            work.push_back(e);
+        }
+    };
+    for (const CgalFaceIndex f : seeds) {
+        if (isLiveFace(mesh, f)) {
+            for (const CgalHalfedgeIndex h : faceHalfedges(mesh, f)) {
+                push(mesh.edge(h));
+            }
+        }
+    }
+    const auto pairKey = [](CgalVertexIndex u, CgalVertexIndex v) {
+        const std::uint64_t lo = std::min(u.idx(), v.idx());
+        const std::uint64_t hi = std::max(u.idx(), v.idx());
+        return (hi << 32) | lo;
+    };
+    std::unordered_set<std::uint64_t> flippedAway; // vertex pairs whose edge this pass removed
+    std::size_t flips = 0;
+    while (!work.empty()) {
+        if (stop.stop_requested()) {
+            break;
+        }
+        const CgalEdgeIndex e = work.back();
+        work.pop_back();
+        queued[e.idx()] = 0;
+        const CgalHalfedgeIndex h = mesh.halfedge(e);
+        if (!shouldFlipForDelaunay(mesh, h, settings, allowedFaces)) {
+            continue;
+        }
+        const CgalVertexIndex apex = mesh.target(mesh.next(h));
+        const CgalVertexIndex opposite = mesh.target(mesh.next(mesh.opposite(h)));
+        if (flippedAway.count(pairKey(apex, opposite)) != 0) {
+            continue; // would undo an earlier flip: a rounding tie, not an improvement
+        }
+        flippedAway.insert(pairKey(mesh.source(h), mesh.target(h)));
+        CGAL::Euler::flip_edge(h, mesh);
+        ++flips;
+        for (const CgalHalfedgeIndex hh : {mesh.halfedge(e), mesh.opposite(mesh.halfedge(e))}) {
+            for (const CgalHalfedgeIndex hf : faceHalfedges(mesh, mesh.face(hh))) {
+                if (mesh.edge(hf) != e) {
+                    push(mesh.edge(hf));
+                }
+            }
+        }
+    }
+    return flips;
+}
+
 bool collapseShortestEdge(
     CgalSurfaceMesh& mesh,
     CgalFaceIndex f,
@@ -831,6 +1009,9 @@ bool snapCollinearCollapse(CgalSurfaceMesh& mesh, CgalFaceIndex f, const SliverH
             continue;
         }
         const std::array<Eigen::Vector3d, 3> candidates{pointOf(mesh, corners[i]), {}, {}};
+        if (!apexMoveKeepsSurface(mesh, apex, facesOfEdge(mesh, arms[i]), candidates[0] - pointOf(mesh, apex), settings, &status)) {
+            continue;
+        }
         if (collapseEdgeSafely(mesh, arms[i], candidates, 1, settings, status)) {
             status = "Snapped the cap vertex onto its corner vertex.";
             return true;
@@ -1227,6 +1408,62 @@ bool collapseShortestEdgeRaw(
     return true;
 }
 
+std::string formatNumber(const char* format, double value) {
+    char buffer[64];
+    std::snprintf(buffer, sizeof buffer, format, value);
+    return buffer;
+}
+
+// Safety net: compares the healed mesh with the input. A heal that moves the surface by more than
+// settings.maxDeviationFraction of the bounding-box diagonal, or (closed input only) changes the volume by more
+// than settings.maxVolumeChange, is thrown away: `results` goes back to the unchanged input and says why.
+// Volume is a signed sum over the faces, so it only means something for a closed mesh; an open input (holes)
+// is judged on the deviation alone, which also catches the large moves a volume check would on a closed one.
+// `volumeComparable` is false when the healer had to read the input as a polygon soup: that re-winds flipped
+// faces and splits non-manifold edges, which changes the signed volume without damaging the shape.
+// Only the healed surface's distance from the input counts: the healer removes nothing but zero-area flaps.
+bool rejectUnsafeHeal(
+    const Mesh& input,
+    RepairResults& results,
+    const SliverHealerSettings& settings,
+    const std::stop_token& stop,
+    bool volumeComparable) {
+    if (!settings.enableSafetyNet || stop.stop_requested()) {
+        return false;
+    }
+    const RepairMetrics metrics = computeRepairGeometryMetrics(input, results.mesh, stop);
+    if (stop.stop_requested()) {
+        return false;
+    }
+    const bool closed = checkOpenEdges(input, stop).infoCount == 0;
+    const double volumeBase = std::abs(metrics.volumeBefore);
+    const double volumeChange = volumeBase > 0.0 ? std::abs(metrics.volumeAfter - metrics.volumeBefore) / volumeBase : 0.0;
+    const double deviationLimit = settings.maxDeviationFraction * input.boundingBox().diagonal();
+
+    const bool badVolume = closed && volumeComparable && volumeChange > settings.maxVolumeChange;
+    const bool badDeviation = metrics.maxDeviation > deviationLimit;
+    if (!badVolume && !badDeviation) {
+        return false;
+    }
+
+    const std::string unit(unitSymbol(input.fileUnit));
+    std::string message = "Thin-face healing was not applied because it would have damaged the shape:";
+    if (badVolume) {
+        message += " it would change the volume by " + formatNumber("%.2f", 100.0 * volumeChange) + " % (limit " +
+                   formatNumber("%.2f", 100.0 * settings.maxVolumeChange) + " %)";
+    }
+    if (badDeviation) {
+        message += std::string(badVolume ? " and" : "") + " it would move the surface by up to " +
+                   formatNumber("%.3g", metrics.maxDeviation) + " " + unit + " (limit " + formatNumber("%.3g", deviationLimit) + " " + unit + ")";
+    }
+    message += ". The mesh was left unchanged.";
+    const bool usedPmp = results.usedPmpCleanup;
+    leaveUnchanged(input, results);
+    results.usedPmpCleanup = usedPmp;
+    results.statusMessage = std::move(message);
+    return true;
+}
+
 } // namespace
 
 const char* sliverTypeLabel(SliverType type) noexcept {
@@ -1337,6 +1574,9 @@ SliverAnalysis SliverHealer::analyzeFace(
         analysis.recommendedAction = HealAction::None;
         break;
     case SliverType::Needle:
+        // A flip that leaves two healthy triangles moves no vertex; a collapse can just make another needle
+        analysis.recommendedAction = analysis.longestEdgeFlippable ? HealAction::FlipLongestEdge : HealAction::CollapseShortestEdge;
+        break;
     case SliverType::Microscopic:
         analysis.recommendedAction = HealAction::CollapseShortestEdge;
         break;
@@ -1634,8 +1874,59 @@ RepairResults SliverHealer::healFaces(
 
     const std::size_t initialCount = faces.size();
     std::size_t healed = 0;
+    // Flips may also use the faces across each listed face's edges: a thin face almost always flips with a
+    // neighbour that is not thin itself. Only across an edge inside the scope: with a pinned scope (Fix All on
+    // part of the mesh) an edge with both ends pinned may border a face outside it, so that face is never added.
+    std::unordered_set<std::uint32_t> scopeFaces;
+    std::unordered_set<std::uint32_t> listed; // `faces`: the ones the sweeps repair
+    const std::optional<PinMap> scopePins = pinMap(surface);
+    const auto addNeighbours = [&](CgalFaceIndex f) {
+        for (const CgalHalfedgeIndex h : faceHalfedges(surface, f)) {
+            const CgalFaceIndex across = surface.face(surface.opposite(h));
+            if (across != CgalSurfaceMesh::null_face() &&
+                !(isPinned(scopePins, surface.source(h)) && isPinned(scopePins, surface.target(h)))) {
+                scopeFaces.insert(across.idx());
+            }
+        }
+    };
+    for (const CgalFaceIndex f : faces) {
+        listed.insert(f.idx());
+        scopeFaces.insert(f.idx());
+        addNeighbours(f);
+    }
+    // A face of the scope that a flip or a repair left thin joins the list (healed in the next sweep of this
+    // call instead of waiting for another Fix All pass)
+    const auto listIfThin = [&](CgalFaceIndex g) {
+        if (!listed.count(g.idx()) && isLiveFace(surface, g) && evaluateCgalFace(surface, g, thresholds).isDefective()) {
+            listed.insert(g.idx());
+            scopeFaces.insert(g.idx());
+            faces.push_back(g);
+            addNeighbours(g);
+        }
+    };
     for (int iter = 0; iter < settings.maxBatchIterations; ++iter) {
         bool changed = false;
+
+        // Delaunay flips first (the listed faces and their neighbours only): they move no vertex.
+        std::vector<CgalFaceIndex> thinSeeds;
+        for (const CgalFaceIndex f : faces) {
+            if (isLiveFace(surface, f) && evaluateCgalFace(surface, f, thresholds).isDefective()) {
+                thinSeeds.push_back(f);
+            }
+        }
+        const std::size_t lawsonFlips = delaunayFlipPass(surface, thinSeeds, settings, &scopeFaces, options.stopToken);
+        results.edgeFlips += static_cast<int>(lawsonFlips);
+        healed += lawsonFlips;
+        changed = lawsonFlips > 0;
+        if (lawsonFlips > 0) {
+            // A flip can pass a needle on to the neighbour it flipped with
+            const std::vector<std::uint32_t> touched(scopeFaces.begin(), scopeFaces.end());
+            for (const std::uint32_t g : touched) {
+                listIfThin(CgalFaceIndex(g));
+            }
+        }
+        // Thin faces a repair leaves around the vertices it kept
+        std::vector<CgalFaceIndex> madeThin;
         for (const CgalFaceIndex f : faces) {
             if (options.stopToken.stop_requested()) {
                 cancel(mesh, results);
@@ -1648,14 +1939,37 @@ RepairResults SliverHealer::healFaces(
             if (a.recommendedAction == HealAction::None) {
                 continue;
             }
+            std::array<CgalVertexIndex, 3> corners;
+            std::size_t c = 0;
+            for (const CgalVertexIndex v : CGAL::vertices_around_face(surface.halfedge(f), surface)) {
+                corners[c++ % 3] = v;
+            }
             for (const HealAction action : fallbackOrder(a.recommendedAction)) {
                 if (applyHealAction(surface, f, action, settings, nullptr, thresholds)) {
                     countAction(results, action);
                     ++healed;
                     changed = true;
+                    // A pinned corner sits on the rim of the scope: faces around it may be outside it. Every
+                    // face around a corner that is not pinned is in scope.
+                    const std::optional<PinMap> pins = pinMap(surface);
+                    for (const CgalVertexIndex v : corners) {
+                        if (surface.is_removed(v) || surface.halfedge(v) == CgalSurfaceMesh::null_halfedge() ||
+                            isPinned(pins, v)) {
+                            continue;
+                        }
+                        for (const CgalFaceIndex g : CGAL::faces_around_target(surface.halfedge(v), surface)) {
+                            if (isLiveFace(surface, g) && !listed.count(g.idx()) &&
+                                evaluateCgalFace(surface, g, thresholds).isDefective()) {
+                                madeThin.push_back(g);
+                            }
+                        }
+                    }
                     break;
                 }
             }
+        }
+        for (const CgalFaceIndex g : madeThin) {
+            listIfThin(g);
         }
         if (!changed) {
             break;
@@ -1694,6 +2008,9 @@ RepairResults SliverHealer::healFaces(
         if (rawSaved) {
             results.mesh = std::move(rawMesh);
             results.remainingThinFaces = ThinFaceChecker::check(results.mesh, thresholds).numDefects();
+            if (rejectUnsafeHeal(mesh, results, settings, options.stopToken, tracked)) {
+                return results;
+            }
             results.success = true;
             results.statusMessage = "Repaired " + std::to_string(healed) + " of " + std::to_string(initialCount) +
                                     " selected faces (" + std::to_string(results.remainingThinFaces) + " thin faces remaining).";
@@ -1742,6 +2059,9 @@ RepairResults SliverHealer::healFaces(
         }
         results.remainingThinFaces = ThinFaceChecker::check(results.mesh, thresholds).numDefects();
     }
+    if (rejectUnsafeHeal(mesh, results, settings, options.stopToken, tracked)) {
+        return results;
+    }
     results.success = true;
     healed = initialCount > remainingDefects ? initialCount - remainingDefects : healed;
     results.statusMessage = "Repaired " + std::to_string(healed) + " of " + std::to_string(initialCount) +
@@ -1771,6 +2091,12 @@ RepairResults SliverHealer::healAllThinFaces(
 
     for (int iter = 0; iter < settings.maxBatchIterations; ++iter) {
         bool changed = false;
+
+        // Pass 0: Delaunay flips on the flat parts of the surface, before anything collapses. No vertex moves,
+        // so a CAD part loses no volume; fans of needles turn into compact triangles.
+        const std::size_t lawsonFlips = delaunayFlipPass(surface, collectThinFaces(surface, thresholds), settings, nullptr, stop);
+        results.edgeFlips += static_cast<int>(lawsonFlips);
+        changed = lawsonFlips > 0;
 
         // Pass 1: flip coplanar caps and remove dangling flaps.
         for (const CgalFaceIndex f : collectThinFaces(surface, thresholds)) {
@@ -1863,6 +2189,9 @@ RepairResults SliverHealer::healAllThinFaces(
             }
         }
         results.remainingThinFaces = ThinFaceChecker::check(results.mesh, thresholds).numDefects();
+    }
+    if (rejectUnsafeHeal(mesh, results, settings, stop, tracked)) {
+        return results;
     }
     results.success = results.remainingThinFaces < results.initialThinFaces || results.initialThinFaces == 0;
     results.statusMessage = "Healed " + std::to_string(results.initialThinFaces - std::min(results.initialThinFaces, results.remainingThinFaces)) +

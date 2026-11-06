@@ -485,7 +485,7 @@ TEST_CASE("Phase 3 cleans up a mesh merged by mergeShells", "[repair][fixall][cl
     const ogun::FixAllStepReport* slivers = stepOf(result, FixAllStageId::Slivers, 1, FixAllPhase::Cleanup);
     REQUIRE(slivers != nullptr);
     REQUIRE(slivers->accepted());
-    REQUIRE(slivers->detail == "Healed 16 of 16 cut slivers (0 flips, 8 collapses)");
+    REQUIRE(slivers->detail == "Healed 16 of 16 cut slivers (2 flips, 8 collapses)");
     REQUIRE(result.priorityAfter <= mergedP);
     REQUIRE(result.countsAfter.thinFaces < mergedP.thin);
     REQUIRE(ogun::shellsLargestFirst(result.mesh).size() == 1);
@@ -515,7 +515,7 @@ TEST_CASE("Phase 3 cleans up a mesh merged by mergeShells", "[repair][fixall][cl
         const ogun::FixAllResult real = ogun::runFixAll(cubes, FixAllScope::whole(cubes), merge);
         REQUIRE(stepOf(real, FixAllStageId::MergeShells, 1, FixAllPhase::Merge)->accepted());
         REQUIRE(stepOf(real, FixAllStageId::Slivers, 1, FixAllPhase::Cleanup)->detail ==
-                "Healed 16 of 16 cut slivers (0 flips, 8 collapses)");
+                "Healed 16 of 16 cut slivers (2 flips, 8 collapses)");
         REQUIRE(ogun::meshGeometryHash(real.mesh) == ogun::meshGeometryHash(result.mesh));
     }
 }

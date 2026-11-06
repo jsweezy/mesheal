@@ -65,6 +65,20 @@ struct SliverHealerSettings {
     double tinyFaceAreaFraction = settings::kDefaultTinyFaceAreaFraction;
     /// Micro-cluster collapse: maximum number of vertices gathered around a needle's short edge.
     int maxMicroClusterSize = settings::kDefaultMaxMicroClusterSize;
+    /// Run a Delaunay flip pass over the thin faces' edges before any collapse (`healAllThinFaces`, `healFaces`).
+    bool delaunayFlipFirst = true;
+    /// Delaunay flip pass: minimum n_a . n_b for two faces to be one flat patch. Edges whose dihedral exceeds
+    /// `creaseAngleDeg`, border edges and edges between two pinned vertices never flip, and no vertex moves.
+    double flipFlatDot = settings::kDefaultFlipFlatDot;
+    /// Safety net on `healAllThinFaces` / `healFaces`: reject (return the input unchanged) a heal that moves
+    /// the surface too far or, on a closed input, changes the volume too much.
+    bool enableSafetyNet = true;
+    /// Safety net: largest allowed |volume change| as a share of the input volume (closed inputs only: an
+    /// open mesh has no meaningful volume, so only the deviation limit applies).
+    double maxVolumeChange = settings::kDefaultHealMaxVolumeChange;
+    /// Safety net: largest allowed distance of the healed surface from the input, as a share of the input's
+    /// bounding-box diagonal.
+    double maxDeviationFraction = settings::kDefaultHealMaxDeviation;
 };
 
 /// Geometric and topological analysis of a single face.
@@ -189,9 +203,12 @@ public:
         const SliverHealerSettings& settings = {},
         const SliverHealOptions& options = {});
 
-    /// Batch repair: (1) flip coplanar caps and remove dangling flaps, (2) collapse needles,
-    /// creased caps and microscopic faces, repeated until convergence, then (3) a
-    /// `PMP::remove_almost_degenerate_faces` cleanup pass that preserves feature creases.
+    /// Batch repair: (0) Delaunay flips on the flat parts around the thin faces (no vertex moves), (1) flip
+    /// coplanar caps and remove dangling flaps, (2) collapse needles, creased caps and microscopic faces,
+    /// repeated until convergence, then (3) a `PMP::remove_almost_degenerate_faces` cleanup pass that preserves
+    /// feature creases. Finally a safety net compares the result with the input: if it would move the surface
+    /// or (closed input) the volume too far (`SliverHealerSettings`), the input is returned unchanged,
+    /// `success` is false and `statusMessage` says by how much.
     [[nodiscard]] static RepairResults healAllThinFaces(
         const Mesh& mesh,
         const ThinFaceThresholds& thresholds = {},
