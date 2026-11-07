@@ -204,14 +204,14 @@ void PolyscopeGui::drawShellTable(float height) {
             if (!known) {
                 ImGui::TextDisabled("-");
             } else {
-                const ImVec4 color = health[s].total == 0 ? gui::kOkColor : gui::kDefectColor;
+                const ImVec4 color = health[s].total == 0 ? gui::okColor() : gui::defectColor();
                 rowDot(color);
                 ImGui::SameLine(0.0f, 2.0f);
                 ImGui::TextColored(color, "%s", withThousands(health[s].total).c_str());
             }
             if (shell.nestedIn >= 0) {
                 ImGui::SameLine();
-                ImGui::TextColored(gui::kRunningColor, "inside %s", shellLabel(static_cast<std::size_t>(shell.nestedIn)).c_str());
+                ImGui::TextColored(gui::runningColor(), "inside %s", shellLabel(static_cast<std::size_t>(shell.nestedIn)).c_str());
             }
             ImGui::PopID();
         }
@@ -228,11 +228,11 @@ void PolyscopeGui::drawShellRowTooltip(std::size_t shell) {
     } else {
         const ShellHealth& h = health[shell];
         if (h.total == 0) {
-            ImGui::TextColored(gui::kOkColor, "Clean: nothing to fix inside this shell.");
+            ImGui::TextColored(gui::okColor(), "Clean: nothing to fix inside this shell.");
         }
         for (const DefectCategory category : kAllDefectCategories) {
             if (h.counts[categoryIndex(category)] > 0) {
-                ImGui::TextColored(gui::kDefectColor, "%s: %s", categoryInfo(category).name,
+                ImGui::TextColored(gui::defectColor(), "%s: %s", categoryInfo(category).name,
                                    withThousands(h.counts[categoryIndex(category)]).c_str());
             }
         }
@@ -248,7 +248,7 @@ void PolyscopeGui::drawShellRowTooltip(std::size_t shell) {
         }
     }
     if (info.nestedIn >= 0) {
-        ImGui::TextColored(gui::kRunningColor, "Lies inside shell %s without crossing it: often a hidden internal part.",
+        ImGui::TextColored(gui::runningColor(), "Lies inside shell %s without crossing it: often a hidden internal part.",
                            shellLabel(static_cast<std::size_t>(info.nestedIn)).c_str());
     }
     ImGui::TextDisabled("Double-click to frame. Right-click for actions.");
@@ -379,7 +379,7 @@ void PolyscopeGui::drawMergeShellsOperator() {
     const MergeCheck& selfCrossings = list.checks[MergeChecklist::kNoSelfCrossings];
     ImGui::PushTextWrapPos(0.0f);
     for (const std::string& problem : list.problems) {
-        ImGui::TextColored(gui::kDefectColor, "%s", problem.c_str());
+        ImGui::TextColored(gui::defectColor(), "%s", problem.c_str());
     }
     if (!list.cavities.empty()) {
         std::string kept;
@@ -395,10 +395,10 @@ void PolyscopeGui::drawMergeShellsOperator() {
         ImGui::TextDisabled("#%zu floats inside a kept cavity: left as it is.", island + 1);
     }
     if (list.problems.empty() && list.operands.size() < 2) {
-        ImGui::TextColored(gui::kDefectColor, "Fewer than two selected shells face outward: nothing to unite.");
+        ImGui::TextColored(gui::defectColor(), "Fewer than two selected shells face outward: nothing to unite.");
     }
     if (!selfCrossings.failing.empty()) {
-        ImGui::TextColored(gui::kDefectColor, "Shells that cross themselves can still be merged, but the union may "
+        ImGui::TextColored(gui::defectColor(), "Shells that cross themselves can still be merged, but the union may "
                                                "be wrong where they do (Repair All Intersections fixes them first).");
     }
     ImGui::PopTextWrapPos();

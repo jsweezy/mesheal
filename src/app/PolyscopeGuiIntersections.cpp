@@ -126,7 +126,7 @@ void edgeLengthHints(const AppController& controller, double distance, bool warn
         return;
     }
     if (ratio >= 1.0) {
-        ImGui::PushStyleColor(ImGuiCol_Text, gui::kDefectColor);
+        ImGui::PushStyleColor(ImGuiCol_Text, gui::defectColor());
         ImGui::TextWrapped("Above the mean edge, so %s",
                            ratio < settings::kMergeCollapseWarnRatio ? "many edges will collapse" : "whole areas will collapse");
         ImGui::PopStyleColor();
@@ -268,7 +268,7 @@ void PolyscopeGui::drawIslandScorecard() {
     const IslandRepairPreview& preview = controller_.islandPreview();
     if (!preview.valid) {
         if (!preview.statusMessage.empty()) {
-            ImGui::PushStyleColor(ImGuiCol_Text, gui::kErrorColor);
+            ImGui::PushStyleColor(ImGuiCol_Text, gui::errorColor());
             ImGui::TextWrapped("Not possible: %s", preview.statusMessage.c_str());
             ImGui::PopStyleColor();
         }
@@ -281,13 +281,13 @@ void PolyscopeGui::drawIslandScorecard() {
     tooltip("Faces removed / added, the signed volume change of the shell, and the smallest angle of the new "
             "faces (small angles are new slivers).");
     if (preview.newCrossings > 0) {
-        ImGui::TextColored(gui::kErrorColor, "Creates %s new intersecting faces: Commit is disabled.",
+        ImGui::TextColored(gui::errorColor(), "Creates %s new intersecting faces: Commit is disabled.",
                            withThousands(preview.newCrossings).c_str());
     } else if (preview.crossingsAfter > 0) {
-        ImGui::TextColored(gui::kOkColor, "No new crossings (%s intersecting faces left elsewhere in the shell).",
+        ImGui::TextColored(gui::okColor(), "No new crossings (%s intersecting faces left elsewhere in the shell).",
                            withThousands(preview.crossingsAfter).c_str());
     } else {
-        ImGui::TextColored(gui::kOkColor, "No new crossings; the shell is free of crossings.");
+        ImGui::TextColored(gui::okColor(), "No new crossings; the shell is free of crossings.");
     }
     if (!preview.statusMessage.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
@@ -347,7 +347,7 @@ void PolyscopeGui::drawRepairAllOperator() {
     }
     if ((slot == ToolSlot::AlphaWrap || slot == ToolSlot::VoxelHealRemesh || slot == ToolSlot::PrecisionIsosurface) &&
         controller_.shells().scoped()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, gui::kDefectColor);
+        ImGui::PushStyleColor(ImGuiCol_Text, gui::defectColor());
         ImGui::TextWrapped("Scope: %s of %s shells selected (unselected shells are left untouched).",
                            withThousands(controller_.shells().selectedCount()).c_str(),
                            withThousands(controller_.shells().size()).c_str());
@@ -443,7 +443,7 @@ void PolyscopeGui::drawRepairAllOperator() {
     if (running) {
         ImGui::SameLine();
         const std::optional<GlobalRepairMethod> current = controller_.globalRepairCurrentMethod();
-        ImGui::TextColored(gui::kRunningColor, "%s...", current ? displayGlobalMethodName(*current) : "Working");
+        ImGui::TextColored(gui::runningColor(), "%s...", current ? displayGlobalMethodName(*current) : "Working");
     }
 
     drawGlobalCandidateTable();
@@ -477,7 +477,7 @@ void PolyscopeGui::drawRepairAllOperator() {
                            m.elapsedMs / 1000.0);
         const std::string volumeUnit = dimensionSuffix(ValueDimension::Volume, controller_.fileUnit());
         const bool bigVolumeChange = std::abs(m.volumeChangePercent()) >= settings::kVolumeChangeWarnPercent;
-        ImGui::PushStyleColor(ImGuiCol_Text, bigVolumeChange ? gui::kDefectColor : ImGui::GetStyleColorVec4(ImGuiCol_Text));
+        ImGui::PushStyleColor(ImGuiCol_Text, bigVolumeChange ? gui::defectColor() : ImGui::GetStyleColorVec4(ImGuiCol_Text));
         ImGui::TextWrapped("Volume %s -> %s %s (%s), faces %s -> %s.", significant(m.volumeBefore).c_str(),
                            significant(m.volumeAfter).c_str(), volumeUnit.c_str(), percentText(m.volumeChangePercent()).c_str(),
                            withThousands(static_cast<std::size_t>(m.facesBefore)).c_str(),
@@ -488,7 +488,7 @@ void PolyscopeGui::drawRepairAllOperator() {
                     "small features). Compare Result and Original, or Color by deviation, before applying.");
         }
         if (m.intersectingFacesAfter > m.intersectingFacesBefore) {
-            ImGui::PushStyleColor(ImGuiCol_Text, gui::kDefectColor);
+            ImGui::PushStyleColor(ImGuiCol_Text, gui::defectColor());
             ImGui::TextWrapped("Intersecting faces %s -> %s: the repair makes faces cross.",
                                withThousands(m.intersectingFacesBefore).c_str(), withThousands(m.intersectingFacesAfter).c_str());
             ImGui::PopStyleColor();
@@ -499,7 +499,7 @@ void PolyscopeGui::drawRepairAllOperator() {
             ImGui::PopStyleColor();
         }
         if (!controller_.candidateIsCurrent(*shown)) {
-            ImGui::TextColored(gui::kDefectColor, "Computed with other settings: Preview again to update.");
+            ImGui::TextColored(gui::defectColor(), "Computed with other settings: Preview again to update.");
         }
     }
 
@@ -783,25 +783,25 @@ void PolyscopeGui::drawGlobalCandidateTable() {
             ImGui::Text("%s -> %s", withThousands(m.shellsBefore).c_str(), withThousands(m.shellsAfter).c_str());
             ImGui::TableSetColumnIndex(2);
             if (m.watertight()) {
-                ImGui::TextColored(gui::kOkColor, "yes");
+                ImGui::TextColored(gui::okColor(), "yes");
             } else {
-                ImGui::TextColored(gui::kDefectColor, "no");
+                ImGui::TextColored(gui::defectColor(), "no");
                 tooltip((withThousands(m.openEdgesAfter) + " open, " + withThousands(m.nonManifoldEdgesAfter) +
                          " non-manifold edges").c_str());
             }
             ImGui::TableSetColumnIndex(3);
             if (thin) {
-                ImGui::TextColored(m.thinFacesAfter == 0 ? gui::kOkColor : gui::kDefectColor, "%s (%s)",
+                ImGui::TextColored(m.thinFacesAfter == 0 ? gui::okColor() : gui::defectColor(), "%s (%s)",
                                    withThousands(m.thinFacesAfter).c_str(), withThousands(m.thinFacesBefore).c_str());
             } else if (holes) {
-                ImGui::TextColored(m.openEdgesAfter == 0 ? gui::kOkColor : gui::kDefectColor, "%s (%s)",
+                ImGui::TextColored(m.openEdgesAfter == 0 ? gui::okColor() : gui::defectColor(), "%s (%s)",
                                    withThousands(m.openEdgesAfter).c_str(), withThousands(m.openEdgesBefore).c_str());
                 tooltip((withThousands(m.intersectingFacesAfter) + " intersecting faces after (" +
                          withThousands(m.intersectingFacesBefore) + " before)").c_str());
             } else if (m.intersectingFacesAfter == 0) {
-                ImGui::TextColored(gui::kOkColor, "0 (%s)", withThousands(m.intersectingFacesBefore).c_str());
+                ImGui::TextColored(gui::okColor(), "0 (%s)", withThousands(m.intersectingFacesBefore).c_str());
             } else {
-                ImGui::TextColored(gui::kDefectColor, "%s (%s)", withThousands(m.intersectingFacesAfter).c_str(),
+                ImGui::TextColored(gui::defectColor(), "%s (%s)", withThousands(m.intersectingFacesAfter).c_str(),
                                    withThousands(m.intersectingFacesBefore).c_str());
             }
             ImGui::TableSetColumnIndex(4);

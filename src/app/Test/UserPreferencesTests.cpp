@@ -89,6 +89,7 @@ ogun::UserPreferences customPreferences() {
     p.uiScale = 1.35f;
     p.backgroundColor = {0.1f, 0.2f, 0.3f, 1.0f};
     p.showCompass = !p.showCompass;
+    p.theme = ogun::UiTheme::Dark;
     // A custom mouse scheme that changes every action's bindings
     using ogun::MouseAction;
     using ogun::MouseInput;
@@ -145,6 +146,7 @@ TEST_CASE("User preferences round trip every field through the config file", "[a
     CHECK(loaded.backgroundColor == custom.backgroundColor);
     CHECK(loaded.showCompass == custom.showCompass);
     CHECK(loaded.mouse == custom.mouse);
+    CHECK(loaded.theme == custom.theme);
 
     // Saving again overwrites in place
     REQUIRE(ogun::saveUserPreferences(defaults, file, &error));
@@ -298,6 +300,7 @@ TEST_CASE("Startup applies the saved preferences, live thin-face thresholds incl
     captured.backgroundColor = custom.backgroundColor;
     captured.showCompass = custom.showCompass;
     captured.mouse = custom.mouse;
+    captured.theme = custom.theme;
     CHECK(ogun::sameUserPreferences(captured, custom));
 
     // A new mesh's Mesh Health rows take the saved Auto defaults
@@ -456,4 +459,11 @@ TEST_CASE("Fix All preferences reach the controller without touching the merge b
     CHECK(controller.fixAllParams().passes == 3);
     CHECK(controller.fixAllParams().weld);
     CHECK(sameUserPreferences(controller.userPreferences(), UserPreferences{}));
+}
+
+TEST_CASE("Theme preference: saved by key, unknown values fall back to Custom Light", "[app][preferences][theme]") {
+    CHECK(ogun::parseUserPreferences("").theme == ogun::UiTheme::CustomLight);
+    CHECK(ogun::parseUserPreferences("theme = dark\n").theme == ogun::UiTheme::Dark);
+    CHECK(ogun::parseUserPreferences("theme = polyscope_default\n").theme == ogun::UiTheme::PolyscopeDefault);
+    CHECK(ogun::parseUserPreferences("theme = solarized\n").theme == ogun::UiTheme::CustomLight);
 }

@@ -1,4 +1,5 @@
 #include "app/AboutInfo.hpp"
+#include "app/GuiTheme.hpp"
 #include "app/GuiWidgets.hpp"
 #include "app/PolyscopeGui.hpp"
 #include "core/Settings.hpp"
@@ -233,7 +234,7 @@ void PolyscopeGui::drawMousePreferencesTab() {
     drawMouseBindingEditor();
 
     for (const MouseConflict& c : conflicts) {
-        ImGui::PushStyleColor(ImGuiCol_Text, gui::kErrorColor);
+        ImGui::PushStyleColor(ImGuiCol_Text, gui::errorColor());
         ImGui::TextWrapped("%s is bound to both %s and %s: only %s acts on it.",
                            formatMouseBinding(c.binding, mouseActionKind(c.first)).c_str(), mouseActionName(c.first),
                            mouseActionName(c.second), mouseActionName(c.first));
@@ -1033,7 +1034,7 @@ void PolyscopeGui::drawStatusBarDelta() {
     const bool warn = std::abs(dVolPercent) >= settings::kVolumeChangeWarnPercent;
     const std::string text = "(V " + signedThousands(dVerts) + "  T " + signedThousands(dFaces) + "  Vol " +
                              signedPercent(dVolPercent) + ")";
-    ImGui::TextColored(warn ? gui::kDefectColor : gui::kInfoColor, "%s", text.c_str());
+    ImGui::TextColored(warn ? gui::defectColor() : gui::infoColor(), "%s", text.c_str());
     const std::string volume = dimensionSuffix(ValueDimension::Volume, controller_.fileUnit());
     tooltip(("Change since the mesh was loaded.\nVertices " + withThousands(static_cast<std::size_t>(original->vertices)) +
              " -> " + withThousands(static_cast<std::size_t>(now.vertices)) + "\nTriangles " +
@@ -1116,11 +1117,11 @@ void PolyscopeGui::drawStatusBar(float top, float height) {
             tooltip("Run Check Mesh (F5): open and non-manifold edges both need checking.");
             break;
         case WatertightState::Watertight:
-            ImGui::TextColored(gui::kOkColor, "Watertight");
+            ImGui::TextColored(gui::okColor(), "Watertight");
             tooltip("No open edges and no non-manifold edges.");
             break;
         case WatertightState::NotWatertight:
-            ImGui::TextColored(gui::kDefectColor, "Not watertight");
+            ImGui::TextColored(gui::defectColor(), "Not watertight");
             tooltip("Holes (open edges) or non-manifold edges were found. See Mesh Health.");
             break;
         }
@@ -1140,7 +1141,7 @@ void PolyscopeGui::drawStatusBar(float top, float height) {
     const double age = std::chrono::duration<double>(std::chrono::steady_clock::now() - messageTime_).count();
     if (age < settings::kStatusMessageSeconds && !controller_.statusMessage().empty()) {
         if (controller_.statusMessageIsError()) {
-            ImGui::TextColored(gui::kErrorColor, "%s", controller_.statusMessage().c_str());
+            ImGui::TextColored(gui::errorColor(), "%s", controller_.statusMessage().c_str());
         } else {
             ImGui::TextUnformatted(controller_.statusMessage().c_str());
         }
@@ -1277,6 +1278,17 @@ void PolyscopeGui::drawPreferencesWindow(float top, float bottom, float rightCol
         if (ImGui::BeginTabItem("Interface")) {
             ImGui::SetNextItemWidth(160.0f);
             ImGui::SliderFloat("UI scale", &uiScale_, settings::kMinUiScale, settings::kMaxUiScale, "%.2f");
+            ImGui::SetNextItemWidth(160.0f);
+            if (ImGui::BeginCombo("Theme", uiThemeName(theme_))) {
+                for (const UiTheme theme : kAllUiThemes) {
+                    if (ImGui::Selectable(uiThemeName(theme), theme == theme_) && theme != theme_) {
+                        theme_ = theme;
+                        gui::setUiTheme(theme_);
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            gui::helpMarker("Colours of the panels. The 3D viewport background is separate (View > Appearance).");
             int listCap = static_cast<int>(controller_.listCap());
             ImGui::SetNextItemWidth(160.0f);
             if (ImGui::InputInt("List cap", &listCap)) {
@@ -1373,6 +1385,7 @@ void PolyscopeGui::drawFixAllPreferencesTab() {
 UserPreferences PolyscopeGui::currentPreferences() const {
     UserPreferences prefs = controller_.userPreferences();
     prefs.uiScale = uiScale_;
+    prefs.theme = theme_;
     prefs.backgroundColor = polyscope::view::bgColor;
     prefs.showCompass = showCompass_;
     prefs.mouse = mouseMapping_;
@@ -1382,6 +1395,10 @@ UserPreferences PolyscopeGui::currentPreferences() const {
 void PolyscopeGui::applyPreferences(const UserPreferences& prefs) {
     controller_.applyUserPreferences(prefs);
     uiScale_ = prefs.uiScale;
+    if (theme_ != prefs.theme) {
+        theme_ = prefs.theme;
+        gui::setUiTheme(theme_);
+    }
     polyscope::view::bgColor = prefs.backgroundColor;
     showCompass_ = prefs.showCompass;
     mouseMapping_ = prefs.mouse;

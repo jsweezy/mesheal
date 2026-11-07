@@ -4,6 +4,7 @@
 #include "app/MouseMapping.hpp"
 #include "core/Settings.hpp"
 #include "diagnostics/MeshHealth.hpp"
+#include "app/UiTheme.hpp"
 #include "mesh/ToleranceConfig.hpp"
 
 #include <array>
@@ -41,6 +42,7 @@ struct UserPreferences {
 
     // ---- GUI-only state (PolyscopeGui) ----
     float uiScale = 1.0f;
+    UiTheme theme = UiTheme::CustomLight; ///< Preferences > Interface: colour theme of the panels
     std::array<float, 4> backgroundColor = settings::kDefaultBackgroundColor;
     bool showCompass = false; ///< View > Compass: the XYZ orientation gizmo
     MouseMapping mouse{};     ///< Preferences > Mouse: preset, bindings, wheel direction and zoom speed

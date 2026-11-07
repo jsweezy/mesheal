@@ -25,6 +25,7 @@ add_library(ogun_app_controller STATIC
     RepairJobRunner.cpp
     ShellBrowser.cpp
     RecentFiles.cpp
+    UiTheme.cpp
     UserPreferences.cpp
 )
 add_library(ogun::app_controller ALIAS ogun_app_controller)
@@ -66,6 +67,7 @@ if(OGUN_BUILD_GUI)
         PolyscopeGuiIntersections.cpp
         PolyscopeGuiSelection.cpp
         PolyscopeGuiShells.cpp
+        GuiTheme.cpp
         GuiWidgets.cpp
         MacAppIcon.cpp
     )

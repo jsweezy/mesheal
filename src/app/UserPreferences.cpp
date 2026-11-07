@@ -299,6 +299,14 @@ const std::vector<Field>& preferenceFields() {
         const char* ui = "Preferences > Interface / Performance";
         f.push_back(realField(ui, "ui_scale", [](auto& p) -> auto& { return p.uiScale; },
                               settings::kMinUiScale, settings::kMaxUiScale));
+        f.push_back(enumField(ui, "theme", [](auto& p) -> auto& { return p.theme; },
+                              std::array<std::pair<UiTheme, const char*>, kUiThemeCount>{{
+                                  {UiTheme::PolyscopeDefault, uiThemeKey(UiTheme::PolyscopeDefault)},
+                                  {UiTheme::Dark, uiThemeKey(UiTheme::Dark)},
+                                  {UiTheme::Light, uiThemeKey(UiTheme::Light)},
+                                  {UiTheme::Classic, uiThemeKey(UiTheme::Classic)},
+                                  {UiTheme::CustomLight, uiThemeKey(UiTheme::CustomLight)},
+                              }}));
         f.push_back(countField(ui, "list_cap", [](auto& p) -> auto& { return p.listCap; }, 1));
         f.push_back(countField(ui, "overlay_cap", [](auto& p) -> auto& { return p.overlayCap; }, 0));
 

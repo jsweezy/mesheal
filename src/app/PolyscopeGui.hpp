@@ -298,6 +298,7 @@ private:
     bool leftColumnAutoCollapsed_ = false;
     float rightColumnWidth_ = settings::kRightColumnDefaultPx;
     float uiScale_ = 1.0f;
+    UiTheme theme_ = UiTheme::CustomLight; ///< Preferences > Interface (saved preference)
     MouseMapping mouseMapping_;                  ///< Preferences > Mouse (saved preference)
     MouseAction editingMouseAction_ = MouseAction::Orbit; ///< Binding open in the Mouse tab's editor
     std::size_t editingMouseSlot_ = 0;

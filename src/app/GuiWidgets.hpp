@@ -18,12 +18,13 @@ inline constexpr const char* kModKey = "Cmd";
 inline constexpr const char* kModKey = "Ctrl";
 #endif
 
-inline const ImVec4 kOkColor(0.35f, 0.80f, 0.40f, 1.0f);
-inline const ImVec4 kDefectColor(1.00f, 0.62f, 0.20f, 1.0f);
-inline const ImVec4 kRunningColor(0.35f, 0.65f, 1.00f, 1.0f);
-inline const ImVec4 kMutedColor(0.55f, 0.55f, 0.55f, 1.0f);
-inline const ImVec4 kInfoColor(0.55f, 0.70f, 0.85f, 1.0f);
-inline const ImVec4 kErrorColor(1.0f, 0.35f, 0.35f, 1.0f);
+/// Status text colours. Tuned for a dark window; on a light theme they are darkened to stay readable.
+[[nodiscard]] ImVec4 okColor();
+[[nodiscard]] ImVec4 defectColor();
+[[nodiscard]] ImVec4 runningColor();
+[[nodiscard]] ImVec4 mutedColor();
+[[nodiscard]] ImVec4 infoColor();
+[[nodiscard]] ImVec4 errorColor();
 inline const ImVec4 kFixAllButtonColor(0.20f, 0.45f, 0.25f, 1.0f);
 
 /// "20000" -> "20,000".

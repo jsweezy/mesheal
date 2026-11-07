@@ -137,7 +137,7 @@ void PolyscopeGui::drawHoleScorecard() {
     const HoleFillPreview& preview = controller_.holePreview();
     if (!preview.valid) {
         if (!preview.statusMessage.empty()) {
-            ImGui::PushStyleColor(ImGuiCol_Text, gui::kErrorColor);
+            ImGui::PushStyleColor(ImGuiCol_Text, gui::errorColor());
             ImGui::TextWrapped("Not possible: %s", preview.statusMessage.c_str());
             ImGui::PopStyleColor();
         }
@@ -155,16 +155,16 @@ void PolyscopeGui::drawHoleScorecard() {
         ImGui::Text("Rim vertices moved at most %s", lengthText(preview.maxVertexMove, unit).c_str());
     }
     if (preview.openEdgesLeft == 0) {
-        ImGui::TextColored(gui::kOkColor, "Closes the hole.");
+        ImGui::TextColored(gui::okColor(), "Closes the hole.");
     } else {
-        ImGui::TextColored(gui::kDefectColor, "%s edges stay open.", withThousands(preview.openEdgesLeft).c_str());
+        ImGui::TextColored(gui::defectColor(), "%s edges stay open.", withThousands(preview.openEdgesLeft).c_str());
     }
     if (preview.newCrossings > 0) {
-        ImGui::TextColored(gui::kErrorColor, "The patch crosses %s faces: Commit is disabled.",
+        ImGui::TextColored(gui::errorColor(), "The patch crosses %s faces: Commit is disabled.",
                            withThousands(preview.newCrossings).c_str());
     } else {
         ImGui::SameLine();
-        ImGui::TextColored(gui::kOkColor, "Crosses no other face.");
+        ImGui::TextColored(gui::okColor(), "Crosses no other face.");
     }
     tooltip("The new faces are tested against every face near them, in any shell.");
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));

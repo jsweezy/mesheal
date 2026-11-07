@@ -15,6 +15,7 @@ add_executable(ogun_app_tests
     MouseMappingTests.cpp
     RecentFilesTests.cpp
     ShellBrowserTests.cpp
+    UiThemeTests.cpp
     UserPreferencesTests.cpp
 )
 

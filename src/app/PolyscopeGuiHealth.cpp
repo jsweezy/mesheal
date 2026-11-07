@@ -167,7 +167,7 @@ void PolyscopeGui::drawHealthPanel() {
     const ShellBrowser& shells = controller_.shells();
     if (shells.scoped()) {
         ImGui::AlignTextToFramePadding();
-        ImGui::TextColored(gui::kInfoColor, "Scope: %s of %s shells (%s)", withThousands(shells.scopeCount()).c_str(),
+        ImGui::TextColored(gui::infoColor(), "Scope: %s of %s shells (%s)", withThousands(shells.scopeCount()).c_str(),
                            withThousands(shells.size()).c_str(), shells.selectedCount() > 0 ? "selected" : "visible");
         tooltip("Mesh Health counts, lists and Fix All cover only these shells: the selected shells, or the visible "
                 "ones when none is selected. Crossings with shells outside the scope are not shown.");
@@ -192,14 +192,14 @@ void PolyscopeGui::drawHealthPanel() {
         const std::size_t problems = controller_.totalProblemCount();
         if (controller_.checksRunning()) {
             const std::optional<DefectCategory> current = controller_.currentCheckCategory();
-            ImGui::TextColored(gui::kRunningColor, "Checking %s... %d%%", current ? categoryInfo(*current).name : "",
+            ImGui::TextColored(gui::runningColor(), "Checking %s... %d%%", current ? categoryInfo(*current).name : "",
                                static_cast<int>(controller_.checkProgress() * 100.0f));
         } else if (!anyRun) {
             ImGui::TextDisabled("Not checked yet");
         } else if (problems == 0) {
-            ImGui::TextColored(gui::kOkColor, "No problems found");
+            ImGui::TextColored(gui::okColor(), "No problems found");
         } else {
-            ImGui::TextColored(gui::kDefectColor, "%s problem%s", withThousands(problems).c_str(), problems == 1 ? "" : "s");
+            ImGui::TextColored(gui::defectColor(), "%s problem%s", withThousands(problems).c_str(), problems == 1 ? "" : "s");
         }
         ImGui::TableSetColumnIndex(2);
         const float countWidth = ImGui::CalcTextSize("count").x;
@@ -264,7 +264,7 @@ void PolyscopeGui::drawHealthRow(DefectCategory category) {
 
     ImGui::TableSetColumnIndex(2);
     std::string count;
-    ImVec4 color = gui::kMutedColor;
+    ImVec4 color = gui::mutedColor();
     const std::size_t n = controller_.rowCount(category);
     switch (status) {
     case HealthStatus::NotRun:
@@ -272,12 +272,12 @@ void PolyscopeGui::drawHealthRow(DefectCategory category) {
         break;
     case HealthStatus::Running:
         count = "...";
-        color = gui::kRunningColor;
+        color = gui::runningColor();
         break;
     case HealthStatus::Ok:
     case HealthStatus::Defects:
         count = withThousands(n);
-        color = info.infoOnly ? ImGui::GetStyleColorVec4(ImGuiCol_Text) : (n == 0 ? gui::kOkColor : gui::kDefectColor);
+        color = info.infoOnly ? ImGui::GetStyleColorVec4(ImGuiCol_Text) : (n == 0 ? gui::okColor() : gui::defectColor());
         break;
     case HealthStatus::Stale:
         count = withThousands(n) + "?";
@@ -364,7 +364,7 @@ void PolyscopeGui::drawMeshStatsTable() {
             if (value == before) {
                 ImGui::TextDisabled("0");
             } else if (warn && std::abs(percent) >= settings::kVolumeChangeWarnPercent) {
-                ImGui::TextColored(gui::kDefectColor, "%s", signedPercent(percent).c_str());
+                ImGui::TextColored(gui::defectColor(), "%s", signedPercent(percent).c_str());
                 tooltip(("The volume changed by " + significant(value - before, 4) + suffix +
                          " since the mesh was loaded. A repair may have removed real geometry: Ctrl/Cmd+Z undoes it.")
                             .c_str());
@@ -408,10 +408,10 @@ void PolyscopeGui::drawCategoryTool(DefectCategory category) {
         ImGui::TextDisabled("Not checked yet. Press Re-check or Check Mesh (F5).");
         break;
     case HealthStatus::Running:
-        ImGui::TextColored(gui::kRunningColor, "Checking...");
+        ImGui::TextColored(gui::runningColor(), "Checking...");
         break;
     case HealthStatus::Stale:
-        ImGui::TextColored(gui::kDefectColor, "Stale: the mesh changed since this check ran.");
+        ImGui::TextColored(gui::defectColor(), "Stale: the mesh changed since this check ran.");
         break;
     case HealthStatus::Ok:
     case HealthStatus::Defects:
@@ -465,7 +465,7 @@ void PolyscopeGui::drawCategoryTool(DefectCategory category) {
         return; // a flip re-checked the mesh: `result` is stale until the next frame
     }
     if (browser.scopedCount() == 0) {
-        ImGui::TextColored(gui::kOkColor, "No %s found%s.", info.name,
+        ImGui::TextColored(gui::okColor(), "No %s found%s.", info.name,
                            result->empty() ? "" : " in the shells in scope");
         return;
     }
@@ -517,7 +517,7 @@ bool PolyscopeGui::drawCategoryWarnings(const CategoryResult& result) {
             continue;
         }
         ImGui::PushID(static_cast<int>(i));
-        ImGui::PushStyleColor(ImGuiCol_Text, gui::kDefectColor);
+        ImGui::PushStyleColor(ImGuiCol_Text, gui::defectColor());
         ImGui::TextWrapped("%s", warning.text.c_str());
         ImGui::PopStyleColor();
         if (ImGui::SmallButton("Show")) {
@@ -923,7 +923,7 @@ void PolyscopeGui::drawHistogram() {
         }
         const float barHeight = std::max(2.0f, height * static_cast<float>(histogram.counts[b]) / maxCount);
         const bool inFilter = active && active->contains(b);
-        const ImU32 color = ImGui::GetColorU32(inFilter ? gui::kDefectColor
+        const ImU32 color = ImGui::GetColorU32(inFilter ? gui::defectColor()
                                                         : (hovered ? ImVec4(0.75f, 0.75f, 0.75f, 1.0f)
                                                                    : ImVec4(0.55f, 0.60f, 0.70f, 1.0f)));
         draw->AddRectFilled(ImVec2(origin.x + bf * binWidth + 1.0f, origin.y + height - barHeight),
@@ -1056,7 +1056,7 @@ void PolyscopeGui::drawThinFaceInspector() {
     }
     const bool unsafe = !preview.valid && controller_.selectedHealAction() != HealAction::None;
     if (!preview.statusMessage.empty()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, unsafe ? gui::kErrorColor : gui::kOkColor);
+        ImGui::PushStyleColor(ImGuiCol_Text, unsafe ? gui::errorColor() : gui::okColor());
         ImGui::TextWrapped("%s%s", unsafe ? "Blocked: " : "", preview.statusMessage.c_str());
         ImGui::PopStyleColor();
     }

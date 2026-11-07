@@ -4,6 +4,13 @@
 # Installs Ogun.app into /Applications and configures LaunchServices & CLI link.
 # ==============================================================================
 
+# Running this with `source` would leak `set -u`/`set -e` into the caller's
+# shell and kill it on the first error, so refuse and ask for direct execution.
+if [[ "${BASH_SOURCE[0]:-$0}" != "$0" ]]; then
+    echo "Error: run this script directly (./packaging/macos/install-app.sh), don't 'source' it." >&2
+    return 1 2>/dev/null || exit 1
+fi
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

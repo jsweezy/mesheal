@@ -1,5 +1,6 @@
 #include "app/PolyscopeGui.hpp"
 #include "app/FileOpenQueue.hpp"
+#include "app/GuiTheme.hpp"
 #include "app/GuiWidgets.hpp"
 #include "core/Constants.hpp"
 #include "core/Settings.hpp"
@@ -241,6 +242,7 @@ PolyscopeGui::PolyscopeGui(AppController& controller, std::filesystem::path pref
     : controller_(controller),
       showCompass_(prefs.showCompass),
       uiScale_(prefs.uiScale),
+      theme_(prefs.theme),
       mouseMapping_(prefs.mouse),
       preferencesFile_(std::move(preferencesFile)),
       savedPreferences_(prefs),
@@ -274,6 +276,7 @@ void PolyscopeGui::run() {
     polyscope::options::openImGuiWindowForUserCallback = false;
     polyscope::options::buildDefaultGuiPanels = false;
 
+    gui::installUiTheme(theme_);
     polyscope::init();
 #ifdef __APPLE__
     installMacFileOpenHandler([this]() {

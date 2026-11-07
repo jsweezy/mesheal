@@ -68,7 +68,7 @@ void flowSameLine(const char* nextLabel) {
 
 /// Muted text that wraps at the cell or panel edge (words are never split unless one is wider than the line).
 void mutedWrapped(const std::string& text) {
-    wrappedColored(gui::kMutedColor, text);
+    wrappedColored(gui::mutedColor(), text);
 }
 
 /// "0.006 mm" (the number is in file coordinates; the unit is a label).
@@ -198,12 +198,12 @@ void PolyscopeGui::drawFixAllFooter() {
 
 void PolyscopeGui::drawFixAllPlan() {
     if (!fixAllHintSeen_) {
-        wrappedColored(gui::kInfoColor, "Preview first: nothing changes until you Apply.");
+        wrappedColored(gui::infoColor(), "Preview first: nothing changes until you Apply.");
     }
 
     const FixAllScopeInfo scope = controller_.fixAllScope();
     ImGui::AlignTextToFramePadding();
-    wrappedColored(gui::kInfoColor, "Scope: " + scope.text);
+    wrappedColored(gui::infoColor(), "Scope: " + scope.text);
     tooltip("Fix All follows the selection: the selected faces, else the selected shells, else the whole mesh. Hidden shells "
             "are never changed. Everything outside the scope stays exactly as it is. Change the selection to change the scope.");
 
@@ -360,7 +360,7 @@ void PolyscopeGui::drawFixAllPlanRows() {
             }
             ImGui::TableSetColumnIndex(1);
             if (row.found == "checking...") {
-                ImGui::TextColored(gui::kRunningColor, "checking...");
+                ImGui::TextColored(gui::runningColor(), "checking...");
             } else if (row.found == "?" || row.found == "0" || row.found.empty() || !row.available || row.sw == FixAllRowSwitch::Required) {
                 ImGui::TextDisabled("%s", row.found.c_str());
             } else {
@@ -372,7 +372,7 @@ void PolyscopeGui::drawFixAllPlanRows() {
             const std::string note = weldNoteText(*weld, controller_.fileUnit());
             if (!note.empty()) {
                 ImGui::Indent();
-                wrappedColored(gui::kDefectColor, note);
+                wrappedColored(gui::defectColor(), note);
                 ImGui::Unindent();
             }
         }
@@ -397,7 +397,7 @@ void PolyscopeGui::drawFixAllMergeNotes() {
     }
     const MergePlan* plan = controller_.fixAllMergePlan();
     if (plan == nullptr || controller_.fixAllPlanChecking()) {
-        ImGui::TextColored(gui::kRunningColor, "Checking which shells overlap...");
+        ImGui::TextColored(gui::runningColor(), "Checking which shells overlap...");
         ImGui::Unindent();
         return;
     }
@@ -417,9 +417,9 @@ void PolyscopeGui::drawFixAllMergeNotes() {
         const MergePlanLine& line = plan->lines[i];
         ImGui::PushID(static_cast<int>(i));
         if (line.kind == MergePlanLineKind::Warning) {
-            wrappedColored(gui::kDefectColor, "(!) " + line.text);
+            wrappedColored(gui::defectColor(), "(!) " + line.text);
         } else {
-            wrappedColored(gui::kMutedColor, line.text);
+            wrappedColored(gui::mutedColor(), line.text);
         }
         if (!line.shells.empty()) {
             if (ImGui::SmallButton("Show them")) {
@@ -544,17 +544,17 @@ void PolyscopeGui::drawFixAllRunning() {
     gui::statusDot(HealthStatus::Running, false);
     ImGui::SameLine();
     if (controller_.fixAllCancelling()) {
-        ImGui::TextColored(gui::kRunningColor, "Cancelling...");
+        ImGui::TextColored(gui::runningColor(), "Cancelling...");
     } else if (!text.pass.empty()) {
-        ImGui::TextColored(gui::kRunningColor, "Running  -  %s", text.pass.c_str());
+        ImGui::TextColored(gui::runningColor(), "Running  -  %s", text.pass.c_str());
     } else {
-        ImGui::TextColored(gui::kRunningColor, "Running...");
+        ImGui::TextColored(gui::runningColor(), "Running...");
     }
     if (!text.phase.empty() && !controller_.fixAllCancelling()) {
         wordWrapped(text.phase);
     }
     if (!text.detail.empty()) {
-        wrappedColored(gui::kMutedColor, text.detail);
+        wrappedColored(gui::mutedColor(), text.detail);
     }
     ImGui::ProgressBar(controller_.fixAllProgress(), ImVec2(-1.0f, 0.0f));
     if (!controller_.fixAllCancelling()) {
@@ -582,7 +582,7 @@ void PolyscopeGui::drawFixAllSteps(const FixAllResult& result) {
         ImGui::PushID(static_cast<int>(p));
         const ImGuiTreeNodeFlags open = (passes.size() == 1 || p + 1 == passes.size()) ? ImGuiTreeNodeFlags_DefaultOpen : 0;
         if (pass.discarded) {
-            ImGui::PushStyleColor(ImGuiCol_Text, gui::kMutedColor);
+            ImGui::PushStyleColor(ImGuiCol_Text, gui::mutedColor());
         }
         const bool expanded = ImGui::TreeNodeEx("##pass", open, "%s", pass.header.c_str());
         if (pass.discarded) {
@@ -606,12 +606,12 @@ void PolyscopeGui::drawFixAllSteps(const FixAllResult& result) {
                 wordWrapped(std::to_string(step.number) + "  " + step.text);
                 if (!step.time.empty()) {
                     ImGui::SameLine();
-                    ImGui::TextColored(gui::kMutedColor, "%s", step.time.c_str());
+                    ImGui::TextColored(gui::mutedColor(), "%s", step.time.c_str());
                 }
                 if (detailsOpen) {
                     ImGui::Indent();
                     for (const std::string& detail : step.details) {
-                        wrappedColored(gui::kMutedColor, detail);
+                        wrappedColored(gui::mutedColor(), detail);
                     }
                     ImGui::Unindent();
                     ImGui::TreePop();
@@ -649,7 +649,7 @@ void PolyscopeGui::drawFixAllLines(const FixAllResult& result, bool beforeApply)
             // One summary line with a collapsed list of the individual pairs
             drawnGroups.push_back(group);
             ImGui::PushID(static_cast<int>(i));
-            wrappedColored(gui::kDefectColor, "(!) " + group->summary);
+            wrappedColored(gui::defectColor(), "(!) " + group->summary);
             if (!beforeApply && ImGui::SmallButton("Show them all")) {
                 controller_.fixAllShowShells(group->shells);
                 requestSync();
@@ -660,7 +660,7 @@ void PolyscopeGui::drawFixAllLines(const FixAllResult& result, bool beforeApply)
             if (ImGui::TreeNode("##pairs", "Show the %zu pairs", group->members.size())) {
                 for (const std::size_t m : group->members) {
                     ImGui::PushID(static_cast<int>(m));
-                    wrappedColored(gui::kDefectColor, lines[m].text);
+                    wrappedColored(gui::defectColor(), lines[m].text);
                     if (!beforeApply && ImGui::SmallButton("Show them")) {
                         controller_.fixAllShowShells(lines[m].shells);
                         requestSync();
@@ -674,7 +674,7 @@ void PolyscopeGui::drawFixAllLines(const FixAllResult& result, bool beforeApply)
         }
         ImGui::PushID(static_cast<int>(i));
         if (line.warning) {
-            wrappedColored(gui::kDefectColor, "(!) " + line.text);
+            wrappedColored(gui::defectColor(), "(!) " + line.text);
         } else {
             wordWrapped(line.text);
         }
@@ -763,7 +763,7 @@ void PolyscopeGui::drawFixAllResult() {
     const RepairCandidate* candidate = controller_.fixAllCandidate();
     if (candidate == nullptr || !candidate->success || candidate->fixAll == nullptr) {
         if (candidate != nullptr) {
-            ImGui::TextColored(gui::kErrorColor, "Fix All failed: %s", candidate->statusMessage.c_str());
+            ImGui::TextColored(gui::errorColor(), "Fix All failed: %s", candidate->statusMessage.c_str());
             ImGui::TextDisabled("Nothing was changed.");
         } else {
             ImGui::TextDisabled("No result.");
@@ -774,7 +774,7 @@ void PolyscopeGui::drawFixAllResult() {
     const RepairCandidate* shown = controller_.shownGlobalCandidate();
     const bool rebuildRowShown = shown != nullptr && shown->fixAll != nullptr && shown->fixAll->rebuild.has_value();
 
-    ImGui::TextColored(gui::kInfoColor, "Preview ready. Nothing has changed yet.");
+    ImGui::TextColored(gui::infoColor(), "Preview ready. Nothing has changed yet.");
     drawGlobalCandidateTable();
     drawFixAllShellRebuildRows();
     drawFixAllRebuildJob();
@@ -782,7 +782,7 @@ void PolyscopeGui::drawFixAllResult() {
     if (rebuildRowShown) {
         // The row's own report describes the rebuilt mesh; the steps are those of the Fix All run it builds on
         const FixAllShellRebuild& rebuild = *shown->fixAll->rebuild;
-        wrappedColored(rebuild.merged ? gui::kOkColor : gui::kDefectColor, fixAllRebuiltLine(rebuild));
+        wrappedColored(rebuild.merged ? gui::okColor() : gui::defectColor(), fixAllRebuiltLine(rebuild));
         drawFixAllLines(shown->fixAll->result, true);
         ImGui::TextDisabled("Click the Fix All row to see the report of the repair alone.");
         ImGui::Spacing();
@@ -794,11 +794,11 @@ void PolyscopeGui::drawFixAllResult() {
         if (shown->success) {
             wordWrapped(std::string(globalRepairMethodLabel(shown->method)) + ": a new surface. No original face is kept (see Kept in the table).");
             if (shown->method == GlobalRepairMethod::AlphaWrap) {
-                wrappedColored(gui::kMutedColor, fixAllRebuildTradeOffText());
+                wrappedColored(gui::mutedColor(), fixAllRebuildTradeOffText());
             }
         }
         if (!shown->statusMessage.empty()) {
-            wrappedColored(gui::kMutedColor, shown->statusMessage);
+            wrappedColored(gui::mutedColor(), shown->statusMessage);
         }
     } else {
         drawFixAllLines(result, true);
@@ -806,7 +806,7 @@ void PolyscopeGui::drawFixAllResult() {
         const bool offered = std::any_of(lines.begin(), lines.end(), [](const FixAllResultLine& l) { return l.rebuildShell >= 0; });
         if (offered) {
             ImGui::Spacing();
-            wrappedColored(gui::kMutedColor, fixAllRebuildTradeOffText());
+            wrappedColored(gui::mutedColor(), fixAllRebuildTradeOffText());
         }
         ImGui::TextDisabled("Shell numbers are those of the result. Apply to get Show them and Flip buttons for the shells named.");
         ImGui::Spacing();
@@ -911,9 +911,9 @@ void PolyscopeGui::drawFixAllShellRebuildRows() {
     for (const RepairCandidate& row : rows) {
         const std::string label = fixAllRebuildRowLabel(row);
         if (!row.success) {
-            wrappedColored(gui::kDefectColor, label + ": " + row.statusMessage);
+            wrappedColored(gui::defectColor(), label + ": " + row.statusMessage);
         } else if (row.fixAll != nullptr && row.fixAll->rebuild) {
-            wrappedColored(gui::kMutedColor, label + ": " + row.fixAll->rebuild->note);
+            wrappedColored(gui::mutedColor(), label + ": " + row.fixAll->rebuild->note);
         }
     }
 }
@@ -930,13 +930,13 @@ void PolyscopeGui::drawFixAllRebuildJob() {
     if (shellJob) {
         const std::string text = controller_.fixAllRebuildStatusText();
         cancelling = text.starts_with("Cancelling");
-        ImGui::TextColored(gui::kRunningColor, "%s", text.c_str());
+        ImGui::TextColored(gui::runningColor(), "%s", text.c_str());
     } else if (controller_.globalRepairCancelling()) {
         cancelling = true;
-        ImGui::TextColored(gui::kRunningColor, "Cancelling...");
+        ImGui::TextColored(gui::runningColor(), "Cancelling...");
     } else {
         const std::optional<GlobalRepairMethod> current = controller_.globalRepairCurrentMethod();
-        ImGui::TextColored(gui::kRunningColor, "%s...", current ? globalRepairMethodLabel(*current) : "Working");
+        ImGui::TextColored(gui::runningColor(), "%s...", current ? globalRepairMethodLabel(*current) : "Working");
     }
     ImGui::ProgressBar(controller_.globalRepairProgress(), ImVec2(-1.0f, 0.0f));
     if (!cancelling) {
@@ -996,7 +996,7 @@ void PolyscopeGui::drawFixAllRebuildPlan() {
         ImGui::Bullet();
         wordWrapped(cost);
     }
-    wrappedColored(gui::kMutedColor, copy.advice);
+    wrappedColored(gui::mutedColor(), copy.advice);
 
     // Cavities that an alpha wrap of the scope fills: worked out once per mesh and scope, not every frame
     if (!running && (!fixAllCavityCache_.valid || fixAllCavityCache_.meshGeneration != controller_.meshGeneration() ||
@@ -1005,7 +1005,7 @@ void PolyscopeGui::drawFixAllRebuildPlan() {
     }
     const std::string cavityText = fixAllRebuildCavityText(fixAllCavityCache_.cavities);
     if (!cavityText.empty()) {
-        wrappedColored(gui::kDefectColor, "(!) " + cavityText);
+        wrappedColored(gui::defectColor(), "(!) " + cavityText);
         tooltip("A cavity is a hollow shell inside a solid (wound inward). Repair keeps it; an alpha wrap fills it in, because the "
                 "wrap closes over everything inside the outer surface.");
     }
@@ -1031,10 +1031,10 @@ void PolyscopeGui::drawFixAllRebuildPlan() {
         drawGlobalCandidateTable();
         const RepairCandidate* shown = controller_.shownGlobalCandidate();
         if (shown != nullptr && !shown->statusMessage.empty()) {
-            wrappedColored(gui::kMutedColor, shown->statusMessage);
+            wrappedColored(gui::mutedColor(), shown->statusMessage);
         }
         if (shown != nullptr && !controller_.candidateIsCurrent(*shown)) {
-            ImGui::TextColored(gui::kDefectColor, "Computed with other settings: Preview again to update.");
+            ImGui::TextColored(gui::defectColor(), "Computed with other settings: Preview again to update.");
         }
         drawFixAllPreviewControls();
     }
@@ -1085,9 +1085,9 @@ void PolyscopeGui::drawFixAllReport() {
         return;
     }
     if (applied->undoLabel.empty()) {
-        ImGui::TextColored(gui::kOkColor, "Fix All finished: it changed nothing, so there is nothing to undo.");
+        ImGui::TextColored(gui::okColor(), "Fix All finished: it changed nothing, so there is nothing to undo.");
     } else {
-        ImGui::TextColored(gui::kOkColor, "Fix All applied (Ctrl/Cmd+Z to undo).");
+        ImGui::TextColored(gui::okColor(), "Fix All applied (Ctrl/Cmd+Z to undo).");
     }
     if (run->rebuild) {
         wordWrapped(fixAllRebuiltLine(*run->rebuild));
@@ -1098,7 +1098,7 @@ void PolyscopeGui::drawFixAllReport() {
     } else {
         for (const FixAllResultLine& line : fixAllResultLines(run->result, false)) {
             if (line.warning) {
-                wrappedColored(gui::kDefectColor, "(!) " + line.text);
+                wrappedColored(gui::defectColor(), "(!) " + line.text);
             } else {
                 wordWrapped(line.text);
             }

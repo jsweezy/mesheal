@@ -6,6 +6,27 @@
 
 namespace ogun::gui {
 
+namespace {
+
+/// The colour as is on a dark window, darkened on a light one (judged by the window background).
+ImVec4 forWindow(const ImVec4& color) {
+    const ImVec4 bg = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
+    const float luminance = 0.299f * bg.x + 0.587f * bg.y + 0.114f * bg.z;
+    if (luminance < 0.5f) {
+        return color;
+    }
+    return ImVec4(color.x * 0.55f, color.y * 0.55f, color.z * 0.55f, color.w);
+}
+
+} // namespace
+
+ImVec4 okColor() { return forWindow(ImVec4(0.35f, 0.80f, 0.40f, 1.0f)); }
+ImVec4 defectColor() { return forWindow(ImVec4(1.00f, 0.62f, 0.20f, 1.0f)); }
+ImVec4 runningColor() { return forWindow(ImVec4(0.35f, 0.65f, 1.00f, 1.0f)); }
+ImVec4 mutedColor() { return forWindow(ImVec4(0.55f, 0.55f, 0.55f, 1.0f)); }
+ImVec4 infoColor() { return forWindow(ImVec4(0.55f, 0.70f, 0.85f, 1.0f)); }
+ImVec4 errorColor() { return forWindow(ImVec4(1.0f, 0.35f, 0.35f, 1.0f)); }
+
 std::string withThousands(std::size_t value) {
     std::string digits = std::to_string(value);
     for (auto pos = static_cast<std::ptrdiff_t>(digits.size()) - 3; pos > 0; pos -= 3) {
@@ -89,24 +110,24 @@ void statusDot(HealthStatus status, bool infoOnly) {
     ImDrawList* draw = ImGui::GetWindowDrawList();
     switch (status) {
     case HealthStatus::NotRun:
-        draw->AddCircle(center, radius, ImGui::GetColorU32(kMutedColor), 12, 1.5f);
+        draw->AddCircle(center, radius, ImGui::GetColorU32(mutedColor()), 12, 1.5f);
         break;
     case HealthStatus::Running: {
         const auto t = static_cast<float>(ImGui::GetTime());
         const float start = std::fmod(t * 6.0f, 6.2832f);
         draw->PathArcTo(center, radius, start, start + 4.2f, 12);
-        draw->PathStroke(ImGui::GetColorU32(kRunningColor), 0, 2.0f);
+        draw->PathStroke(ImGui::GetColorU32(runningColor()), 0, 2.0f);
         break;
     }
     case HealthStatus::Ok:
-        draw->AddCircleFilled(center, radius, ImGui::GetColorU32(infoOnly ? kInfoColor : kOkColor), 12);
+        draw->AddCircleFilled(center, radius, ImGui::GetColorU32(infoOnly ? infoColor() : okColor()), 12);
         break;
     case HealthStatus::Defects:
-        draw->AddCircleFilled(center, radius, ImGui::GetColorU32(kDefectColor), 12);
+        draw->AddCircleFilled(center, radius, ImGui::GetColorU32(defectColor()), 12);
         break;
     case HealthStatus::Stale:
-        draw->AddCircleFilled(center, radius * 0.7f, ImGui::GetColorU32(kMutedColor), 12);
-        draw->AddCircle(center, radius, ImGui::GetColorU32(kDefectColor), 12, 1.5f);
+        draw->AddCircleFilled(center, radius * 0.7f, ImGui::GetColorU32(mutedColor()), 12);
+        draw->AddCircle(center, radius, ImGui::GetColorU32(defectColor()), 12, 1.5f);
         break;
     }
     ImGui::Dummy(ImVec2(2.0f * radius + 4.0f, lineHeight));
