@@ -82,6 +82,11 @@ private:
     bool built_ = false;
 };
 
+/// `faces` without those whose centre is behind a triangle of `occluder` (e.g. an opaque repair-preview
+/// patch, which is drawn but is not part of `mesh`). Faces in front of or level with it stay.
+[[nodiscard]] std::vector<Eigen::Index> withoutFacesBehind(const Mesh& mesh, const ScreenView& view,
+                                                           std::vector<Eigen::Index> faces, const Mesh& occluder);
+
 /// The `shown` faces (empty = all) whose centre projects into the rectangle with corners `a` and `b`
 /// (any order). Without `visibility` (select through) faces behind others count too. Faces the view's
 /// slice planes cut away never count.

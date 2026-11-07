@@ -1751,6 +1751,8 @@ private:
     void installHealthReport(std::vector<CategoryResult> results);
 
     [[nodiscard]] bool previewUsesCutout() const noexcept;
+    /// `faces` minus those behind the opaque repair-preview patch, so box / circle selection does not x-ray through it.
+    [[nodiscard]] std::vector<Eigen::Index> withoutFacesHiddenByPreview(const ScreenView& view, std::vector<Eigen::Index> faces) const;
     /// Appends deduplicated vertices, undirected edges, and (optionally) triangles of `faces` to `overlay`.
     void appendFaceGeometry(
         const std::vector<Eigen::Index>& faces,

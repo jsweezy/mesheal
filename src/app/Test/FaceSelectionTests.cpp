@@ -753,3 +753,31 @@ TEST_CASE("Shortest edge follows the Merge scope: selected faces, else the whole
     controller.toggleFaceSelected(1);
     REQUIRE(controller.edgesShorterThanCount(4.5) == 2);
 }
+
+TEST_CASE("Faces behind an opaque preview patch are dropped from a selection, faces in front stay", "[app][selection]") {
+    const ogun::Mesh mesh = gridCube();
+    std::vector<Eigen::Index> all(static_cast<std::size_t>(mesh.numFaces()));
+    for (std::size_t f = 0; f < all.size(); ++f) {
+        all[f] = static_cast<Eigen::Index>(f);
+    }
+    const auto plane = [](double z) {
+        ogun::Mesh patch;
+        patch.V.resize(4, 3);
+        patch.V << -4, -4, z, 12, -4, z, 12, 12, z, -4, 12, z;
+        patch.F.resize(2, 3);
+        patch.F << 0, 1, 2, 0, 2, 3;
+        return patch;
+    };
+    for (const bool ortho : {false, true}) {
+        CAPTURE(ortho);
+        const ogun::ScreenView view = topView(ortho);
+        // A patch between the eye and the cube hides every face
+        REQUIRE(ogun::withoutFacesBehind(mesh, view, all, plane(20.0)).empty());
+        // A patch below the cube is behind every face
+        REQUIRE(ogun::withoutFacesBehind(mesh, view, all, plane(-5.0)).size() == all.size());
+        // A patch through the middle hides only what lies below it
+        const std::vector<Eigen::Index> kept = ogun::withoutFacesBehind(mesh, view, all, plane(4.0));
+        REQUIRE_FALSE(kept.empty());
+        REQUIRE(kept.size() < all.size());
+    }
+}

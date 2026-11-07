@@ -203,6 +203,42 @@ std::optional<Eigen::Index> FaceVisibility::faceAt(const Mesh& mesh, const Scree
     return firstHit(origin, dir, view.clipPlanes, nullptr);
 }
 
+std::vector<Eigen::Index> withoutFacesBehind(const Mesh& mesh, const ScreenView& view, std::vector<Eigen::Index> faces,
+                                             const Mesh& occluder) {
+    if (occluder.empty() || faces.empty()) {
+        return faces;
+    }
+    // Moller-Trumbore from the eye (or, orthographic, from in front along the view direction) to the face
+    // centre: t = 1 at the centre, and a hit short of it by more than the tolerance hides the face
+    const double reach = 4.0 * std::max(mesh.boundingBox().diagonal(), occluder.boundingBox().diagonal());
+    const auto behind = [&](Eigen::Index f) {
+        const Eigen::Vector3d target = centroid(mesh, f);
+        const Eigen::Vector3d origin = view.orthographic ? Eigen::Vector3d(target - reach * view.viewDirection) : view.cameraPosition;
+        const Eigen::Vector3d dir = target - origin;
+        for (Eigen::Index o = 0; o < occluder.numFaces(); ++o) {
+            const Eigen::Vector3d a = occluder.V.row(occluder.F(o, 0));
+            const Eigen::Vector3d e1 = Eigen::Vector3d(occluder.V.row(occluder.F(o, 1))) - a;
+            const Eigen::Vector3d e2 = Eigen::Vector3d(occluder.V.row(occluder.F(o, 2))) - a;
+            const Eigen::Vector3d pv = dir.cross(e2);
+            const double det = e1.dot(pv);
+            if (std::abs(det) < 1e-18) {
+                continue;
+            }
+            const Eigen::Vector3d tv = origin - a;
+            const double u = tv.dot(pv) / det;
+            const Eigen::Vector3d qv = tv.cross(e1);
+            const double v = dir.dot(qv) / det;
+            const double t = e2.dot(qv) / det;
+            if (u >= 0.0 && v >= 0.0 && u + v <= 1.0 && t > 0.0 && t < 1.0 - 1e-3) {
+                return true;
+            }
+        }
+        return false;
+    };
+    std::erase_if(faces, behind);
+    return faces;
+}
+
 std::vector<Eigen::Index> facesInRectangle(const Mesh& mesh, const ScreenView& view, const Eigen::Vector2d& a,
                                            const Eigen::Vector2d& b, const FaceVisibility* visibility,
                                            std::span<const std::uint8_t> shown) {

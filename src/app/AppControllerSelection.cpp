@@ -125,16 +125,26 @@ const FaceVisibility& AppController::faceVisibility() const {
     return faceVisibility_;
 }
 
+std::vector<Eigen::Index> AppController::withoutFacesHiddenByPreview(const ScreenView& view, std::vector<Eigen::Index> faces) const {
+    // The drawn patch hides what is behind it unless it is see-through (or selecting through is on)
+    const bool opaquePatch = repairPreviewShown() && previewDisplayMode_ != PreviewDisplayMode::TranslucentPatch;
+    if (!opaquePatch || selectsThrough()) {
+        return faces;
+    }
+    return withoutFacesBehind(mesh_, view, std::move(faces), previewPatchMesh());
+}
+
 std::size_t AppController::selectFacesInRectangle(const ScreenView& view, const Eigen::Vector2d& a, const Eigen::Vector2d& b,
                                                   bool select) {
     const FaceVisibility* visibility = selectsThrough() ? nullptr : &faceVisibility();
-    return selectFaces(facesInRectangle(mesh_, view, a, b, visibility, shownFaceMask()), select);
+    return selectFaces(withoutFacesHiddenByPreview(view, facesInRectangle(mesh_, view, a, b, visibility, shownFaceMask())), select);
 }
 
 std::size_t AppController::selectFacesInStroke(const ScreenView& view, const Eigen::Vector2d& from, const Eigen::Vector2d& to,
                                                double radius, bool select) {
     const FaceVisibility* visibility = selectsThrough() ? nullptr : &faceVisibility();
-    return selectFaces(facesInStroke(mesh_, view, from, to, radius, visibility, shownFaceMask()), select);
+    return selectFaces(
+        withoutFacesHiddenByPreview(view, facesInStroke(mesh_, view, from, to, radius, visibility, shownFaceMask())), select);
 }
 
 std::optional<Eigen::Index> AppController::faceAtScreenPoint(const ScreenView& view, const Eigen::Vector2d& point) const {
