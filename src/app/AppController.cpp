@@ -1151,7 +1151,16 @@ BaseMeshDisplay AppController::buildBaseMeshDisplay() const {
             }
         }
     };
-    hide(highlighted);
+    // Selected highlighted faces stay in the base mesh: the overlay draws only their outline (see
+    // buildHighlightOverlay), so the base mesh is what shows them in the selection color
+    std::vector<Eigen::Index> unselectedHighlighted;
+    unselectedHighlighted.reserve(highlighted.size());
+    for (const Eigen::Index f : highlighted) {
+        if (!faceSelected(f)) {
+            unselectedHighlighted.push_back(f);
+        }
+    }
+    hide(unselectedHighlighted);
     if (cutPreview) {
         hide(previewSourceFaces());
     }

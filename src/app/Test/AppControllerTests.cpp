@@ -1023,7 +1023,12 @@ TEST_CASE("AppController cuts highlighted faces out of the base mesh display",
         REQUIRE(all.F.row(static_cast<Eigen::Index>(row)) == controller.mesh().F.row(all.faceIndices[row]));
     }
 
+    // Face-selected defect faces go back into the base mesh, which shows them in the selection color
+    controller.selectAllFaces();
+    REQUIRE(controller.buildBaseMeshDisplay().F.rows() == controller.mesh().numFaces());
+
     controller.clearSelection();
+    controller.clearFaceSelection();
     REQUIRE_FALSE(controller.buildBaseMeshDisplay().isCut);
 }
 
