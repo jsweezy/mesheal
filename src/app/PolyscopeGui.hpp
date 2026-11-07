@@ -5,6 +5,8 @@
 #include "app/RecentFiles.hpp"
 #include "app/UserPreferences.hpp"
 
+#include <polyscope/types.h>
+
 #include <array>
 #include <chrono>
 #include <cstdint>
@@ -39,6 +41,7 @@ public:
     static constexpr const char* kRepairPreviewName = "Repair Preview Patch";
     static constexpr const char* kDefectFacesName = "Selected Defect Faces";
     static constexpr const char* kOriginalEdgesName = "Original Edges (Before Repair)";
+    static constexpr const char* kPreviewFocusName = "Preview Focus";
 
     /// `preferencesFile`: where preference changes are saved (empty: not saved). `prefs`: the loaded
     /// preferences, whose controller part is already applied (`loadAndApplyUserPreferences`).
@@ -218,6 +221,18 @@ private:
     void syncDefectOverlaysToPolyscope(const HighlightOverlayGeometry& overlay);
     void syncRepairPreviewToPolyscope();
     void syncGlobalRepairPreviewToPolyscope();
+    /// Registers (or removes, when empty) the "Original edges" curve network.
+    void registerOriginalEdges(const HighlightOverlayGeometry& originalEdges);
+    /// Result / Original opacity, Original style and Changed faces only of a whole-mesh preview. `inTool`: the
+    /// compact set under an operation's Result / Original / Both buttons.
+    void drawWholeMeshPreviewControls(bool inTool);
+    /// Switches to Simple (Wireframe) or Pretty (Ghosted) transparency while a whole-mesh preview shows Both.
+    void applyWholeMeshTransparencyMode();
+    /// A click while a whole-mesh preview is open: sets the preview focus to the clicked triangle of the result
+    /// or the current mesh. Never opens a defect, so the preview stays as it is.
+    void handleWholeMeshPreviewPick(const polyscope::PickResult& pickResult);
+    /// Draws (or removes) the dot marking the preview focus.
+    void syncPreviewFocusMarker();
     /// Registers the Translate / Rotate preview (the shown faces at their moved positions).
     void syncTransformPreviewToPolyscope();
     /// Gives every overlay sphere / tube end the radius that draws it at the set pixel size at its own depth.
@@ -326,6 +341,14 @@ private:
     std::string baseMaterial_;
     bool baseEnabled_ = true;
     bool baseStyleCaptured_ = false;
+    /// Transparency mode forced while a whole-mesh preview shows Both (-1: none, else a WholeMeshOriginalStyle):
+    /// Pretty for Ghosted, Simple for Wireframe (Pretty is too slow on a dense wireframe). The user's mode is
+    /// restored when the preview leaves Both.
+    int wholeMeshTransparencyStyle_ = -1;
+    /// Geometry of the drawn whole-mesh result (`kRepairPreviewName`), to map a click back to a triangle.
+    Eigen::MatrixXd previewPickV_;
+    Eigen::MatrixXi previewPickF_;
+    polyscope::TransparencyMode savedTransparencyMode_ = polyscope::TransparencyMode::Pretty;
     bool baseIsCut_ = false;
     std::vector<Eigen::Index> baseFaceIndices_;   ///< Mesh face of each drawn base face (when `baseIsCut_`).
     std::vector<Eigen::Index> defectFaceIndices_; ///< Mesh face of each "Selected Defect Faces" face.

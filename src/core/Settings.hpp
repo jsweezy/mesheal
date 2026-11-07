@@ -30,6 +30,8 @@ inline constexpr double kDefaultOriginalEdgeWidthPx = 0.5;        // Pre-repair 
 inline constexpr double kDefaultOriginalEdgeOpacity = 0.5;        // Pre-repair edge opacity so the patch edges show through where an edge survives the repair
 inline constexpr double kDefaultPreviewBaseOpacity  = 0.40;       // Base mesh opacity in "Translucent Base" preview mode
 inline constexpr double kDefaultPreviewPatchOpacity = 0.50;       // Preview patch opacity in "Translucent Patch" preview mode
+inline constexpr double kDefaultWholeMeshResultOpacity   = 1.00; // Whole-mesh repair result opacity (Merge by Distance, Repair All, ...)
+inline constexpr double kDefaultWholeMeshOriginalOpacity = 0.30; // Current mesh behind a whole-mesh result in "Both"
 inline constexpr double kMinPreviewOpacity          = 0.05;       // Minimum preview opacity
 
 // -----------------------------------------------------------------------------

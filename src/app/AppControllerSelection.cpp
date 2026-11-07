@@ -193,4 +193,52 @@ double AppController::meanEdgeLength() const {
     return sum / (3.0 * static_cast<double>(mesh_.numFaces()));
 }
 
+double AppController::shortestEdgeLength() const {
+    const std::array<std::uint64_t, 4> key = {meshGeneration_, faceSelectionGeneration_, shells_.revision(),
+                                              static_cast<std::uint64_t>(activeTool_)};
+    if (!shortestEdgeCache_ || shortestEdgeCache_->first != key) {
+        const std::vector<std::uint8_t> mask = operatorScopeMask(); // empty = the whole mesh
+        double shortest = 0.0;
+        for (Eigen::Index f = 0; f < mesh_.numFaces(); ++f) {
+            if (!mask.empty() && mask[static_cast<std::size_t>(f)] == 0) {
+                continue;
+            }
+            for (int c = 0; c < 3; ++c) {
+                const double len = (mesh_.V.row(mesh_.F(f, c)) - mesh_.V.row(mesh_.F(f, (c + 1) % 3))).norm();
+                if (len > 0.0 && (shortest == 0.0 || len < shortest)) {
+                    shortest = len;
+                }
+            }
+        }
+        shortestEdgeCache_ = std::make_pair(key, shortest);
+    }
+    return shortestEdgeCache_->second;
+}
+
+std::size_t AppController::edgesShorterThanCount(double distance) const {
+    const std::array<std::uint64_t, 4> key = {meshGeneration_, faceSelectionGeneration_, shells_.revision(),
+                                              static_cast<std::uint64_t>(activeTool_)};
+    if (!shortEdgeCountCache_ || std::get<0>(*shortEdgeCountCache_) != key ||
+        std::get<1>(*shortEdgeCountCache_) != distance) {
+        const std::vector<std::uint8_t> mask = operatorScopeMask(); // empty = the whole mesh
+        std::vector<std::pair<int, int>> edges;
+        for (Eigen::Index f = 0; f < mesh_.numFaces(); ++f) {
+            if (!mask.empty() && mask[static_cast<std::size_t>(f)] == 0) {
+                continue;
+            }
+            for (int c = 0; c < 3; ++c) {
+                const int a = mesh_.F(f, c);
+                const int b = mesh_.F(f, (c + 1) % 3);
+                if ((mesh_.V.row(a) - mesh_.V.row(b)).norm() < distance) {
+                    edges.emplace_back(std::min(a, b), std::max(a, b));
+                }
+            }
+        }
+        std::sort(edges.begin(), edges.end());
+        const auto count = static_cast<std::size_t>(std::unique(edges.begin(), edges.end()) - edges.begin());
+        shortEdgeCountCache_ = std::make_tuple(key, distance, count);
+    }
+    return std::get<2>(*shortEdgeCountCache_);
+}
+
 } // namespace ogun

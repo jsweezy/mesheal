@@ -31,6 +31,7 @@ struct UserPreferences {
     PreviewDisplayMode previewDisplayMode = PreviewDisplayMode::CutoutOriginalEdges;
     double previewBaseOpacity = settings::kDefaultPreviewBaseOpacity;
     double previewPatchOpacity = settings::kDefaultPreviewPatchOpacity;
+    WholeMeshPreviewStyle wholeMeshPreview{};
     ToleranceConfig tolerance{};
     PreferenceDefaults defaults{};
     bool checkMeshAfterLoad = settings::kDefaultCheckMeshAfterLoad;

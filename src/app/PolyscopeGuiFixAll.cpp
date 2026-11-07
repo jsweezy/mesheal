@@ -857,6 +857,7 @@ void PolyscopeGui::drawFixAllPreviewControls() {
         requestSync();
     }
     tooltip("Color the result by its distance from the original surface. Off: the changed faces are tinted.");
+    drawWholeMeshPreviewControls(true);
 }
 
 void PolyscopeGui::drawFixAllApplyRow(bool inPlan) {

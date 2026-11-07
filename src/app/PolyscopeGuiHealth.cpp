@@ -1182,6 +1182,9 @@ void PolyscopeGui::drawTransformOperator() {
         controller_.setTransformPreviewShow(static_cast<GlobalPreviewShow>(show));
         requestSync();
     }
+    if (controller_.transformPreviewShown()) {
+        drawWholeMeshPreviewControls(true);
+    }
     if (identity) {
         ImGui::TextDisabled("Enter a translation or a rotation to preview it.");
     } else {

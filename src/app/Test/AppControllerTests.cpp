@@ -595,6 +595,87 @@ TEST_CASE("Repair All Thin / Sliver Faces previews the heal with its numbers bef
     REQUIRE(controller.mesh().F == before.F);
 }
 
+TEST_CASE("Whole-mesh preview draws the original ghosted or as a wireframe in Both",
+          "[app][controller][repair][global][preview]") {
+    ogun::AppController controller;
+    controller.loadSampleDefectiveMesh();
+    controller.openRepairAllThinFaces();
+    const ogun::RepairCandidate* shown = controller.shownGlobalCandidate();
+    REQUIRE(shown != nullptr);
+    REQUIRE_FALSE(shown->removedFaces.empty());
+    REQUIRE(controller.wholeMeshPreviewShown());
+
+    // Result: no original drawn at all, in either style
+    controller.setGlobalPreviewShow(ogun::GlobalPreviewShow::Result);
+    ogun::WholeMeshPreviewStyle style = controller.wholeMeshPreviewStyle();
+    style.original = ogun::WholeMeshOriginalStyle::Wireframe;
+    controller.setWholeMeshPreviewStyle(style);
+    REQUIRE_FALSE(controller.wholeMeshOriginalWireframeShown());
+    REQUIRE_FALSE(controller.buildWholeMeshOriginalWireframe().hasSelectionOverlay());
+    REQUIRE(controller.buildBaseMeshDisplay().F.rows() == 0);
+
+    // Both + Wireframe: the removed faces become edges and leave the base surface
+    controller.setGlobalPreviewShow(ogun::GlobalPreviewShow::Both);
+    REQUIRE(controller.wholeMeshOriginalWireframeShown());
+    REQUIRE(controller.buildWholeMeshOriginalWireframe().hasSelectionOverlay());
+    REQUIRE_FALSE(controller.buildWholeMeshOriginalWireframe().overlayEdges.empty());
+    REQUIRE(controller.buildBaseMeshDisplay().F.rows() == 0);
+
+    // Both + Ghosted: the removed faces are drawn as a surface, no wireframe
+    style.original = ogun::WholeMeshOriginalStyle::Ghosted;
+    controller.setWholeMeshPreviewStyle(style);
+    REQUIRE_FALSE(controller.buildWholeMeshOriginalWireframe().hasSelectionOverlay());
+    REQUIRE(controller.buildBaseMeshDisplay().F.rows() == static_cast<Eigen::Index>(shown->removedFaces.size()));
+
+    // Opacities are clamped
+    style.resultOpacity = 2.0;
+    style.originalOpacity = 0.0;
+    controller.setWholeMeshPreviewStyle(style);
+    REQUIRE(controller.wholeMeshPreviewStyle().resultOpacity == Catch::Approx(1.0));
+    REQUIRE(controller.wholeMeshPreviewStyle().originalOpacity == Catch::Approx(ogun::settings::kMinPreviewOpacity));
+}
+
+TEST_CASE("Whole-mesh preview focus frames the clicked triangle without leaving the preview",
+          "[app][controller][repair][global][preview][focus]") {
+    ogun::AppController controller;
+    controller.loadSampleDefectiveMesh();
+    REQUIRE_FALSE(controller.wholeMeshPreviewOpen());
+    controller.openRepairAllThinFaces();
+    REQUIRE(controller.wholeMeshPreviewOpen());
+    const ogun::ToolSlot tool = controller.activeTool();
+    const auto category = controller.selectedCategory();
+    const std::size_t selectedBefore = controller.selectedFaceCount();
+
+    // A triangle in the z = 1 plane, normal +Z
+    const Eigen::Vector3d a(0.0, 0.0, 1.0);
+    const Eigen::Vector3d b(1.0, 0.0, 1.0);
+    const Eigen::Vector3d c(0.0, 1.0, 1.0);
+    controller.focusWholeMeshPreviewTriangle(a, b, c);
+    const Eigen::Vector3d centroid = (a + b + c) / 3.0;
+    REQUIRE(controller.wholeMeshPreviewFocus().has_value());
+    REQUIRE(controller.orbitPivot().isApprox(centroid));
+
+    // '.' looks at it from +Z first, then from -Z
+    const Eigen::Vector3d up(0.0, 1.0, 0.0);
+    const ogun::CameraFocusTarget front =
+        controller.focusOnSelection(ogun::FocusNormalSide::AutoToggleNormal, Eigen::Vector3d(1.0, 0.0, 0.0), up);
+    REQUIRE(front.valid);
+    REQUIRE(front.targetCenter.isApprox(centroid));
+    REQUIRE(front.cameraPosition.z() > centroid.z());
+    const ogun::CameraFocusTarget back =
+        controller.focusOnSelection(ogun::FocusNormalSide::AutoToggleNormal, Eigen::Vector3d(1.0, 0.0, 0.0), up);
+    REQUIRE(back.cameraPosition.z() < centroid.z());
+    const ogun::CameraFocusTarget minus =
+        controller.focusOnSelection(ogun::FocusNormalSide::NegativeNormal, Eigen::Vector3d(1.0, 0.0, 0.0), up);
+    REQUIRE(minus.cameraPosition.z() < centroid.z());
+
+    // The preview, its tool and the selection are untouched
+    REQUIRE(controller.activeTool() == tool);
+    REQUIRE(controller.selectedCategory() == category);
+    REQUIRE(controller.selectedFaceCount() == selectedBefore);
+    REQUIRE(controller.shownGlobalCandidate() != nullptr);
+}
+
 TEST_CASE("Mesh stats keep the loaded mesh to show the change of every edit", "[app][controller][undo]") {
     ogun::AppController controller;
     REQUIRE_FALSE(controller.originalMeshStats().has_value());

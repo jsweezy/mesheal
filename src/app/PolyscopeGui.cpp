@@ -630,6 +630,10 @@ void PolyscopeGui::handleViewportFacePick(const polyscope::PickResult& pickResul
     if (!pickResult.isHit || !controller_.hasMesh()) {
         return;
     }
+    if (controller_.wholeMeshPreviewOpen()) {
+        handleWholeMeshPreviewPick(pickResult);
+        return;
+    }
 
     // Both pickable surfaces may be drawn with a subset of faces; map the local face back to the mesh
     const std::vector<Eigen::Index>* faceMap = nullptr;
@@ -670,6 +674,63 @@ void PolyscopeGui::handleViewportFacePick(const polyscope::PickResult& pickResul
         scrollListToFocus_ = true;
     }
     requestSync();
+}
+
+void PolyscopeGui::handleWholeMeshPreviewPick(const polyscope::PickResult& pickResult) {
+    // Polyscope's combined pick index lists vertices [0, nVerts) before faces [nVerts, nVerts + nFaces)
+    const auto localFace = [&pickResult](std::uint64_t nVerts, std::uint64_t nFaces) -> std::optional<Eigen::Index> {
+        const std::uint64_t id = pickResult.localIndex;
+        if (id < nVerts || id >= nVerts + nFaces) {
+            return std::nullopt;
+        }
+        return static_cast<Eigen::Index>(id - nVerts);
+    };
+    const auto focusRow = [this](const Eigen::MatrixXd& V, const Eigen::MatrixXi& F, Eigen::Index row) {
+        controller_.focusWholeMeshPreviewTriangle(V.row(F(row, 0)).transpose(), V.row(F(row, 1)).transpose(),
+                                                  V.row(F(row, 2)).transpose());
+        requestSync();
+    };
+
+    if (pickResult.structureName == kRepairPreviewName) {
+        if (const auto row = localFace(static_cast<std::uint64_t>(previewPickV_.rows()), static_cast<std::uint64_t>(previewPickF_.rows()))) {
+            focusRow(previewPickV_, previewPickF_, *row);
+        }
+        return;
+    }
+    // The current mesh (Original, or ghosted in Both); its drawn faces may be a subset
+    const Mesh& mesh = controller_.mesh();
+    const std::vector<Eigen::Index>* faceMap = nullptr;
+    std::uint64_t nVerts = 0;
+    std::uint64_t nFaces = 0;
+    if (pickResult.structureName == kSurfaceMeshName) {
+        nVerts = static_cast<std::uint64_t>(mesh.numVertices());
+        nFaces = baseIsCut_ ? static_cast<std::uint64_t>(baseFaceIndices_.size()) : static_cast<std::uint64_t>(mesh.numFaces());
+        faceMap = baseIsCut_ ? &baseFaceIndices_ : nullptr;
+    } else if (pickResult.structureName == kDefectFacesName && polyscope::hasSurfaceMesh(kDefectFacesName)) {
+        nVerts = static_cast<std::uint64_t>(polyscope::getSurfaceMesh(kDefectFacesName)->nVertices());
+        nFaces = static_cast<std::uint64_t>(defectFaceIndices_.size());
+        faceMap = &defectFaceIndices_;
+    } else {
+        return;
+    }
+    if (const auto local = localFace(nVerts, nFaces)) {
+        focusRow(mesh.V, mesh.F, faceMap ? (*faceMap)[static_cast<std::size_t>(*local)] : *local);
+    }
+}
+
+void PolyscopeGui::syncPreviewFocusMarker() {
+    if (!controller_.wholeMeshPreviewOpen()) {
+        controller_.clearWholeMeshPreviewFocus();
+    }
+    const auto tri = controller_.wholeMeshPreviewFocus();
+    if (!tri) {
+        removePointCloudIfPresent(kPreviewFocusName);
+        return;
+    }
+    const std::vector<Eigen::Vector3d> point{((*tri)[0] + (*tri)[1] + (*tri)[2]) / 3.0};
+    auto* cloud = polyscope::registerPointCloud(kPreviewFocusName, point);
+    cloud->setPointColor(toGlm(controller_.overlayAppearance().pointColor));
+    applyEffectiveHighlightSizingToPolyscope(true);
 }
 
 void PolyscopeGui::processPivotRotate(float dragDeltaX, float dragDeltaY) {
@@ -910,6 +971,7 @@ void PolyscopeGui::syncMeshStructureToPolyscope(bool resetCameraToHome) {
         removeCurveNetworkIfPresent(kOverlayCurveName);
         removeCurveNetworkIfPresent(kOriginalEdgesName);
         removePointCloudIfPresent(kOverlayPointName);
+        removePointCloudIfPresent(kPreviewFocusName);
         baseIsCut_ = false;
         baseFaceIndices_.clear();
         defectFaceIndices_.clear();
@@ -941,6 +1003,7 @@ void PolyscopeGui::syncHighlightOverlaysToPolyscope() {
         (controller_.transformPreviewShown() && controller_.transformPreviewShow() == GlobalPreviewShow::Result);
     syncDefectOverlaysToPolyscope(globalResult ? HighlightOverlayGeometry{} : overlay);
     syncRepairPreviewToPolyscope();
+    syncPreviewFocusMarker();
     applyOverlayAppearanceToPolyscope();
     syncMeshTransparencyToPolyscope();
 }
@@ -1046,20 +1109,23 @@ void PolyscopeGui::syncDefectOverlaysToPolyscope(const HighlightOverlayGeometry&
 
 void PolyscopeGui::syncMeshTransparencyToPolyscope() {
     auto alpha = static_cast<float>(controller_.effectiveBaseOpacity());
-    const bool globalShown = controller_.globalPreviewShown() || controller_.transformPreviewShown();
+    const bool globalShown = controller_.wholeMeshPreviewShown();
+    const WholeMeshPreviewStyle& wholeMesh = controller_.wholeMeshPreviewStyle();
     if (globalShown) {
-        // Both: the current mesh is ghosted behind the Repair All or Translate / Rotate result
-        alpha = std::min(alpha, static_cast<float>(controller_.previewBaseOpacity()));
+        // Both: the preview's Original opacity alone sets the current mesh (Base mesh Opacity is greyed out)
+        alpha = static_cast<float>(wholeMesh.originalOpacity);
     }
+    applyWholeMeshTransparencyMode();
     const bool previewShown = !globalShown && controller_.repairPreviewShown();
     if (previewShown && controller_.previewDisplayMode() == PreviewDisplayMode::TranslucentBase) {
         alpha = std::min(alpha, static_cast<float>(controller_.previewBaseOpacity()));
     }
     const bool translucentPatch = previewShown &&
                                   controller_.previewDisplayMode() == PreviewDisplayMode::TranslucentPatch;
+    const bool translucentResult = globalShown && wholeMesh.resultOpacity < 1.0;
 
     // Polyscope switches to Pretty on its own when it first sees transparency; pick the mode's preference first
-    if ((alpha < 1.0f || translucentPatch) &&
+    if ((alpha < 1.0f || translucentPatch || translucentResult) &&
         polyscope::options::transparencyMode == polyscope::TransparencyMode::None) {
         applyTransparencyModeForPreview();
     }
@@ -1068,9 +1134,32 @@ void PolyscopeGui::syncMeshTransparencyToPolyscope() {
         polyscope::getSurfaceMesh(kSurfaceMeshName)->setTransparency(alpha);
     }
     if (polyscope::hasSurfaceMesh(kRepairPreviewName)) {
-        polyscope::getSurfaceMesh(kRepairPreviewName)->setTransparency(
-            translucentPatch ? static_cast<float>(controller_.previewPatchOpacity()) : 1.0f);
+        float previewAlpha = 1.0f;
+        if (globalShown) {
+            previewAlpha = static_cast<float>(wholeMesh.resultOpacity);
+        } else if (translucentPatch) {
+            previewAlpha = static_cast<float>(controller_.previewPatchOpacity());
+        }
+        polyscope::getSurfaceMesh(kRepairPreviewName)->setTransparency(previewAlpha);
     }
+}
+
+void PolyscopeGui::applyWholeMeshTransparencyMode() {
+    const int style = controller_.wholeMeshBothShown() ? static_cast<int>(controller_.wholeMeshPreviewStyle().original) : -1;
+    if (style == wholeMeshTransparencyStyle_) {
+        return; // the user may change the mode by hand until the style changes
+    }
+    if (wholeMeshTransparencyStyle_ < 0) {
+        savedTransparencyMode_ = polyscope::options::transparencyMode;
+    }
+    if (style < 0) {
+        polyscope::options::transparencyMode = savedTransparencyMode_;
+    } else {
+        polyscope::options::transparencyMode = static_cast<WholeMeshOriginalStyle>(style) == WholeMeshOriginalStyle::Wireframe
+                                                   ? polyscope::TransparencyMode::Simple
+                                                   : polyscope::TransparencyMode::Pretty;
+    }
+    wholeMeshTransparencyStyle_ = style;
 }
 
 void PolyscopeGui::applyTransparencyModeForPreview() {
@@ -1088,7 +1177,8 @@ void PolyscopeGui::syncRepairPreviewToPolyscope() {
         } else {
             syncTransformPreviewToPolyscope();
         }
-        removeCurveNetworkIfPresent(kOriginalEdgesName);
+        // Both + Wireframe: the current mesh is drawn as its edges behind the result
+        registerOriginalEdges(controller_.buildWholeMeshOriginalWireframe());
         return;
     }
     const Mesh& patch = controller_.previewPatchMesh();
@@ -1100,8 +1190,11 @@ void PolyscopeGui::syncRepairPreviewToPolyscope() {
         removeSurfaceMeshIfPresent(kRepairPreviewName);
     }
 
+    registerOriginalEdges(controller_.buildRepairPreviewOriginalEdges());
+}
+
+void PolyscopeGui::registerOriginalEdges(const HighlightOverlayGeometry& originalEdges) {
     lastAppliedOriginalEdgeRadius_ = -1.0;
-    const HighlightOverlayGeometry originalEdges = controller_.buildRepairPreviewOriginalEdges();
     originalEdgeNodes_ = originalEdges.overlayPoints;
     nodeRadiiDirty_ = true;
     if (originalEdges.hasSelectionOverlay()) {
@@ -1118,9 +1211,35 @@ void PolyscopeGui::syncGlobalRepairPreviewToPolyscope() {
         removeSurfaceMeshIfPresent(kRepairPreviewName);
         return;
     }
-    auto* psResult = polyscope::registerSurfaceMesh(kRepairPreviewName, result.V, result.F);
+    // Changed faces only: drop the faces the repair kept as they were
+    const bool changedOnly = controller_.wholeMeshPreviewStyle().changedFacesOnly;
+    Eigen::MatrixXi shownF;
+    if (changedOnly) {
+        shownF.resize(static_cast<Eigen::Index>(candidate->changedFaces.size()), 3);
+        Eigen::Index row = 0;
+        for (const Eigen::Index f : candidate->changedFaces) {
+            if (f >= 0 && f < result.numFaces()) {
+                shownF.row(row++) = result.F.row(f);
+            }
+        }
+        shownF.conservativeResize(row, 3);
+        if (row == 0) {
+            removeSurfaceMeshIfPresent(kRepairPreviewName);
+            return;
+        }
+    }
+    previewPickV_ = result.V;
+    previewPickF_ = changedOnly ? shownF : result.F;
+    auto* psResult = polyscope::registerSurfaceMesh(kRepairPreviewName, previewPickV_, previewPickF_);
     psResult->setSmoothShade(false);
     psResult->setBackFacePolicy(polyscope::BackFacePolicy::Identical);
+    if (changedOnly) {
+        // Every shown face is a changed one, so the plain preview color covers them (applyOverlayAppearanceToPolyscope)
+        if (controller_.colorByDeviation() && candidate->vertexDeviation.size() == result.numVertices()) {
+            psResult->addVertexScalarQuantity("Deviation", candidate->vertexDeviation)->setEnabled(true);
+        }
+        return;
+    }
     if (controller_.colorByDeviation() && candidate->vertexDeviation.size() == result.numVertices()) {
         psResult->addVertexScalarQuantity("Deviation", candidate->vertexDeviation)->setEnabled(true);
         return;
@@ -1160,7 +1279,9 @@ void PolyscopeGui::syncTransformPreviewToPolyscope() {
         return;
     }
     // Every face moved, so the whole copy takes the preview color (applyOverlayAppearanceToPolyscope)
-    auto* psResult = polyscope::registerSurfaceMesh(kRepairPreviewName, controller_.transformPreviewVertices(), shownF);
+    previewPickV_ = controller_.transformPreviewVertices();
+    previewPickF_ = shownF;
+    auto* psResult = polyscope::registerSurfaceMesh(kRepairPreviewName, previewPickV_, previewPickF_);
     psResult->setSmoothShade(false);
     psResult->setBackFacePolicy(polyscope::BackFacePolicy::Identical);
 }
@@ -1189,7 +1310,9 @@ void PolyscopeGui::applyOverlayAppearanceToPolyscope() {
     if (polyscope::hasCurveNetwork(kOriginalEdgesName)) {
         auto* curveNet = polyscope::getCurveNetwork(kOriginalEdgesName);
         curveNet->setColor(toGlm(appearance.originalEdgeColor));
-        curveNet->setTransparency(static_cast<float>(appearance.originalEdgeOpacity));
+        curveNet->setTransparency(static_cast<float>(controller_.wholeMeshPreviewShown()
+                                                          ? controller_.wholeMeshPreviewStyle().originalOpacity
+                                                          : appearance.originalEdgeOpacity));
     }
     applyEffectiveHighlightSizingToPolyscope(true);
 }
@@ -1228,8 +1351,9 @@ void PolyscopeGui::syncStylesFromPolyscopeUi() {
         changed |= adoptColor(curveNet->getColor(), appearance.originalEdgeColor);
         changed |= adoptOverlayRadius(
             static_cast<double>(curveNet->getRadius()), lastAppliedOriginalEdgeRadius_, appearance.originalEdgeWidthPx);
+        // A whole-mesh wireframe uses the whole-mesh Original opacity, not the patch preview's edge opacity
         const auto alpha = static_cast<double>(curveNet->getTransparency());
-        if (std::abs(alpha - appearance.originalEdgeOpacity) > 1.0e-4) {
+        if (!controller_.wholeMeshPreviewShown() && std::abs(alpha - appearance.originalEdgeOpacity) > 1.0e-4) {
             appearance.originalEdgeOpacity = alpha;
             changed = true;
         }
@@ -1316,6 +1440,9 @@ void PolyscopeGui::applyEffectiveHighlightSizingToPolyscope(bool forceUpdate) {
         radiusIsStale(pointRadius, lastAppliedPointRadius_, forceUpdate)) {
         polyscope::getPointCloud(kOverlayPointName)->setPointRadius(pointRadius, false);
         lastAppliedPointRadius_ = pointRadius;
+    }
+    if (polyscope::hasPointCloud(kPreviewFocusName)) {
+        polyscope::getPointCloud(kPreviewFocusName)->setPointRadius(pointRadius, false);
     }
     applyPerNodeOverlayRadii(defectEdgeRadius, originalEdgeRadius, pointRadius, forceUpdate);
 }

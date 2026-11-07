@@ -86,6 +86,7 @@ void PolyscopeGui::drawDisplayPanel() {
     OverlayAppearance appearance = controller_.overlayAppearance();
     bool baseChanged = false;
     bool overlayChanged = false;
+    bool previewColorsChanged = false;
     bool tintChanged = false;
     ImGui::PushItemWidth(130.0f);
 
@@ -100,12 +101,18 @@ void PolyscopeGui::drawDisplayPanel() {
             baseChanged |= widthSlider("Edge width##base", appearance.baseMesh.edgeWidthPx);
         }
 
-        auto opacity = static_cast<float>(controller_.effectiveBaseOpacity());
+        // A whole-mesh preview sets the current mesh's opacity with its own Original opacity
+        const bool previewOwnsOpacity = controller_.wholeMeshPreviewShown();
+        ImGui::BeginDisabled(previewOwnsOpacity);
+        auto opacity = static_cast<float>(previewOwnsOpacity ? controller_.wholeMeshPreviewStyle().originalOpacity
+                                                             : controller_.effectiveBaseOpacity());
         if (ImGui::SliderFloat("Opacity", &opacity, static_cast<float>(settings::kMinGhostOpacity), 1.0f, "%.2f")) {
             controller_.setBaseMeshTransparency(static_cast<double>(opacity));
             syncMeshTransparencyToPolyscope();
         }
-        tooltip("Base-mesh opacity (1 = opaque). G toggles between opaque and the last ghost opacity.");
+        ImGui::EndDisabled();
+        tooltip(previewOwnsOpacity ? "Set by the preview's Original opacity while a whole-mesh preview is open."
+                                   : "Base-mesh opacity (1 = opaque). G toggles between opaque and the last ghost opacity.");
 
         struct TransparencyChoice {
             polyscope::TransparencyMode mode;
@@ -177,49 +184,75 @@ void PolyscopeGui::drawDisplayPanel() {
 
     if (ImGui::CollapsingHeader("Repair preview")) {
         bool showPreview = controller_.repairPreviewVisible();
-        if (ImGui::Checkbox("Show preview patch", &showPreview)) {
+        if (ImGui::Checkbox("Show preview", &showPreview)) {
             controller_.setRepairPreviewVisible(showPreview);
             requestSync();
         }
-        if (ImGui::BeginCombo("Mode", previewDisplayModeLabel(controller_.previewDisplayMode()))) {
-            for (const PreviewDisplayMode mode : kPreviewDisplayModes) {
-                if (ImGui::Selectable(previewDisplayModeLabel(mode), mode == controller_.previewDisplayMode())) {
-                    controller_.setPreviewDisplayMode(mode);
-                    applyTransparencyModeForPreview();
-                    requestSync();
+        tooltip("Draw the repair preview of a hole, sliver or intersection island.");
+        const bool wholeMesh = controller_.wholeMeshPreviewShown();
+        if (wholeMesh) {
+            // Whole-mesh result (Merge by Distance, Repair All, Fix All, Translate / Rotate)
+            ImGui::TextDisabled("Whole-mesh result");
+            drawWholeMeshPreviewControls(false);
+        } else {
+            if (ImGui::BeginCombo("Mode", previewDisplayModeLabel(controller_.previewDisplayMode()))) {
+                for (const PreviewDisplayMode mode : kPreviewDisplayModes) {
+                    if (ImGui::Selectable(previewDisplayModeLabel(mode), mode == controller_.previewDisplayMode())) {
+                        controller_.setPreviewDisplayMode(mode);
+                        applyTransparencyModeForPreview();
+                        requestSync();
+                    }
                 }
+                ImGui::EndCombo();
             }
-            ImGui::EndCombo();
-        }
-        switch (controller_.previewDisplayMode()) {
-        case PreviewDisplayMode::TranslucentBase: {
-            double opacity = controller_.previewBaseOpacity();
-            if (opacitySlider("Base opacity", opacity)) {
-                controller_.setPreviewBaseOpacity(opacity);
-                syncMeshTransparencyToPolyscope();
+            tooltip("How a hole, sliver or intersection patch is shown against the mesh.");
+            switch (controller_.previewDisplayMode()) {
+            case PreviewDisplayMode::TranslucentBase: {
+                double opacity = controller_.previewBaseOpacity();
+                if (opacitySlider("Base opacity", opacity)) {
+                    controller_.setPreviewBaseOpacity(opacity);
+                    syncMeshTransparencyToPolyscope();
+                }
+                break;
             }
-            break;
-        }
-        case PreviewDisplayMode::TranslucentPatch: {
-            double opacity = controller_.previewPatchOpacity();
-            if (opacitySlider("Patch opacity", opacity)) {
-                controller_.setPreviewPatchOpacity(opacity);
-                syncMeshTransparencyToPolyscope();
+            case PreviewDisplayMode::TranslucentPatch: {
+                double opacity = controller_.previewPatchOpacity();
+                if (opacitySlider("Patch opacity", opacity)) {
+                    controller_.setPreviewPatchOpacity(opacity);
+                    syncMeshTransparencyToPolyscope();
+                }
+                break;
             }
-            break;
+            case PreviewDisplayMode::CutoutOriginalEdges:
+                overlayChanged |= widthSlider("Original edges", appearance.originalEdgeWidthPx);
+                overlayChanged |= opacitySlider("Original opacity", appearance.originalEdgeOpacity);
+                break;
+            }
         }
-        case PreviewDisplayMode::CutoutOriginalEdges:
-            overlayChanged |= widthSlider("Original edges", appearance.originalEdgeWidthPx);
-            overlayChanged |= opacitySlider("Original opacity", appearance.originalEdgeOpacity);
-            break;
+        overlayChanged |= ImGui::Checkbox(wholeMesh ? "Result edges" : "Patch edges##show", &appearance.previewPatch.showEdges);
+        if (appearance.previewPatch.showEdges) {
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(ImGui::CalcItemWidth() * 0.6f);
+            overlayChanged |= widthSlider("##patchEdgeWidth", appearance.previewPatch.edgeWidthPx);
         }
-        overlayChanged |= widthSlider("Patch edge width", appearance.previewPatch.edgeWidthPx);
-        overlayChanged |= colorSwatch("Patch", appearance.previewPatch.color);
+        // A whole-mesh result bakes the changed-face color into per-face colors: rebuild it on change
+        if (colorSwatch(wholeMesh ? "Changed" : "Patch", appearance.previewPatch.color)) {
+            overlayChanged = true;
+            previewColorsChanged = true;
+        }
+        tooltip(wholeMesh ? "Color of the faces the repair changed (unchanged faces use the base mesh color)."
+                          : "Fill of the repair patch.");
         ImGui::SameLine();
-        overlayChanged |= colorSwatch("Patch edges", appearance.previewPatch.edgeColor);
-        if (controller_.previewDisplayMode() == PreviewDisplayMode::CutoutOriginalEdges) {
+        overlayChanged |= colorSwatch("Edges##patch", appearance.previewPatch.edgeColor);
+        const bool originalEdgesShown = wholeMesh ? controller_.wholeMeshPreviewStyle().original == WholeMeshOriginalStyle::Wireframe
+                                                  : controller_.previewDisplayMode() == PreviewDisplayMode::CutoutOriginalEdges;
+        if (originalEdgesShown) {
             ImGui::SameLine();
             overlayChanged |= colorSwatch("Original", appearance.originalEdgeColor);
+            tooltip("Color of the original mesh's edges.");
+            if (wholeMesh) {
+                overlayChanged |= widthSlider("Original edges", appearance.originalEdgeWidthPx);
+            }
         }
     }
 
@@ -235,6 +268,9 @@ void PolyscopeGui::drawDisplayPanel() {
     if (baseChanged || overlayChanged || tintChanged) {
         controller_.setOverlayAppearance(appearance);
     }
+    if ((previewColorsChanged || baseChanged) && controller_.globalPreviewShown()) {
+        requestSync();
+    }
     if (baseChanged) {
         applyBaseMeshStyleToPolyscope();
     }
@@ -249,6 +285,50 @@ void PolyscopeGui::drawDisplayPanel() {
 // -----------------------------------------------------------------------------
 // Navigate panel (UI_DESIGN.md §9.2)
 // -----------------------------------------------------------------------------
+
+void PolyscopeGui::drawWholeMeshPreviewControls(bool inTool) {
+    WholeMeshPreviewStyle style = controller_.wholeMeshPreviewStyle();
+    const bool both = controller_.globalPreviewShown() ? controller_.globalPreviewShow() == GlobalPreviewShow::Both
+                                                       : controller_.transformPreviewShow() == GlobalPreviewShow::Both;
+    bool opacityChanged = false;
+    bool geometryChanged = false;
+    if (inTool) {
+        ImGui::PushItemWidth(ImGui::GetFontSize() * 8.0f);
+    }
+    opacityChanged |= opacitySlider("Result opacity", style.resultOpacity);
+    tooltip("Opacity of the repaired mesh.");
+    ImGui::BeginDisabled(!both);
+    int original = static_cast<int>(style.original);
+    if (ImGui::RadioButton("Ghosted", &original, static_cast<int>(WholeMeshOriginalStyle::Ghosted))) {
+        geometryChanged = true;
+    }
+    tooltip("Both: draw the current mesh as a see-through surface behind the result.");
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Wireframe", &original, static_cast<int>(WholeMeshOriginalStyle::Wireframe))) {
+        geometryChanged = true;
+    }
+    tooltip("Both: draw only the current mesh's edges, so it never speckles through a result lying on top of it.");
+    style.original = static_cast<WholeMeshOriginalStyle>(original);
+    opacityChanged |= opacitySlider("Original opacity", style.originalOpacity);
+    tooltip("Both: opacity of the current mesh (ghost surface or wireframe).");
+    ImGui::EndDisabled();
+    if (controller_.globalPreviewShown()) {
+        geometryChanged |= ImGui::Checkbox("Changed faces only", &style.changedFacesOnly);
+        tooltip("Hide the result faces the repair left as they were, so only the changed area is drawn.");
+    }
+    if (inTool) {
+        ImGui::PopItemWidth();
+    }
+    if (opacityChanged || geometryChanged) {
+        controller_.setWholeMeshPreviewStyle(style);
+    }
+    if (geometryChanged) {
+        requestSync();
+    } else if (opacityChanged) {
+        syncMeshTransparencyToPolyscope();
+        applyOverlayAppearanceToPolyscope();
+    }
+}
 
 void PolyscopeGui::flyToStandardView(int view) {
     if (!controller_.hasMesh()) {

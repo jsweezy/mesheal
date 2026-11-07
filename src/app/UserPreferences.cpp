@@ -337,6 +337,17 @@ const std::vector<Field>& preferenceFields() {
                               settings::kMinPreviewOpacity, 1.0));
         f.push_back(realField(preview, "preview.patch_opacity", [](auto& p) -> auto& { return p.previewPatchOpacity; },
                               settings::kMinPreviewOpacity, 1.0));
+        f.push_back(enumField(preview, "preview.whole_mesh_original", [](auto& p) -> auto& { return p.wholeMeshPreview.original; },
+                              std::array<std::pair<WholeMeshOriginalStyle, const char*>, 2>{{
+                                  {WholeMeshOriginalStyle::Ghosted, "ghosted"},
+                                  {WholeMeshOriginalStyle::Wireframe, "wireframe"},
+                              }}));
+        f.push_back(realField(preview, "preview.whole_mesh_result_opacity",
+                              [](auto& p) -> auto& { return p.wholeMeshPreview.resultOpacity; }, settings::kMinPreviewOpacity, 1.0));
+        f.push_back(realField(preview, "preview.whole_mesh_original_opacity",
+                              [](auto& p) -> auto& { return p.wholeMeshPreview.originalOpacity; }, settings::kMinPreviewOpacity, 1.0));
+        f.push_back(boolField(preview, "preview.whole_mesh_changed_only",
+                              [](auto& p) -> auto& { return p.wholeMeshPreview.changedFacesOnly; }));
         addSurfaceStyle(f, preview, "preview.patch_", [](auto& p) -> auto& { return p.appearance.previewPatch; });
         f.push_back(colorField(preview, "preview.original_edge_color",
                                [](auto& p) -> auto& { return p.appearance.originalEdgeColor; }));

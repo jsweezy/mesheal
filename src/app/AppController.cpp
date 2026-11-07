@@ -330,6 +330,7 @@ UserPreferences AppController::userPreferences() const {
     prefs.previewDisplayMode = previewDisplayMode_;
     prefs.previewBaseOpacity = previewBaseOpacity_;
     prefs.previewPatchOpacity = previewPatchOpacity_;
+    prefs.wholeMeshPreview = wholeMeshPreviewStyle_;
     prefs.tolerance = toleranceConfig_;
     prefs.defaults = preferenceDefaults_;
     prefs.checkMeshAfterLoad = checkMeshAfterLoad_;
@@ -346,6 +347,7 @@ void AppController::applyUserPreferences(const UserPreferences& prefs) {
     setPreviewDisplayMode(prefs.previewDisplayMode);
     setPreviewBaseOpacity(prefs.previewBaseOpacity);
     setPreviewPatchOpacity(prefs.previewPatchOpacity);
+    setWholeMeshPreviewStyle(prefs.wholeMeshPreview);
     setToleranceConfig(prefs.tolerance);
     setThinFaceDefaults(prefs.defaults.thinFace);
     setFixAllDefaults(prefs.defaults.fixAll);
@@ -1045,6 +1047,62 @@ void AppController::setPreviewPatchOpacity(double opacity) noexcept {
     }
 }
 
+const char* wholeMeshOriginalStyleLabel(WholeMeshOriginalStyle style) noexcept {
+    return style == WholeMeshOriginalStyle::Wireframe ? "Wireframe" : "Ghosted";
+}
+
+void AppController::setWholeMeshPreviewStyle(const WholeMeshPreviewStyle& style) noexcept {
+    const auto clampOpacity = [](double opacity, double fallback) {
+        return std::isfinite(opacity) ? std::clamp(opacity, settings::kMinPreviewOpacity, 1.0) : fallback;
+    };
+    WholeMeshPreviewStyle next = style;
+    next.resultOpacity = clampOpacity(style.resultOpacity, wholeMeshPreviewStyle_.resultOpacity);
+    next.originalOpacity = clampOpacity(style.originalOpacity, wholeMeshPreviewStyle_.originalOpacity);
+    wholeMeshPreviewStyle_ = next;
+}
+
+bool AppController::wholeMeshPreviewOpen() const noexcept {
+    if (activeTool_ == ToolSlot::Transform) {
+        return transformPreviewV_.rows() > 0 && transformPreviewV_.rows() == mesh_.numVertices();
+    }
+    const RepairCandidate* candidate = shownGlobalCandidate();
+    return repairAllOpen() && candidate != nullptr && candidate->success;
+}
+
+void AppController::focusWholeMeshPreviewTriangle(const Eigen::Vector3d& a, const Eigen::Vector3d& b, const Eigen::Vector3d& c) {
+    if (!a.allFinite() || !b.allFinite() || !c.allFinite()) {
+        return;
+    }
+    previewFocusTriangle_ = std::array<Eigen::Vector3d, 3>{a, b, c};
+    previewFocusLastSign_ = 0;
+    orbitPivot_ = (a + b + c) / 3.0;
+    postStatusMessage("Preview focus set: '.' frames it, +Normal / -Normal view it from either side.");
+}
+
+bool AppController::wholeMeshOriginalWireframeShown() const noexcept {
+    return wholeMeshPreviewStyle_.original == WholeMeshOriginalStyle::Wireframe && wholeMeshBothShown();
+}
+
+HighlightOverlayGeometry AppController::buildWholeMeshOriginalWireframe() const {
+    HighlightOverlayGeometry overlay;
+    if (!wholeMeshOriginalWireframeShown()) {
+        return overlay;
+    }
+    std::vector<Eigen::Index> faces;
+    if (globalPreviewShown()) {
+        faces = shownGlobalCandidate()->removedFaces;
+    } else {
+        faces.reserve(static_cast<std::size_t>(mesh_.numFaces()));
+        for (Eigen::Index f = 0; f < mesh_.numFaces(); ++f) {
+            if (shells_.faceVisible(f)) {
+                faces.push_back(f);
+            }
+        }
+    }
+    appendFaceGeometry(faces, overlay, false);
+    return overlay;
+}
+
 bool AppController::previewUsesCutout() const noexcept {
     return repairPreviewShown() &&
            !previewSourceFaces().empty() &&
@@ -1065,7 +1123,7 @@ BaseMeshDisplay AppController::buildBaseMeshDisplay() const {
         // Result: the candidate replaces the whole mesh in 3D. Both: only the removed faces are ghosted
         // behind it (the kept ones would z-fight with their identical copies in the result)
         display.isCut = true;
-        if (globalPreviewShow_ == GlobalPreviewShow::Both) {
+        if (globalPreviewShow_ == GlobalPreviewShow::Both && !wholeMeshOriginalWireframeShown()) {
             display.faceIndices = shownGlobalCandidate()->removedFaces;
         }
         display.F.resize(static_cast<Eigen::Index>(display.faceIndices.size()), 3);
@@ -1074,7 +1132,7 @@ BaseMeshDisplay AppController::buildBaseMeshDisplay() const {
         }
         return display;
     }
-    if (transformPreviewShown() && transformPreviewShow_ == GlobalPreviewShow::Result) {
+    if (transformPreviewShown() && (transformPreviewShow_ == GlobalPreviewShow::Result || wholeMeshOriginalWireframeShown())) {
         display.isCut = true; // the transformed copy replaces the mesh in 3D
         return display;
     }
@@ -1945,6 +2003,11 @@ Eigen::Vector3d AppController::computeSelectionCentroid() const noexcept {
     if (mesh_.empty()) {
         return Eigen::Vector3d::Zero();
     }
+    // The preview focus sizes the marker and the near clip plane while zoomed in on it
+    if (wholeMeshPreviewOpen() && previewFocusTriangle_) {
+        const auto& [a, b, c] = *previewFocusTriangle_;
+        return (a + b + c) / 3.0;
+    }
     const Eigen::Index face = focusedSingleFace();
     if (face >= 0 && face < mesh_.numFaces()) {
         return computeFaceCentroid(face);
@@ -2149,6 +2212,35 @@ CameraFocusTarget AppController::computeCameraFocusTarget(
     if (mesh_.empty()) {
         return focus;
     }
+    if (const auto tri = wholeMeshPreviewFocus()) {
+        // The clicked preview triangle, framed like a picked face
+        const auto& [a, b, c] = *tri;
+        const Eigen::Vector3d lo = a.cwiseMin(b).cwiseMin(c);
+        const Eigen::Vector3d hi = a.cwiseMax(b).cwiseMax(c);
+        focus.selectionBounds = BoundingBox{lo, hi};
+        focus.targetCenter = (a + b + c) / 3.0;
+        const double meshDiag = std::max(meshBounds().diagonal(), 1.0e-6);
+        const double triDiag = (hi - lo).norm();
+        focus.focusRadius = std::max(triDiag > 0.0 ? 1.75 * triDiag : 0.1 * meshDiag, 1.0e-3 * meshDiag);
+        Eigen::Vector3d viewDir = currentViewDirection;
+        const Eigen::Vector3d n = (b - a).cross(c - a);
+        int sign = 0;
+        if (normalSide != FocusNormalSide::PreserveViewDirection && n.norm() > 0.0) {
+            sign = normalSide == FocusNormalSide::NegativeNormal                                       ? -1
+                   : normalSide == FocusNormalSide::AutoToggleNormal && previewFocusLastSign_ == +1 ? -1
+                                                                                                    : +1;
+            viewDir = -static_cast<double>(sign) * n.normalized();
+        }
+        if (viewDir.norm() <= 1.0e-12 || !viewDir.allFinite()) {
+            viewDir = Eigen::Vector3d(-1.0, -1.0, -1.0);
+        }
+        viewDir.normalize();
+        focus.normalSideSign = sign;
+        focus.cameraPosition = focus.targetCenter - viewDir * focus.focusRadius;
+        focus.cameraUpDirection = computeOrthogonalUpVector(viewDir, preferredUpDirection);
+        focus.valid = true;
+        return focus;
+    }
     if (faceSelectionFocused()) {
         focus = computeFaceSelectionFocusTarget(currentViewDirection, normalSide, preferredUpDirection);
         if (focus.valid) {
@@ -2281,6 +2373,10 @@ CameraFocusTarget AppController::focusOnSelection(
     }
 
     orbitPivot_ = focus.targetCenter;
+    if (wholeMeshPreviewFocus()) {
+        previewFocusLastSign_ = focus.normalSideSign;
+        return focus;
+    }
     const bool framedSelection = faceSelectionFocused();
     lastFramedSelection_ = framedSelection && focus.normalSideSign != 0 ? faceSelectionGeneration_ : 0;
     if (framedSelection) {

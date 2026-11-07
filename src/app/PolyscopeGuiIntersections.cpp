@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <span>
 #include <string>
+#include <vector>
 
 namespace ogun {
 
@@ -57,6 +58,87 @@ const char* displayGlobalMethodName(GlobalRepairMethod method) noexcept {
         return "Shrink-Wrap (Outer Envelope)";
     }
     return globalRepairMethodLabel(method);
+}
+
+std::string lengthText(double value, Unit unit);
+
+// Round distances, 1-2-5 per decade (0.0001, 0.0002, 0.0005, 0.001 ... 10), within [lo, hi]
+std::vector<double> roundDistanceSteps(double lo, double hi) {
+    std::vector<double> steps;
+    for (double decade = std::pow(10.0, std::floor(std::log10(lo))); decade <= hi * 1.0001; decade *= 10.0) {
+        for (const double m : {1.0, 2.0, 5.0}) {
+            const double v = m * decade;
+            if (v >= lo * 0.9999 && v <= hi * 1.0001) {
+                steps.push_back(v);
+            }
+        }
+    }
+    return steps;
+}
+
+// A slider that snaps to round distances, with a box beside it for an exact value. Returns true on change.
+bool roundDistanceInput(const std::string& label, double& value, double lo, double hi) {
+    const std::vector<double> steps = roundDistanceSteps(lo, hi);
+    // Nearest step on a log scale, so a typed value still places the handle sensibly
+    std::size_t nearest = 0;
+    for (std::size_t i = 1; i < steps.size(); ++i) {
+        if (std::abs(std::log(steps[i] / value)) < std::abs(std::log(steps[nearest] / value))) {
+            nearest = i;
+        }
+    }
+    const float full = ImGui::CalcItemWidth();
+    const float boxWidth = std::min(90.0f, full * 0.4f);
+    bool changed = false;
+    char shown[32];
+    std::snprintf(shown, sizeof(shown), "%g", steps[nearest]);
+    int index = static_cast<int>(nearest);
+    ImGui::PushItemWidth(full - boxWidth - ImGui::GetStyle().ItemInnerSpacing.x);
+    if (ImGui::SliderInt(("##steps" + label).c_str(), &index, 0, static_cast<int>(steps.size()) - 1, shown,
+                         ImGuiSliderFlags_NoInput)) {
+        value = steps[static_cast<std::size_t>(index)];
+        changed = true;
+    }
+    ImGui::PopItemWidth();
+    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+    ImGui::PushItemWidth(boxWidth);
+    double typed = value;
+    if (ImGui::InputDouble(label.c_str(), &typed, 0.0, 0.0, "%.6g", ImGuiInputTextFlags_EnterReturnsTrue) && typed > 0.0) {
+        value = std::clamp(typed, lo, hi);
+        changed = true;
+    }
+    ImGui::PopItemWidth();
+    return changed;
+}
+
+// "shortest edge 0.012 mm": merging or welding past it collapses real edges, not just near-duplicates
+void edgeLengthHints(const AppController& controller, double distance, bool warn, bool keepSurfacesApart) {
+    const double meanEdge = controller.meanEdgeLength();
+    const double shortEdge = controller.shortestEdgeLength();
+    if (meanEdge <= 0.0) {
+        return;
+    }
+    const double ratio = distance / meanEdge;
+    ImGui::TextDisabled("= %.3gx mean edge (%s)", ratio, lengthText(meanEdge, controller.fileUnit()).c_str());
+    if (shortEdge > 0.0) {
+        ImGui::TextDisabled("shortest edge in scope %s", lengthText(shortEdge, controller.fileUnit()).c_str());
+    }
+    if (!warn) {
+        return;
+    }
+    if (ratio >= 1.0) {
+        ImGui::PushStyleColor(ImGuiCol_Text, gui::kDefectColor);
+        ImGui::TextWrapped("Above the mean edge, so %s",
+                           ratio < settings::kMergeCollapseWarnRatio ? "many edges will collapse" : "whole areas will collapse");
+        ImGui::PopStyleColor();
+    } else if (shortEdge > 0.0 && distance > shortEdge) {
+        const std::size_t shortEdges = controller.edgesShorterThanCount(distance);
+        ImGui::TextDisabled("Edges shorter than %s in scope: %s",
+                            lengthText(distance, controller.fileUnit()).c_str(), withThousands(shortEdges).c_str());
+    } else if (shortEdge > 0.0 && keepSurfacesApart) {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("Below the shortest edge: with Keep surfaces apart on, nothing will merge.");
+        ImGui::PopTextWrapPos();
+    }
 }
 
 constexpr std::array<GlobalMethodOption, 11> kGlobalMethodOptions = {{
@@ -245,9 +327,6 @@ void PolyscopeGui::drawRepairAllOperator() {
     const DefectCategory target = controller_.globalRepairTarget();
     const CategoryHealth& row = controller_.categoryHealth(target);
     const ToolSlot slot = controller_.activeTool();
-    const bool wrapOnly =
-        slot == ToolSlot::AlphaWrap || slot == ToolSlot::VoxelHealRemesh || slot == ToolSlot::PrecisionIsosurface ||
-        slot == ToolSlot::Decimate || slot == ToolSlot::MergeVertices || slot == ToolSlot::Weld;
     if (slot == ToolSlot::AlphaWrap) {
         ImGui::TextWrapped("Best for 3D printing external shells and enveloping thin, zero-volume sheets (%s). "
                            "Creates a guaranteed watertight outer casing around the geometry. Warning: This will "
@@ -314,16 +393,20 @@ void PolyscopeGui::drawRepairAllOperator() {
         ImGui::TextDisabled("Intersecting faces not checked yet (Re-check in its Tool, or Check Mesh). "
                             "The preview measures them anyway.");
     }
-    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-    ImGui::TextWrapped(wrapOnly || controller_.globalRepairMethods().size() == 1 ? "Preview shows the result and its numbers before anything is applied."
-                                : "Compare surgical and coarse repairs, then apply the one that suits this model. Every "
-                                  "method shows its changes before anything is applied.");
-    ImGui::PopStyleColor();
-
-    ImGui::SeparatorText("Method");
     const std::span<const GlobalRepairMethod> methods = controller_.globalRepairMethods();
+    if (methods.size() > 1) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("Compare surgical and coarse repairs, then apply the one that suits this model.");
+        ImGui::PopStyleColor();
+        ImGui::SeparatorText("Method");
+    }
     for (const GlobalMethodOption& option : kGlobalMethodOptions) {
         if (std::find(methods.begin(), methods.end(), option.method) == methods.end()) {
+            continue;
+        }
+        if (methods.size() == 1) {
+            // A lone method needs no picker: just its settings
+            drawGlobalMethodParams(option.method);
             continue;
         }
         const std::string label = std::string(displayGlobalMethodName(option.method)) + "##global";
@@ -384,10 +467,11 @@ void PolyscopeGui::drawRepairAllOperator() {
         requestSync();
     }
     tooltip("Color the result by its distance from the original surface. Off: the changed faces are tinted.");
+    drawWholeMeshPreviewControls(true);
     if (shown != nullptr) {
         const RepairMetrics& m = shown->metrics;
-        ImGui::TextWrapped("%s: %.1f%% of faces unchanged, shells %s -> %s, thin faces %s -> %s, %.2f s.",
-                           displayGlobalMethodName(shown->method), 100.0 * m.unchangedFraction,
+        ImGui::TextWrapped("%s: %.1f%% of faces changed, shells %s -> %s, thin faces %s -> %s, %.2f s.",
+                           displayGlobalMethodName(shown->method), 100.0 * (1.0 - m.unchangedFraction),
                            withThousands(m.shellsBefore).c_str(), withThousands(m.shellsAfter).c_str(),
                            withThousands(m.thinFacesBefore).c_str(), withThousands(m.thinFacesAfter).c_str(),
                            m.elapsedMs / 1000.0);
@@ -495,16 +579,10 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
     }
     case GlobalRepairMethod::MergeVertices: {
         // The number is in file coordinates; the unit is only a label
-        double distance = params.mergeDistance;
         const std::string label = "Distance (" + std::string(unitSymbol(controller_.fileUnit())) + ")";
-        const double lo = settings::kMinMergeDistance;
-        const double hi = settings::kMaxMergeDistance;
-        if (ImGui::SliderScalar(label.c_str(), ImGuiDataType_Double, &distance, &lo, &hi, "%.4g", ImGuiSliderFlags_Logarithmic)) {
-            params.mergeDistance = std::clamp(distance, settings::kMinMergeDistance, settings::kMaxMergeDistance);
-            changed = true;
-        }
-        tooltip("Vertices closer than this are merged (default 0.05; 0.0001 to 10, log scale; the unit is only a label). "
-                "Ctrl+click (Control, not Cmd) to type a value.");
+        changed |= roundDistanceInput(label, params.mergeDistance, settings::kMinMergeDistance, settings::kMaxMergeDistance);
+        tooltip("Vertices closer than this are merged (default 0.05; the unit is only a label). The slider snaps "
+                "to round values; type in the box (Enter) for an exact one.");
         changed |= ImGui::Checkbox("Preserve open edges / cracks", &params.mergePreserveOpenEdges);
         tooltip("On (default): open edges and cracks are protected and will not merge across seams. To stitch "
                 "open seams, use Mesh > Weld. Off: vertices across open edges can merge.");
@@ -512,37 +590,16 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
         tooltip("On (default): two vertices merge only when an edge joins them (a short edge collapses). Surfaces "
                 "and shells that touch stay apart. Off: any close vertices merge, like Blender's Merge by Distance, "
                 "which pinches touching surfaces into non-manifold edges.");
-        const double meanEdge = controller_.meanEdgeLength();
-        if (meanEdge > 0.0) {
-            const double ratio = distance / meanEdge;
-            if (ratio < 1.0) {
-                ImGui::TextDisabled("mean edge %s (the distance is %.0f%% of it)", lengthText(meanEdge, controller_.fileUnit()).c_str(), 100.0 * ratio);
-            } else {
-                ImGui::PushStyleColor(ImGuiCol_Text, gui::kDefectColor);
-                ImGui::TextWrapped("mean edge %s: the distance is %.3gx that, so %s", lengthText(meanEdge, controller_.fileUnit()).c_str(), ratio,
-                                   ratio < settings::kMergeCollapseWarnRatio ? "many edges will collapse" : "whole areas will collapse");
-                ImGui::PopStyleColor();
-            }
-        }
+        edgeLengthHints(controller_, params.mergeDistance, true, params.mergeKeepSurfacesApart);
         break;
     }
     case GlobalRepairMethod::Weld: {
-        double distance = params.weldDistance;
         const std::string label = "Distance (" + std::string(unitSymbol(controller_.fileUnit())) + ")";
-        const double lo = settings::kMinWeldDistance;
-        const double hi = settings::kMaxWeldDistance;
-        if (ImGui::SliderScalar(label.c_str(), ImGuiDataType_Double, &distance, &lo, &hi, "%.4g", ImGuiSliderFlags_Logarithmic)) {
-            params.weldDistance = std::clamp(distance, settings::kMinWeldDistance, settings::kMaxWeldDistance);
-            changed = true;
-        }
-        tooltip("Open boundary vertices closer than this across cracks are welded (default 0.05; 0.0001 to 10, log scale; the unit is only a label). "
-                "Ctrl+click (Control, not Cmd) to type a value.");
+        changed |= roundDistanceInput(label, params.weldDistance, settings::kMinWeldDistance, settings::kMaxWeldDistance);
+        tooltip("Open boundary vertices closer than this across cracks are welded (default 0.05; the unit is only a "
+                "label). The slider snaps to round values; type in the box (Enter) for an exact one.");
         ImGui::TextDisabled("Welds open boundary vertices together across seams and cracks without modifying interior faces.");
-        const double meanEdge = controller_.meanEdgeLength();
-        if (meanEdge > 0.0) {
-            const double ratio = distance / meanEdge;
-            ImGui::TextDisabled("mean edge %s (the distance is %.0f%% of it)", lengthText(meanEdge, controller_.fileUnit()).c_str(), 100.0 * ratio);
-        }
+        edgeLengthHints(controller_, params.weldDistance, false, false);
         break;
     }
     case GlobalRepairMethod::AlphaWrap: {

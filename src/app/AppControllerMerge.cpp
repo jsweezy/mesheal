@@ -350,7 +350,7 @@ bool AppController::applyMergeResult(FinishedMerge finished) {
         "Merged " + std::to_string(r.operandsMerged) + " shells into " + std::to_string(r.unionShells) + " (" +
         formatValue(r.elapsedMs / 1000.0) + " s): faces " + std::to_string(facesBefore) + " -> " +
         std::to_string(mesh_.numFaces()) + ", volume " + formatValue(r.volumeBefore) + " -> " + formatValue(r.unionVolume) +
-        " " + unit + "^3 (overlaps counted once), " + formatValue(100.0 * r.unchangedFraction) + "% of their faces unchanged." +
+        " " + unit + "^3 (overlaps counted once), " + formatValue(100.0 * (1.0 - r.unchangedFraction)) + "% of their faces changed." +
         cavities + (leftAlone.empty() ? std::string() : " Left as they were:" + leftAlone) +
         " The cuts can add thin faces: see Mesh Health.";
     postStatusMessage(lastRepairStatusMessage_);

@@ -717,3 +717,39 @@ TEST_CASE("Slice planes: only the shown part of a face crossed by a plane hides 
         REQUIRE_FALSE(visibility.visible(mesh, 3, view)); // behind the shown part of face 1
     }
 }
+
+TEST_CASE("Shortest edge skips zero-length edges and is at most the mean edge", "[app][selection][merge]") {
+    ogun::AppController controller;
+    REQUIRE(controller.shortestEdgeLength() == 0.0);
+    ogun::Mesh mesh;
+    mesh.V.resize(5, 3);
+    mesh.V << 0, 0, 0, 2, 0, 0, 0, 1, 0, 2, 1, 0, 2, 1, 0; // vertex 4 duplicates vertex 3
+    mesh.F.resize(3, 3);
+    mesh.F << 0, 1, 2, 1, 3, 2, 1, 3, 4; // the last face is degenerate (zero-length edge 3-4)
+    controller.setMesh(mesh, "strip");
+    REQUIRE(std::abs(controller.shortestEdgeLength() - 1.0) < 1e-12);
+    REQUIRE(controller.shortestEdgeLength() <= controller.meanEdgeLength());
+}
+
+TEST_CASE("Shortest edge follows the Merge scope: selected faces, else the whole mesh", "[app][selection][merge]") {
+    ogun::AppController controller;
+    ogun::Mesh mesh;
+    mesh.V.resize(6, 3);
+    mesh.V << 0, 0, 0, 1, 0, 0, 0, 1, 0, 5, 0, 0, 9, 0, 0, 5, 4, 0;
+    mesh.F.resize(2, 3);
+    mesh.F << 0, 1, 2, 3, 4, 5; // a small triangle (shortest edge 1) and a large one (shortest edge 4)
+    controller.setMesh(mesh, "two triangles");
+    controller.openMergeVertices();
+    REQUIRE(std::abs(controller.shortestEdgeLength() - 1.0) < 1e-12);
+    controller.toggleFaceSelected(1);
+    REQUIRE(std::abs(controller.shortestEdgeLength() - 4.0) < 1e-12);
+    controller.toggleFaceSelected(1);
+    REQUIRE(std::abs(controller.shortestEdgeLength() - 1.0) < 1e-12);
+
+    // Small triangle edges 1, 1, 1.41; large one 4, 4, 5.66
+    REQUIRE(controller.edgesShorterThanCount(0.5) == 0);
+    REQUIRE(controller.edgesShorterThanCount(1.2) == 2);
+    REQUIRE(controller.edgesShorterThanCount(4.5) == 5);
+    controller.toggleFaceSelected(1);
+    REQUIRE(controller.edgesShorterThanCount(4.5) == 2);
+}

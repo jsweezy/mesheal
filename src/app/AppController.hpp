@@ -36,6 +36,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <tuple>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
@@ -267,6 +268,23 @@ enum class PreviewDisplayMode {
 };
 
 [[nodiscard]] const char* previewDisplayModeLabel(PreviewDisplayMode mode) noexcept;
+
+/// How the current mesh is drawn behind a whole-mesh result (Repair All, Merge by Distance, Fix All,
+/// Translate / Rotate) when the preview shows Both.
+enum class WholeMeshOriginalStyle {
+    Ghosted,  ///< Semi-transparent surface.
+    Wireframe ///< Edges only (Original edge color and width), so it never z-fights with the result.
+};
+
+[[nodiscard]] const char* wholeMeshOriginalStyleLabel(WholeMeshOriginalStyle style) noexcept;
+
+/// Display options of a whole-mesh preview (the single-defect patch preview uses `PreviewDisplayMode`).
+struct WholeMeshPreviewStyle {
+    WholeMeshOriginalStyle original = WholeMeshOriginalStyle::Ghosted;
+    double resultOpacity = settings::kDefaultWholeMeshResultOpacity;
+    double originalOpacity = settings::kDefaultWholeMeshOriginalOpacity; ///< Ghost surface or wireframe opacity.
+    bool changedFacesOnly = false; ///< Draw only the result faces the repair changed.
+};
 
 /// Surface overlay style mirroring Polyscope's surface mesh controls (Color, Edges, Edge Color, Width).
 struct SurfaceStyle {
@@ -942,6 +960,48 @@ public:
 
     void setPreviewPatchOpacity(double opacity) noexcept;
 
+    [[nodiscard]] const WholeMeshPreviewStyle& wholeMeshPreviewStyle() const noexcept {
+        return wholeMeshPreviewStyle_;
+    }
+
+    /// Stores `style` with the opacities clamped to [kMinPreviewOpacity, 1].
+    void setWholeMeshPreviewStyle(const WholeMeshPreviewStyle& style) noexcept;
+
+    /// True when a whole-mesh result (global repair or Translate / Rotate) is drawn in 3D.
+    [[nodiscard]] bool wholeMeshPreviewShown() const noexcept {
+        return globalPreviewShown() || transformPreviewShown();
+    }
+
+    /// True while a whole-mesh result can be compared (Result, Original or Both): a computed global repair
+    /// or Translate / Rotate. Clicks then only set the preview focus and never open a defect.
+    [[nodiscard]] bool wholeMeshPreviewOpen() const noexcept;
+
+    /// Sets the preview focus to the clicked triangle (of the result or the current mesh): it becomes the
+    /// orbit pivot, and '.' / +Normal / -Normal frame it. The face selection and defect list are untouched.
+    void focusWholeMeshPreviewTriangle(const Eigen::Vector3d& a, const Eigen::Vector3d& b, const Eigen::Vector3d& c);
+
+    void clearWholeMeshPreviewFocus() noexcept {
+        previewFocusTriangle_.reset();
+        previewFocusLastSign_ = 0;
+    }
+
+    /// The clicked triangle while a whole-mesh preview is open (nullopt otherwise).
+    [[nodiscard]] std::optional<std::array<Eigen::Vector3d, 3>> wholeMeshPreviewFocus() const {
+        return wholeMeshPreviewOpen() ? previewFocusTriangle_ : std::nullopt;
+    }
+
+    /// True when the whole-mesh preview shows Both (the current mesh drawn behind the result).
+    [[nodiscard]] bool wholeMeshBothShown() const noexcept {
+        return globalPreviewShown() ? globalPreviewShow_ == GlobalPreviewShow::Both
+                                    : transformPreviewShown() && transformPreviewShow_ == GlobalPreviewShow::Both;
+    }
+
+    /// True when the whole-mesh preview shows Both with the original drawn as a wireframe.
+    [[nodiscard]] bool wholeMeshOriginalWireframeShown() const noexcept;
+
+    /// Edges of the original faces drawn behind a whole-mesh result in Both + Wireframe (empty otherwise).
+    [[nodiscard]] HighlightOverlayGeometry buildWholeMeshOriginalWireframe() const;
+
     /// True when a valid single-defect preview (sliver, island or hole) is visible: the GUI draws
     /// `previewPatchMesh()` and applies the display mode.
     [[nodiscard]] bool repairPreviewShown() const noexcept {
@@ -1211,6 +1271,11 @@ public:
     /// "the 1,204 selected faces", "the shells in scope" or "the whole mesh".
     [[nodiscard]] std::string operatorScopeText() const;
     [[nodiscard]] double meanEdgeLength() const;
+    /// Shortest non-zero edge of the faces in `operatorScopeMask()` (the whole mesh when all is in scope); 0 if
+    /// none. Cached, as the Merge / Weld panels show it every frame.
+    [[nodiscard]] double shortestEdgeLength() const;
+    /// Edges of the faces in `operatorScopeMask()` shorter than `distance` (each shared edge once). Cached.
+    [[nodiscard]] std::size_t edgesShorterThanCount(double distance) const;
 
     /// Opens "Operation: Decimate" (Mesh > Simplify) on the same operator.
     void openDecimate();
@@ -1740,6 +1805,8 @@ private:
     mutable std::optional<MergeRoles> mergeRolesCache_;
     /// operatorScopeFaceCount, keyed on the mesh generation, face selection, shells and active tool
     mutable std::optional<std::pair<std::array<std::uint64_t, 4>, std::size_t>> operatorScopeCountCache_;
+    mutable std::optional<std::pair<std::array<std::uint64_t, 4>, double>> shortestEdgeCache_;
+    mutable std::optional<std::tuple<std::array<std::uint64_t, 4>, double, std::size_t>> shortEdgeCountCache_;
     HealthCheckRunner checkRunner_;
 
     std::optional<DefectCategory> selectedCategory_;
@@ -1776,6 +1843,7 @@ private:
     PreviewDisplayMode previewDisplayMode_ = PreviewDisplayMode::CutoutOriginalEdges;
     double previewBaseOpacity_ = settings::kDefaultPreviewBaseOpacity;
     double previewPatchOpacity_ = settings::kDefaultPreviewPatchOpacity;
+    WholeMeshPreviewStyle wholeMeshPreviewStyle_{};
     std::string lastRepairStatusMessage_;
 
     // Intersecting faces: islands, Inspector and Repair All
@@ -1839,6 +1907,8 @@ private:
     Eigen::Vector3d orbitPivot_ = Eigen::Vector3d::Zero();
     Eigen::Index lastFocusedFaceIndex_ = -1;
     int lastFocusedNormalSign_ = 0;
+    std::optional<std::array<Eigen::Vector3d, 3>> previewFocusTriangle_;
+    int previewFocusLastSign_ = 0; ///< Side the preview focus was last framed from ('.' toggles it)
 
     bool ghostMeshEnabled_ = false;
     double ghostMeshOpacity_ = settings::kDefaultGhostOpacity;

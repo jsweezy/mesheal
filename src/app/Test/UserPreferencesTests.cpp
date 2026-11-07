@@ -61,6 +61,10 @@ ogun::UserPreferences customPreferences() {
     p.previewDisplayMode = ogun::PreviewDisplayMode::TranslucentPatch;
     p.previewBaseOpacity = 0.7;
     p.previewPatchOpacity = 0.8;
+    p.wholeMeshPreview.original = ogun::WholeMeshOriginalStyle::Wireframe;
+    p.wholeMeshPreview.resultOpacity = 0.45;
+    p.wholeMeshPreview.originalOpacity = 0.25;
+    p.wholeMeshPreview.changedFacesOnly = true;
     p.tolerance.absFloor = 3.5e-7;
     p.tolerance.relTol = 2.0e-6;
     p.defaults.thinFace.minAltitude = 0.02;
