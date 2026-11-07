@@ -40,6 +40,7 @@ public:
     static constexpr const char* kOverlayPointName = "Selected Defect Vertices";
     static constexpr const char* kRepairPreviewName = "Repair Preview Patch";
     static constexpr const char* kDefectFacesName = "Selected Defect Faces";
+    static constexpr const char* kSelectedFacesName = "Selected Faces";
     static constexpr const char* kOriginalEdgesName = "Original Edges (Before Repair)";
     static constexpr const char* kPreviewFocusName = "Preview Focus";
 
@@ -352,6 +353,7 @@ private:
     polyscope::TransparencyMode savedTransparencyMode_ = polyscope::TransparencyMode::Pretty;
     bool baseIsCut_ = false;
     std::vector<Eigen::Index> baseFaceIndices_;   ///< Mesh face of each drawn base face (when `baseIsCut_`).
+    std::vector<Eigen::Index> selectedFaceIndices_; ///< Mesh face of each "Selected Faces" face (Custom back faces).
     std::vector<Eigen::Index> defectFaceIndices_; ///< Mesh face of each "Selected Defect Faces" face.
     double lastAppliedDefectEdgeRadius_ = -1.0;
     double lastAppliedOriginalEdgeRadius_ = -1.0;

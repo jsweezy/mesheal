@@ -1801,6 +1801,25 @@ HighlightOverlayGeometry AppController::buildHighlightOverlay() const {
     }
     appendFaceGeometry(highlighted, overlay, true, &nodeOf);
     appendFaceGeometry(outlineOnly, overlay, false, &nodeOf);
+    if (faceSelectedCount_ > 0 && overlayAppearance_.backFaceMode == BackFaceMode::Custom) {
+        std::unordered_map<int, std::size_t> selectedNodeOf;
+        for (std::size_t f = 0; f < faceSelected_.size() && f < numFaces; ++f) {
+            if (faceSelected_[f] == 0) {
+                continue;
+            }
+            std::array<std::size_t, 3> tri{};
+            for (int c = 0; c < 3; ++c) {
+                const int vIdx = mesh_.F(static_cast<Eigen::Index>(f), c);
+                const auto [it, inserted] = selectedNodeOf.try_emplace(vIdx, overlay.selectedFacePoints.size());
+                if (inserted) {
+                    overlay.selectedFacePoints.emplace_back(mesh_.V.row(vIdx).transpose());
+                }
+                tri[static_cast<std::size_t>(c)] = it->second;
+            }
+            overlay.selectedFaceTriangles.push_back(tri);
+            overlay.selectedFaceIndices.push_back(static_cast<Eigen::Index>(f));
+        }
+    }
     return overlay;
 }
 

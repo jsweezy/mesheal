@@ -652,6 +652,10 @@ void PolyscopeGui::handleViewportFacePick(const polyscope::PickResult& pickResul
         nVerts = static_cast<std::uint64_t>(polyscope::getSurfaceMesh(kDefectFacesName)->nVertices());
         nFaces = static_cast<std::uint64_t>(defectFaceIndices_.size());
         faceMap = &defectFaceIndices_;
+    } else if (pickResult.structureName == kSelectedFacesName && polyscope::hasSurfaceMesh(kSelectedFacesName)) {
+        nVerts = static_cast<std::uint64_t>(polyscope::getSurfaceMesh(kSelectedFacesName)->nVertices());
+        nFaces = static_cast<std::uint64_t>(selectedFaceIndices_.size());
+        faceMap = &selectedFaceIndices_;
     } else {
         return;
     }
@@ -713,6 +717,10 @@ void PolyscopeGui::handleWholeMeshPreviewPick(const polyscope::PickResult& pickR
         nVerts = static_cast<std::uint64_t>(polyscope::getSurfaceMesh(kDefectFacesName)->nVertices());
         nFaces = static_cast<std::uint64_t>(defectFaceIndices_.size());
         faceMap = &defectFaceIndices_;
+    } else if (pickResult.structureName == kSelectedFacesName && polyscope::hasSurfaceMesh(kSelectedFacesName)) {
+        nVerts = static_cast<std::uint64_t>(polyscope::getSurfaceMesh(kSelectedFacesName)->nVertices());
+        nFaces = static_cast<std::uint64_t>(selectedFaceIndices_.size());
+        faceMap = &selectedFaceIndices_;
     } else {
         return;
     }
@@ -970,6 +978,8 @@ void PolyscopeGui::syncMeshStructureToPolyscope(bool resetCameraToHome) {
     if (!controller_.hasMesh()) {
         removeSurfaceMeshIfPresent(kSurfaceMeshName);
         removeSurfaceMeshIfPresent(kDefectFacesName);
+        removeSurfaceMeshIfPresent(kSelectedFacesName);
+        selectedFaceIndices_.clear();
         removeSurfaceMeshIfPresent(kRepairPreviewName);
         removeCurveNetworkIfPresent(kOverlayCurveName);
         removeCurveNetworkIfPresent(kOriginalEdgesName);
@@ -1058,13 +1068,9 @@ void PolyscopeGui::applyBaseMeshStyleToPolyscope() {
     psMesh->setEdgeColor(toGlm(appearance.baseMesh.edgeColor));
     psMesh->setEdgeWidth(appearance.baseMesh.effectiveEdgeWidth());
     psMesh->setSmoothShade(appearance.smoothShade);
-    // Polyscope paints Darker / Custom back faces in their own color and ignores the per-face colors, so
-    // the selected tint would not show when looking at faces from behind (inside a volume). While faces
-    // are selected, back faces take the face colors, like the front.
-    const BackFaceMode backFaceMode =
-        controller_.selectedFaceCount() > 0 && appearance.backFaceMode != BackFaceMode::Cull ? BackFaceMode::Identical
-                                                                                               : appearance.backFaceMode;
-    switch (backFaceMode) {
+    // Custom paints back faces in one flat color and ignores the per-face colors, so selected faces are drawn
+    // as their own "Selected Faces" surface (Identical back faces) on top of it.
+    switch (appearance.backFaceMode) {
     case BackFaceMode::Identical:
         psMesh->setBackFacePolicy(polyscope::BackFacePolicy::Identical);
         break;
@@ -1082,6 +1088,17 @@ void PolyscopeGui::applyBaseMeshStyleToPolyscope() {
 }
 
 void PolyscopeGui::syncDefectOverlaysToPolyscope(const HighlightOverlayGeometry& overlay) {
+    selectedFaceIndices_ = overlay.selectedFaceIndices;
+    if (overlay.selectedFaceTriangles.empty()) {
+        removeSurfaceMeshIfPresent(kSelectedFacesName);
+    } else {
+        auto* psSelected = polyscope::registerSurfaceMesh(kSelectedFacesName, overlay.selectedFacePoints,
+                                                          overlay.selectedFaceTriangles);
+        psSelected->setSmoothShade(false);
+        psSelected->setBackFacePolicy(polyscope::BackFacePolicy::Identical);
+        psSelected->setSurfaceColor(toGlm(controller_.overlayAppearance().faceSelectionColor));
+        psSelected->setEdgeWidth(0.0);
+    }
     defectFaceIndices_ = overlay.overlayFaceIndices;
     overlayNodes_ = overlay.overlayPoints;
     nodeRadiiDirty_ = true;

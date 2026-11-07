@@ -2452,3 +2452,28 @@ TEST_CASE("AppController on cuboctahedron_faces.stl sliver repair", "[app][slive
 
 
 
+
+TEST_CASE("Custom back faces draw the face selection as its own surface; other modes do not",
+          "[app][controller][selection][backface]") {
+    ogun::AppController controller;
+    controller.loadSampleDefectiveMesh();
+    const Eigen::Index faces[] = {0, 1};
+    controller.selectFaces(faces, true);
+
+    ogun::OverlayAppearance appearance = controller.overlayAppearance();
+    for (const auto mode : {ogun::BackFaceMode::Identical, ogun::BackFaceMode::Darker, ogun::BackFaceMode::Cull}) {
+        appearance.backFaceMode = mode;
+        controller.setOverlayAppearance(appearance);
+        REQUIRE(controller.buildHighlightOverlay().selectedFaceTriangles.empty());
+    }
+
+    appearance.backFaceMode = ogun::BackFaceMode::Custom;
+    controller.setOverlayAppearance(appearance);
+    const ogun::HighlightOverlayGeometry overlay = controller.buildHighlightOverlay();
+    REQUIRE(overlay.selectedFaceIndices == std::vector<Eigen::Index>{0, 1});
+    REQUIRE(overlay.selectedFaceTriangles.size() == 2);
+    REQUIRE(overlay.selectedFacePoints.size() <= 6);
+
+    controller.clearFaceSelection();
+    REQUIRE(controller.buildHighlightOverlay().selectedFaceTriangles.empty());
+}

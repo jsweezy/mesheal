@@ -144,6 +144,7 @@ void PolyscopeGui::drawDisplayPanel() {
                 if (ImGui::Selectable(backFaceModeLabel(mode), mode == appearance.backFaceMode)) {
                     appearance.backFaceMode = mode;
                     baseChanged = true;
+                    tintChanged = true; // Custom draws the selected faces as their own surface
                 }
             }
             ImGui::EndCombo();

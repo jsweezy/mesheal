@@ -251,6 +251,14 @@ struct HighlightOverlayGeometry {
     /// Base-mesh face index of each entry in `overlayFaces`.
     std::vector<Eigen::Index> overlayFaceIndices;
 
+    /// The Shift+click / box / circle face selection as its own triangles, filled only in the Custom back-face
+    /// mode: Custom paints back faces one flat color, so the selected tint is drawn as a separate surface.
+    std::vector<Eigen::Vector3d> selectedFacePoints;
+    std::vector<std::array<std::size_t, 3>> selectedFaceTriangles;
+
+    /// Base-mesh face index of each entry in `selectedFaceTriangles`.
+    std::vector<Eigen::Index> selectedFaceIndices;
+
     [[nodiscard]] bool hasSelectionOverlay() const noexcept {
         return !overlayPoints.empty();
     }
