@@ -107,6 +107,31 @@ void PolyscopeGui::drawDisplayPanel() {
         }
         tooltip("Base-mesh opacity (1 = opaque). G toggles between opaque and the last ghost opacity.");
 
+        struct TransparencyChoice {
+            polyscope::TransparencyMode mode;
+            const char* label;
+        };
+        static constexpr TransparencyChoice kTransparencyChoices[] = {{polyscope::TransparencyMode::None, "None"},
+                                                                      {polyscope::TransparencyMode::Simple, "Simple"},
+                                                                      {polyscope::TransparencyMode::Pretty, "Pretty"}};
+        const char* currentTransparency = "None";
+        for (const auto& choice : kTransparencyChoices) {
+            if (choice.mode == polyscope::options::transparencyMode) {
+                currentTransparency = choice.label;
+            }
+        }
+        if (ImGui::BeginCombo("Transparency", currentTransparency)) {
+            for (const auto& choice : kTransparencyChoices) {
+                if (ImGui::Selectable(choice.label, choice.mode == polyscope::options::transparencyMode)) {
+                    polyscope::options::transparencyMode = choice.mode;
+                    polyscope::requestRedraw();
+                }
+            }
+            ImGui::EndCombo();
+        }
+        tooltip("How see-through surfaces are drawn: None (opacity ignored), Simple (fast blending), Pretty (accurate "
+                "depth peeling, slower on big meshes).");
+
         if (ImGui::BeginCombo("Back faces", backFaceModeLabel(appearance.backFaceMode))) {
             for (const BackFaceMode mode : kBackFaceModes) {
                 if (ImGui::Selectable(backFaceModeLabel(mode), mode == appearance.backFaceMode)) {
@@ -198,10 +223,6 @@ void PolyscopeGui::drawDisplayPanel() {
         }
     }
 
-    // Polyscope's own "Appearance" section: background, transparency mode None / Simple / Pretty, ground plane
-    if (polyscope::render::engine != nullptr) {
-        polyscope::render::engine->buildEngineGui();
-    }
     ImGui::PopItemWidth();
 
     if (ImGui::Button("Reset styles")) {

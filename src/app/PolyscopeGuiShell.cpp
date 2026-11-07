@@ -705,7 +705,7 @@ void PolyscopeGui::drawViewMenu() {
         applyBaseMeshStyleToPolyscope();
     }
     ImGui::Separator();
-    if (ImGui::BeginMenu("Polyscope")) {
+    if (ImGui::BeginMenu("Advanced")) {
         ImGui::MenuItem("Appearance", nullptr, &showPolyAppearance_);
         tooltip("Background color, transparency mode (None / Simple / Pretty), ground plane, tone mapping, "
                 "anti-aliasing, materials.");
@@ -1660,7 +1660,7 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"Home  or  H", "Frames the entire mesh and resets the Orbit Pivot to the mesh center"},
         {"G", "Toggles Ghost (base-mesh transparency)"},
         {"View > Compass", "Draws X (red), Y (green), Z (blue) axes in the bottom-left of the 3D view, turning with the camera. Off by default"},
-        {"View > Polyscope", "Opens Polyscope's Appearance, Slice Planes, Structures, Camera & Clipping and Render & Debug sections"},
+        {"View > Advanced", "Opens the Appearance, Slice Planes, Structures, Camera & Clipping and Render & Debug sections"},
         {"B", "Box select faces: drag a rectangle (Shift+drag deselects); one box per B. Esc or right-click cancels. Only the faces you see, unless Select Through or Ghost (G) is on; hidden shells and faces cut away by a slice plane never"},
         {"C", "Circle select faces: paint with the brush (Shift or middle drag deselects, wheel resizes); Esc, Enter or right-click finishes. As B, never faces cut away by a slice plane"},
         {"A  /  Alt+A", "Select all shown faces (not hidden shells or faces a slice plane cuts away) / deselect all faces"},
