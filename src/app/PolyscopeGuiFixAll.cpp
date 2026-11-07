@@ -24,9 +24,6 @@ constexpr float kFoundColumnWidth = 118.0f;
 constexpr const char* kFixAllTooltipFull =
     "Repair every problem in the scope (the selection, or the whole mesh), repeating the sequence up to the number of "
     "passes you set (3 by default), with a preview and before / after numbers. Nothing changes until Apply.  Key: Shift+F5";
-constexpr const char* kFixAllTooltipOnePass =
-    "Run the Fix All sequence once and preview it, so you can see each step's effect. Run it again for the next pass. "
-    "Nothing changes until Apply.  Key: Alt+Shift+F5";
 
 /// Text wrapped at the cell or panel edge, breaking only at spaces: never inside a number ("0." / "1 %", which
 /// ImGui's own wrapping allows after a full stop) and never next to a sign such as "%)" or ":".
@@ -114,17 +111,10 @@ void PolyscopeGui::openFixAllPanel(bool fullRun, bool rebuildSide) {
 }
 
 // -----------------------------------------------------------------------------
-// Mesh Health header: [Check Mesh] [Fix All...] [One Pass...]
+// Mesh Health header: [Check Mesh] [Fix All...]  (One Pass is in the Repair menu)
 // -----------------------------------------------------------------------------
 
 void PolyscopeGui::drawFixAllHeaderButtons() {
-    const ImGuiStyle& style = ImGui::GetStyle();
-    const float fixWidth = ImGui::CalcTextSize("Fix All...").x + 2.0f * style.FramePadding.x;
-    const float oneWidth = ImGui::CalcTextSize("One Pass...").x + 2.0f * style.FramePadding.x;
-    const float spinner = controller_.fixAllRunning() ? ImGui::GetTextLineHeight() + style.ItemSpacing.x : 0.0f;
-    const float rightEdge = ImGui::GetWindowContentRegionMax().x + ImGui::GetWindowPos().x;
-    const float needed = ImGui::GetCursorScreenPos().x + fixWidth + spinner + style.ItemSpacing.x + oneWidth;
-
     ImGui::PushStyleColor(ImGuiCol_Button, gui::kFixAllButtonColor);
     if (ImGui::Button("Fix All...")) {
         openFixAllPanel(true);
@@ -136,14 +126,6 @@ void PolyscopeGui::drawFixAllHeaderButtons() {
         gui::statusDot(HealthStatus::Running, false);
         tooltip("Fix All is running. Its progress and Cancel are in the Fix All panel and the status bar.");
     }
-    // Narrow header: One Pass... moves to a second line
-    if (needed <= rightEdge) {
-        ImGui::SameLine();
-    }
-    if (ImGui::Button("One Pass...")) {
-        openFixAllPanel(false);
-    }
-    tooltip(kFixAllTooltipOnePass);
 }
 
 // -----------------------------------------------------------------------------

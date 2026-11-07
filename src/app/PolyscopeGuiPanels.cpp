@@ -101,7 +101,7 @@ void PolyscopeGui::drawDisplayPanel() {
         }
 
         auto opacity = static_cast<float>(controller_.effectiveBaseOpacity());
-        if (ImGui::SliderFloat("Transparency", &opacity, static_cast<float>(settings::kMinGhostOpacity), 1.0f, "%.2f")) {
+        if (ImGui::SliderFloat("Opacity", &opacity, static_cast<float>(settings::kMinGhostOpacity), 1.0f, "%.2f")) {
             controller_.setBaseMeshTransparency(static_cast<double>(opacity));
             syncMeshTransparencyToPolyscope();
         }

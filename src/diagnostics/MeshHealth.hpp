@@ -35,12 +35,12 @@ inline constexpr std::size_t kDefectCategoryCount = 10;
 
 /// Every row in panel order.
 inline constexpr std::array<DefectCategory, kDefectCategoryCount> kAllDefectCategories = {
+    DefectCategory::Shells,
     DefectCategory::OpenEdges,
     DefectCategory::NonManifoldEdges,
     DefectCategory::NonManifoldVertices,
     DefectCategory::FlippedNormals,
     DefectCategory::InvertedShells,
-    DefectCategory::Shells,
     DefectCategory::Intersections,
     DefectCategory::ThinFaces,
     DefectCategory::Degenerate,

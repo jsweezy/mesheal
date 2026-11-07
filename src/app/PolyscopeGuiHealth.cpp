@@ -163,20 +163,6 @@ void PolyscopeGui::drawHealthPanel() {
     for (const CategoryHealth& row : controller_.healthReport().rows) {
         anyRun = anyRun || row.status != HealthStatus::NotRun;
     }
-    const std::size_t problems = controller_.totalProblemCount();
-    if (controller_.checksRunning()) {
-        const std::optional<DefectCategory> current = controller_.currentCheckCategory();
-        ImGui::TextColored(gui::kRunningColor, "Checking %s... %d%%",
-                           current ? categoryInfo(*current).name : "",
-                           static_cast<int>(controller_.checkProgress() * 100.0f));
-    } else if (!anyRun) {
-        ImGui::TextDisabled("Not checked yet");
-    } else if (problems == 0) {
-        ImGui::TextColored(gui::kOkColor, "No problems found");
-    } else {
-        ImGui::TextColored(gui::kDefectColor, "%s problem%s", withThousands(problems).c_str(), problems == 1 ? "" : "s");
-    }
-
     // Only while part of the mesh is out of scope (UI_DESIGN.md §16)
     const ShellBrowser& shells = controller_.shells();
     if (shells.scoped()) {
@@ -202,21 +188,28 @@ void PolyscopeGui::drawHealthPanel() {
         ImGui::TableSetupColumn("Auto", ImGuiTableColumnFlags_WidthFixed);
 
         ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(1);
+        const std::size_t problems = controller_.totalProblemCount();
+        if (controller_.checksRunning()) {
+            const std::optional<DefectCategory> current = controller_.currentCheckCategory();
+            ImGui::TextColored(gui::kRunningColor, "Checking %s... %d%%", current ? categoryInfo(*current).name : "",
+                               static_cast<int>(controller_.checkProgress() * 100.0f));
+        } else if (!anyRun) {
+            ImGui::TextDisabled("Not checked yet");
+        } else if (problems == 0) {
+            ImGui::TextColored(gui::kOkColor, "No problems found");
+        } else {
+            ImGui::TextColored(gui::kDefectColor, "%s problem%s", withThousands(problems).c_str(), problems == 1 ? "" : "s");
+        }
         ImGui::TableSetColumnIndex(2);
+        const float countWidth = ImGui::CalcTextSize("count").x;
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetColumnWidth() - countWidth);
         ImGui::TextDisabled("count");
         ImGui::TableSetColumnIndex(3);
         ImGui::TextDisabled("Auto");
         tooltip("Auto rows re-run after every edit. Rows with Auto off turn Stale (?) until Check Mesh or Re-check.");
 
-        std::optional<CategoryGroup> lastGroup;
         for (const DefectCategory category : kAllDefectCategories) {
-            const CategoryGroup group = categoryInfo(category).group;
-            if (lastGroup != group) {
-                lastGroup = group;
-                ImGui::TableNextRow();
-                ImGui::TableSetColumnIndex(1);
-                ImGui::TextDisabled("%s", group == CategoryGroup::Topology ? "TOPOLOGY" : "GEOMETRY");
-            }
             drawHealthRow(category);
         }
         ImGui::EndTable();
@@ -318,10 +311,6 @@ void PolyscopeGui::drawMeshInfo() {
     ImGui::Text("Min: (%.4g, %.4g, %.4g)", bbox.min.x(), bbox.min.y(), bbox.min.z());
     ImGui::Text("Max: (%.4g, %.4g, %.4g)", bbox.max.x(), bbox.max.y(), bbox.max.z());
     ImGui::Text("Diagonal: %.4g %s", bbox.diagonal(), sym.c_str());
-    const CategoryHealth& shells = controller_.categoryHealth(DefectCategory::Shells);
-    if (shells.result && shells.status == HealthStatus::Ok) {
-        ImGui::Text("Shells: %s", withThousands(shells.result->infoCount).c_str());
-    }
 }
 
 void PolyscopeGui::drawMeshStatsTable() {
@@ -338,7 +327,7 @@ void PolyscopeGui::drawMeshStatsTable() {
     ImGui::TableSetupColumn("Now");
     if (changed) {
         ImGui::TableSetupColumn("Loaded");
-        ImGui::TableSetupColumn("Change");
+        ImGui::TableSetupColumn("Change", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableHeadersRow();
     }
     const auto countRow = [&](const char* name, Eigen::Index value, Eigen::Index before) {
@@ -360,15 +349,16 @@ void PolyscopeGui::drawMeshStatsTable() {
         }
     };
     const auto measureRow = [&](const char* name, double value, double before, ValueDimension dimension, bool warn) {
-        const std::string suffix = " " + dimensionSuffix(dimension, unit);
+        const std::string unitText = dimensionSuffix(dimension, unit);
+        const std::string suffix = " " + unitText;
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::TextUnformatted(name);
+        ImGui::Text("%s (%s)", name, unitText.c_str());
         ImGui::TableSetColumnIndex(1);
-        ImGui::TextUnformatted((significant(value) + suffix).c_str());
+        ImGui::TextUnformatted(significant(value).c_str());
         if (changed) {
             ImGui::TableSetColumnIndex(2);
-            ImGui::TextDisabled("%s", (significant(before) + suffix).c_str());
+            ImGui::TextDisabled("%s", significant(before).c_str());
             ImGui::TableSetColumnIndex(3);
             const double percent = before != 0.0 ? 100.0 * (value - before) / std::abs(before) : 0.0;
             if (value == before) {

@@ -760,7 +760,7 @@ public:
         ghostMeshEnabled_ = enabled;
     }
 
-    /// Display > Transparency slider: values below 1 turn Ghost on with that opacity, 1 turns it off.
+    /// Display > Opacity slider: values below 1 turn Ghost on with that opacity, 1 turns it off.
     void setBaseMeshTransparency(double opacity) noexcept;
 
     /// Opacity the base mesh is drawn with (1 when Ghost is off).
