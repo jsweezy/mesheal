@@ -208,11 +208,12 @@ std::vector<Eigen::Index> withoutFacesBehind(const Mesh& mesh, const ScreenView&
     if (occluder.empty() || faces.empty()) {
         return faces;
     }
-    // Moller-Trumbore from the eye (or, orthographic, from in front along the view direction) to the face
-    // centre: t = 1 at the centre, and a hit short of it by more than the tolerance hides the face
+    // Moller-Trumbore from the eye (or, orthographic, from in front along the view direction) to a point of
+    // the face, t = 1 there: a hit short of it by more than the tolerance hides that point. Three points
+    // are tried, as in FaceVisibility::visible: a face whose centre clears the patch but which is partly
+    // behind its edge is hidden too
     const double reach = 4.0 * std::max(mesh.boundingBox().diagonal(), occluder.boundingBox().diagonal());
-    const auto behind = [&](Eigen::Index f) {
-        const Eigen::Vector3d target = centroid(mesh, f);
+    const auto hiddenPoint = [&](const Eigen::Vector3d& target) {
         const Eigen::Vector3d origin = view.orthographic ? Eigen::Vector3d(target - reach * view.viewDirection) : view.cameraPosition;
         const Eigen::Vector3d dir = target - origin;
         for (Eigen::Index o = 0; o < occluder.numFaces(); ++o) {
@@ -234,6 +235,12 @@ std::vector<Eigen::Index> withoutFacesBehind(const Mesh& mesh, const ScreenView&
             }
         }
         return false;
+    };
+    const auto behind = [&](Eigen::Index f) {
+        const Eigen::Vector3d a = mesh.V.row(mesh.F(f, 0));
+        const Eigen::Vector3d b = mesh.V.row(mesh.F(f, 1));
+        const Eigen::Vector3d c = mesh.V.row(mesh.F(f, 2));
+        return hiddenPoint((a + b + c) / 3.0) || hiddenPoint(0.6 * a + 0.2 * b + 0.2 * c) || hiddenPoint(0.2 * a + 0.6 * b + 0.2 * c);
     };
     std::erase_if(faces, behind);
     return faces;

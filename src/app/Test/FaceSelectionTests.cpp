@@ -6,6 +6,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <numbers>
 #include <vector>
@@ -780,4 +781,61 @@ TEST_CASE("Faces behind an opaque preview patch are dropped from a selection, fa
         REQUIRE_FALSE(kept.empty());
         REQUIRE(kept.size() < all.size());
     }
+}
+
+#include "io/StlReader.hpp"
+#include <filesystem>
+TEST_CASE("Circle select on the bunny never picks faces behind its hole-fill patch, even partly", "[app][selection]") {
+    ogun::AppController controller;
+    controller.setMesh(ogun::loadStl(std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / "stanford_bunny.stl"), "bunny");
+    controller.selectCategory(ogun::DefectCategory::OpenEdges);
+    controller.focusDefect(0);
+    const ogun::Mesh& patch = controller.previewPatchMesh();
+    const ogun::Mesh& mesh = controller.mesh();
+    Eigen::Vector3d c = Eigen::Vector3d::Zero();
+    Eigen::Vector3d n = Eigen::Vector3d::Zero();
+    for (Eigen::Index i = 0; i < patch.numFaces(); ++i) {
+        c += (patch.V.row(patch.F(i,0)) + patch.V.row(patch.F(i,1)) + patch.V.row(patch.F(i,2))).transpose() / 3.0;
+        n += Eigen::Vector3d(patch.V.row(patch.F(i,1)) - patch.V.row(patch.F(i,0))).cross(Eigen::Vector3d(patch.V.row(patch.F(i,2)) - patch.V.row(patch.F(i,0))));
+    }
+    c /= static_cast<double>(patch.numFaces()); n.normalize();
+    const auto hitsBefore = [&](const Eigen::Vector3d& eye, const Eigen::Vector3d& target) {
+        const Eigen::Vector3d dir = target - eye;
+        for (Eigen::Index o = 0; o < patch.numFaces(); ++o) {
+            const Eigen::Vector3d a = patch.V.row(patch.F(o, 0));
+            const Eigen::Vector3d e1 = Eigen::Vector3d(patch.V.row(patch.F(o, 1))) - a;
+            const Eigen::Vector3d e2 = Eigen::Vector3d(patch.V.row(patch.F(o, 2))) - a;
+            const Eigen::Vector3d pv = dir.cross(e2); const double det = e1.dot(pv);
+            if (std::abs(det) < 1e-30) continue;
+            const Eigen::Vector3d tv = eye - a; const double u = tv.dot(pv) / det;
+            const Eigen::Vector3d qv = tv.cross(e1); const double v = dir.dot(qv) / det; const double t = e2.dot(qv) / det;
+            if (u >= 0 && v >= 0 && u + v <= 1 && t > 0 && t < 1 - 1e-3) return true;
+        }
+        return false;
+    };
+    int totalBad = 0, totalSel = 0;
+    for (int k = 0; k < 8; ++k) {
+        const double ang = 0.2 + 0.25 * k;
+        Eigen::Vector3d tang = n.cross(Eigen::Vector3d::UnitY()).normalized();
+        Eigen::Vector3d dirv = (std::cos(ang * 0.5) * n + std::sin(ang * 0.5) * (std::cos(ang) * tang + std::sin(ang) * n.cross(tang))).normalized();
+        for (double sgn : {1.0, -1.0}) {
+            const Eigen::Vector3d eye = c + sgn * dirv * 0.03;
+            ogun::ScreenView view = makeView(eye, c, false);
+            const Eigen::Vector2d ctr(400, 300);
+            controller.selectFacesInStroke(view, ctr, ctr, 150.0, true);
+            for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+                if (!controller.faceSelected(f)) continue;
+                ++totalSel;
+                const Eigen::Vector3d a = mesh.V.row(mesh.F(f,0)), b = mesh.V.row(mesh.F(f,1)), d = mesh.V.row(mesh.F(f,2));
+                int hid = 0;
+                for (const Eigen::Vector3d& t : std::array<Eigen::Vector3d, 3>{Eigen::Vector3d((a+b+d)/3.0), Eigen::Vector3d(0.6*a+0.2*b+0.2*d), Eigen::Vector3d(0.2*a+0.6*b+0.2*d)}) hid += hitsBefore(eye, t) ? 1 : 0;
+                if (hid >= 1) {
+                    ++totalBad;
+                }
+            }
+            controller.clearFaceSelection();
+        }
+    }
+    REQUIRE(totalSel > 0);
+    REQUIRE(totalBad == 0);
 }
