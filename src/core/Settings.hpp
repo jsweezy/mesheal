@@ -18,7 +18,7 @@ inline constexpr double kReferenceFullMeshDistanceFactor = 1.5;   // Multiplier 
 // Defect & Repair Preview Overlay Appearance Defaults
 // -----------------------------------------------------------------------------
 inline constexpr double kDefaultOverlayEdgeWidthPx = 1.0;         // Default screen-space edge width (px) of defect faces/edges and repair preview patch edges
-inline constexpr double kMinOverlayEdgeWidthPx     = 0.25;        // Minimum overlay edge width (px)
+inline constexpr double kMinOverlayEdgeWidthPx     = 0.01;        // Minimum overlay edge width (px)
 inline constexpr double kMaxOverlayEdgeWidthPx     = 10.0;        // Maximum overlay edge width (px)
 inline constexpr std::array<double, 3> kDefaultSelectedFaceColor = {0.96, 0.18, 0.18}; // RGB fill of the selected defective facet(s)
 inline constexpr std::array<double, 3> kDefaultSelectedEdgeColor = {1.00, 0.15, 0.10}; // RGB of the selected defect edge overlay

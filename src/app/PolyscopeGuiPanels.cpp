@@ -14,6 +14,8 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <cstdio>
 #include <initializer_list>
 #include <string>
 #include <vector>
@@ -47,14 +49,24 @@ bool colorSwatch(const char* label, Eigen::Vector3d& color) {
     return true;
 }
 
+/// Line widths (px) the edge width sliders snap to; fine steps at the thin end where the useful range is.
+constexpr std::array<float, 15> kEdgeWidthStops = {0.01f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.75f, 1.0f,
+                                                   1.25f, 1.5f, 1.75f, 2.0f, 3.0f, 5.0f, 10.0f};
+
+/// Snap-to slider over `kEdgeWidthStops`; every edge width in the panels uses it so they all behave alike.
 bool widthSlider(const char* label, double& valuePx) {
-    auto value = static_cast<float>(valuePx);
-    if (!ImGui::SliderFloat(label, &value,
-                            static_cast<float>(settings::kMinOverlayEdgeWidthPx),
-                            static_cast<float>(settings::kMaxOverlayEdgeWidthPx), "%.2f px")) {
+    int index = 0;
+    for (int i = 1; i < static_cast<int>(kEdgeWidthStops.size()); ++i) {
+        if (std::abs(kEdgeWidthStops[i] - valuePx) < std::abs(kEdgeWidthStops[index] - valuePx)) {
+            index = i;
+        }
+    }
+    char text[32];
+    std::snprintf(text, sizeof(text), "%g px", static_cast<double>(kEdgeWidthStops[index]));
+    if (!ImGui::SliderInt(label, &index, 0, static_cast<int>(kEdgeWidthStops.size()) - 1, text)) {
         return false;
     }
-    valuePx = static_cast<double>(value);
+    valuePx = static_cast<double>(kEdgeWidthStops[index]);
     return true;
 }
 
@@ -232,9 +244,7 @@ void PolyscopeGui::drawDisplayPanel() {
         }
         overlayChanged |= ImGui::Checkbox(wholeMesh ? "Result edges" : "Patch edges##show", &appearance.previewPatch.showEdges);
         if (appearance.previewPatch.showEdges) {
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(ImGui::CalcItemWidth() * 0.6f);
-            overlayChanged |= widthSlider("##patchEdgeWidth", appearance.previewPatch.edgeWidthPx);
+            overlayChanged |= widthSlider(wholeMesh ? "Result edge width" : "Patch edge width", appearance.previewPatch.edgeWidthPx);
         }
         // A whole-mesh result bakes the changed-face color into per-face colors: rebuild it on change
         if (colorSwatch(wholeMesh ? "Changed" : "Patch", appearance.previewPatch.color)) {
