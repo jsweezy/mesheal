@@ -67,6 +67,16 @@ def selection_mask(mesh, tri_to_poly):
     return sel[tri_to_poly].astype(np.uint8)
 
 
+def _mostly_smooth(mesh):
+    """True when most faces are smooth shaded (False for an empty mesh, as STL imports are flat)."""
+    n = len(mesh.polygons)
+    if n == 0:
+        return False
+    flags = np.empty(n, dtype=bool)
+    mesh.polygons.foreach_get("use_smooth", flags)
+    return int(flags.sum()) * 2 > n
+
+
 def write_mesh(obj, verts, faces):
     """Replace the geometry of `obj` with a triangle mesh.
 
@@ -81,6 +91,9 @@ def write_mesh(obj, verts, faces):
     mesh = obj.data
     nv = len(verts)
     nf = len(faces)
+    # clear_geometry() drops the flat/smooth flags and Blender treats faces without one as smooth,
+    # so keep the shading the mesh had (the new faces do not map to the old ones: use the majority).
+    smooth = _mostly_smooth(mesh)
     mesh.clear_geometry()
     mesh.vertices.add(nv)
     mesh.vertices.foreach_set("co", np.ascontiguousarray(verts, dtype=np.float32).ravel())
@@ -88,6 +101,7 @@ def write_mesh(obj, verts, faces):
     mesh.loops.foreach_set("vertex_index", np.ascontiguousarray(faces, dtype=np.int32).ravel())
     mesh.polygons.add(nf)
     mesh.polygons.foreach_set("loop_start", np.arange(0, nf * 3, 3, dtype=np.int32))
+    mesh.polygons.foreach_set("use_smooth", np.full(nf, smooth, dtype=bool))
     mesh.update(calc_edges=True)
 
     if was_edit:

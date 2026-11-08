@@ -49,6 +49,14 @@ def main():
     assert bpy.ops.mesh.mesheal_fix_all() == {"FINISHED"}
     assert bpy.ops.mesh.mesheal_check() == {"FINISHED"}
     assert counts()["Holes"] == 0, counts()
+    # The cube was flat shaded; writing the result back must not turn on smooth shading
+    assert not any(p.use_smooth for p in obj.data.polygons), "Fix All turned on smooth shading"
+
+    # A smooth-shaded mesh stays smooth
+    smooth_cube = make_open_cube()
+    smooth_cube.data.polygons.foreach_set("use_smooth", [True] * len(smooth_cube.data.polygons))
+    assert bpy.ops.mesh.mesheal_fix_all() == {"FINISHED"}
+    assert all(p.use_smooth for p in smooth_cube.data.polygons), "Fix All turned off smooth shading"
 
     # Select Result in Edit Mode (on a fresh open cube)
     obj2 = make_open_cube()
