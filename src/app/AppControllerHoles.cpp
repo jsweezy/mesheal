@@ -154,6 +154,26 @@ bool AppController::hasHoleRimToDelete() const {
            (browser_.selectedCount() > 0 || focusedHole_.has_value());
 }
 
+std::vector<int> AppController::chosenHoles() {
+    std::vector<int> chosen;
+    const CategoryResult* result = browser_.result();
+    if (result == nullptr || result->category != DefectCategory::OpenEdges) {
+        return chosen;
+    }
+    const std::vector<HoleLoop>& holes = holeLoops();
+    for (const std::size_t element : browser_.selectedElements()) {
+        const DefectElement& e = result->elements[element];
+        const int h = findHoleOfEdge(holes, e.edge[0], e.edge[1]);
+        if (h >= 0 && std::find(chosen.begin(), chosen.end(), h) == chosen.end()) {
+            chosen.push_back(h);
+        }
+    }
+    if (chosen.empty() && focusedHole_) {
+        chosen.push_back(static_cast<int>(*focusedHole_));
+    }
+    return chosen;
+}
+
 bool AppController::deleteHoleRims() {
     if (!hasHoleRimToDelete()) {
         postStatusMessage("Select a hole first (Open edges list).");

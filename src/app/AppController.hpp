@@ -1249,6 +1249,12 @@ public:
     /// Returns false when nothing was selected.
     bool clearFaceSelection();
 
+    /// "+": with no face selected, selects the faces on the rim of the selected (or focused) holes; otherwise adds
+    /// one more ring of faces around the selection. Delete then removes what is shown. False when nothing changed.
+    bool growFaceSelection();
+    /// "-": drops the outermost ring of the face selection (every selected face touching an unselected one).
+    bool shrinkFaceSelection();
+
     /// Box / circle selection of the faces whose centre is inside the shape on screen; only the faces
     /// seen there unless `selectThrough()` (Blender's X-ray), and never those the view's slice planes cut
     /// away. Returns how many changed.
@@ -1823,6 +1829,11 @@ private:
     DefectBrowser browser_;
     ToolSlot activeTool_ = ToolSlot::None;
     std::vector<std::uint8_t> faceSelected_;
+    /// The faces each "+" added, so "-" takes the same ring back; valid while the selection is untouched by anything else.
+    std::vector<std::vector<Eigen::Index>> growSteps_;
+    std::uint64_t growStepsGeneration_ = 0;
+    /// The open-edge holes picked in the Open edges list, or the focused hole when none is picked.
+    [[nodiscard]] std::vector<int> chosenHoles();
     std::size_t faceSelectedCount_ = 0;
     bool selectThrough_ = false;
     mutable FaceVisibility faceVisibility_;

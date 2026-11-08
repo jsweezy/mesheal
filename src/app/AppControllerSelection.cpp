@@ -89,6 +89,85 @@ bool AppController::clearFaceSelection() {
     return had;
 }
 
+bool AppController::growFaceSelection() {
+    const std::vector<std::uint8_t> shown = shownFaceMask();
+    const auto isShown = [&](Eigen::Index f) {
+        return shown.empty() || shown[static_cast<std::size_t>(f)] != 0;
+    };
+    std::vector<Eigen::Index> add;
+    if (faceSelectedCount_ == 0) {
+        const std::vector<HoleLoop>& holes = holeLoops();
+        for (const int h : chosenHoles()) {
+            for (const Eigen::Index f : holes[static_cast<std::size_t>(h)].faces) {
+                if (isShown(f)) {
+                    add.push_back(f);
+                }
+            }
+        }
+        if (add.empty()) {
+            postStatusMessage("Select a hole (Open edges list) or some faces first, then press + to grow.");
+            return false;
+        }
+    } else {
+        std::vector<std::uint8_t> touched(static_cast<std::size_t>(mesh_.numVertices()), 0);
+        for (Eigen::Index f = 0; f < mesh_.numFaces(); ++f) {
+            if (faceSelected(f)) {
+                for (int c = 0; c < 3; ++c) {
+                    touched[static_cast<std::size_t>(mesh_.F(f, c))] = 1;
+                }
+            }
+        }
+        for (Eigen::Index f = 0; f < mesh_.numFaces(); ++f) {
+            if (!faceSelected(f) && isShown(f) &&
+                (touched[static_cast<std::size_t>(mesh_.F(f, 0))] != 0 || touched[static_cast<std::size_t>(mesh_.F(f, 1))] != 0 ||
+                 touched[static_cast<std::size_t>(mesh_.F(f, 2))] != 0)) {
+                add.push_back(f);
+            }
+        }
+    }
+    if (selectFaces(add, true) == 0) {
+        return false;
+    }
+    if (growStepsGeneration_ != faceSelectionGeneration_ - 1) {
+        growSteps_.clear(); // the selection was changed by something else since the last "+"
+    }
+    growSteps_.push_back(std::move(add));
+    growStepsGeneration_ = faceSelectionGeneration_;
+    return true;
+}
+
+bool AppController::shrinkFaceSelection() {
+    if (faceSelectedCount_ == 0) {
+        return false;
+    }
+    if (!growSteps_.empty() && growStepsGeneration_ == faceSelectionGeneration_) {
+        const std::vector<Eigen::Index> last = std::move(growSteps_.back());
+        growSteps_.pop_back();
+        if (selectFaces(last, false) > 0) {
+            growStepsGeneration_ = faceSelectionGeneration_;
+            return true;
+        }
+    }
+    growSteps_.clear();
+    // A vertex is on the edge of the selection when an unselected face uses it
+    std::vector<std::uint8_t> outside(static_cast<std::size_t>(mesh_.numVertices()), 0);
+    for (Eigen::Index f = 0; f < mesh_.numFaces(); ++f) {
+        if (!faceSelected(f)) {
+            for (int c = 0; c < 3; ++c) {
+                outside[static_cast<std::size_t>(mesh_.F(f, c))] = 1;
+            }
+        }
+    }
+    std::vector<Eigen::Index> drop;
+    for (Eigen::Index f = 0; f < mesh_.numFaces(); ++f) {
+        if (faceSelected(f) && (outside[static_cast<std::size_t>(mesh_.F(f, 0))] != 0 || outside[static_cast<std::size_t>(mesh_.F(f, 1))] != 0 ||
+                                outside[static_cast<std::size_t>(mesh_.F(f, 2))] != 0)) {
+            drop.push_back(f);
+        }
+    }
+    return selectFaces(drop, false) > 0;
+}
+
 void AppController::onFaceSelectionChanged() {
     ++faceSelectionGeneration_;
     faceSelectionFocus_ = faceSelectedCount_ > 0;

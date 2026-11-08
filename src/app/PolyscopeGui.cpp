@@ -945,6 +945,19 @@ void PolyscopeGui::handleKeyboardShortcuts() {
             toggleIsolateShells();
         }
     }
+    // + / - grow and shrink the face selection (the hole rim first), so Delete shows what it removes
+    if (ImGui::IsKeyPressed(ImGuiKey_Equal, true) || ImGui::IsKeyPressed(ImGuiKey_KeypadAdd, true)) {
+        if (controller_.growFaceSelection()) {
+            controller_.postStatusMessage(gui::withThousands(controller_.selectedFaceCount()) + " faces selected.");
+            requestSync();
+        }
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_Minus, true) || ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract, true)) {
+        if (controller_.shrinkFaceSelection()) {
+            controller_.postStatusMessage(gui::withThousands(controller_.selectedFaceCount()) + " faces selected.");
+            requestSync();
+        }
+    }
     if (ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false)) {
         deleteSelection();
     }

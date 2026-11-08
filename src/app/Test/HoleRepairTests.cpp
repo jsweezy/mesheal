@@ -318,3 +318,24 @@ TEST_CASE("Delete Rim removes the faces along the focused or selected holes", "[
     REQUIRE(controller.undoLastModification());
     REQUIRE(controller.mesh().numFaces() == facesBefore);
 }
+
+TEST_CASE("Plus and minus grow and shrink the hole rim selection before Delete", "[app][holes][selection]") {
+    ogun::AppController controller;
+    loadHolesSample(controller);
+    const Eigen::Index facesBefore = controller.mesh().numFaces();
+    controller.selectCategory(DefectCategory::OpenEdges);
+    controller.focusDefect(0);
+    const std::size_t rim = controller.focusedHole()->faces.size();
+
+    REQUIRE(controller.growFaceSelection());
+    REQUIRE(controller.selectedFaceCount() == rim);
+    REQUIRE(controller.growFaceSelection());
+    const std::size_t two = controller.selectedFaceCount();
+    REQUIRE(two > rim);
+    REQUIRE(controller.shrinkFaceSelection());
+    REQUIRE(controller.selectedFaceCount() == rim);
+
+    REQUIRE(controller.growFaceSelection());
+    REQUIRE(controller.deleteSelectedFaces());
+    REQUIRE(controller.mesh().numFaces() == facesBefore - static_cast<Eigen::Index>(two));
+}

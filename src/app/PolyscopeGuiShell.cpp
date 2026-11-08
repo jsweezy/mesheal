@@ -1681,6 +1681,7 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"B", "Box select faces: drag a rectangle (Shift+drag deselects); one box per B. Esc or right-click cancels. Only the faces you see, unless Select Through or Ghost (G) is on; hidden shells and faces cut away by a slice plane never"},
         {"C", "Circle select faces: paint with the brush (Shift or middle drag deselects, wheel resizes); Esc, Enter or right-click finishes. As B, never faces cut away by a slice plane"},
         {"A  /  Alt+A", "Select all shown faces (not hidden shells or faces a slice plane cuts away) / deselect all faces"},
+        {"+  /  -", "Grow / shrink the face selection by one ring. With nothing selected, + selects the faces on the rim of the selected (or focused) holes, so Delete shows what it removes"},
         {"Esc", "Leaves box / circle select; clears the defect selection; then closes the Tool and deselects the row, then clears the face selection, then the shell selection"},
         {"I", "Shells: isolate the selected shells (Mesh Health then covers only them); press again to bring the others back. With another shell selected, switches the isolation to it"},
         {"X", "Asks \"Delete N selected faces?\" next to the cursor (Enter or the Delete button confirms; Esc, Cancel or a click outside cancels), then deletes the selected faces as Delete does"},
