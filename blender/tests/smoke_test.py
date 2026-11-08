@@ -47,6 +47,9 @@ def main():
     assert counts()["Holes"] == 1, counts()
 
     assert bpy.ops.mesh.mesheal_fix_all() == {"FINISHED"}
+    # Fix All checks its result, so the results are back without pressing Check Mesh
+    assert counts().get("Holes") == 0, counts()
+    assert not report.stale(obj, len(obj.data.polygons)), "results after Fix All are stale"
     assert bpy.ops.mesh.mesheal_check() == {"FINISHED"}
     assert counts()["Holes"] == 0, counts()
     # The cube was flat shaded; writing the result back must not turn on smooth shading
@@ -83,6 +86,8 @@ def main():
     assert bpy.ops.mesh.mesheal_decimate() == {"FINISHED"}
     after = len(sphere.data.polygons)
     assert after < before, (before, after)
+    assert counts(), "Decimate did not check its result"
+    assert not report.stale(sphere, after), "results after Decimate are stale"
     print(f"decimate: {before} -> {after}")
 
     # Merge: a no-op-ish run must still finish

@@ -101,13 +101,41 @@ class _JobOperator:
         return m.repair(task.verts, task.faces, task.method, task.params, task.mask)
 
     def _finish(self, context, task, result):
+        """Apply `result`. Returns the operator status, or a check `_Task` to run next (after a repair)."""
         obj = bpy.data.objects.get(task.obj.name)
         if obj is None or bridge.polygon_count(obj) != task.polygons:
             self.report({"WARNING"}, "Mesheal: the mesh changed while the job ran; result discarded")
-            return {"CANCELLED"}
+            return self._end_status()
+        if task.method is None:
+            return self._apply_check(task, result)
         return self.apply(context, task, result)
 
+    def _end_status(self):
+        """FINISHED once a repair has changed the mesh (so it gets an undo step), else CANCELLED."""
+        return {"FINISHED"} if getattr(self, "_repair_message", None) else {"CANCELLED"}
+
+    def _apply_check(self, task, results):
+        items = []
+        for r in results:
+            label, icon = report.CATEGORIES[r.category.name]
+            info = r.category.name == "SHELLS"
+            polys = ()
+            if len(r.faces):
+                polys = tuple(int(i) for i in np.unique(task.tri_to_poly[r.faces]))
+            items.append(report.Item(label, r.info_count if info else r.count, icon, info_only=info, indices=polys))
+        report.update(items, task.obj, task.polygons)
+        defects = sum(i.count for i in items if not i.info_only)
+        summary = f"{defects} defects found" if defects else "no defects found"
+        self._report_info(summary)
+        return {"FINISHED"}
+
+    def _report_info(self, text):
+        """Report `text`, after the repair's own message when this check follows a repair."""
+        repair = getattr(self, "_repair_message", None)
+        self.report({"INFO"}, f"Mesheal: {repair}; {text}" if repair else f"Mesheal: {text}")
+
     def execute(self, context):
+        self._repair_message = None
         task = self.prepare(context)
         if task is None:
             return {"CANCELLED"}
@@ -116,7 +144,14 @@ class _JobOperator:
         except Exception as exc:  # noqa: BLE001 - surface any native error to the user
             self.report({"ERROR"}, f"Mesheal: {exc}")
             return {"CANCELLED"}
-        return self._finish(context, task, result)
+        status = self._finish(context, task, result)
+        if isinstance(status, _Task):  # the check that follows a repair
+            try:
+                return self._finish(context, status, self._run_sync(status))
+            except Exception as exc:  # noqa: BLE001
+                self._report_info(f"check failed: {exc}")
+                return {"FINISHED"}
+        return status
 
     def invoke(self, context, event):
         global _active
@@ -125,6 +160,7 @@ class _JobOperator:
             return {"CANCELLED"}
         if context.window is None:
             return self.execute(context)
+        self._repair_message = None
         task = self.prepare(context)
         if task is None:
             return {"CANCELLED"}
@@ -164,16 +200,34 @@ class _JobOperator:
             return {"RUNNING_MODAL"}
 
         if job.done:
-            self._cleanup(context)
             try:
                 result = job.result()
             except Exception as exc:  # noqa: BLE001
-                self.report({"ERROR"}, f"Mesheal: {exc}")
-                return {"CANCELLED"}
+                self._cleanup(context)
+                if self._repair_message:
+                    self._report_info(f"check failed: {exc}")
+                else:
+                    self.report({"ERROR"}, f"Mesheal: {exc}")
+                return self._end_status()
             if _was_cancelled(result):
-                self.report({"INFO"}, "Mesheal: cancelled")
-                return {"CANCELLED"}
-            return self._finish(context, self._task, result)
+                self._cleanup(context)
+                if self._repair_message:
+                    self._report_info("check cancelled")
+                else:
+                    self.report({"INFO"}, "Mesheal: cancelled")
+                return self._end_status()
+            status = self._finish(context, self._task, result)
+            if isinstance(status, _Task):  # the repair is applied: check the result in the background
+                try:
+                    self._job = self._start(status)
+                except Exception as exc:  # noqa: BLE001
+                    self._cleanup(context)
+                    self._report_info(f"check failed: {exc}")
+                    return {"FINISHED"}
+                self._task = status
+                return {"RUNNING_MODAL"}
+            self._cleanup(context)
+            return status
 
         if event.type in _PASS_THROUGH or event.type.startswith("NDOF_"):
             return {"PASS_THROUGH"}
@@ -204,9 +258,19 @@ class _RepairOperator(_JobOperator):
         for line in result.report:
             print(f"Mesheal: {line}")
         report.clear()
-        status = result.status or "done"
-        self.report({"INFO"}, f"Mesheal: {status} ({before} -> {len(result.faces)} triangles)")
-        return {"FINISHED"}
+        nf = len(result.faces)
+        self._repair_message = f"{result.status or 'done'} ({before} -> {nf} triangles)"
+        # Check the result so the Check panel shows what is left. The mesh now holds exactly
+        # these triangles, in this order, so triangle i is polygon i.
+        check = _CheckOnly(bridge.check_params(context.scene.mesheal))
+        return _Task(
+            task.obj,
+            np.ascontiguousarray(result.vertices, dtype=np.float64),
+            np.ascontiguousarray(result.faces, dtype=np.int32),
+            np.arange(nf),
+            nf,
+            params=check,
+        )
 
 
 class MESH_OT_mesheal_check(_JobOperator, Operator):
@@ -219,20 +283,6 @@ class MESH_OT_mesheal_check(_JobOperator, Operator):
 
     def params(self, context):
         return _CheckOnly(bridge.check_params(context.scene.mesheal))
-
-    def apply(self, context, task, results):
-        items = []
-        for r in results:
-            label, icon = report.CATEGORIES[r.category.name]
-            info = r.category.name == "SHELLS"
-            polys = ()
-            if len(r.faces):
-                polys = tuple(int(i) for i in np.unique(task.tri_to_poly[r.faces]))
-            items.append(report.Item(label, r.info_count if info else r.count, icon, info_only=info, indices=polys))
-        report.update(items, task.obj, task.polygons)
-        defects = sum(i.count for i in items if not i.info_only)
-        self.report({"INFO"}, f"Mesheal: {defects} defects found" if defects else "Mesheal: no defects found")
-        return {"FINISHED"}
 
 
 class _CheckOnly:
