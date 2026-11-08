@@ -1,0 +1,17 @@
+schema_version = "1.0.0"
+
+id = "mesheal_tools"
+version = "0.1.0"
+name = "Mesheal"
+tagline = "Check and repair meshes: Fix All, remesh, decimate and merge"
+maintainer = "Jeremy Sweezy <19966001+jsweezy@users.noreply.github.com>"
+type = "add-on"
+
+tags = ["Mesh"]
+
+blender_version_min = "4.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[build]
+paths_exclude_pattern = ["__pycache__/", "*.pyc"]
