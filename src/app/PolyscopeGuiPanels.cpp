@@ -55,18 +55,19 @@ constexpr std::array<float, 15> kEdgeWidthStops = {0.01f, 0.1f, 0.2f, 0.3f, 0.4f
 
 /// Snap-to slider over `kEdgeWidthStops`; every edge width in the panels uses it so they all behave alike.
 bool widthSlider(const char* label, double& valuePx) {
+    const auto stop = [](int i) { return static_cast<double>(kEdgeWidthStops[static_cast<std::size_t>(i)]); };
     int index = 0;
     for (int i = 1; i < static_cast<int>(kEdgeWidthStops.size()); ++i) {
-        if (std::abs(kEdgeWidthStops[i] - valuePx) < std::abs(kEdgeWidthStops[index] - valuePx)) {
+        if (std::abs(stop(i) - valuePx) < std::abs(stop(index) - valuePx)) {
             index = i;
         }
     }
     char text[32];
-    std::snprintf(text, sizeof(text), "%g px", static_cast<double>(kEdgeWidthStops[index]));
+    std::snprintf(text, sizeof(text), "%g px", stop(index));
     if (!ImGui::SliderInt(label, &index, 0, static_cast<int>(kEdgeWidthStops.size()) - 1, text)) {
         return false;
     }
-    valuePx = static_cast<double>(kEdgeWidthStops[index]);
+    valuePx = stop(index);
     return true;
 }
 
