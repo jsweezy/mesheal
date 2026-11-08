@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <span>
 
-namespace ogun {
+namespace mesheal {
 
 /// Axis-aligned 3D bounding box in the mesh's active file units.
 struct BoundingBox {
@@ -69,12 +69,12 @@ struct Mesh {
     /// Converts this mesh (`V`, `F`) to a double-precision `manifold::MeshGL64`.
     [[nodiscard]] manifold::MeshGL64 toMeshGL64() const;
 
-    /// Constructs an `ogun::Mesh` from a single-precision `manifold::MeshGL`.
+    /// Constructs an `mesheal::Mesh` from a single-precision `manifold::MeshGL`.
     [[nodiscard]] static Mesh fromMeshGL(
         const manifold::MeshGL& meshGl,
         Unit unit = Unit::Millimeter);
 
-    /// Constructs an `ogun::Mesh` from a double-precision `manifold::MeshGL64`.
+    /// Constructs an `mesheal::Mesh` from a double-precision `manifold::MeshGL64`.
     [[nodiscard]] static Mesh fromMeshGL64(
         const manifold::MeshGL64& meshGl64,
         Unit unit = Unit::Millimeter);
@@ -112,4 +112,4 @@ struct VertexSplit {
     const manifold::MeshGL& meshGl,
     Unit unit = Unit::Millimeter);
 
-} // namespace ogun
+} // namespace mesheal

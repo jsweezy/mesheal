@@ -9,8 +9,8 @@
 
 namespace {
 
-ogun::Mesh makeTestTetrahedron(ogun::Unit unit = ogun::Unit::Millimeter) {
-    ogun::Mesh mesh;
+mesheal::Mesh makeTestTetrahedron(mesheal::Unit unit = mesheal::Unit::Millimeter) {
+    mesheal::Mesh mesh;
     mesh.fileUnit = unit;
     mesh.V.resize(4, 3);
     mesh.V << 0.0, 0.0, 0.0,
@@ -32,24 +32,24 @@ ogun::Mesh makeTestTetrahedron(ogun::Unit unit = ogun::Unit::Millimeter) {
 
 TEST_CASE("Changing File Units leaves vertex coordinates V and the weld floor untouched",
           "[mesh][units][tolerance]") {
-    ogun::Mesh mesh = makeTestTetrahedron(ogun::Unit::Millimeter);
+    mesheal::Mesh mesh = makeTestTetrahedron(mesheal::Unit::Millimeter);
     const Eigen::MatrixXd originalV = mesh.V;
-    const ogun::ToleranceConfig tolConfig; // Default: absFloor = 1e-9, relTol = 1e-9
+    const mesheal::ToleranceConfig tolConfig; // Default: absFloor = 1e-9, relTol = 1e-9
 
-    ogun::setFileUnit(mesh, ogun::Unit::Centimeter);
+    mesheal::setFileUnit(mesh, mesheal::Unit::Centimeter);
 
-    REQUIRE(mesh.fileUnit == ogun::Unit::Centimeter);
+    REQUIRE(mesh.fileUnit == mesheal::Unit::Centimeter);
     REQUIRE(mesh.V.isApprox(originalV, 0.0));
-    REQUIRE(tolConfig.absFloor == ogun::settings::kDefaultWeldAbsFloor);
-    REQUIRE(tolConfig.coordinateTolerance(0.0, 0.0) == ogun::settings::kDefaultWeldAbsFloor);
+    REQUIRE(tolConfig.absFloor == mesheal::settings::kDefaultWeldAbsFloor);
+    REQUIRE(tolConfig.coordinateTolerance(0.0, 0.0) == mesheal::settings::kDefaultWeldAbsFloor);
 }
 
 TEST_CASE("extractFaces keeps only the listed faces and the vertices they use", "[mesh]") {
-    const ogun::Mesh mesh = makeTestTetrahedron(ogun::Unit::Inch);
+    const mesheal::Mesh mesh = makeTestTetrahedron(mesheal::Unit::Inch);
     const std::vector<Eigen::Index> faces{3, 1};
 
-    const ogun::Mesh part = ogun::extractFaces(mesh, faces);
-    REQUIRE(part.fileUnit == ogun::Unit::Inch);
+    const mesheal::Mesh part = mesheal::extractFaces(mesh, faces);
+    REQUIRE(part.fileUnit == mesheal::Unit::Inch);
     REQUIRE(part.numFaces() == 2);
     REQUIRE(part.numVertices() == 4);
     REQUIRE(part.N.rows() == 2);
@@ -60,54 +60,54 @@ TEST_CASE("extractFaces keeps only the listed faces and the vertices they use", 
     }
 
     const std::vector<Eigen::Index> one{2};
-    const ogun::Mesh single = ogun::extractFaces(mesh, one);
+    const mesheal::Mesh single = mesheal::extractFaces(mesh, one);
     REQUIRE(single.numVertices() == 3);
     REQUIRE(single.F.maxCoeff() == 2);
 
-    REQUIRE(ogun::extractFaces(mesh, {}).empty());
+    REQUIRE(mesheal::extractFaces(mesh, {}).empty());
 }
 
 TEST_CASE("Explicit scaleMeshToUnit multiplies V by exact scale factor and updates bounding box",
           "[mesh][units]") {
-    ogun::Mesh mesh = makeTestTetrahedron(ogun::Unit::Millimeter);
+    mesheal::Mesh mesh = makeTestTetrahedron(mesheal::Unit::Millimeter);
     const Eigen::MatrixXd originalV = mesh.V;
 
-    const ogun::BoundingBox bboxBefore = mesh.boundingBox();
+    const mesheal::BoundingBox bboxBefore = mesh.boundingBox();
     REQUIRE(bboxBefore.min.isApprox(Eigen::Vector3d(0.0, 0.0, 0.0)));
     REQUIRE(bboxBefore.max.isApprox(Eigen::Vector3d(10.0, 20.0, 30.0)));
     REQUIRE(bboxBefore.extents().isApprox(Eigen::Vector3d(10.0, 20.0, 30.0)));
 
     // Explicitly scale coordinates from mm to cm (factor = 0.1)
-    ogun::scaleMeshToUnit(mesh, ogun::Unit::Centimeter);
+    mesheal::scaleMeshToUnit(mesh, mesheal::Unit::Centimeter);
 
-    REQUIRE(mesh.fileUnit == ogun::Unit::Centimeter);
+    REQUIRE(mesh.fileUnit == mesheal::Unit::Centimeter);
     REQUIRE(mesh.V.isApprox(originalV * 0.1, 1e-15));
 
-    const ogun::BoundingBox bboxAfter = mesh.boundingBox();
+    const mesheal::BoundingBox bboxAfter = mesh.boundingBox();
     REQUIRE(bboxAfter.min.isApprox(Eigen::Vector3d(0.0, 0.0, 0.0)));
     REQUIRE(bboxAfter.max.isApprox(Eigen::Vector3d(1.0, 2.0, 3.0)));
     REQUIRE(bboxAfter.extents().isApprox(Eigen::Vector3d(1.0, 2.0, 3.0)));
 
     // Scaling from cm to inch (1 cm = 1 / 2.54 in) and back to mm (1 in = 25.4 mm)
-    ogun::scaleMeshToUnit(mesh, ogun::Unit::Inch);
-    REQUIRE(mesh.fileUnit == ogun::Unit::Inch);
+    mesheal::scaleMeshToUnit(mesh, mesheal::Unit::Inch);
+    REQUIRE(mesh.fileUnit == mesheal::Unit::Inch);
     REQUIRE(mesh.boundingBox().extents().isApprox(Eigen::Vector3d(1.0 / 2.54, 2.0 / 2.54, 3.0 / 2.54), 1e-12));
 
-    ogun::scaleMeshToUnit(mesh, ogun::Unit::Millimeter);
-    REQUIRE(mesh.fileUnit == ogun::Unit::Millimeter);
+    mesheal::scaleMeshToUnit(mesh, mesheal::Unit::Millimeter);
+    REQUIRE(mesh.fileUnit == mesheal::Unit::Millimeter);
     REQUIRE(mesh.V.isApprox(originalV, 1e-12));
 }
 
-TEST_CASE("Round-trip conversion between ogun::Mesh and manifold::MeshGL",
+TEST_CASE("Round-trip conversion between mesheal::Mesh and manifold::MeshGL",
           "[mesh][manifold]") {
-    const ogun::Mesh original = makeTestTetrahedron(ogun::Unit::Centimeter);
+    const mesheal::Mesh original = makeTestTetrahedron(mesheal::Unit::Centimeter);
 
-    const manifold::MeshGL meshGl = ogun::toMeshGL(original);
+    const manifold::MeshGL meshGl = mesheal::toMeshGL(original);
     REQUIRE(meshGl.numProp == 3);
     REQUIRE(meshGl.NumVert() == 4);
     REQUIRE(meshGl.NumTri() == 4);
 
-    const ogun::Mesh roundTrip = ogun::fromMeshGL(meshGl, original.fileUnit);
+    const mesheal::Mesh roundTrip = mesheal::fromMeshGL(meshGl, original.fileUnit);
     REQUIRE(roundTrip.fileUnit == original.fileUnit);
     REQUIRE(roundTrip.numVertices() == original.numVertices());
     REQUIRE(roundTrip.numFaces() == original.numFaces());
@@ -118,14 +118,14 @@ TEST_CASE("Round-trip conversion between ogun::Mesh and manifold::MeshGL",
 
     // Also verify double-precision MeshGL64 round-trip preserves exact double coordinates
     const manifold::MeshGL64 meshGl64 = original.toMeshGL64();
-    const ogun::Mesh roundTrip64 = ogun::Mesh::fromMeshGL64(meshGl64, original.fileUnit);
+    const mesheal::Mesh roundTrip64 = mesheal::Mesh::fromMeshGL64(meshGl64, original.fileUnit);
     REQUIRE(roundTrip64.V.isApprox(original.V, 0.0));
     REQUIRE(roundTrip64.F == original.F);
 }
 
 TEST_CASE("Local coordinate-relative tolerance uses the 1e-9 floor near origin and scales at large coordinates",
           "[mesh][tolerance]") {
-    const ogun::ToleranceConfig config{1e-9, 1e-9};
+    const mesheal::ToleranceConfig config{1e-9, 1e-9};
 
     SECTION("Near the origin the 1e-9 atomic floor dominates") {
         const double epsOrigin = config.coordinateTolerance(0.0, 1e-12);
@@ -162,8 +162,8 @@ TEST_CASE("Local coordinate-relative tolerance uses the 1e-9 floor near origin a
 
 namespace {
 
-ogun::Mesh makeTestOctahedron() {
-    ogun::Mesh mesh;
+mesheal::Mesh makeTestOctahedron() {
+    mesheal::Mesh mesh;
     mesh.V.resize(6, 3);
     mesh.V << 1.0, 0.0, 0.0,
               -1.0, 0.0, 0.0,
@@ -187,15 +187,15 @@ ogun::Mesh makeTestOctahedron() {
 } // namespace
 
 TEST_CASE("CGAL round trip preserves coordinates, faces and normals", "[mesh][cgal]") {
-    const ogun::Mesh original = makeTestTetrahedron(ogun::Unit::Centimeter);
+    const mesheal::Mesh original = makeTestTetrahedron(mesheal::Unit::Centimeter);
 
-    ogun::CgalSurfaceMesh surface;
-    REQUIRE(ogun::toCgalSurfaceMesh(original, surface));
+    mesheal::CgalSurfaceMesh surface;
+    REQUIRE(mesheal::toCgalSurfaceMesh(original, surface));
     REQUIRE(surface.number_of_vertices() == 4);
     REQUIRE(surface.number_of_faces() == 4);
 
-    const ogun::Mesh back = ogun::fromCgalSurfaceMesh(surface, original.fileUnit);
-    REQUIRE(back.fileUnit == ogun::Unit::Centimeter);
+    const mesheal::Mesh back = mesheal::fromCgalSurfaceMesh(surface, original.fileUnit);
+    REQUIRE(back.fileUnit == mesheal::Unit::Centimeter);
     REQUIRE(back.V == original.V);
     REQUIRE(back.F.rows() == original.F.rows());
     for (Eigen::Index f = 0; f < original.F.rows(); ++f) {
@@ -207,16 +207,16 @@ TEST_CASE("CGAL round trip preserves coordinates, faces and normals", "[mesh][cg
 }
 
 TEST_CASE("fromCgalSurfaceMesh compacts lazily deleted elements", "[mesh][cgal]") {
-    const ogun::Mesh original = makeTestOctahedron();
-    ogun::CgalSurfaceMesh surface;
-    REQUIRE(ogun::toCgalSurfaceMesh(original, surface));
+    const mesheal::Mesh original = makeTestOctahedron();
+    mesheal::CgalSurfaceMesh surface;
+    REQUIRE(mesheal::toCgalSurfaceMesh(original, surface));
 
-    const ogun::CgalEdgeIndex edge = *surface.edges().begin();
+    const mesheal::CgalEdgeIndex edge = *surface.edges().begin();
     REQUIRE(CGAL::Euler::does_satisfy_link_condition(edge, surface));
     CGAL::Euler::collapse_edge(edge, surface);
     REQUIRE(surface.has_garbage());
 
-    const ogun::Mesh healed = ogun::fromCgalSurfaceMesh(surface);
+    const mesheal::Mesh healed = mesheal::fromCgalSurfaceMesh(surface);
     REQUIRE(healed.numVertices() == 5);
     REQUIRE(healed.numFaces() == 6);
     REQUIRE(healed.N.rows() == 6);
@@ -225,29 +225,29 @@ TEST_CASE("fromCgalSurfaceMesh compacts lazily deleted elements", "[mesh][cgal]"
 }
 
 TEST_CASE("fromCgalSurfaceMesh offsets vertices along their normals", "[mesh][cgal]") {
-    ogun::CgalSurfaceMesh surface;
-    REQUIRE(ogun::toCgalSurfaceMesh(makeTestOctahedron(), surface));
+    mesheal::CgalSurfaceMesh surface;
+    REQUIRE(mesheal::toCgalSurfaceMesh(makeTestOctahedron(), surface));
 
-    const ogun::Mesh offset = ogun::fromCgalSurfaceMesh(surface, ogun::Unit::Millimeter, 0.1);
+    const mesheal::Mesh offset = mesheal::fromCgalSurfaceMesh(surface, mesheal::Unit::Millimeter, 0.1);
     REQUIRE(offset.V.row(0).norm() == Catch::Approx(1.1).epsilon(1e-9));
 }
 
 TEST_CASE("extractLocalPatch returns the k-ring neighborhood", "[mesh][cgal]") {
-    ogun::CgalSurfaceMesh surface;
-    REQUIRE(ogun::toCgalSurfaceMesh(makeTestOctahedron(), surface));
+    mesheal::CgalSurfaceMesh surface;
+    REQUIRE(mesheal::toCgalSurfaceMesh(makeTestOctahedron(), surface));
 
-    ogun::CgalSurfaceMesh patch;
-    const ogun::CgalFaceIndex center = ogun::extractLocalPatch(surface, ogun::CgalFaceIndex(0), 1, patch);
-    REQUIRE(center != ogun::CgalSurfaceMesh::null_face());
+    mesheal::CgalSurfaceMesh patch;
+    const mesheal::CgalFaceIndex center = mesheal::extractLocalPatch(surface, mesheal::CgalFaceIndex(0), 1, patch);
+    REQUIRE(center != mesheal::CgalSurfaceMesh::null_face());
     REQUIRE(patch.is_valid(center));
     // Face 0 plus every face touching one of its three vertices (all but face 6).
     REQUIRE(patch.number_of_faces() == 7);
 
-    const ogun::CgalFaceIndex zero = ogun::extractLocalPatch(surface, ogun::CgalFaceIndex(0), 0, patch);
-    REQUIRE(zero != ogun::CgalSurfaceMesh::null_face());
+    const mesheal::CgalFaceIndex zero = mesheal::extractLocalPatch(surface, mesheal::CgalFaceIndex(0), 0, patch);
+    REQUIRE(zero != mesheal::CgalSurfaceMesh::null_face());
     REQUIRE(patch.number_of_faces() == 1);
 
-    const ogun::CgalFaceIndex two = ogun::extractLocalPatch(surface, ogun::CgalFaceIndex(0), 2, patch);
-    REQUIRE(two != ogun::CgalSurfaceMesh::null_face());
+    const mesheal::CgalFaceIndex two = mesheal::extractLocalPatch(surface, mesheal::CgalFaceIndex(0), 2, patch);
+    REQUIRE(two != mesheal::CgalSurfaceMesh::null_face());
     REQUIRE(patch.number_of_faces() == 8);
 }

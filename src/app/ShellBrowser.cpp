@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -383,4 +383,4 @@ std::size_t ShellBrowser::scopeCount() const noexcept {
     return selectedCount_ > 0 ? selectedCount_ : visibleCount();
 }
 
-} // namespace ogun
+} // namespace mesheal

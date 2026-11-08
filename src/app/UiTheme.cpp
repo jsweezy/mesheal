@@ -1,6 +1,6 @@
 #include "app/UiTheme.hpp"
 
-namespace ogun {
+namespace mesheal {
 
 const char* uiThemeName(UiTheme theme) noexcept {
     switch (theme) {
@@ -24,4 +24,4 @@ const char* uiThemeKey(UiTheme theme) noexcept {
     return "polyscope_default";
 }
 
-} // namespace ogun
+} // namespace mesheal

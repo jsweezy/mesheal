@@ -13,7 +13,7 @@
 #include <stop_token>
 #include <thread>
 
-namespace ogun {
+namespace mesheal {
 
 /// The plan-time check of the Fix All panel, on a mesh snapshot and a scope: which shells overlap
 /// (`planMerge`, which also gives the default of the *Merge shells* box) and what the weld will do.
@@ -67,4 +67,4 @@ private:
     std::optional<FinishedFixAllPlan> finished_;
 };
 
-} // namespace ogun
+} // namespace mesheal

@@ -12,7 +12,7 @@
 #include <numeric>
 #include <optional>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -300,4 +300,4 @@ std::optional<std::vector<std::uint8_t>> findSelfCrossingShells(
     return flags;
 }
 
-} // namespace ogun
+} // namespace mesheal

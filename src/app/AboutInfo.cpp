@@ -1,11 +1,11 @@
 #include "app/AboutInfo.hpp"
 
-#include "ogun/Version.hpp"
+#include "mesheal/Version.hpp"
 
-namespace ogun {
+namespace mesheal {
 
 std::string_view copyrightNotice() {
-    return "Ogun -- A STL/Triangle mesh repair utility for engineering applications.\n"
+    return "Mesheal -- A STL/Triangle mesh repair utility for engineering applications.\n"
            "Copyright (C) 2026 by Jeremy Sweezy\n"
            "\n"
            "This program is free software: you can redistribute it and/or modify\n"
@@ -43,7 +43,7 @@ std::string buildInfoText() {
         out += value;
         out += '\n';
     };
-    line("Ogun version", std::string(kVersionString) + " (" + std::string(kVersionDate) + ")");
+    line("Mesheal version", std::string(kVersionString) + " (" + std::string(kVersionDate) + ")");
     line("Build date", kBuildTimestamp);
     line("Build type", kBuildType);
     line("Compiler", std::string(kCompilerId) + " " + std::string(kCompilerVersion));
@@ -55,4 +55,4 @@ std::string buildInfoText() {
     return out;
 }
 
-} // namespace ogun
+} // namespace mesheal

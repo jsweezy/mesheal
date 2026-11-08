@@ -26,7 +26,7 @@
 #include <unordered_set>
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 namespace PMP = CGAL::Polygon_mesh_processing;
 
@@ -1364,4 +1364,4 @@ HoleBatchResult fillHoles(
     return result;
 }
 
-} // namespace ogun
+} // namespace mesheal

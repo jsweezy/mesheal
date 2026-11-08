@@ -29,16 +29,16 @@
 
 namespace {
 
-using ogun::FixAllPhase;
-using ogun::FixAllScope;
-using ogun::FixAllScopeKind;
-using ogun::FixAllStage;
-using ogun::FixAllStageId;
-using ogun::FixAllStageOutcome;
-using ogun::FixAllStepStatus;
-using ogun::FixAllStopReason;
-using ogun::Mesh;
-using ogun::SampleMeshes;
+using mesheal::FixAllPhase;
+using mesheal::FixAllScope;
+using mesheal::FixAllScopeKind;
+using mesheal::FixAllStage;
+using mesheal::FixAllStageId;
+using mesheal::FixAllStageOutcome;
+using mesheal::FixAllStepStatus;
+using mesheal::FixAllStopReason;
+using mesheal::Mesh;
+using mesheal::SampleMeshes;
 
 std::filesystem::path examplePath(const char* name) {
     return std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / name;
@@ -67,15 +67,15 @@ FixAllScope scopeOfFaces(const Mesh& mesh, FixAllScopeKind kind, const std::vect
 
 /// Every face of `before` outside `scope` is still in `after` with the same corners.
 bool outsideKept(const Mesh& before, const FixAllScope& scope, const Mesh& after) {
-    std::unordered_map<ogun::FaceGeometryKey, int, ogun::FaceGeometryKeyHash> count;
+    std::unordered_map<mesheal::FaceGeometryKey, int, mesheal::FaceGeometryKeyHash> count;
     for (Eigen::Index f = 0; f < after.numFaces(); ++f) {
-        ++count[ogun::faceGeometryKey(after, f)];
+        ++count[mesheal::faceGeometryKey(after, f)];
     }
     for (Eigen::Index f = 0; f < before.numFaces(); ++f) {
         if (scope.inScope(f)) {
             continue;
         }
-        const auto it = count.find(ogun::faceGeometryKey(before, f));
+        const auto it = count.find(mesheal::faceGeometryKey(before, f));
         if (it == count.end() || it->second == 0) {
             return false;
         }
@@ -129,28 +129,28 @@ Mesh splitNearCorner(const Mesh& mesh, Eigen::Index f, double t) {
     return out;
 }
 
-const ogun::FixAllStepReport* stepOf(const ogun::FixAllResult& result, FixAllStageId id, int pass = 1,
+const mesheal::FixAllStepReport* stepOf(const mesheal::FixAllResult& result, FixAllStageId id, int pass = 1,
                                      FixAllPhase phase = FixAllPhase::Repair) {
-    const auto it = std::find_if(result.steps.begin(), result.steps.end(), [&](const ogun::FixAllStepReport& step) {
+    const auto it = std::find_if(result.steps.begin(), result.steps.end(), [&](const mesheal::FixAllStepReport& step) {
         return step.stage == id && step.pass == pass && step.phase == phase;
     });
     return it == result.steps.end() ? nullptr : &*it;
 }
 
 std::size_t openEdges(const Mesh& mesh) {
-    return ogun::runCategoryCheck(ogun::DefectCategory::OpenEdges, mesh, {}).infoCount;
+    return mesheal::runCategoryCheck(mesheal::DefectCategory::OpenEdges, mesh, {}).infoCount;
 }
 
 /// Share of the faces of `before` that are still in `after` with the same corners.
 double unchangedFraction(const Mesh& before, const Mesh& after) {
-    return 1.0 - static_cast<double>(ogun::faceDiff(before, after).removed.size()) / static_cast<double>(before.numFaces());
+    return 1.0 - static_cast<double>(mesheal::faceDiff(before, after).removed.size()) / static_cast<double>(before.numFaces());
 }
 
 /// The fold island of the folded cube (its faces on the top near (2.75, 2.1, 8)).
 std::vector<Eigen::Index> foldIsland(const Mesh& folded) {
-    const ogun::CategoryResult check = ogun::runCategoryCheck(ogun::DefectCategory::Intersections, folded, {});
-    const auto islands = ogun::clusterIntersectionIslands(folded, check, ogun::shellIdsOfFaces(folded));
-    for (const ogun::IntersectionIsland& island : islands) {
+    const mesheal::CategoryResult check = mesheal::runCategoryCheck(mesheal::DefectCategory::Intersections, folded, {});
+    const auto islands = mesheal::clusterIntersectionIslands(folded, check, mesheal::shellIdsOfFaces(folded));
+    for (const mesheal::IntersectionIsland& island : islands) {
         const Eigen::Vector3d c = centroid(folded, island.faces.front());
         if (c.z() > 7.5 && c.x() < 4.5 && c.y() < 4.0) {
             return island.faces;
@@ -184,33 +184,33 @@ FixAllStage mergeEveryShellStage() {
     FixAllStage stage;
     stage.label = "Merge every shell";
     stage.activity = "merging";
-    stage.run = [](const Mesh& mesh, const ogun::FixAllStageContext&) {
+    stage.run = [](const Mesh& mesh, const mesheal::FixAllStageContext&) {
         FixAllStageOutcome outcome;
-        const auto shells = ogun::shellsLargestFirst(mesh);
+        const auto shells = mesheal::shellsLargestFirst(mesh);
         outcome.targetBefore = shells.size();
         if (shells.size() < 2) {
             return outcome;
         }
-        ogun::ShellMergeResult merged = ogun::mergeShells(mesh, shells);
+        mesheal::ShellMergeResult merged = mesheal::mergeShells(mesh, shells);
         if (!merged.success || merged.operandsMerged == 0) {
             outcome.failure = merged.message;
             return outcome;
         }
         // Old face -> the face of the union with the same corners (the union re-orders faces)
-        std::unordered_map<ogun::FaceGeometryKey, std::vector<Eigen::Index>, ogun::FaceGeometryKeyHash> rows;
+        std::unordered_map<mesheal::FaceGeometryKey, std::vector<Eigen::Index>, mesheal::FaceGeometryKeyHash> rows;
         for (Eigen::Index f = merged.mesh.numFaces() - 1; f >= 0; --f) {
-            rows[ogun::faceGeometryKey(merged.mesh, f)].push_back(f);
+            rows[mesheal::faceGeometryKey(merged.mesh, f)].push_back(f);
         }
         outcome.faceMap.assign(static_cast<std::size_t>(mesh.numFaces()), -1);
         for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
-            auto it = rows.find(ogun::faceGeometryKey(mesh, f));
+            auto it = rows.find(mesheal::faceGeometryKey(mesh, f));
             if (it != rows.end() && !it->second.empty()) {
                 outcome.faceMap[static_cast<std::size_t>(f)] = it->second.back();
                 it->second.pop_back();
             }
         }
         outcome.changed = true;
-        outcome.targetAfter = ogun::shellsLargestFirst(merged.mesh).size();
+        outcome.targetAfter = mesheal::shellsLargestFirst(merged.mesh).size();
         outcome.mesh = std::move(merged.mesh);
         outcome.detail = "Merged " + std::to_string(shells.size()) + " shells";
         return outcome;
@@ -218,8 +218,8 @@ FixAllStage mergeEveryShellStage() {
     return stage;
 }
 
-ogun::FixAllTestHooks mergeInPassOne() {
-    ogun::FixAllTestHooks hooks;
+mesheal::FixAllTestHooks mergeInPassOne() {
+    mesheal::FixAllTestHooks hooks;
     hooks.adjustStages = [](int pass, FixAllPhase phase, std::vector<FixAllStage>& stages) {
         if (pass == 1 && phase == FixAllPhase::Merge) {
             stages.push_back(mergeEveryShellStage());
@@ -240,14 +240,14 @@ TEST_CASE("S2: a face selection around one of two holes fills only that hole", "
     const Eigen::Index bottom = faceNear(grid, {3.6, 3.6, 0.0});
     const Eigen::Vector3d hole1 = centroid(grid, top);
     const Mesh holed = withoutFaces(grid, {top, bottom});
-    REQUIRE(ogun::findHoleLoops(holed).size() == 2);
+    REQUIRE(mesheal::findHoleLoops(holed).size() == 2);
     const FixAllScope scope = scopeWhere(holed, FixAllScopeKind::Faces, [&](const Eigen::Vector3d& c) { return (c - hole1).norm() < 1.5; });
     REQUIRE(scope.faceCount() > 3);
     REQUIRE(std::count(scope.pinned.begin(), scope.pinned.end(), std::uint8_t{1}) > 0);
 
-    ogun::FixAllParams params;
+    mesheal::FixAllParams params;
     params.mergeShells = true; // a face scope never merges
-    const ogun::FixAllResult result = ogun::runFixAll(holed, scope, params);
+    const mesheal::FixAllResult result = mesheal::runFixAll(holed, scope, params);
     REQUIRE(result.success);
     REQUIRE(result.stopReason == FixAllStopReason::Clean);
     REQUIRE(result.passesRun == 1);
@@ -257,7 +257,7 @@ TEST_CASE("S2: a face selection around one of two holes fills only that hole", "
     REQUIRE(result.mesh.numFaces() == holed.numFaces() + 1);
     REQUIRE(outsideKept(holed, scope, result.mesh));
     REQUIRE(stepOf(result, FixAllStageId::FillHoles)->detail == "Filled 1 of 1 hole");
-    const ogun::FixAllStepReport* tiny = stepOf(result, FixAllStageId::TinyShells);
+    const mesheal::FixAllStepReport* tiny = stepOf(result, FixAllStageId::TinyShells);
     REQUIRE(tiny->status == FixAllStepStatus::Skipped);
     REQUIRE(tiny->reason == "Needs whole shells: select shells, or clear the selection.");
     // The new face is in the carried scope; the faces outside stay outside
@@ -266,9 +266,9 @@ TEST_CASE("S2: a face selection around one of two holes fills only that hole", "
     REQUIRE(result.scope.matches(result.mesh));
 
     SECTION("A phase-2 stage is skipped for a face scope") {
-        const ogun::FixAllTestHooks hooks = mergeInPassOne();
-        const ogun::FixAllResult merged = ogun::runFixAll(holed, scope, params, {}, nullptr, &hooks);
-        const ogun::FixAllStepReport* merge = stepOf(merged, FixAllStageId::Custom, 1, FixAllPhase::Merge);
+        const mesheal::FixAllTestHooks hooks = mergeInPassOne();
+        const mesheal::FixAllResult merged = mesheal::runFixAll(holed, scope, params, {}, nullptr, &hooks);
+        const mesheal::FixAllStepReport* merge = stepOf(merged, FixAllStageId::Custom, 1, FixAllPhase::Merge);
         REQUIRE(merge != nullptr);
         REQUIRE(merge->status == FixAllStepStatus::Skipped);
         REQUIRE(merge->reason == "Merge needs whole shells: select shells, or clear the selection.");
@@ -278,7 +278,7 @@ TEST_CASE("S2: a face selection around one of two holes fills only that hole", "
 
 TEST_CASE("S4: a selected container's hole is filled, its unselected cavity stays as it is", "[repair][fixall][scope]") {
     const Mesh box = SampleMeshes::createCavityBoxMesh();
-    const auto shells = ogun::shellsLargestFirst(box);
+    const auto shells = mesheal::shellsLargestFirst(box);
     REQUIRE(shells.size() == 2);
     const Mesh holed = withoutFaces(box, {shells[0].front()}); // a 3-edge hole in A
     const FixAllScope scope = scopeWhere(holed, FixAllScopeKind::Shells, [](const Eigen::Vector3d& c) {
@@ -286,17 +286,17 @@ TEST_CASE("S4: a selected container's hole is filled, its unselected cavity stay
     });
     REQUIRE(scope.faceCount() == 11);
 
-    const ogun::FixAllResult result = ogun::runFixAll(holed, scope, {});
+    const mesheal::FixAllResult result = mesheal::runFixAll(holed, scope, {});
     REQUIRE(result.success);
     REQUIRE(result.countsAfter.openEdges == 0);
     REQUIRE(openEdges(result.mesh) == 0);
     REQUIRE(outsideKept(holed, scope, result.mesh));
     REQUIRE(stepOf(result, FixAllStageId::FillHoles)->accepted());
     // C is still a cavity by rule O, read from the whole mesh
-    const ogun::OrientShellsResult roles = ogun::orientShells(result.mesh);
+    const mesheal::OrientShellsResult roles = mesheal::orientShells(result.mesh);
     REQUIRE(roles.cavitiesKept.size() == 1);
     REQUIRE(roles.reversedShells.empty());
-    REQUIRE(ogun::signedVolume(result.mesh) == Catch::Approx(56.0));
+    REQUIRE(mesheal::signedVolume(result.mesh) == Catch::Approx(56.0));
     REQUIRE(result.countsAfter.invertedShells == 0);
 }
 
@@ -311,7 +311,7 @@ TEST_CASE("S5: a needle on the selection's edge collapses onto its pinned vertex
         const FixAllScope scope = scopeOfFaces(needles, FixAllScopeKind::Faces, split);
         REQUIRE(scope.pinned[newVertex] == 0);
         REQUIRE(scope.pinned[static_cast<std::size_t>(needles.F(f, 0))] == 1);
-        const ogun::FixAllResult result = ogun::runFixAll(needles, scope, {});
+        const mesheal::FixAllResult result = mesheal::runFixAll(needles, scope, {});
         REQUIRE(result.success);
         REQUIRE(result.countsBefore.thinFaces == 2);
         REQUIRE(result.countsAfter.thinFaces == 0);
@@ -323,7 +323,7 @@ TEST_CASE("S5: a needle on the selection's edge collapses onto its pinned vertex
     SECTION("One needle selected: every corner is pinned, so it is not collapsed") {
         const FixAllScope scope = scopeOfFaces(needles, FixAllScopeKind::Faces, {f});
         REQUIRE(scope.pinned[newVertex] == 1);
-        const ogun::FixAllResult result = ogun::runFixAll(needles, scope, {});
+        const mesheal::FixAllResult result = mesheal::runFixAll(needles, scope, {});
         REQUIRE(result.success);
         REQUIRE(outsideKept(needles, scope, result.mesh));
         REQUIRE(result.mesh.V == needles.V);
@@ -339,10 +339,10 @@ TEST_CASE("S6: an island whose cut leaves the selection is skipped and named", "
 
     SECTION("Only the island's faces selected: its cut plus one ring is outside") {
         const FixAllScope scope = scopeOfFaces(folded, FixAllScopeKind::Faces, island);
-        const ogun::FixAllResult result = ogun::runFixAll(folded, scope, {});
+        const mesheal::FixAllResult result = mesheal::runFixAll(folded, scope, {});
         REQUIRE(result.success);
         REQUIRE(outsideKept(folded, scope, result.mesh));
-        const ogun::FixAllStepReport* islands = stepOf(result, FixAllStageId::Islands);
+        const mesheal::FixAllStepReport* islands = stepOf(result, FixAllStageId::Islands);
         REQUIRE(islands->status == FixAllStepStatus::Unchanged);
         const std::string name = "Island at face #" + std::to_string(*std::min_element(island.begin(), island.end()));
         REQUIRE(islands->detail == name + " extends beyond the selection");
@@ -354,19 +354,19 @@ TEST_CASE("S6: an island whose cut leaves the selection is skipped and named", "
         REQUIRE(islands->notes[0].shells.size() == 1);
         REQUIRE(islands->notes[0].shells[0].size() == island.size());
         for (std::size_t i = 0; i < island.size(); ++i) {
-            REQUIRE(ogun::faceGeometryKey(result.mesh, islands->notes[0].shells[0][i]) == ogun::faceGeometryKey(folded, island[i]));
+            REQUIRE(mesheal::faceGeometryKey(result.mesh, islands->notes[0].shells[0][i]) == mesheal::faceGeometryKey(folded, island[i]));
         }
         // The fold is left: the report suggests an alpha wrap of its shell
         REQUIRE(result.report.residue.size() == 1);
         REQUIRE(result.report.residue[0].crossingFacesWithin > 0);
-        REQUIRE(result.report.residue[0].suggestion == ogun::FixAllSuggestion::AlphaWrap);
+        REQUIRE(result.report.residue[0].suggestion == mesheal::FixAllSuggestion::AlphaWrap);
     }
     SECTION("The island and two rings selected: it is repaired, nothing outside changes") {
         const FixAllScope scope = scopeOfFaces(folded, FixAllScopeKind::Faces, grown(folded, island, 2));
-        const ogun::FixAllResult result = ogun::runFixAll(folded, scope, {});
+        const mesheal::FixAllResult result = mesheal::runFixAll(folded, scope, {});
         REQUIRE(result.success);
         REQUIRE(outsideKept(folded, scope, result.mesh));
-        const ogun::FixAllStepReport* islands = stepOf(result, FixAllStageId::Islands);
+        const mesheal::FixAllStepReport* islands = stepOf(result, FixAllStageId::Islands);
         REQUIRE(islands->accepted());
         REQUIRE(islands->detail.rfind("Repaired 1 of 1 island", 0) == 0);
         REQUIRE(result.countsAfter.intersectingFaces == 0);
@@ -381,9 +381,9 @@ TEST_CASE("Weld (h): a face selection whose edge runs along the seam keeps its p
             return lowerHalf ? c.x() < 15.0 : c.x() > 15.0;
         });
         REQUIRE(scope.faceCount() == 10);
-        const ogun::FixAllResult result = ogun::runFixAll(seam, scope, {});
+        const mesheal::FixAllResult result = mesheal::runFixAll(seam, scope, {});
         REQUIRE(result.success);
-        const ogun::FixAllStepReport* weld = stepOf(result, FixAllStageId::Weld);
+        const mesheal::FixAllStepReport* weld = stepOf(result, FixAllStageId::Weld);
         REQUIRE(weld->accepted());
         REQUIRE(weld->detail.rfind("Welded 4 vertices", 0) == 0);
         REQUIRE(weld->maxMove <= 1.5e-5 * std::sqrt(3.0));
@@ -402,12 +402,12 @@ TEST_CASE("A shell split off under a shell scope stays in scope", "[repair][fixa
     std::vector<std::uint8_t> mask(static_cast<std::size_t>(both.numFaces()), 1);
     std::fill(mask.end() - 12, mask.end(), std::uint8_t{0});
     const FixAllScope scope = FixAllScope::fromFaceMask(both, FixAllScopeKind::Shells, mask);
-    const std::size_t shellsBefore = ogun::shellsLargestFirst(both).size();
+    const std::size_t shellsBefore = mesheal::shellsLargestFirst(both).size();
 
-    const ogun::FixAllResult result = ogun::runFixAll(both, scope, {});
+    const mesheal::FixAllResult result = mesheal::runFixAll(both, scope, {});
     REQUIRE(result.success);
     REQUIRE(stepOf(result, FixAllStageId::SplitTouching)->accepted());
-    const auto shells = ogun::shellsLargestFirst(result.mesh);
+    const auto shells = mesheal::shellsLargestFirst(result.mesh);
     REQUIRE(shells.size() > shellsBefore);
     // Every shell but the far box is wholly in scope; the far box is wholly outside and unchanged
     for (const auto& shell : shells) {
@@ -424,21 +424,21 @@ TEST_CASE("A shell split off under a shell scope stays in scope", "[repair][fixa
 TEST_CASE("A crack whose closing would move a pinned vertex is left for the hole fill", "[repair][fixall][scope]") {
     // The cracked box: a T-junction crack along x = 2 on its top. Select the top's faces on one side of the
     // crack only, so the other side's rim is outside the selection
-    const Mesh cracked = ogun::separateTouchingContacts(SampleMeshes::createCrackedBoxMesh());
-    const auto cracks = ogun::findHoleLoops(cracked);
+    const Mesh cracked = mesheal::separateTouchingContacts(SampleMeshes::createCrackedBoxMesh());
+    const auto cracks = mesheal::findHoleLoops(cracked);
     REQUIRE(cracks.size() == 1);
-    REQUIRE(cracks[0].shape == ogun::HoleShape::Crack);
+    REQUIRE(cracks[0].shape == mesheal::HoleShape::Crack);
     for (const bool left : {true, false}) {
         CAPTURE(left);
         const FixAllScope scope = scopeWhere(cracked, FixAllScopeKind::Faces, [&](const Eigen::Vector3d& c) {
             return c.z() > 3.9 && (c.x() < 2.0) == left;
         });
-        ogun::FixAllParams params;
+        mesheal::FixAllParams params;
         params.weld = false;
-        const ogun::FixAllResult result = ogun::runFixAll(cracked, scope, params);
+        const mesheal::FixAllResult result = mesheal::runFixAll(cracked, scope, params);
         REQUIRE(result.success);
         REQUIRE(outsideKept(cracked, scope, result.mesh));
-        const ogun::FixAllStepReport* crack = stepOf(result, FixAllStageId::CloseCracks);
+        const mesheal::FixAllStepReport* crack = stepOf(result, FixAllStageId::CloseCracks);
         if (left) {
             // Closing it would move the unselected side's rim: skipped and named; a zero-width crack
             // has no fill either, so it stays open
@@ -465,58 +465,58 @@ TEST_CASE("Phase 3 cleans up a mesh merged by mergeShells", "[repair][fixall][cl
     const Mesh cubes = SampleMeshes::combineMeshes(
         {SampleMeshes::createBox(Eigen::Vector3d::Zero(), Eigen::Vector3d::Constant(10.0)),
          SampleMeshes::createBox(Eigen::Vector3d(5.0, 0.02, 0.02), Eigen::Vector3d(15.0, 10.02, 10.02))});
-    const ogun::ShellMergeResult direct = ogun::mergeShells(cubes, ogun::shellsLargestFirst(cubes));
+    const mesheal::ShellMergeResult direct = mesheal::mergeShells(cubes, mesheal::shellsLargestFirst(cubes));
     REQUIRE(direct.success);
-    const ogun::FixAllParams defaults;
-    const ogun::FixAllPriority mergedP =
-        ogun::countFixAllDefects(direct.mesh, FixAllScope::whole(direct.mesh), defaults.checkParams).priority();
+    const mesheal::FixAllParams defaults;
+    const mesheal::FixAllPriority mergedP =
+        mesheal::countFixAllDefects(direct.mesh, FixAllScope::whole(direct.mesh), defaults.checkParams).priority();
     REQUIRE(mergedP.thin > 0);
 
     // The hook stands in for the merge, so the merge box stays off (with it on, the pass merges first)
-    const ogun::FixAllTestHooks hooks = mergeInPassOne();
-    ogun::FixAllParams params;
+    const mesheal::FixAllTestHooks hooks = mergeInPassOne();
+    mesheal::FixAllParams params;
     params.passes = 1;
-    ogun::FixAllProgress progress;
+    mesheal::FixAllProgress progress;
     std::vector<std::string> texts;
     progress.observer = [&](float, const std::string& text) { texts.push_back(text); };
-    const ogun::FixAllResult result = ogun::runFixAll(cubes, FixAllScope::whole(cubes), params, {}, &progress, &hooks);
+    const mesheal::FixAllResult result = mesheal::runFixAll(cubes, FixAllScope::whole(cubes), params, {}, &progress, &hooks);
     REQUIRE(result.success);
     REQUIRE(stepOf(result, FixAllStageId::Custom, 1, FixAllPhase::Merge)->accepted());
-    const ogun::FixAllStepReport* slivers = stepOf(result, FixAllStageId::Slivers, 1, FixAllPhase::Cleanup);
+    const mesheal::FixAllStepReport* slivers = stepOf(result, FixAllStageId::Slivers, 1, FixAllPhase::Cleanup);
     REQUIRE(slivers != nullptr);
     REQUIRE(slivers->accepted());
     REQUIRE(slivers->detail == "Healed 16 of 16 cut slivers (2 flips, 8 collapses)");
     REQUIRE(result.priorityAfter <= mergedP);
     REQUIRE(result.countsAfter.thinFaces < mergedP.thin);
-    REQUIRE(ogun::shellsLargestFirst(result.mesh).size() == 1);
+    REQUIRE(mesheal::shellsLargestFirst(result.mesh).size() == 1);
     REQUIRE(result.scope.matches(result.mesh));
     REQUIRE(std::find(texts.begin(), texts.end(), "pass 1 of 1, phase 3, healing cut slivers...") != texts.end());
     // Phase 3 runs the clean-up list in order after the merge
     std::vector<FixAllStageId> cleanup;
-    for (const ogun::FixAllStepReport& step : result.steps) {
+    for (const mesheal::FixAllStepReport& step : result.steps) {
         if (step.phase == FixAllPhase::Cleanup) {
             cleanup.push_back(step.stage);
         }
     }
     std::vector<FixAllStageId> expected;
-    for (const FixAllStage& stage : ogun::fixAllCleanupStages()) {
+    for (const FixAllStage& stage : mesheal::fixAllCleanupStages()) {
         expected.push_back(stage.id);
     }
     REQUIRE(cleanup == expected);
 
     SECTION("No phase 3 when nothing was merged") {
-        const ogun::FixAllResult plain = ogun::runFixAll(cubes, FixAllScope::whole(cubes), params);
+        const mesheal::FixAllResult plain = mesheal::runFixAll(cubes, FixAllScope::whole(cubes), params);
         REQUIRE(std::none_of(plain.steps.begin(), plain.steps.end(),
-                             [](const ogun::FixAllStepReport& step) { return step.phase != FixAllPhase::Repair; }));
+                             [](const mesheal::FixAllStepReport& step) { return step.phase != FixAllPhase::Repair; }));
     }
     SECTION("The pass's own merge gives the same clean-up") {
-        ogun::FixAllParams merge = params;
+        mesheal::FixAllParams merge = params;
         merge.mergeShells = true;
-        const ogun::FixAllResult real = ogun::runFixAll(cubes, FixAllScope::whole(cubes), merge);
+        const mesheal::FixAllResult real = mesheal::runFixAll(cubes, FixAllScope::whole(cubes), merge);
         REQUIRE(stepOf(real, FixAllStageId::MergeShells, 1, FixAllPhase::Merge)->accepted());
         REQUIRE(stepOf(real, FixAllStageId::Slivers, 1, FixAllPhase::Cleanup)->detail ==
                 "Healed 16 of 16 cut slivers (2 flips, 8 collapses)");
-        REQUIRE(ogun::meshGeometryHash(real.mesh) == ogun::meshGeometryHash(result.mesh));
+        REQUIRE(mesheal::meshGeometryHash(real.mesh) == mesheal::meshGeometryHash(result.mesh));
     }
 }
 
@@ -525,8 +525,8 @@ TEST_CASE("Phase 3 cleans up a mesh merged by mergeShells", "[repair][fixall][cl
 // ---------------------------------------------------------------------------------------------
 
 /// Prints each step of `result` with its time and the guards' share.
-void printSteps(const char* name, const ogun::FixAllResult& result) {
-    for (const ogun::FixAllStepReport& step : result.steps) {
+void printSteps(const char* name, const mesheal::FixAllResult& result) {
+    for (const mesheal::FixAllStepReport& step : result.steps) {
         WARN(name << " pass " << step.pass << " phase " << static_cast<int>(step.phase) << ": " << step.label << " ["
                   << static_cast<int>(step.status) << "] " << step.detail << step.reason << " | " << step.elapsedMs
                   << " ms, guards " << step.guardMs << " ms");
@@ -535,8 +535,8 @@ void printSteps(const char* name, const ogun::FixAllResult& result) {
 
 TEST_CASE("Fix All on small real files and samples", "[repair][fixall][files]") {
     SECTION("self_intersecting_box.stl: the corner pulled through the bottom is cut out and filled") {
-        const Mesh box = ogun::loadStl(examplePath("self_intersecting_box.stl"));
-        const ogun::FixAllResult result = ogun::runFixAll(box, FixAllScope::whole(box), {});
+        const Mesh box = mesheal::loadStl(examplePath("self_intersecting_box.stl"));
+        const mesheal::FixAllResult result = mesheal::runFixAll(box, FixAllScope::whole(box), {});
         REQUIRE(result.success);
         REQUIRE(result.passesRun == 1);
         REQUIRE(result.stopReason == FixAllStopReason::Clean);
@@ -549,7 +549,7 @@ TEST_CASE("Fix All on small real files and samples", "[repair][fixall][files]") 
     }
     SECTION("Folded cube: both islands repaired in one pass") {
         const Mesh folded = SampleMeshes::createFoldedCubeMesh();
-        const ogun::FixAllResult result = ogun::runFixAll(folded, FixAllScope::whole(folded), {});
+        const mesheal::FixAllResult result = mesheal::runFixAll(folded, FixAllScope::whole(folded), {});
         REQUIRE(result.success);
         REQUIRE(result.passesRun == 1);
         REQUIRE(result.stopReason == FixAllStopReason::Clean);
@@ -559,8 +559,8 @@ TEST_CASE("Fix All on small real files and samples", "[repair][fixall][files]") 
         REQUIRE(unchangedFraction(folded, result.mesh) == Catch::Approx(0.9427).margin(1e-4));
     }
     SECTION("Holes sample: the crack closed, three holes filled") {
-        const Mesh holes = ogun::separateTouchingContacts(SampleMeshes::createHolesSampleMesh());
-        const ogun::FixAllResult result = ogun::runFixAll(holes, FixAllScope::whole(holes), {});
+        const Mesh holes = mesheal::separateTouchingContacts(SampleMeshes::createHolesSampleMesh());
+        const mesheal::FixAllResult result = mesheal::runFixAll(holes, FixAllScope::whole(holes), {});
         REQUIRE(result.success);
         REQUIRE(result.passesRun == 1);
         REQUIRE(result.stopReason == FixAllStopReason::Clean);
@@ -568,15 +568,15 @@ TEST_CASE("Fix All on small real files and samples", "[repair][fixall][files]") 
         REQUIRE(result.countsAfter.openEdges == 0);
         REQUIRE(stepOf(result, FixAllStageId::CloseCracks)->detail == "Closed 1 crack (max vertex move 0 mm)");
         REQUIRE(stepOf(result, FixAllStageId::FillHoles)->detail == "Filled 3 of 3 holes");
-        REQUIRE(ogun::shellsLargestFirst(result.mesh).size() == 4);
+        REQUIRE(mesheal::shellsLargestFirst(result.mesh).size() == 4);
         REQUIRE(unchangedFraction(holes, result.mesh) == Catch::Approx(0.998).margin(1e-3));
     }
 }
 
 TEST_CASE("Fix All on the bunny: one pass, five holes filled, one cap healed", "[repair][fixall][files][.slow]") {
-    const Mesh bunny = ogun::loadStl(examplePath("stanford_bunny.stl"));
+    const Mesh bunny = mesheal::loadStl(examplePath("stanford_bunny.stl"));
     const auto start = std::chrono::steady_clock::now();
-    const ogun::FixAllResult result = ogun::runFixAll(bunny, FixAllScope::whole(bunny), {});
+    const mesheal::FixAllResult result = mesheal::runFixAll(bunny, FixAllScope::whole(bunny), {});
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     REQUIRE(result.success);
     WARN("bunny Fix All: " << ms << " ms");
@@ -590,7 +590,7 @@ TEST_CASE("Fix All on the bunny: one pass, five holes filled, one cap healed", "
     REQUIRE(result.countsAfter.openEdges == 0);
     REQUIRE(result.countsBefore.thinFaces == 1);
     REQUIRE(result.countsAfter.thinFaces == 0);
-    REQUIRE(ogun::faceDiff(bunny, result.mesh).removed.size() == 4); // the collapse; every other face is kept
+    REQUIRE(mesheal::faceDiff(bunny, result.mesh).removed.size() == 4); // the collapse; every other face is kept
     REQUIRE(result.report.passesLine == "Passes: 1 of 3 (stopped: clean)");
     REQUIRE(result.report.leftLine == "Clean after 1 pass.");
     REQUIRE(result.report.shellsLine == "Shells: 1 -> 1");
@@ -601,17 +601,17 @@ TEST_CASE("Fix All on the bunny: one pass, five holes filled, one cap healed", "
 }
 
 TEST_CASE("Fix All on the Turkey with the merge off", "[repair][fixall][files][.slow]") {
-    const Mesh turkey = ogun::loadStl(examplePath("Turkey.stl"));
+    const Mesh turkey = mesheal::loadStl(examplePath("Turkey.stl"));
     const auto start = std::chrono::steady_clock::now();
-    const ogun::FixAllResult result = ogun::runFixAll(turkey, FixAllScope::whole(turkey), {});
+    const mesheal::FixAllResult result = mesheal::runFixAll(turkey, FixAllScope::whole(turkey), {});
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     REQUIRE(result.success);
     double guards = 0.0;
-    for (const ogun::FixAllStepReport& step : result.steps) {
+    for (const mesheal::FixAllStepReport& step : result.steps) {
         guards += step.guardMs;
     }
     WARN("Turkey Fix All (merge off): " << ms << " ms, guards " << guards << " ms, passes " << result.passesRun
-                                        << ", stop " << ogun::fixAllStopReasonLabel(result.stopReason) << ", crossings "
+                                        << ", stop " << mesheal::fixAllStopReasonLabel(result.stopReason) << ", crossings "
                                         << result.countsBefore.intersectingFaces << " -> " << result.countsAfter.intersectingFaces
                                         << ", thin " << result.countsBefore.thinFaces << " -> " << result.countsAfter.thinFaces);
     printSteps("Turkey", result);
@@ -626,20 +626,20 @@ TEST_CASE("Fix All on the Turkey with the merge off", "[repair][fixall][files][.
     REQUIRE(result.passesRun == 2);
     REQUIRE(result.stopReason == FixAllStopReason::RepeatedState);
     REQUIRE(result.countsAfter.openEdges == 0);
-    REQUIRE(ogun::shellsLargestFirst(result.mesh).size() == 28);
+    REQUIRE(mesheal::shellsLargestFirst(result.mesh).size() == 28);
 
     // The report: ticking the merge would not help (its group reaches into cavity #28), so no shell is
     // offered "Tick Merge shells"; every crossing pair is listed with that reason
-    const ogun::FixAllFinalReport& report = result.report;
+    const mesheal::FixAllFinalReport& report = result.report;
     WARN("Turkey (merge off) report " << report.elapsedMs << " ms: " << report.leftLine << " | " << report.shellsLine);
     REQUIRE(report.complete);
     REQUIRE(report.crossingsLeft.size() == 100);
-    for (const ogun::FixAllCrossingLeft& left : report.crossingsLeft) {
+    for (const mesheal::FixAllCrossingLeft& left : report.crossingsLeft) {
         REQUIRE(left.whyNotMerged == "their group reaches into cavity #28 of #12, so it is not merged (merge them by hand)");
     }
     REQUIRE(report.residue.size() == 27);
-    for (const ogun::FixAllShellResidue& r : report.residue) {
-        REQUIRE(r.suggestion == ogun::FixAllSuggestion::ReportOnly);
+    for (const mesheal::FixAllShellResidue& r : report.residue) {
+        REQUIRE(r.suggestion == mesheal::FixAllSuggestion::ReportOnly);
     }
     REQUIRE(report.groupsNotMerged.size() == 1);
     REQUIRE(report.cavitiesKept == std::vector<int>{27});

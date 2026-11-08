@@ -10,7 +10,7 @@
 #include <stop_token>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// Undirected edges of a face-vertex mesh with their incident faces. Faces with a repeated vertex
 /// index are skipped (the Degenerate check reports them).
@@ -89,4 +89,4 @@ struct EdgeTopology {
 /// Faces with the same three vertices as an earlier face (the later copies are reported).
 [[nodiscard]] CategoryResult checkDuplicateFaces(const Mesh& mesh, std::stop_token stopToken = {});
 
-} // namespace ogun
+} // namespace mesheal

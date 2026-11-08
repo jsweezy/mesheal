@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace ogun {
+namespace mesheal {
 
 /// Configuration for local coordinate-relative vertex welding with an atomic floor.
 ///
@@ -49,4 +49,4 @@ struct ToleranceConfig {
     }
 };
 
-} // namespace ogun
+} // namespace mesheal

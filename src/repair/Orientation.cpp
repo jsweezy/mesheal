@@ -7,7 +7,7 @@
 #include <numeric>
 #include <optional>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -293,4 +293,4 @@ FlipShellsResult flipShells(const Mesh& mesh, std::span<const std::vector<Eigen:
     return out;
 }
 
-} // namespace ogun
+} // namespace mesheal

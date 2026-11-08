@@ -7,7 +7,7 @@
 #include <limits>
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -308,4 +308,4 @@ TriTriHit intersectTriangles(const Triangle3d& a, const Triangle3d& b, int share
     return result;
 }
 
-} // namespace ogun
+} // namespace mesheal

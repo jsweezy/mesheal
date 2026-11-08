@@ -8,7 +8,7 @@
 #include <string>
 #include <string_view>
 
-namespace ogun {
+namespace mesheal {
 
 enum class StlFormat { Binary, Ascii };
 
@@ -18,7 +18,7 @@ void writeStlBinary(std::ostream& output, const Mesh& mesh);
 
 /// Writes an ASCII STL with round-trip (max_digits10) double precision.
 /// Throws `std::runtime_error` if the mesh is empty or the stream fails.
-void writeStlAscii(std::ostream& output, const Mesh& mesh, std::string_view solidName = "ogun_mesh");
+void writeStlAscii(std::ostream& output, const Mesh& mesh, std::string_view solidName = "mesheal_mesh");
 
 /// Non-throwing file export. Returns true on success, or false and populates `errorOut` on failure.
 bool saveStl(
@@ -35,5 +35,5 @@ bool saveStl(
     const std::filesystem::path& inputPath,
     const std::optional<std::filesystem::path>& userOutput = std::nullopt);
 
-} // namespace ogun
+} // namespace mesheal
 

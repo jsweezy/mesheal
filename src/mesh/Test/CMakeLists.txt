@@ -1,13 +1,13 @@
-add_executable(ogun_mesh_tests
+add_executable(mesheal_mesh_tests
     MeshAndUnitsTests.cpp
     MeshTransformTests.cpp
 )
 
-target_link_libraries(ogun_mesh_tests
+target_link_libraries(mesheal_mesh_tests
     PRIVATE
-        ogun::mesh
+        mesheal::mesh
         Catch2::Catch2WithMain
-        ogun::warnings
+        mesheal::warnings
 )
 
-catch_discover_tests(ogun_mesh_tests)
+catch_discover_tests(mesheal_mesh_tests)

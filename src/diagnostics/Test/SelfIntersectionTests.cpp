@@ -18,7 +18,7 @@ namespace {
 
 using FacePartners = std::map<Eigen::Index, std::set<Eigen::Index>>;
 
-FacePartners partnersOf(const ogun::CategoryResult& result) {
+FacePartners partnersOf(const mesheal::CategoryResult& result) {
     FacePartners partners;
     for (std::size_t i = 0; i < result.size(); ++i) {
         REQUIRE(result.facesOf(i).size() == 1);
@@ -29,7 +29,7 @@ FacePartners partnersOf(const ogun::CategoryResult& result) {
 }
 
 /// O(n^2) reference: every pair through the same triangle test.
-FacePartners bruteForce(const ogun::Mesh& mesh, double relativeTol) {
+FacePartners bruteForce(const mesheal::Mesh& mesh, double relativeTol) {
     const double tol = relativeTol * mesh.boundingBox().diagonal();
     FacePartners partners;
     for (Eigen::Index i = 0; i < mesh.numFaces(); ++i) {
@@ -40,11 +40,11 @@ FacePartners bruteForce(const ogun::Mesh& mesh, double relativeTol) {
                     shared += mesh.F(i, a) == mesh.F(j, b) ? 1 : 0;
                 }
             }
-            const ogun::Triangle3d ti{mesh.V.row(mesh.F(i, 0)).transpose(), mesh.V.row(mesh.F(i, 1)).transpose(),
+            const mesheal::Triangle3d ti{mesh.V.row(mesh.F(i, 0)).transpose(), mesh.V.row(mesh.F(i, 1)).transpose(),
                                       mesh.V.row(mesh.F(i, 2)).transpose()};
-            const ogun::Triangle3d tj{mesh.V.row(mesh.F(j, 0)).transpose(), mesh.V.row(mesh.F(j, 1)).transpose(),
+            const mesheal::Triangle3d tj{mesh.V.row(mesh.F(j, 0)).transpose(), mesh.V.row(mesh.F(j, 1)).transpose(),
                                       mesh.V.row(mesh.F(j, 2)).transpose()};
-            if (ogun::intersectTriangles(ti, tj, shared, tol).hit) {
+            if (mesheal::intersectTriangles(ti, tj, shared, tol).hit) {
                 partners[i].insert(j);
                 partners[j].insert(i);
             }
@@ -54,11 +54,11 @@ FacePartners bruteForce(const ogun::Mesh& mesh, double relativeTol) {
 }
 
 /// Random small triangles in the unit cube; every few triangles reuse a vertex of the previous one.
-ogun::Mesh randomSoup(int count, unsigned seed) {
+mesheal::Mesh randomSoup(int count, unsigned seed) {
     std::mt19937 rng(seed);
     std::uniform_real_distribution<double> position(0.0, 1.0);
     std::uniform_real_distribution<double> offset(-0.06, 0.06);
-    ogun::Mesh mesh;
+    mesheal::Mesh mesh;
     mesh.V.resize(3 * count, 3);
     mesh.F.resize(count, 3);
     for (int t = 0; t < count; ++t) {
@@ -76,7 +76,7 @@ ogun::Mesh randomSoup(int count, unsigned seed) {
 }
 
 /// Faces CGAL's exact-predicate soup test reports (it also counts point contacts and degenerate faces).
-std::set<Eigen::Index> cgalIntersectingFaces(const ogun::Mesh& mesh) {
+std::set<Eigen::Index> cgalIntersectingFaces(const mesheal::Mesh& mesh) {
     using Kernel = CGAL::Exact_predicates_inexact_constructions_kernel;
     std::vector<Kernel::Point_3> points;
     std::vector<std::array<std::size_t, 3>> triangles;
@@ -97,7 +97,7 @@ std::set<Eigen::Index> cgalIntersectingFaces(const ogun::Mesh& mesh) {
     return faces;
 }
 
-std::set<Eigen::Index> faceSet(const ogun::CategoryResult& result) {
+std::set<Eigen::Index> faceSet(const mesheal::CategoryResult& result) {
     std::set<Eigen::Index> faces;
     for (std::size_t i = 0; i < result.size(); ++i) {
         faces.insert(result.facesOf(i).front());
@@ -105,9 +105,9 @@ std::set<Eigen::Index> faceSet(const ogun::CategoryResult& result) {
     return faces;
 }
 
-ogun::Mesh twoOverlappingCubes() {
-    const ogun::Mesh a = ogun::SampleMeshes::createCubeMesh(10.0);
-    ogun::Mesh mesh = a;
+mesheal::Mesh twoOverlappingCubes() {
+    const mesheal::Mesh a = mesheal::SampleMeshes::createCubeMesh(10.0);
+    mesheal::Mesh mesh = a;
     mesh.V.conservativeResize(16, 3);
     mesh.F.conservativeResize(24, 3);
     mesh.V.bottomRows(8) = a.V.rowwise() + Eigen::RowVector3d(5.0, 5.0, 5.0);
@@ -119,15 +119,15 @@ ogun::Mesh twoOverlappingCubes() {
 } // namespace
 
 TEST_CASE("A closed cube has no intersecting faces", "[diagnostics][intersections]") {
-    const ogun::CategoryResult result =
-        ogun::checkSelfIntersections(ogun::SampleMeshes::createCubeMesh(10.0), ogun::CheckParams{});
+    const mesheal::CategoryResult result =
+        mesheal::checkSelfIntersections(mesheal::SampleMeshes::createCubeMesh(10.0), mesheal::CheckParams{});
     REQUIRE_FALSE(result.cancelled);
     REQUIRE(result.empty());
 }
 
 TEST_CASE("The corner-pushed box intersects itself with symmetric partners", "[diagnostics][intersections]") {
-    const ogun::Mesh mesh = ogun::SampleMeshes::createSelfIntersectingBoxMesh();
-    const ogun::CategoryResult result = ogun::checkSelfIntersections(mesh, ogun::CheckParams{});
+    const mesheal::Mesh mesh = mesheal::SampleMeshes::createSelfIntersectingBoxMesh();
+    const mesheal::CategoryResult result = mesheal::checkSelfIntersections(mesh, mesheal::CheckParams{});
     REQUIRE_FALSE(result.empty());
     const FacePartners partners = partnersOf(result);
     for (const auto& [face, others] : partners) {
@@ -136,14 +136,14 @@ TEST_CASE("The corner-pushed box intersects itself with symmetric partners", "[d
         }
     }
     REQUIRE(partners.contains(0)); // the bottom face is pierced
-    REQUIRE(partners == bruteForce(mesh, ogun::CheckParams{}.intersectionTolerance));
+    REQUIRE(partners == bruteForce(mesh, mesheal::CheckParams{}.intersectionTolerance));
     for (std::size_t i = 1; i < result.size(); ++i) {
         REQUIRE(result.elements[i - 1].metric >= result.elements[i].metric); // most crossings first
     }
 }
 
 TEST_CASE("Two overlapping cubes intersect on the faces inside each other", "[diagnostics][intersections]") {
-    const ogun::CategoryResult result = ogun::checkSelfIntersections(twoOverlappingCubes(), ogun::CheckParams{});
+    const mesheal::CategoryResult result = mesheal::checkSelfIntersections(twoOverlappingCubes(), mesheal::CheckParams{});
     std::set<Eigen::Index> faces;
     for (std::size_t i = 0; i < result.size(); ++i) {
         faces.insert(result.facesOf(i).front());
@@ -156,25 +156,25 @@ TEST_CASE("Two overlapping cubes intersect on the faces inside each other", "[di
 }
 
 TEST_CASE("A face folded flat onto its neighbour is a coplanar overlap", "[diagnostics][intersections]") {
-    ogun::Mesh mesh;
+    mesheal::Mesh mesh;
     mesh.V.resize(4, 3);
     mesh.V << 0, 0, 0, 2, 0, 0, 0, 2, 0, 1, 1, 0;
     mesh.F.resize(2, 3);
     mesh.F << 0, 1, 2, 1, 0, 3;
     mesh.recomputeNormals();
-    const ogun::CategoryResult result = ogun::checkSelfIntersections(mesh, ogun::CheckParams{});
+    const mesheal::CategoryResult result = mesheal::checkSelfIntersections(mesh, mesheal::CheckParams{});
     REQUIRE(result.size() == 2);
     REQUIRE(result.elements[0].subtype == 1);
     REQUIRE(result.subtypeCounts()[1] == 2);
 }
 
 TEST_CASE("The BVH finds the same pairs as brute force, threaded or not", "[diagnostics][intersections]") {
-    const ogun::Mesh mesh = randomSoup(1100, 7);
-    const ogun::CheckParams params;
+    const mesheal::Mesh mesh = randomSoup(1100, 7);
+    const mesheal::CheckParams params;
     std::atomic<float> progress{0.0f};
-    const ogun::CategoryResult serial = ogun::checkSelfIntersections(mesh, params, {}, &progress, 1);
+    const mesheal::CategoryResult serial = mesheal::checkSelfIntersections(mesh, params, {}, &progress, 1);
     REQUIRE(progress.load() == 1.0f);
-    const ogun::CategoryResult threaded = ogun::checkSelfIntersections(mesh, params, {}, nullptr, 4);
+    const mesheal::CategoryResult threaded = mesheal::checkSelfIntersections(mesh, params, {}, nullptr, 4);
 
     const FacePartners expected = bruteForce(mesh, params.intersectionTolerance);
     REQUIRE_FALSE(expected.empty());
@@ -184,21 +184,21 @@ TEST_CASE("The BVH finds the same pairs as brute force, threaded or not", "[diag
 }
 
 TEST_CASE("The intersection row is a geometry row with Auto off", "[diagnostics][intersections]") {
-    const ogun::CategoryInfo& info = ogun::categoryInfo(ogun::DefectCategory::Intersections);
+    const mesheal::CategoryInfo& info = mesheal::categoryInfo(mesheal::DefectCategory::Intersections);
     REQUIRE_FALSE(info.autoDefault);
-    REQUIRE(info.group == ogun::CategoryGroup::Geometry);
-    REQUIRE(ogun::categorySubtypeCount(ogun::DefectCategory::Intersections) == 2);
+    REQUIRE(info.group == mesheal::CategoryGroup::Geometry);
+    REQUIRE(mesheal::categorySubtypeCount(mesheal::DefectCategory::Intersections) == 2);
 
-    const ogun::CategoryResult viaRow = ogun::runCategoryCheck(
-        ogun::DefectCategory::Intersections, ogun::SampleMeshes::createSelfIntersectingBoxMesh(), ogun::CheckParams{});
-    REQUIRE(viaRow.category == ogun::DefectCategory::Intersections);
+    const mesheal::CategoryResult viaRow = mesheal::runCategoryCheck(
+        mesheal::DefectCategory::Intersections, mesheal::SampleMeshes::createSelfIntersectingBoxMesh(), mesheal::CheckParams{});
+    REQUIRE(viaRow.category == mesheal::DefectCategory::Intersections);
     REQUIRE_FALSE(viaRow.empty());
 }
 
 TEST_CASE("Intersecting faces match CGAL's exact predicates on generic meshes", "[diagnostics][intersections]") {
     // No point contacts or degenerate faces here, so both definitions agree (the two overlapping cubes
     // touch at one point, which CGAL counts)
-    for (const ogun::Mesh& mesh : {randomSoup(1100, 11), ogun::SampleMeshes::createSelfIntersectingBoxMesh()}) {
-        REQUIRE(faceSet(ogun::checkSelfIntersections(mesh, ogun::CheckParams{})) == cgalIntersectingFaces(mesh));
+    for (const mesheal::Mesh& mesh : {randomSoup(1100, 11), mesheal::SampleMeshes::createSelfIntersectingBoxMesh()}) {
+        REQUIRE(faceSet(mesheal::checkSelfIntersections(mesh, mesheal::CheckParams{})) == cgalIntersectingFaces(mesh));
     }
 }

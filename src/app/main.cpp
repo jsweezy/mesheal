@@ -15,34 +15,35 @@
 #include <string_view>
 
 int main(int argc, char** argv) {
-    const ogun::CliOptions cli = ogun::parseCliArguments(argc, argv);
-    if (ogun::isHeadlessCommand(cli)) {
-        return ogun::executeCliCommand(cli);
+    const mesheal::CliOptions cli = mesheal::parseCliArguments(argc, argv);
+    if (mesheal::isHeadlessCommand(cli)) {
+        return mesheal::executeCliCommand(cli);
     }
 
     if (cli.noRelaunch) {
 #ifdef __APPLE__
-        ogun::disableMacRelaunch();
+        mesheal::disableMacRelaunch();
 #endif
     }
 
-    ogun::AppController controller;
+    mesheal::AppController controller;
 #ifdef __APPLE__
-    ogun::installMacFileOpenHandler([&controller]() {
+    mesheal::installMacFileOpenHandler([&controller]() {
         return controller.hasMesh();
     });
 #endif
     // Check Mesh after load runs on a worker, so the window opens (with Cancel) while it runs
     controller.setBackgroundChecks(true);
     // Saved preferences first: the weld floor and thin-face thresholds apply to the file loaded below
-    const std::filesystem::path prefsFile = ogun::preferencesFilePath(ogun::configDirectory());
-    const ogun::UserPreferences prefs = ogun::loadAndApplyUserPreferences(controller, prefsFile);
+    mesheal::migrateLegacyConfigDirectory(mesheal::configDirectory());
+    const std::filesystem::path prefsFile = mesheal::preferencesFilePath(mesheal::configDirectory());
+    const mesheal::UserPreferences prefs = mesheal::loadAndApplyUserPreferences(controller, prefsFile);
 
-    const std::filesystem::path recentFile = ogun::recentFilesPath(ogun::configDirectory());
+    const std::filesystem::path recentFile = mesheal::recentFilesPath(mesheal::configDirectory());
 
     std::filesystem::path initialPath = cli.inputPath;
     if (initialPath.empty()) {
-        if (auto pending = ogun::FileOpenQueue::instance().popFile()) {
+        if (auto pending = mesheal::FileOpenQueue::instance().popFile()) {
             initialPath = *pending;
         }
     }
@@ -52,9 +53,9 @@ int main(int argc, char** argv) {
             std::cerr << "Warning: " << controller.lastErrorMessage() << "\n";
         } else {
 #ifdef __APPLE__
-            ogun::setMacCurrentLoadedPath(initialPath);
+            mesheal::setMacCurrentLoadedPath(initialPath);
 #endif
-            ogun::RecentFiles recent(recentFile);
+            mesheal::RecentFiles recent(recentFile);
             recent.load();
             recent.add(initialPath);
             if (std::string error; !recent.save(&error)) {
@@ -63,7 +64,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    ogun::PolyscopeGui gui(controller, prefsFile, prefs, recentFile);
+    mesheal::PolyscopeGui gui(controller, prefsFile, prefs, recentFile);
     gui.run();
     return 0;
 }

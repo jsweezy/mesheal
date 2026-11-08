@@ -36,7 +36,7 @@ namespace {
 namespace PMP = CGAL::Polygon_mesh_processing;
 
 /// Faces of `mesh` whose centroid fails `drop`, compacted.
-ogun::Mesh removeFaces(const ogun::Mesh& mesh, const std::function<bool(const Eigen::Vector3d&)>& drop) {
+mesheal::Mesh removeFaces(const mesheal::Mesh& mesh, const std::function<bool(const Eigen::Vector3d&)>& drop) {
     std::vector<Eigen::Index> keep;
     for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
         const Eigen::Vector3d c =
@@ -45,7 +45,7 @@ ogun::Mesh removeFaces(const ogun::Mesh& mesh, const std::function<bool(const Ei
             keep.push_back(f);
         }
     }
-    return ogun::extractFaces(mesh, keep);
+    return mesheal::extractFaces(mesh, keep);
 }
 
 
@@ -54,21 +54,21 @@ std::filesystem::path examplePath(const char* name) {
     return std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / name;
 }
 
-ogun::CgalSurfaceMesh toCgal(const ogun::Mesh& mesh) {
-    ogun::CgalSurfaceMesh sm;
-    REQUIRE(ogun::toCgalSurfaceMesh(mesh, sm));
+mesheal::CgalSurfaceMesh toCgal(const mesheal::Mesh& mesh) {
+    mesheal::CgalSurfaceMesh sm;
+    REQUIRE(mesheal::toCgalSurfaceMesh(mesh, sm));
     return sm;
 }
 
-std::vector<ogun::CgalHalfedgeIndex> borderCycles(const ogun::CgalSurfaceMesh& sm) {
-    std::vector<ogun::CgalHalfedgeIndex> cycles;
+std::vector<mesheal::CgalHalfedgeIndex> borderCycles(const mesheal::CgalSurfaceMesh& sm) {
+    std::vector<mesheal::CgalHalfedgeIndex> cycles;
     std::vector<bool> seen(sm.number_of_halfedges() + sm.number_of_removed_halfedges(), false);
-    for (const ogun::CgalHalfedgeIndex h : sm.halfedges()) {
+    for (const mesheal::CgalHalfedgeIndex h : sm.halfedges()) {
         if (!sm.is_border(h) || seen[h.idx()]) {
             continue;
         }
         cycles.push_back(h);
-        for (const ogun::CgalHalfedgeIndex b : CGAL::halfedges_around_face(h, sm)) {
+        for (const mesheal::CgalHalfedgeIndex b : CGAL::halfedges_around_face(h, sm)) {
             seen[b.idx()] = true;
         }
     }
@@ -104,7 +104,7 @@ struct PhaseVisitor : PMP::Hole_filling::Default_visitor {
     }
 };
 
-double maxPlaneDistance(const ogun::Mesh& mesh, const std::vector<Eigen::Index>& faces, double z) {
+double maxPlaneDistance(const mesheal::Mesh& mesh, const std::vector<Eigen::Index>& faces, double z) {
     double worst = 0.0;
     for (const Eigen::Index f : faces) {
         for (int c = 0; c < 3; ++c) {
@@ -114,32 +114,32 @@ double maxPlaneDistance(const ogun::Mesh& mesh, const std::vector<Eigen::Index>&
     return worst;
 }
 
-std::vector<Eigen::Index> newFaces(const ogun::Mesh& before, const ogun::Mesh& after) {
-    return ogun::faceDiff(before, after).added;
+std::vector<Eigen::Index> newFaces(const mesheal::Mesh& before, const mesheal::Mesh& after) {
+    return mesheal::faceDiff(before, after).added;
 }
 
 
-ogun::Mesh flatHoleBox() {
-    return removeFaces(ogun::SampleMeshes::createGridCubeMesh(6, 6.0), [](const Eigen::Vector3d& c) {
+mesheal::Mesh flatHoleBox() {
+    return removeFaces(mesheal::SampleMeshes::createGridCubeMesh(6, 6.0), [](const Eigen::Vector3d& c) {
         return c.z() > 5.9 && c.x() > 2.0 && c.x() < 4.0 && c.y() > 2.0 && c.y() < 4.0;
     });
 }
 
-ogun::Mesh sphereCap() {
-    return removeFaces(ogun::SampleMeshes::createSphereMesh(24, 32, 5.0), [](const Eigen::Vector3d& c) { return c.z() > 4.0; });
+mesheal::Mesh sphereCap() {
+    return removeFaces(mesheal::SampleMeshes::createSphereMesh(24, 32, 5.0), [](const Eigen::Vector3d& c) { return c.z() > 4.0; });
 }
 
-ogun::Mesh openCylinder() {
-    return removeFaces(ogun::SampleMeshes::createCylinderMesh(32, 4, 5.0, 10.0), [](const Eigen::Vector3d& c) { return c.z() > 9.99; });
+mesheal::Mesh openCylinder() {
+    return removeFaces(mesheal::SampleMeshes::createCylinderMesh(32, 4, 5.0, 10.0), [](const Eigen::Vector3d& c) { return c.z() > 9.99; });
 }
 
-bool watertight(const ogun::Mesh& mesh) {
-    return ogun::checkOpenEdges(mesh).empty() && ogun::checkNonManifoldEdges(mesh).empty();
+bool watertight(const mesheal::Mesh& mesh) {
+    return mesheal::checkOpenEdges(mesh).empty() && mesheal::checkNonManifoldEdges(mesh).empty();
 }
 
 /// Largest distance between the two surfaces (both directions).
-double surfaceDistance(const ogun::Mesh& a, const ogun::Mesh& b) {
-    return std::max(ogun::vertexDeviation(a, b).maxCoeff(), ogun::vertexDeviation(b, a).maxCoeff());
+double surfaceDistance(const mesheal::Mesh& a, const mesheal::Mesh& b) {
+    return std::max(mesheal::vertexDeviation(a, b).maxCoeff(), mesheal::vertexDeviation(b, a).maxCoeff());
 }
 
 } // namespace
@@ -150,19 +150,19 @@ double surfaceDistance(const ogun::Mesh& a, const ogun::Mesh& b) {
 
 TEST_CASE("CGAL triangulate_hole uses the 2D CDT only when asked", "[repair][holes][cgal]") {
     // A flat 2 x 2-cell square hole in the top of a grid cube
-    const ogun::Mesh holed = removeFaces(ogun::SampleMeshes::createGridCubeMesh(6, 6.0), [](const Eigen::Vector3d& c) {
+    const mesheal::Mesh holed = removeFaces(mesheal::SampleMeshes::createGridCubeMesh(6, 6.0), [](const Eigen::Vector3d& c) {
         return c.z() > 5.9 && c.x() > 2.0 && c.x() < 4.0 && c.y() > 2.0 && c.y() < 4.0;
     });
 
     // The CGAL 6.x docs say use_2d_constrained_delaunay_triangulation defaults to true, the code to false
-    ogun::CgalSurfaceMesh sm = toCgal(holed);
+    mesheal::CgalSurfaceMesh sm = toCgal(holed);
     Phases byDefault;
     PMP::triangulate_hole(sm, borderCycles(sm).front(), CGAL::parameters::visitor(PhaseVisitor(byDefault)));
     REQUIRE(byDefault.planar == 0);
     REQUIRE(byDefault.quadraticOk); // 3D Delaunay search space (2D for a flat hole: no start call)
     REQUIRE(byDefault.cubic == 0);
 
-    ogun::CgalSurfaceMesh sm2 = toCgal(holed);
+    mesheal::CgalSurfaceMesh sm2 = toCgal(holed);
     Phases withCdt;
     PMP::triangulate_hole(sm2, borderCycles(sm2).front(),
                           CGAL::parameters::visitor(PhaseVisitor(withCdt)).use_2d_constrained_delaunay_triangulation(true));
@@ -172,14 +172,14 @@ TEST_CASE("CGAL triangulate_hole uses the 2D CDT only when asked", "[repair][hol
 }
 
 TEST_CASE("CGAL hole filling only adds faces and vertices", "[repair][holes][cgal]") {
-    const ogun::Mesh sphere = ogun::SampleMeshes::createSphereMesh(16, 24, 5.0);
-    const ogun::Mesh holed = removeFaces(sphere, [](const Eigen::Vector3d& c) { return c.z() > 3.5; });
+    const mesheal::Mesh sphere = mesheal::SampleMeshes::createSphereMesh(16, 24, 5.0);
+    const mesheal::Mesh holed = removeFaces(sphere, [](const Eigen::Vector3d& c) { return c.z() > 3.5; });
     const std::size_t holedFaces = static_cast<std::size_t>(holed.numFaces());
 
     for (int method = 0; method < 3; ++method) {
-        ogun::CgalSurfaceMesh sm = toCgal(holed);
-        std::vector<ogun::CgalFaceIndex> patch;
-        std::vector<ogun::CgalVertexIndex> added;
+        mesheal::CgalSurfaceMesh sm = toCgal(holed);
+        std::vector<mesheal::CgalFaceIndex> patch;
+        std::vector<mesheal::CgalVertexIndex> added;
         const auto h = borderCycles(sm).front();
         if (method == 0) {
             PMP::triangulate_hole(sm, h, CGAL::parameters::face_output_iterator(std::back_inserter(patch)));
@@ -197,16 +197,16 @@ TEST_CASE("CGAL hole filling only adds faces and vertices", "[repair][holes][cga
         REQUIRE(sm.number_of_faces() == holedFaces + patch.size());
         // Original vertices keep their index and position; new ones come after
         for (Eigen::Index v = 0; v < holed.numVertices(); ++v) {
-            const auto p = sm.point(ogun::CgalVertexIndex(static_cast<std::uint32_t>(v)));
+            const auto p = sm.point(mesheal::CgalVertexIndex(static_cast<std::uint32_t>(v)));
             REQUIRE(Eigen::Vector3d(p.x(), p.y(), p.z()) == Eigen::Vector3d(holed.V.row(v).transpose()));
         }
-        for (const ogun::CgalVertexIndex v : added) {
+        for (const mesheal::CgalVertexIndex v : added) {
             REQUIRE(static_cast<Eigen::Index>(v.idx()) >= holed.numVertices());
         }
         REQUIRE((method == 0) == added.empty());
         // Original faces keep their index and corners
         for (Eigen::Index f = 0; f < holed.numFaces(); ++f) {
-            const ogun::CgalFaceIndex cf(static_cast<std::uint32_t>(f));
+            const mesheal::CgalFaceIndex cf(static_cast<std::uint32_t>(f));
             std::vector<int> corners;
             for (const auto v : CGAL::vertices_around_face(sm.halfedge(cf), sm)) {
                 corners.push_back(static_cast<int>(v.idx()));
@@ -219,10 +219,10 @@ TEST_CASE("CGAL hole filling only adds faces and vertices", "[repair][holes][cga
 
 TEST_CASE("CGAL fill modes on a cylinder end cap and a sphere cap", "[repair][holes][cgal]") {
     // Missing planar end cap: the walls meet the cap at 90 degrees
-    const ogun::Mesh cylinder = ogun::SampleMeshes::createCylinderMesh(32, 4, 5.0, 10.0);
-    const ogun::Mesh open = removeFaces(cylinder, [](const Eigen::Vector3d& c) { return c.z() > 9.99; });
-    const auto fill = [](const ogun::Mesh& mesh, int method) {
-        ogun::CgalSurfaceMesh sm = toCgal(mesh);
+    const mesheal::Mesh cylinder = mesheal::SampleMeshes::createCylinderMesh(32, 4, 5.0, 10.0);
+    const mesheal::Mesh open = removeFaces(cylinder, [](const Eigen::Vector3d& c) { return c.z() > 9.99; });
+    const auto fill = [](const mesheal::Mesh& mesh, int method) {
+        mesheal::CgalSurfaceMesh sm = toCgal(mesh);
         const auto h = borderCycles(sm).front();
         const auto np = CGAL::parameters::use_2d_constrained_delaunay_triangulation(true);
         if (method == 0) {
@@ -232,11 +232,11 @@ TEST_CASE("CGAL fill modes on a cylinder end cap and a sphere cap", "[repair][ho
         } else {
             PMP::triangulate_refine_and_fair_hole(sm, h, np);
         }
-        return ogun::fromCgalSurfaceMesh(sm, mesh.fileUnit);
+        return mesheal::fromCgalSurfaceMesh(sm, mesh.fileUnit);
     };
-    const ogun::Mesh flat = fill(open, 0);
-    const ogun::Mesh refined = fill(open, 1);
-    const ogun::Mesh faired = fill(open, 2);
+    const mesheal::Mesh flat = fill(open, 0);
+    const mesheal::Mesh refined = fill(open, 1);
+    const mesheal::Mesh faired = fill(open, 2);
     REQUIRE(maxPlaneDistance(flat, newFaces(open, flat), 10.0) < 1e-12);
     REQUIRE(maxPlaneDistance(refined, newFaces(open, refined), 10.0) < 1e-9);
     // Fairing keeps tangent continuity with the walls, so the cap bulges into a dome
@@ -244,9 +244,9 @@ TEST_CASE("CGAL fill modes on a cylinder end cap and a sphere cap", "[repair][ho
     REQUIRE(newFaces(open, refined).size() > newFaces(open, flat).size());
 
     // Missing sphere cap (its rim is a planar circle too): only fairing restores the curvature
-    const ogun::Mesh sphere = ogun::SampleMeshes::createSphereMesh(24, 32, 5.0);
-    const ogun::Mesh holed = removeFaces(sphere, [](const Eigen::Vector3d& c) { return c.z() > 4.0; });
-    const auto radiusError = [](const ogun::Mesh& mesh, const std::vector<Eigen::Index>& faces) {
+    const mesheal::Mesh sphere = mesheal::SampleMeshes::createSphereMesh(24, 32, 5.0);
+    const mesheal::Mesh holed = removeFaces(sphere, [](const Eigen::Vector3d& c) { return c.z() > 4.0; });
+    const auto radiusError = [](const mesheal::Mesh& mesh, const std::vector<Eigen::Index>& faces) {
         double worst = 0.0;
         for (const Eigen::Index f : faces) {
             const Eigen::RowVector3d c = (mesh.V.row(mesh.F(f, 0)) + mesh.V.row(mesh.F(f, 1)) + mesh.V.row(mesh.F(f, 2))) / 3.0;
@@ -254,8 +254,8 @@ TEST_CASE("CGAL fill modes on a cylinder end cap and a sphere cap", "[repair][ho
         }
         return worst;
     };
-    const ogun::Mesh sphereFlat = fill(holed, 0);
-    const ogun::Mesh sphereFaired = fill(holed, 2);
+    const mesheal::Mesh sphereFlat = fill(holed, 0);
+    const mesheal::Mesh sphereFaired = fill(holed, 2);
     const double flatError = radiusError(sphereFlat, newFaces(holed, sphereFlat));
     const double fairError = radiusError(sphereFaired, newFaces(holed, sphereFaired));
     WARN("sphere cap radius error: flat " << flatError << ", faired " << fairError);
@@ -263,8 +263,8 @@ TEST_CASE("CGAL fill modes on a cylinder end cap and a sphere cap", "[repair][ho
 }
 
 TEST_CASE("A visitor exception aborts the cubic search and leaves the mesh untouched", "[repair][holes][cgal]") {
-    const ogun::Mesh holed = removeFaces(ogun::SampleMeshes::createSphereMesh(16, 48, 5.0), [](const Eigen::Vector3d& c) { return c.z() > 2.0; });
-    ogun::CgalSurfaceMesh sm = toCgal(holed);
+    const mesheal::Mesh holed = removeFaces(mesheal::SampleMeshes::createSphereMesh(16, 48, 5.0), [](const Eigen::Vector3d& c) { return c.z() > 2.0; });
+    mesheal::CgalSurfaceMesh sm = toCgal(holed);
     const std::size_t faces = sm.number_of_faces();
     Phases phases;
     phases.throwInCubic = true;
@@ -278,44 +278,44 @@ TEST_CASE("A visitor exception aborts the cubic search and leaves the mesh untou
 }
 
 TEST_CASE("stitch_borders only joins coincident points, which the load weld already merged", "[repair][holes][cgal]") {
-    const ogun::Mesh cube = ogun::SampleMeshes::createGridCubeMesh(4, 4.0);
-    ogun::CgalSurfaceMesh welded = toCgal(cube);
+    const mesheal::Mesh cube = mesheal::SampleMeshes::createGridCubeMesh(4, 4.0);
+    mesheal::CgalSurfaceMesh welded = toCgal(cube);
     REQUIRE(PMP::stitch_borders(welded) == 0);
 
     // A crack 1e-6 wide (the right half of the top moved): no tolerance, nothing stitched
-    ogun::Mesh cracked = cube;
+    mesheal::Mesh cracked = cube;
     std::vector<Eigen::Index> top;
     std::vector<Eigen::Index> rest;
     for (Eigen::Index f = 0; f < cube.numFaces(); ++f) {
         (cube.N(f, 2) > 0.5 ? top : rest).push_back(f);
     }
-    ogun::Mesh split = ogun::extractFaces(cube, rest);
-    ogun::Mesh lid = ogun::extractFaces(cube, top);
-    ogun::appendMesh(split, lid);  // same positions, separate vertices: an unwelded seam
-    ogun::CgalSurfaceMesh seam = toCgal(split);
+    mesheal::Mesh split = mesheal::extractFaces(cube, rest);
+    mesheal::Mesh lid = mesheal::extractFaces(cube, top);
+    mesheal::appendMesh(split, lid);  // same positions, separate vertices: an unwelded seam
+    mesheal::CgalSurfaceMesh seam = toCgal(split);
     REQUIRE(borderCycles(seam).size() == 2);
     REQUIRE(PMP::stitch_borders(seam) == 16);
     REQUIRE(borderCycles(seam).empty());
 
     lid.V.col(2).array() += 1e-6;
-    ogun::Mesh gap = ogun::extractFaces(cube, rest);
-    ogun::appendMesh(gap, lid);
-    ogun::CgalSurfaceMesh gapped = toCgal(gap);
+    mesheal::Mesh gap = mesheal::extractFaces(cube, rest);
+    mesheal::appendMesh(gap, lid);
+    mesheal::CgalSurfaceMesh gapped = toCgal(gap);
     REQUIRE(PMP::stitch_borders(gapped) == 0);
 }
 
 // Hidden: timings that back the size limits (run in build_release with "[.holes-timing]")
 TEST_CASE("Hole filling timings", "[.holes-timing]") {
     for (const int n : {100, 300, 600, 1200, 2400}) {
-        const ogun::Mesh holed = removeFaces(ogun::SampleMeshes::createSphereMesh(n / 4, n, 5.0), [](const Eigen::Vector3d& c) { return c.z() > 3.0; });
+        const mesheal::Mesh holed = removeFaces(mesheal::SampleMeshes::createSphereMesh(n / 4, n, 5.0), [](const Eigen::Vector3d& c) { return c.z() > 3.0; });
         for (int method = 0; method < 4; ++method) {
             if (method == 3 && n > 600) {
                 continue; // cubic only
             }
-            ogun::CgalSurfaceMesh sm = toCgal(holed);
+            mesheal::CgalSurfaceMesh sm = toCgal(holed);
             Phases phases;
             const auto t0 = std::chrono::steady_clock::now();
-            std::vector<ogun::CgalFaceIndex> patch;
+            std::vector<mesheal::CgalFaceIndex> patch;
             const auto np = CGAL::parameters::visitor(PhaseVisitor(phases)).face_output_iterator(std::back_inserter(patch));
             const auto h = borderCycles(sm).front();
             if (method == 0) {
@@ -335,8 +335,8 @@ TEST_CASE("Hole filling timings", "[.holes-timing]") {
 }
 
 TEST_CASE("Bunny holes", "[.holes-timing]") {
-    const ogun::Mesh bunny = ogun::loadStl(examplePath("stanford_bunny.stl"));
-    ogun::CgalSurfaceMesh base = toCgal(bunny);
+    const mesheal::Mesh bunny = mesheal::loadStl(examplePath("stanford_bunny.stl"));
+    mesheal::CgalSurfaceMesh base = toCgal(bunny);
     const auto cycles = borderCycles(base);
     WARN("bunny faces " << bunny.numFaces() << " holes " << cycles.size());
     for (std::size_t i = 0; i < cycles.size(); ++i) {
@@ -360,8 +360,8 @@ TEST_CASE("Bunny holes", "[.holes-timing]") {
         }
         std::string line;
         for (int method = 0; method < 3; ++method) {
-            ogun::CgalSurfaceMesh sm = base;
-            std::vector<ogun::CgalFaceIndex> patch;
+            mesheal::CgalSurfaceMesh sm = base;
+            std::vector<mesheal::CgalFaceIndex> patch;
             const auto t0 = std::chrono::steady_clock::now();
             const auto np = CGAL::parameters::face_output_iterator(std::back_inserter(patch)).use_2d_constrained_delaunay_triangulation(true);
             if (method == 0) PMP::triangulate_hole(sm, cycles[i], np);
@@ -375,16 +375,16 @@ TEST_CASE("Bunny holes", "[.holes-timing]") {
 }
 
 TEST_CASE("A T-junction crack loads as a zero-width hole that only snapping closes", "[repair][holes][cgal]") {
-    const ogun::Mesh cracked = ogun::separateTouchingContacts(ogun::SampleMeshes::createCrackedBoxMesh());
-    REQUIRE(ogun::checkNonManifoldVertices(cracked).empty()); // the pinch at (2, 2, 4) was split on "load"
-    const ogun::CategoryResult open = ogun::checkOpenEdges(cracked);
+    const mesheal::Mesh cracked = mesheal::separateTouchingContacts(mesheal::SampleMeshes::createCrackedBoxMesh());
+    REQUIRE(mesheal::checkNonManifoldVertices(cracked).empty()); // the pinch at (2, 2, 4) was split on "load"
+    const mesheal::CategoryResult open = mesheal::checkOpenEdges(cracked);
     REQUIRE(open.size() == 1);     // one slit loop
     REQUIRE(open.infoCount == 6);  // 4 edges on the left, 2 on the right
 
     // Every triangle on the slit's collinear rim is degenerate: CGAL finds no fill and changes nothing
     for (const bool cdt : {false, true}) {
-        ogun::CgalSurfaceMesh sm = toCgal(cracked);
-        std::vector<ogun::CgalFaceIndex> patch;
+        mesheal::CgalSurfaceMesh sm = toCgal(cracked);
+        std::vector<mesheal::CgalFaceIndex> patch;
         PMP::triangulate_hole(sm, borderCycles(sm).front(),
                               CGAL::parameters::face_output_iterator(std::back_inserter(patch)).use_2d_constrained_delaunay_triangulation(cdt));
         REQUIRE(patch.empty());
@@ -392,23 +392,23 @@ TEST_CASE("A T-junction crack loads as a zero-width hole that only snapping clos
     }
 
     // Snapping the rim vertices onto the opposite edges closes it without new faces in the gap
-    ogun::CgalSurfaceMesh sm = toCgal(cracked);
+    mesheal::CgalSurfaceMesh sm = toCgal(cracked);
     const std::size_t faces = sm.number_of_faces();
     const std::size_t snapped = PMP::experimental::snap_borders(sm);
     const std::size_t stitched = PMP::stitch_borders(sm);
     WARN("snap_borders snapped " << snapped << ", stitched " << stitched << ", faces " << faces << " -> " << sm.number_of_faces());
     sm.collect_garbage();
     REQUIRE(borderCycles(sm).empty());
-    const ogun::Mesh closed = ogun::fromCgalSurfaceMesh(sm);
-    REQUIRE(ogun::checkOpenEdges(closed).empty());
-    REQUIRE(ogun::checkNonManifoldEdges(closed).empty());
-    REQUIRE(ogun::signedVolume(closed) == Catch::Approx(64.0));
+    const mesheal::Mesh closed = mesheal::fromCgalSurfaceMesh(sm);
+    REQUIRE(mesheal::checkOpenEdges(closed).empty());
+    REQUIRE(mesheal::checkNonManifoldEdges(closed).empty());
+    REQUIRE(mesheal::signedVolume(closed) == Catch::Approx(64.0));
 }
 
-TEST_CASE("Soup cleanup after the Ogun load", "[.holes-timing]") {
+TEST_CASE("Soup cleanup after the Mesheal load", "[.holes-timing]") {
     for (const char* name : {"stanford_bunny.stl", "Turkey.stl", "self_intersecting_box.stl"}) {
-        const ogun::Mesh mesh = ogun::loadStl(examplePath(name));
-        std::vector<ogun::CgalPoint3> points;
+        const mesheal::Mesh mesh = mesheal::loadStl(examplePath(name));
+        std::vector<mesheal::CgalPoint3> points;
         for (Eigen::Index v = 0; v < mesh.numVertices(); ++v) {
             points.emplace_back(mesh.V(v, 0), mesh.V(v, 1), mesh.V(v, 2));
         }
@@ -420,8 +420,8 @@ TEST_CASE("Soup cleanup after the Ogun load", "[.holes-timing]") {
         const std::size_t p0 = points.size();
         const std::size_t f0 = polygons.size();
         PMP::repair_polygon_soup(points, polygons);
-        ogun::CgalSurfaceMesh sm;
-        const bool direct = ogun::toCgalSurfaceMesh(mesh, sm);
+        mesheal::CgalSurfaceMesh sm;
+        const bool direct = mesheal::toCgalSurfaceMesh(mesh, sm);
         const std::size_t borders = borderCycles(sm).size();
         const std::size_t stitched = PMP::stitch_borders(sm);
         WARN(name << ": points " << p0 << " -> " << points.size() << ", faces " << f0 << " -> " << polygons.size()
@@ -434,11 +434,11 @@ TEST_CASE("Soup cleanup after the Ogun load", "[.holes-timing]") {
 // -----------------------------------------------------------------------------
 
 TEST_CASE("Each fill closes a hole and keeps every input face and vertex", "[repair][holes]") {
-    const ogun::Mesh holed = sphereCap();
-    const ogun::HoleLoop hole = ogun::findHoleLoops(holed).front();
-    for (const ogun::HoleFillMethod method : {ogun::HoleFillMethod::Flat, ogun::HoleFillMethod::Refine, ogun::HoleFillMethod::Smooth}) {
-        CAPTURE(ogun::holeFillMethodLabel(method));
-        const ogun::HoleFillResult r = ogun::fillHole(holed, hole, method);
+    const mesheal::Mesh holed = sphereCap();
+    const mesheal::HoleLoop hole = mesheal::findHoleLoops(holed).front();
+    for (const mesheal::HoleFillMethod method : {mesheal::HoleFillMethod::Flat, mesheal::HoleFillMethod::Refine, mesheal::HoleFillMethod::Smooth}) {
+        CAPTURE(mesheal::holeFillMethodLabel(method));
+        const mesheal::HoleFillResult r = mesheal::fillHole(holed, hole, method);
         REQUIRE(r.success);
         REQUIRE(r.closed());
         REQUIRE(watertight(r.mesh));
@@ -451,76 +451,76 @@ TEST_CASE("Each fill closes a hole and keeps every input face and vertex", "[rep
         REQUIRE(r.mesh.numVertices() == holed.numVertices() + static_cast<Eigen::Index>(r.verticesAdded));
         REQUIRE(r.addedFaces.size() == static_cast<std::size_t>(r.mesh.numFaces() - holed.numFaces()));
         REQUIRE(r.addedFaces.front() == holed.numFaces());
-        REQUIRE((method == ogun::HoleFillMethod::Flat) == (r.verticesAdded == 0));
+        REQUIRE((method == mesheal::HoleFillMethod::Flat) == (r.verticesAdded == 0));
         REQUIRE(r.patchArea > 0.0);
         REQUIRE(r.minNewAngleDeg > 0.0);
     }
 }
 
 TEST_CASE("The local patch fill matches CGAL on the whole mesh", "[repair][holes]") {
-    const ogun::Mesh holed = sphereCap();
-    const ogun::HoleLoop hole = ogun::findHoleLoops(holed).front();
-    for (const ogun::HoleFillMethod method : {ogun::HoleFillMethod::Flat, ogun::HoleFillMethod::Refine, ogun::HoleFillMethod::Smooth}) {
-        CAPTURE(ogun::holeFillMethodLabel(method));
-        ogun::CgalSurfaceMesh sm = toCgal(holed);
+    const mesheal::Mesh holed = sphereCap();
+    const mesheal::HoleLoop hole = mesheal::findHoleLoops(holed).front();
+    for (const mesheal::HoleFillMethod method : {mesheal::HoleFillMethod::Flat, mesheal::HoleFillMethod::Refine, mesheal::HoleFillMethod::Smooth}) {
+        CAPTURE(mesheal::holeFillMethodLabel(method));
+        mesheal::CgalSurfaceMesh sm = toCgal(holed);
         const auto h = borderCycles(sm).front();
         const auto np = CGAL::parameters::use_2d_constrained_delaunay_triangulation(true);
-        if (method == ogun::HoleFillMethod::Flat) {
+        if (method == mesheal::HoleFillMethod::Flat) {
             PMP::triangulate_hole(sm, h, np);
-        } else if (method == ogun::HoleFillMethod::Refine) {
+        } else if (method == mesheal::HoleFillMethod::Refine) {
             PMP::triangulate_and_refine_hole(sm, h, np);
         } else {
             PMP::triangulate_refine_and_fair_hole(sm, h, np);
         }
-        const ogun::Mesh whole = ogun::fromCgalSurfaceMesh(sm);
-        const ogun::HoleFillResult local = ogun::fillHole(holed, hole, method);
+        const mesheal::Mesh whole = mesheal::fromCgalSurfaceMesh(sm);
+        const mesheal::HoleFillResult local = mesheal::fillHole(holed, hole, method);
         REQUIRE(local.mesh.numFaces() == whole.numFaces());
         REQUIRE(surfaceDistance(local.mesh, whole) < 1e-9);
     }
 }
 
 TEST_CASE("Fill Flat keeps a missing end cap planar; Fill Smooth domes it", "[repair][holes]") {
-    const ogun::Mesh open = openCylinder();
-    const ogun::HoleLoop hole = ogun::findHoleLoops(open).front();
-    REQUIRE(ogun::recommendedHoleFill(hole.shape) == ogun::HoleFillMethod::Flat);
-    const ogun::HoleFillResult flat = ogun::fillHole(open, hole, ogun::HoleFillMethod::Flat);
-    const ogun::HoleFillResult smooth = ogun::fillHole(open, hole, ogun::HoleFillMethod::Smooth);
+    const mesheal::Mesh open = openCylinder();
+    const mesheal::HoleLoop hole = mesheal::findHoleLoops(open).front();
+    REQUIRE(mesheal::recommendedHoleFill(hole.shape) == mesheal::HoleFillMethod::Flat);
+    const mesheal::HoleFillResult flat = mesheal::fillHole(open, hole, mesheal::HoleFillMethod::Flat);
+    const mesheal::HoleFillResult smooth = mesheal::fillHole(open, hole, mesheal::HoleFillMethod::Smooth);
     REQUIRE(maxPlaneDistance(flat.mesh, flat.addedFaces, 10.0) < 1e-12);
     REQUIRE(maxPlaneDistance(smooth.mesh, smooth.addedFaces, 10.0) > 1.0);
     const double cylinderVolume = std::numbers::pi * 25.0 * 10.0;
-    REQUIRE(ogun::signedVolume(flat.mesh) == Catch::Approx(cylinderVolume).epsilon(0.01)); // 32-gon: -0.6%
-    REQUIRE(ogun::signedVolume(smooth.mesh) > ogun::signedVolume(flat.mesh));
+    REQUIRE(mesheal::signedVolume(flat.mesh) == Catch::Approx(cylinderVolume).epsilon(0.01)); // 32-gon: -0.6%
+    REQUIRE(mesheal::signedVolume(smooth.mesh) > mesheal::signedVolume(flat.mesh));
 }
 
 TEST_CASE("Close Crack seals a T-junction crack that every fill refuses", "[repair][holes]") {
-    const ogun::Mesh cracked = ogun::separateTouchingContacts(ogun::SampleMeshes::createCrackedBoxMesh());
-    const ogun::HoleLoop hole = ogun::findHoleLoops(cracked).front();
-    REQUIRE(ogun::recommendedHoleFill(hole.shape) == ogun::HoleFillMethod::CloseCrack);
+    const mesheal::Mesh cracked = mesheal::separateTouchingContacts(mesheal::SampleMeshes::createCrackedBoxMesh());
+    const mesheal::HoleLoop hole = mesheal::findHoleLoops(cracked).front();
+    REQUIRE(mesheal::recommendedHoleFill(hole.shape) == mesheal::HoleFillMethod::CloseCrack);
 
-    const ogun::HoleFillResult flat = ogun::fillHole(cracked, hole, ogun::HoleFillMethod::Flat);
+    const mesheal::HoleFillResult flat = mesheal::fillHole(cracked, hole, mesheal::HoleFillMethod::Flat);
     REQUIRE_FALSE(flat.success);
     REQUIRE(flat.statusMessage.find("Close Crack") != std::string::npos);
     REQUIRE(flat.mesh.F == cracked.F);
 
-    const ogun::HoleFillResult crack = ogun::fillHole(cracked, hole, ogun::HoleFillMethod::CloseCrack);
+    const mesheal::HoleFillResult crack = mesheal::fillHole(cracked, hole, mesheal::HoleFillMethod::CloseCrack);
     REQUIRE(crack.success);
     REQUIRE(crack.closed());
     REQUIRE(watertight(crack.mesh));
-    REQUIRE(ogun::checkNonManifoldVertices(crack.mesh).empty());
+    REQUIRE(mesheal::checkNonManifoldVertices(crack.mesh).empty());
     REQUIRE(crack.maxVertexMove < 1e-12);         // the T-vertices already lie on the opposite edges
     REQUIRE(crack.removedFaces.size() == 2);      // the two strip faces split at (2, 1) and (2, 3) ...
     REQUIRE(crack.addedFaces.size() == 4);        // ... into four (renumbered faces are not changes)
     REQUIRE(crack.patchArea == Catch::Approx(2.0));
-    const ogun::FaceDiff diff = ogun::faceDiff(cracked, crack.mesh);
+    const mesheal::FaceDiff diff = mesheal::faceDiff(cracked, crack.mesh);
     REQUIRE(diff.removed == crack.removedFaces);
     REQUIRE(diff.added.size() == 4);
-    REQUIRE(ogun::signedVolume(crack.mesh) == Catch::Approx(64.0));
+    REQUIRE(mesheal::signedVolume(crack.mesh) == Catch::Approx(64.0));
     REQUIRE(crack.mesh.numVertices() == cracked.numVertices() - 1); // the pinch copies merged again
 }
 
 TEST_CASE("Close Crack narrows a gap by at most its width and refuses a real hole", "[repair][holes]") {
     // The strip's copy of (2, 2, 4) pulled 0.01 into the strip: a thin wedge-shaped crack
-    ogun::Mesh cracked = ogun::separateTouchingContacts(ogun::SampleMeshes::createCrackedBoxMesh());
+    mesheal::Mesh cracked = mesheal::separateTouchingContacts(mesheal::SampleMeshes::createCrackedBoxMesh());
     std::vector<Eigen::Index> copies;
     for (Eigen::Index v = 0; v < cracked.numVertices(); ++v) {
         if ((cracked.V.row(v) - Eigen::RowVector3d(2.0, 2.0, 4.0)).norm() == 0.0) {
@@ -528,7 +528,7 @@ TEST_CASE("Close Crack narrows a gap by at most its width and refuses a real hol
         }
     }
     REQUIRE(copies.size() == 2);
-    const ogun::HoleLoop before = ogun::findHoleLoops(cracked).front();
+    const mesheal::HoleLoop before = mesheal::findHoleLoops(cracked).front();
     // Move the copy whose faces lie in x > 2 (the strip)
     for (const Eigen::Index v : copies) {
         bool strip = false;
@@ -542,43 +542,43 @@ TEST_CASE("Close Crack narrows a gap by at most its width and refuses a real hol
         }
     }
     cracked.recomputeNormals();
-    const ogun::HoleLoop hole = ogun::findHoleLoops(cracked).front();
-    REQUIRE(hole.shape == ogun::HoleShape::Crack);
+    const mesheal::HoleLoop hole = mesheal::findHoleLoops(cracked).front();
+    REQUIRE(hole.shape == mesheal::HoleShape::Crack);
     REQUIRE(hole.width > 0.0);
-    const ogun::HoleFillResult crack = ogun::fillHole(cracked, hole, ogun::HoleFillMethod::CloseCrack);
+    const mesheal::HoleFillResult crack = mesheal::fillHole(cracked, hole, mesheal::HoleFillMethod::CloseCrack);
     REQUIRE(crack.closed());
     REQUIRE(watertight(crack.mesh));
     REQUIRE(crack.maxVertexMove <= 0.01 + 1e-12);
     REQUIRE(crack.maxVertexMove > 0.0);
 
-    const ogun::Mesh square = flatHoleBox();
-    const ogun::HoleFillResult refused = ogun::fillHole(square, ogun::findHoleLoops(square).front(), ogun::HoleFillMethod::CloseCrack);
+    const mesheal::Mesh square = flatHoleBox();
+    const mesheal::HoleFillResult refused = mesheal::fillHole(square, mesheal::findHoleLoops(square).front(), mesheal::HoleFillMethod::CloseCrack);
     REQUIRE_FALSE(refused.success);
     REQUIRE(refused.mesh.V == square.V);
 }
 
 TEST_CASE("Hole fills refuse open chains and oversized refined patches", "[repair][holes]") {
-    const ogun::Mesh touching = ogun::separateTouchingContacts(ogun::SampleMeshes::createTouchingCubesMesh());
-    const ogun::HoleLoop chain = ogun::findHoleLoops(touching).front();
-    REQUIRE(chain.shape == ogun::HoleShape::OpenChain);
-    REQUIRE(ogun::recommendedHoleFill(chain.shape) == ogun::HoleFillMethod::None);
-    const ogun::HoleFillResult r = ogun::fillHole(touching, chain, ogun::HoleFillMethod::Flat);
+    const mesheal::Mesh touching = mesheal::separateTouchingContacts(mesheal::SampleMeshes::createTouchingCubesMesh());
+    const mesheal::HoleLoop chain = mesheal::findHoleLoops(touching).front();
+    REQUIRE(chain.shape == mesheal::HoleShape::OpenChain);
+    REQUIRE(mesheal::recommendedHoleFill(chain.shape) == mesheal::HoleFillMethod::None);
+    const mesheal::HoleFillResult r = mesheal::fillHole(touching, chain, mesheal::HoleFillMethod::Flat);
     REQUIRE_FALSE(r.success);
     REQUIRE(r.statusMessage.find("closed loop") != std::string::npos);
 
-    const ogun::Mesh holed = sphereCap();
-    ogun::HoleFillSettings settings;
+    const mesheal::Mesh holed = sphereCap();
+    mesheal::HoleFillSettings settings;
     settings.maxPatchFaces = 10;
-    const ogun::HoleFillResult big = ogun::fillHole(holed, ogun::findHoleLoops(holed).front(), ogun::HoleFillMethod::Smooth, {}, settings);
+    const mesheal::HoleFillResult big = mesheal::fillHole(holed, mesheal::findHoleLoops(holed).front(), mesheal::HoleFillMethod::Smooth, {}, settings);
     REQUIRE_FALSE(big.success);
     REQUIRE(big.statusMessage.find("limit 10") != std::string::npos);
     REQUIRE(big.mesh.F == holed.F);
 }
 
 TEST_CASE("A hole preview leaves the mesh alone and offsets the patch", "[repair][holes]") {
-    const ogun::Mesh holed = flatHoleBox();
-    const ogun::HoleLoop hole = ogun::findHoleLoops(holed).front();
-    const ogun::HoleFillPreview preview = ogun::previewHoleFill(holed, hole, ogun::HoleFillMethod::Flat);
+    const mesheal::Mesh holed = flatHoleBox();
+    const mesheal::HoleLoop hole = mesheal::findHoleLoops(holed).front();
+    const mesheal::HoleFillPreview preview = mesheal::previewHoleFill(holed, hole, mesheal::HoleFillMethod::Flat);
     REQUIRE(preview.valid);
     REQUIRE(preview.facesAdded == 6); // an 8-vertex rim
     REQUIRE(preview.verticesAdded == 0);
@@ -588,75 +588,75 @@ TEST_CASE("A hole preview leaves the mesh alone and offsets the patch", "[repair
     REQUIRE(preview.previewPatchMesh.numFaces() == 6);
     REQUIRE(preview.previewPatchMesh.V.col(2).minCoeff() > 6.0); // lifted off the top along +z
 
-    const ogun::HoleFillPreview none = ogun::previewHoleFill(holed, hole, ogun::HoleFillMethod::None);
+    const mesheal::HoleFillPreview none = mesheal::previewHoleFill(holed, hole, mesheal::HoleFillMethod::None);
     REQUIRE_FALSE(none.valid);
 }
 
 TEST_CASE("A fill that pokes through another shell reports new crossings", "[repair][holes]") {
     // A plate (wider than the cylinder) just above its open top: the smooth dome rises through it
-    ogun::Mesh mesh = openCylinder();
-    ogun::Mesh plate = ogun::SampleMeshes::createCubeMesh(14.0);
+    mesheal::Mesh mesh = openCylinder();
+    mesheal::Mesh plate = mesheal::SampleMeshes::createCubeMesh(14.0);
     plate.V.col(0).array() -= 7.0;
     plate.V.col(1).array() -= 7.0;
     plate.V.col(2) = plate.V.col(2) * (0.2 / 14.0);
     plate.V.col(2).array() += 10.5;
     plate.recomputeNormals();
-    ogun::appendMesh(mesh, plate);
-    const std::vector<ogun::HoleLoop> holes = ogun::findHoleLoops(mesh);
+    mesheal::appendMesh(mesh, plate);
+    const std::vector<mesheal::HoleLoop> holes = mesheal::findHoleLoops(mesh);
     REQUIRE(holes.size() == 1);
-    REQUIRE(ogun::fillHole(mesh, holes.front(), ogun::HoleFillMethod::Flat).newCrossings == 0);
-    const ogun::HoleFillResult dome = ogun::fillHole(mesh, holes.front(), ogun::HoleFillMethod::Smooth);
+    REQUIRE(mesheal::fillHole(mesh, holes.front(), mesheal::HoleFillMethod::Flat).newCrossings == 0);
+    const mesheal::HoleFillResult dome = mesheal::fillHole(mesh, holes.front(), mesheal::HoleFillMethod::Smooth);
     REQUIRE(dome.newCrossings > 0);
 }
 
 TEST_CASE("Filling every hole of the Holes sample makes four closed shells", "[repair][holes]") {
-    const ogun::Mesh sample = ogun::separateTouchingContacts(ogun::SampleMeshes::createHolesSampleMesh());
-    const std::vector<ogun::HoleLoop> holes = ogun::findHoleLoops(sample);
+    const mesheal::Mesh sample = mesheal::separateTouchingContacts(mesheal::SampleMeshes::createHolesSampleMesh());
+    const std::vector<mesheal::HoleLoop> holes = mesheal::findHoleLoops(sample);
     REQUIRE(holes.size() == 4);
-    const ogun::HoleBatchResult r = ogun::fillHoles(sample, holes);
+    const mesheal::HoleBatchResult r = mesheal::fillHoles(sample, holes);
     REQUIRE(r.success);
     REQUIRE(r.holesClosed == 4);
     REQUIRE(r.holesFailed == 0);
     REQUIRE(r.holesSkipped == 0);
     REQUIRE(watertight(r.mesh));
-    REQUIRE(ogun::checkShells(r.mesh).infoCount == 4);
-    REQUIRE(ogun::checkSelfIntersections(r.mesh, ogun::CheckParams{}).empty());
-    REQUIRE(ogun::faceDiff(sample, r.mesh).added.size() == r.facesAdded); // incl. the 4 halves of the 2 split strip faces
-    REQUIRE(ogun::faceDiff(sample, r.mesh).removed.size() == 2);
+    REQUIRE(mesheal::checkShells(r.mesh).infoCount == 4);
+    REQUIRE(mesheal::checkSelfIntersections(r.mesh, mesheal::CheckParams{}).empty());
+    REQUIRE(mesheal::faceDiff(sample, r.mesh).added.size() == r.facesAdded); // incl. the 4 halves of the 2 split strip faces
+    REQUIRE(mesheal::faceDiff(sample, r.mesh).removed.size() == 2);
 
     // A size limit skips the big holes; a forced method applies to every hole
-    ogun::HoleFillSettings settings;
+    mesheal::HoleFillSettings settings;
     settings.maxHoleEdges = 10;
-    const ogun::HoleBatchResult small = ogun::fillHoles(sample, holes, ogun::HoleFillMethod::None, settings);
+    const mesheal::HoleBatchResult small = mesheal::fillHoles(sample, holes, mesheal::HoleFillMethod::None, settings);
     REQUIRE(small.holesClosed == 2);
     REQUIRE(small.holesSkipped == 2);
-    const ogun::HoleBatchResult flat = ogun::fillHoles(sample, holes, ogun::HoleFillMethod::Flat);
+    const mesheal::HoleBatchResult flat = mesheal::fillHoles(sample, holes, mesheal::HoleFillMethod::Flat);
     REQUIRE(flat.holesClosed == 3);
     REQUIRE(flat.holesFailed == 1); // the crack
     REQUIRE(flat.statusMessage.find("Close Crack") != std::string::npos);
 }
 
 TEST_CASE("Filling the bunny's holes closes it without new crossings", "[repair][holes]") {
-    const ogun::Mesh bunny = ogun::loadStl(examplePath("stanford_bunny.stl"));
-    const std::vector<ogun::HoleLoop> holes = ogun::findHoleLoops(bunny);
-    const ogun::HoleBatchResult r = ogun::fillHoles(bunny, holes);
+    const mesheal::Mesh bunny = mesheal::loadStl(examplePath("stanford_bunny.stl"));
+    const std::vector<mesheal::HoleLoop> holes = mesheal::findHoleLoops(bunny);
+    const mesheal::HoleBatchResult r = mesheal::fillHoles(bunny, holes);
     REQUIRE(r.holesClosed == 5);
     REQUIRE(watertight(r.mesh));
-    REQUIRE(ogun::checkShells(r.mesh).infoCount == 1);
+    REQUIRE(mesheal::checkShells(r.mesh).infoCount == 1);
     REQUIRE(r.mesh.F.topRows(bunny.numFaces()) == bunny.F);
-    const ogun::CategoryResult crossings = ogun::checkSelfIntersections(r.mesh, ogun::CheckParams{});
+    const mesheal::CategoryResult crossings = mesheal::checkSelfIntersections(r.mesh, mesheal::CheckParams{});
     for (std::size_t e = 0; e < crossings.size(); ++e) {
         REQUIRE(crossings.facesOf(e)[0] < bunny.numFaces()); // only crossings the bunny already had
     }
-    REQUIRE(ogun::signedVolume(r.mesh) > 0.0);
+    REQUIRE(mesheal::signedVolume(r.mesh) > 0.0);
 }
 
 TEST_CASE("Repair All Holes: Fill each hole in the shells in scope", "[repair][holes]") {
-    const ogun::Mesh sample = ogun::separateTouchingContacts(ogun::SampleMeshes::createHolesSampleMesh());
-    REQUIRE(ogun::globalRepairMethodsFor(ogun::DefectCategory::OpenEdges).front() == ogun::GlobalRepairMethod::FillHoles);
-    REQUIRE(ogun::globalRepairMethodsFor(ogun::DefectCategory::Intersections).size() == ogun::kGlobalRepairMethods.size());
+    const mesheal::Mesh sample = mesheal::separateTouchingContacts(mesheal::SampleMeshes::createHolesSampleMesh());
+    REQUIRE(mesheal::globalRepairMethodsFor(mesheal::DefectCategory::OpenEdges).front() == mesheal::GlobalRepairMethod::FillHoles);
+    REQUIRE(mesheal::globalRepairMethodsFor(mesheal::DefectCategory::Intersections).size() == mesheal::kGlobalRepairMethods.size());
 
-    const ogun::RepairCandidate all = ogun::runGlobalRepair(sample, {}, ogun::GlobalRepairMethod::FillHoles, ogun::GlobalRepairParams{});
+    const mesheal::RepairCandidate all = mesheal::runGlobalRepair(sample, {}, mesheal::GlobalRepairMethod::FillHoles, mesheal::GlobalRepairParams{});
     REQUIRE(all.success);
     REQUIRE(all.metrics.watertight());
     REQUIRE(all.metrics.openEdgesBefore == 6 + 8 + 24 + 24);
@@ -666,7 +666,7 @@ TEST_CASE("Repair All Holes: Fill each hole in the shells in scope", "[repair][h
     REQUIRE(all.metrics.unchangedFraction > 0.99);
 
     // Only the sphere in scope: the other shells and their holes stay as they are
-    const ogun::Mesh sphereOnly = ogun::extractFaces(sample, [&] {
+    const mesheal::Mesh sphereOnly = mesheal::extractFaces(sample, [&] {
         std::vector<Eigen::Index> faces;
         for (Eigen::Index f = 0; f < sample.numFaces(); ++f) {
             if (sample.V(sample.F(f, 0), 0) > 11.0 && sample.V(sample.F(f, 0), 0) < 17.0) {
@@ -679,21 +679,21 @@ TEST_CASE("Repair All Holes: Fill each hole in the shells in scope", "[repair][h
     for (Eigen::Index f = 0; f < sample.numFaces(); ++f) {
         inScope[static_cast<std::size_t>(f)] = sample.V(sample.F(f, 0), 0) > 11.0 && sample.V(sample.F(f, 0), 0) < 17.0 ? 1 : 0;
     }
-    ogun::GlobalRepairParams flat;
-    flat.holeMethod = ogun::HoleFillMethod::Flat;
-    const ogun::RepairCandidate scoped = ogun::runGlobalRepair(sample, inScope, ogun::GlobalRepairMethod::FillHoles, flat);
+    mesheal::GlobalRepairParams flat;
+    flat.holeMethod = mesheal::HoleFillMethod::Flat;
+    const mesheal::RepairCandidate scoped = mesheal::runGlobalRepair(sample, inScope, mesheal::GlobalRepairMethod::FillHoles, flat);
     REQUIRE(scoped.success);
     REQUIRE(scoped.metrics.watertight());                              // measured on the scope only
-    REQUIRE(ogun::checkOpenEdges(scoped.mesh).infoCount == 6 + 8 + 24); // the other three holes are untouched
+    REQUIRE(mesheal::checkOpenEdges(scoped.mesh).infoCount == 6 + 8 + 24); // the other three holes are untouched
     REQUIRE(scoped.metrics.facesAfter == sphereOnly.numFaces() + 22); // a flat 24-gon
-    REQUIRE_FALSE(flat == ogun::GlobalRepairParams{});
+    REQUIRE_FALSE(flat == mesheal::GlobalRepairParams{});
 }
 
 TEST_CASE("Repair All Holes on the bunny", "[.holes-timing]") {
-    const ogun::Mesh bunny = ogun::loadStl(examplePath("stanford_bunny.stl"));
-    for (const ogun::GlobalRepairMethod method : ogun::kHoleRepairMethods) {
-        const ogun::RepairCandidate c = ogun::runGlobalRepair(bunny, {}, method, ogun::GlobalRepairParams{});
-        WARN(ogun::globalRepairMethodLabel(method) << ": " << c.metrics.elapsedMs << " ms, watertight " << c.metrics.watertight()
+    const mesheal::Mesh bunny = mesheal::loadStl(examplePath("stanford_bunny.stl"));
+    for (const mesheal::GlobalRepairMethod method : mesheal::kHoleRepairMethods) {
+        const mesheal::RepairCandidate c = mesheal::runGlobalRepair(bunny, {}, method, mesheal::GlobalRepairParams{});
+        WARN(mesheal::globalRepairMethodLabel(method) << ": " << c.metrics.elapsedMs << " ms, watertight " << c.metrics.watertight()
                                                    << ", open " << c.metrics.openEdgesAfter << ", dV " << c.metrics.volumeChangePercent()
                                                    << "%, max dev " << c.metrics.maxDeviation << ", lost " << c.metrics.maxLost
                                                    << ", unchanged " << c.metrics.unchangedFraction << ", faces " << c.metrics.facesAfter);
@@ -702,16 +702,16 @@ TEST_CASE("Repair All Holes on the bunny", "[.holes-timing]") {
 
 namespace {
 
-ogun::HoleBatchResult fillWithPolicy(const ogun::Mesh& mesh, ogun::HoleCrossingPolicy policy, std::span<const std::uint8_t> scope = {}) {
-    ogun::HoleBatchOptions options;
+mesheal::HoleBatchResult fillWithPolicy(const mesheal::Mesh& mesh, mesheal::HoleCrossingPolicy policy, std::span<const std::uint8_t> scope = {}) {
+    mesheal::HoleBatchOptions options;
     options.crossingPolicy = policy;
     options.faceInScope = scope;
-    const std::vector<ogun::HoleLoop> holes = ogun::findHoleLoops(mesh);
-    return ogun::fillHoles(mesh, holes, ogun::HoleFillMethod::None, ogun::HoleFillSettings{}, options);
+    const std::vector<mesheal::HoleLoop> holes = mesheal::findHoleLoops(mesh);
+    return mesheal::fillHoles(mesh, holes, mesheal::HoleFillMethod::None, mesheal::HoleFillSettings{}, options);
 }
 
 /// Every input face the map keeps has the same corners in the result, and the new faces come last.
-void requireFaceMapKeepsGeometry(const ogun::Mesh& before, const ogun::HoleBatchResult& r) {
+void requireFaceMapKeepsGeometry(const mesheal::Mesh& before, const mesheal::HoleBatchResult& r) {
     REQUIRE(r.faceMap.size() == static_cast<std::size_t>(before.numFaces()));
     Eigen::Index kept = 0;
     for (Eigen::Index f = 0; f < before.numFaces(); ++f) {
@@ -720,7 +720,7 @@ void requireFaceMapKeepsGeometry(const ogun::Mesh& before, const ogun::HoleBatch
             continue;
         }
         REQUIRE(g == kept++);
-        REQUIRE(ogun::faceGeometryKey(before, f) == ogun::faceGeometryKey(r.mesh, g));
+        REQUIRE(mesheal::faceGeometryKey(before, f) == mesheal::faceGeometryKey(r.mesh, g));
     }
     for (const Eigen::Index f : r.addedFaces) {
         REQUIRE(f >= kept);
@@ -730,66 +730,66 @@ void requireFaceMapKeepsGeometry(const ogun::Mesh& before, const ogun::HoleBatch
 } // namespace
 
 TEST_CASE("The cup with a post: the batch keeps the first fill that crosses nothing", "[repair][holes][crossings]") {
-    const ogun::Mesh cup = ogun::SampleMeshes::createCupWithPostMesh();
-    const std::vector<ogun::HoleLoop> holes = ogun::findHoleLoops(cup);
+    const mesheal::Mesh cup = mesheal::SampleMeshes::createCupWithPostMesh();
+    const std::vector<mesheal::HoleLoop> holes = mesheal::findHoleLoops(cup);
     REQUIRE(holes.size() == 1);
-    REQUIRE(holes.front().shape == ogun::HoleShape::Curved); // the rim faces slope at 45 degrees
-    REQUIRE(ogun::checkShells(cup).infoCount == 1);
-    REQUIRE(ogun::checkSelfIntersections(cup, ogun::CheckParams{}).empty());
-    REQUIRE(ogun::fillHole(cup, holes.front(), ogun::HoleFillMethod::Smooth).newCrossings > 0); // it sags onto the post
-    REQUIRE(ogun::fillHole(cup, holes.front(), ogun::HoleFillMethod::Flat).newCrossings == 0);
+    REQUIRE(holes.front().shape == mesheal::HoleShape::Curved); // the rim faces slope at 45 degrees
+    REQUIRE(mesheal::checkShells(cup).infoCount == 1);
+    REQUIRE(mesheal::checkSelfIntersections(cup, mesheal::CheckParams{}).empty());
+    REQUIRE(mesheal::fillHole(cup, holes.front(), mesheal::HoleFillMethod::Smooth).newCrossings > 0); // it sags onto the post
+    REQUIRE(mesheal::fillHole(cup, holes.front(), mesheal::HoleFillMethod::Flat).newCrossings == 0);
 
     // Today's batch (no crossing test) keeps the recommended Smooth fill and its crossings
-    const ogun::HoleBatchResult plain = fillWithPolicy(cup, ogun::HoleCrossingPolicy::IgnoreCrossings);
+    const mesheal::HoleBatchResult plain = fillWithPolicy(cup, mesheal::HoleCrossingPolicy::IgnoreCrossings);
     REQUIRE_FALSE(plain.crossingsTested);
     REQUIRE(plain.outcomes.size() == 1);
-    REQUIRE(plain.outcomes.front().method == ogun::HoleFillMethod::Smooth);
+    REQUIRE(plain.outcomes.front().method == mesheal::HoleFillMethod::Smooth);
     REQUIRE(plain.outcomes.front().attempts.size() == 1);
-    REQUIRE_FALSE(ogun::checkSelfIntersections(plain.mesh, ogun::CheckParams{}).empty());
-    REQUIRE(plain.mesh.F == ogun::fillHoles(cup, holes).mesh.F); // the old overload is the same call
+    REQUIRE_FALSE(mesheal::checkSelfIntersections(plain.mesh, mesheal::CheckParams{}).empty());
+    REQUIRE(plain.mesh.F == mesheal::fillHoles(cup, holes).mesh.F); // the old overload is the same call
 
     // Both crossing policies try Smooth (crosses the post), then Refine: flat like Fill Flat, so it crosses nothing
-    for (const ogun::HoleCrossingPolicy policy :
-         {ogun::HoleCrossingPolicy::NeverCommitCrossing, ogun::HoleCrossingPolicy::AlwaysFillFewestCrossings}) {
-        const ogun::HoleBatchResult r = fillWithPolicy(cup, policy);
+    for (const mesheal::HoleCrossingPolicy policy :
+         {mesheal::HoleCrossingPolicy::NeverCommitCrossing, mesheal::HoleCrossingPolicy::AlwaysFillFewestCrossings}) {
+        const mesheal::HoleBatchResult r = fillWithPolicy(cup, policy);
         REQUIRE(r.crossingsTested);
         REQUIRE(r.holesClosed == 1);
-        const ogun::HoleFillOutcome& o = r.outcomes.front();
+        const mesheal::HoleFillOutcome& o = r.outcomes.front();
         REQUIRE(o.shell == 0);
         REQUIRE(o.attempts.size() == 2);
-        REQUIRE(o.attempts[0].method == ogun::HoleFillMethod::Smooth);
+        REQUIRE(o.attempts[0].method == mesheal::HoleFillMethod::Smooth);
         REQUIRE(o.attempts[0].crossingsOwnShell > 0);
         REQUIRE(o.attempts[0].crossingsOtherShells == 0);
-        REQUIRE(o.attempts[1].method == ogun::HoleFillMethod::Refine);
-        REQUIRE(o.method == ogun::HoleFillMethod::Refine);
+        REQUIRE(o.attempts[1].method == mesheal::HoleFillMethod::Refine);
+        REQUIRE(o.method == mesheal::HoleFillMethod::Refine);
         REQUIRE(o.closed);
         REQUIRE(o.crossingsOwnShell + o.crossingsOtherShells == 0);
         REQUIRE(r.holesWithCrossings == 0);
         REQUIRE(watertight(r.mesh));
-        REQUIRE(ogun::checkSelfIntersections(r.mesh, ogun::CheckParams{}).empty());
-        REQUIRE(ogun::signedVolume(r.mesh) > 0.0);
+        REQUIRE(mesheal::checkSelfIntersections(r.mesh, mesheal::CheckParams{}).empty());
+        REQUIRE(mesheal::signedVolume(r.mesh) > 0.0);
         REQUIRE(r.mesh.V.col(2).maxCoeff() == 10.0); // nothing above the cup's top
         requireFaceMapKeepsGeometry(cup, r);
     }
 }
 
 TEST_CASE("A post through the opening: every fill crosses the hole's own shell", "[repair][holes][crossings]") {
-    const ogun::Mesh cup = ogun::SampleMeshes::createCupWithPostMesh(ogun::SampleMeshes::CupPost::ThroughOpening);
+    const mesheal::Mesh cup = mesheal::SampleMeshes::createCupWithPostMesh(mesheal::SampleMeshes::CupPost::ThroughOpening);
 
     // Always fill: the fill with the fewest crossings is kept, with them listed as its own shell's
-    const ogun::HoleBatchResult r = fillWithPolicy(cup, ogun::HoleCrossingPolicy::AlwaysFillFewestCrossings);
+    const mesheal::HoleBatchResult r = fillWithPolicy(cup, mesheal::HoleCrossingPolicy::AlwaysFillFewestCrossings);
     REQUIRE(r.success);
     REQUIRE(r.holesClosed == 1);
-    const ogun::HoleFillOutcome& o = r.outcomes.front();
+    const mesheal::HoleFillOutcome& o = r.outcomes.front();
     REQUIRE(o.attempts.size() == 3); // Smooth, Refine, Flat: all cross
     std::size_t fewest = std::numeric_limits<std::size_t>::max();
-    for (const ogun::HoleFillAttempt& a : o.attempts) {
+    for (const mesheal::HoleFillAttempt& a : o.attempts) {
         REQUIRE(a.closed);
         REQUIRE(a.crossingsOwnShell > 0);
         REQUIRE(a.crossingsOtherShells == 0);
         fewest = std::min(fewest, a.crossingsOwnShell);
     }
-    REQUIRE(o.method == ogun::HoleFillMethod::Flat);
+    REQUIRE(o.method == mesheal::HoleFillMethod::Flat);
     REQUIRE(o.crossingsOwnShell == fewest);
     REQUIRE(o.crossingsOtherShells == 0);
     REQUIRE(o.otherShells.empty());
@@ -797,15 +797,15 @@ TEST_CASE("A post through the opening: every fill crosses the hole's own shell",
     REQUIRE(r.crossingsOwnShell == fewest);
     REQUIRE(r.crossedShells.empty());
     REQUIRE(watertight(r.mesh));
-    REQUIRE_FALSE(ogun::checkSelfIntersections(r.mesh, ogun::CheckParams{}).empty()); // left for the island step
+    REQUIRE_FALSE(mesheal::checkSelfIntersections(r.mesh, mesheal::CheckParams{}).empty()); // left for the island step
     REQUIRE(r.statusMessage.find("1 fill crosses other faces") != std::string::npos);
     requireFaceMapKeepsGeometry(cup, r);
 
     // Never commit a crossing: the hole stays open, the mesh is the input
-    const ogun::HoleBatchResult never = fillWithPolicy(cup, ogun::HoleCrossingPolicy::NeverCommitCrossing);
+    const mesheal::HoleBatchResult never = fillWithPolicy(cup, mesheal::HoleCrossingPolicy::NeverCommitCrossing);
     REQUIRE_FALSE(never.success);
     REQUIRE(never.holesFailed == 1);
-    REQUIRE(never.outcomes.front().method == ogun::HoleFillMethod::None);
+    REQUIRE(never.outcomes.front().method == mesheal::HoleFillMethod::None);
     REQUIRE(never.outcomes.front().attempts.size() == 3);
     REQUIRE(never.outcomes.front().status.find("crosses") != std::string::npos);
     REQUIRE(never.mesh.F == cup.F);
@@ -813,13 +813,13 @@ TEST_CASE("A post through the opening: every fill crosses the hole's own shell",
 }
 
 TEST_CASE("A hole whose every fill crosses another shell is filled, and the shell is named", "[repair][holes][crossings]") {
-    const ogun::Mesh cup = ogun::SampleMeshes::createCupWithPostMesh(ogun::SampleMeshes::CupPost::RodThroughOpening);
-    REQUIRE(ogun::checkShells(cup).infoCount == 2);
-    REQUIRE(ogun::checkSelfIntersections(cup, ogun::CheckParams{}).empty()); // the rod touches nothing
+    const mesheal::Mesh cup = mesheal::SampleMeshes::createCupWithPostMesh(mesheal::SampleMeshes::CupPost::RodThroughOpening);
+    REQUIRE(mesheal::checkShells(cup).infoCount == 2);
+    REQUIRE(mesheal::checkSelfIntersections(cup, mesheal::CheckParams{}).empty()); // the rod touches nothing
 
-    const ogun::HoleBatchResult r = fillWithPolicy(cup, ogun::HoleCrossingPolicy::AlwaysFillFewestCrossings);
+    const mesheal::HoleBatchResult r = fillWithPolicy(cup, mesheal::HoleCrossingPolicy::AlwaysFillFewestCrossings);
     REQUIRE(r.holesClosed == 1);
-    const ogun::HoleFillOutcome& o = r.outcomes.front();
+    const mesheal::HoleFillOutcome& o = r.outcomes.front();
     REQUIRE(o.shell == 0);                                   // the cup: #1
     REQUIRE(o.attempts.size() == 3);
     REQUIRE(o.crossingsOwnShell == 0);
@@ -831,17 +831,17 @@ TEST_CASE("A hole whose every fill crosses another shell is filled, and the shel
     REQUIRE(watertight(r.mesh));
 
     // Never commit: open as before; no crossing test: today's Smooth fill
-    const ogun::HoleBatchResult never = fillWithPolicy(cup, ogun::HoleCrossingPolicy::NeverCommitCrossing);
+    const mesheal::HoleBatchResult never = fillWithPolicy(cup, mesheal::HoleCrossingPolicy::NeverCommitCrossing);
     REQUIRE(never.holesFailed == 1);
     REQUIRE(never.mesh.F == cup.F);
-    const ogun::HoleBatchResult plain = fillWithPolicy(cup, ogun::HoleCrossingPolicy::IgnoreCrossings);
-    REQUIRE(plain.outcomes.front().method == ogun::HoleFillMethod::Smooth);
+    const mesheal::HoleBatchResult plain = fillWithPolicy(cup, mesheal::HoleCrossingPolicy::IgnoreCrossings);
+    REQUIRE(plain.outcomes.front().method == mesheal::HoleFillMethod::Smooth);
     REQUIRE(plain.outcomes.front().otherShells.empty());
 }
 
 TEST_CASE("The batch fill leaves faces outside its scope bit-identical", "[repair][holes][crossings]") {
-    const ogun::Mesh sample = ogun::separateTouchingContacts(ogun::SampleMeshes::createHolesSampleMesh());
-    const std::vector<ogun::HoleLoop> holes = ogun::findHoleLoops(sample);
+    const mesheal::Mesh sample = mesheal::separateTouchingContacts(mesheal::SampleMeshes::createHolesSampleMesh());
+    const std::vector<mesheal::HoleLoop> holes = mesheal::findHoleLoops(sample);
     REQUIRE(holes.size() == 4);
 
     // Scope = the sphere: its hole is filled, the other three are skipped as outside the scope
@@ -849,50 +849,50 @@ TEST_CASE("The batch fill leaves faces outside its scope bit-identical", "[repai
     for (Eigen::Index f = 0; f < sample.numFaces(); ++f) {
         sphere[static_cast<std::size_t>(f)] = sample.V(sample.F(f, 0), 0) > 11.0 && sample.V(sample.F(f, 0), 0) < 17.0 ? 1 : 0;
     }
-    for (const ogun::HoleCrossingPolicy policy :
-         {ogun::HoleCrossingPolicy::IgnoreCrossings, ogun::HoleCrossingPolicy::AlwaysFillFewestCrossings}) {
-        const ogun::HoleBatchResult r = fillWithPolicy(sample, policy, sphere);
+    for (const mesheal::HoleCrossingPolicy policy :
+         {mesheal::HoleCrossingPolicy::IgnoreCrossings, mesheal::HoleCrossingPolicy::AlwaysFillFewestCrossings}) {
+        const mesheal::HoleBatchResult r = fillWithPolicy(sample, policy, sphere);
         REQUIRE(r.holesClosed == 1);
         REQUIRE(r.holesSkipped == 3);
         std::size_t outOfScope = 0;
-        for (const ogun::HoleFillOutcome& o : r.outcomes) {
-            outOfScope += o.skipped == ogun::HoleSkipReason::OutOfScope ? 1 : 0;
+        for (const mesheal::HoleFillOutcome& o : r.outcomes) {
+            outOfScope += o.skipped == mesheal::HoleSkipReason::OutOfScope ? 1 : 0;
         }
         REQUIRE(outOfScope == 3);
-        REQUIRE(ogun::checkOpenEdges(r.mesh).infoCount == 6 + 8 + 24);
+        REQUIRE(mesheal::checkOpenEdges(r.mesh).infoCount == 6 + 8 + 24);
         requireFaceMapKeepsGeometry(sample, r);
     }
 
     // Scope = only the crack's rim faces: Close Crack would move vertices of faces outside it, so it is not used
-    const auto crack = std::find_if(holes.begin(), holes.end(), [](const ogun::HoleLoop& h) { return h.shape == ogun::HoleShape::Crack; });
+    const auto crack = std::find_if(holes.begin(), holes.end(), [](const mesheal::HoleLoop& h) { return h.shape == mesheal::HoleShape::Crack; });
     REQUIRE(crack != holes.end());
     std::vector<std::uint8_t> rim(static_cast<std::size_t>(sample.numFaces()), 0);
     for (const Eigen::Index f : crack->faces) {
         rim[static_cast<std::size_t>(f)] = 1;
     }
-    const ogun::HoleBatchResult r = fillWithPolicy(sample, ogun::HoleCrossingPolicy::AlwaysFillFewestCrossings, rim);
-    const ogun::HoleFillOutcome& o = r.outcomes[static_cast<std::size_t>(crack - holes.begin())];
-    REQUIRE(o.method == ogun::HoleFillMethod::None);
-    REQUIRE(o.attempts.front().method == ogun::HoleFillMethod::CloseCrack);
+    const mesheal::HoleBatchResult r = fillWithPolicy(sample, mesheal::HoleCrossingPolicy::AlwaysFillFewestCrossings, rim);
+    const mesheal::HoleFillOutcome& o = r.outcomes[static_cast<std::size_t>(crack - holes.begin())];
+    REQUIRE(o.method == mesheal::HoleFillMethod::None);
+    REQUIRE(o.attempts.front().method == mesheal::HoleFillMethod::CloseCrack);
     REQUIRE(o.attempts.front().status == "It would change faces outside the scope.");
     REQUIRE(r.mesh.V == sample.V);
     REQUIRE(r.mesh.F == sample.F);
 
     // A scope of the wrong size changes nothing
     const std::vector<std::uint8_t> wrong(3, 1);
-    const ogun::HoleBatchResult bad = fillWithPolicy(sample, ogun::HoleCrossingPolicy::IgnoreCrossings, wrong);
+    const mesheal::HoleBatchResult bad = fillWithPolicy(sample, mesheal::HoleCrossingPolicy::IgnoreCrossings, wrong);
     REQUIRE_FALSE(bad.success);
     REQUIRE(bad.mesh.F == sample.F);
 }
 
 TEST_CASE("A cancelled batch fill returns the input", "[repair][holes][crossings]") {
-    const ogun::Mesh cup = ogun::SampleMeshes::createCupWithPostMesh(ogun::SampleMeshes::CupPost::ThroughOpening);
-    const std::vector<ogun::HoleLoop> holes = ogun::findHoleLoops(cup);
+    const mesheal::Mesh cup = mesheal::SampleMeshes::createCupWithPostMesh(mesheal::SampleMeshes::CupPost::ThroughOpening);
+    const std::vector<mesheal::HoleLoop> holes = mesheal::findHoleLoops(cup);
     std::stop_source stop;
     stop.request_stop();
-    ogun::HoleBatchOptions options;
-    options.crossingPolicy = ogun::HoleCrossingPolicy::AlwaysFillFewestCrossings;
-    const ogun::HoleBatchResult r = ogun::fillHoles(cup, holes, ogun::HoleFillMethod::None, {}, options, stop.get_token());
+    mesheal::HoleBatchOptions options;
+    options.crossingPolicy = mesheal::HoleCrossingPolicy::AlwaysFillFewestCrossings;
+    const mesheal::HoleBatchResult r = mesheal::fillHoles(cup, holes, mesheal::HoleFillMethod::None, {}, options, stop.get_token());
     REQUIRE_FALSE(r.success);
     REQUIRE(r.statusMessage == "Cancelled.");
     REQUIRE(r.mesh.F == cup.F);
@@ -900,11 +900,11 @@ TEST_CASE("A cancelled batch fill returns the input", "[repair][holes][crossings
 }
 
 TEST_CASE("The bunny's holes fill the same way under the always-fill policy", "[repair][holes][crossings]") {
-    const ogun::Mesh bunny = ogun::loadStl(examplePath("stanford_bunny.stl"));
-    const ogun::HoleBatchResult plain = fillWithPolicy(bunny, ogun::HoleCrossingPolicy::IgnoreCrossings);
-    const ogun::HoleBatchResult always = fillWithPolicy(bunny, ogun::HoleCrossingPolicy::AlwaysFillFewestCrossings);
+    const mesheal::Mesh bunny = mesheal::loadStl(examplePath("stanford_bunny.stl"));
+    const mesheal::HoleBatchResult plain = fillWithPolicy(bunny, mesheal::HoleCrossingPolicy::IgnoreCrossings);
+    const mesheal::HoleBatchResult always = fillWithPolicy(bunny, mesheal::HoleCrossingPolicy::AlwaysFillFewestCrossings);
     REQUIRE(always.holesClosed == 5);
-    for (const ogun::HoleFillOutcome& o : always.outcomes) {
+    for (const mesheal::HoleFillOutcome& o : always.outcomes) {
         REQUIRE(o.attempts.size() == 1); // the recommended fill crosses nothing
         REQUIRE(o.crossingsOwnShell + o.crossingsOtherShells == 0);
     }
@@ -914,11 +914,11 @@ TEST_CASE("The bunny's holes fill the same way under the always-fill policy", "[
 }
 
 TEST_CASE("Batch fill crossing policy timings on the bunny", "[.benchmark]") {
-    const ogun::Mesh bunny = ogun::loadStl(examplePath("stanford_bunny.stl"));
-    for (const ogun::HoleCrossingPolicy policy :
-         {ogun::HoleCrossingPolicy::IgnoreCrossings, ogun::HoleCrossingPolicy::AlwaysFillFewestCrossings}) {
+    const mesheal::Mesh bunny = mesheal::loadStl(examplePath("stanford_bunny.stl"));
+    for (const mesheal::HoleCrossingPolicy policy :
+         {mesheal::HoleCrossingPolicy::IgnoreCrossings, mesheal::HoleCrossingPolicy::AlwaysFillFewestCrossings}) {
         const auto start = std::chrono::steady_clock::now();
-        const ogun::HoleBatchResult r = fillWithPolicy(bunny, policy);
+        const mesheal::HoleBatchResult r = fillWithPolicy(bunny, policy);
         const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
         WARN("policy " << static_cast<int>(policy) << ": " << ms << " ms, closed " << r.holesClosed);
     }

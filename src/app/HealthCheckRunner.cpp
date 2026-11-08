@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 HealthCheckRunner::~HealthCheckRunner() {
     cancel();
@@ -76,4 +76,4 @@ void HealthCheckRunner::run(std::stop_token stopToken, CheckRequest request) {
     busy_ = false;
 }
 
-} // namespace ogun
+} // namespace mesheal

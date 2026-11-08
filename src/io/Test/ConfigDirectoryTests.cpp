@@ -42,7 +42,7 @@ private:
 
 std::filesystem::path uniqueTempDir(const char* tag) {
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-    return std::filesystem::temp_directory_path() / (std::string("ogun_") + tag + "_" + std::to_string(stamp));
+    return std::filesystem::temp_directory_path() / (std::string("mesheal_") + tag + "_" + std::to_string(stamp));
 }
 
 std::string readAll(const std::filesystem::path& file) {
@@ -55,24 +55,45 @@ std::string readAll(const std::filesystem::path& file) {
 } // namespace
 
 TEST_CASE("configDirectoryFor prefers XDG_CONFIG_HOME, then ~/.config", "[io][config]") {
-    CHECK(ogun::configDirectoryFor("/xdg", "/home/me") == std::filesystem::path("/xdg/ogun"));
-    CHECK(ogun::configDirectoryFor("", "/home/me") == std::filesystem::path("/home/me/.config/ogun"));
-    CHECK(ogun::configDirectoryFor(nullptr, "/home/me") == std::filesystem::path("/home/me/.config/ogun"));
-    CHECK(ogun::configDirectoryFor(nullptr, nullptr).empty());
+    CHECK(mesheal::configDirectoryFor("/xdg", "/home/me") == std::filesystem::path("/xdg/mesheal"));
+    CHECK(mesheal::configDirectoryFor("", "/home/me") == std::filesystem::path("/home/me/.config/mesheal"));
+    CHECK(mesheal::configDirectoryFor(nullptr, "/home/me") == std::filesystem::path("/home/me/.config/mesheal"));
+    CHECK(mesheal::configDirectoryFor(nullptr, nullptr).empty());
 }
 
 TEST_CASE("configDirectory honours the XDG_CONFIG_HOME environment variable", "[io][config]") {
     const std::filesystem::path dir = uniqueTempDir("xdg");
     {
         const ScopedEnv xdg("XDG_CONFIG_HOME", dir.string().c_str());
-        CHECK(ogun::configDirectory() == dir / "ogun");
+        CHECK(mesheal::configDirectory() == dir / "mesheal");
     }
     {
         const ScopedEnv xdg("XDG_CONFIG_HOME", "");
         const ScopedEnv home("HOME", "/home/someone");
-        CHECK(ogun::configDirectory() == std::filesystem::path("/home/someone/.config/ogun"));
+        CHECK(mesheal::configDirectory() == std::filesystem::path("/home/someone/.config/mesheal"));
     }
     CHECK_FALSE(std::filesystem::exists(dir)); // resolving never creates the directory
+}
+
+TEST_CASE("migrateLegacyConfigDirectory moves the old ogun directory once", "[io][config]") {
+    const std::filesystem::path root = uniqueTempDir("migrate");
+    const std::filesystem::path legacy = root / "ogun";
+    const std::filesystem::path current = root / "mesheal";
+
+    CHECK_FALSE(mesheal::migrateLegacyConfigDirectory(current)); // nothing to migrate
+    REQUIRE(mesheal::writeFileAtomically(legacy / "preferences.conf", "old\n"));
+
+    CHECK(mesheal::migrateLegacyConfigDirectory(current));
+    CHECK(readAll(current / "preferences.conf") == "old\n");
+    CHECK_FALSE(std::filesystem::exists(legacy));
+
+    // An existing new directory is never overwritten
+    REQUIRE(mesheal::writeFileAtomically(legacy / "preferences.conf", "again\n"));
+    CHECK_FALSE(mesheal::migrateLegacyConfigDirectory(current));
+    CHECK(readAll(current / "preferences.conf") == "old\n");
+
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
 }
 
 TEST_CASE("writeFileAtomically creates parent directories and replaces the file", "[io][config]") {
@@ -80,9 +101,9 @@ TEST_CASE("writeFileAtomically creates parent directories and replaces the file"
     const std::filesystem::path file = dir / "nested" / "prefs.conf";
 
     std::string error;
-    REQUIRE(ogun::writeFileAtomically(file, "first\n", &error));
+    REQUIRE(mesheal::writeFileAtomically(file, "first\n", &error));
     CHECK(readAll(file) == "first\n");
-    REQUIRE(ogun::writeFileAtomically(file, "second\n", &error));
+    REQUIRE(mesheal::writeFileAtomically(file, "second\n", &error));
     CHECK(readAll(file) == "second\n");
 
     // Only the file itself is left behind (no temporary files)
@@ -92,7 +113,7 @@ TEST_CASE("writeFileAtomically creates parent directories and replaces the file"
     }
     CHECK(entries == 1);
 
-    CHECK_FALSE(ogun::writeFileAtomically({}, "x", &error));
+    CHECK_FALSE(mesheal::writeFileAtomically({}, "x", &error));
     CHECK_FALSE(error.empty());
     std::filesystem::remove_all(dir);
 }

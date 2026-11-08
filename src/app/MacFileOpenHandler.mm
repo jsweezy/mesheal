@@ -54,7 +54,7 @@ void handleResolvedPath(NSString* rawPath) {
     // 2. During cold start, this is the launch document. Always load directly into this instance.
     if (!gInitialLaunchComplete || gDisableRelaunch) {
         gCurrentLoadedPath = stlPath;
-        ogun::FileOpenQueue::instance().postFile(stlPath);
+        mesheal::FileOpenQueue::instance().postFile(stlPath);
         return;
     }
 
@@ -69,14 +69,14 @@ void handleResolvedPath(NSString* rawPath) {
     if (isBusy) {
         gLastSpawnedPath = stlPath;
         gLastSpawnedTime = now;
-        ogun::launchNewMacAppInstance(stlPath);
+        mesheal::launchNewMacAppInstance(stlPath);
     } else {
         gCurrentLoadedPath = stlPath;
-        ogun::FileOpenQueue::instance().postFile(stlPath);
+        mesheal::FileOpenQueue::instance().postFile(stlPath);
     }
 }
 
-BOOL OgunOpenFile(id self, SEL _cmd, NSApplication* sender, NSString* filename) {
+BOOL MeshealOpenFile(id self, SEL _cmd, NSApplication* sender, NSString* filename) {
     (void)self;
     (void)_cmd;
     (void)sender;
@@ -84,7 +84,7 @@ BOOL OgunOpenFile(id self, SEL _cmd, NSApplication* sender, NSString* filename) 
     return YES;
 }
 
-void OgunOpenFiles(id self, SEL _cmd, NSApplication* sender, NSArray<NSString*>* filenames) {
+void MeshealOpenFiles(id self, SEL _cmd, NSApplication* sender, NSArray<NSString*>* filenames) {
     (void)self;
     (void)_cmd;
     for (NSString* file in filenames) {
@@ -93,7 +93,7 @@ void OgunOpenFiles(id self, SEL _cmd, NSApplication* sender, NSArray<NSString*>*
     [sender replyToOpenOrPrint:NSApplicationDelegateReplySuccess];
 }
 
-void OgunOpenURLs(id self, SEL _cmd, NSApplication* application, NSArray<NSURL*>* urls) {
+void MeshealOpenURLs(id self, SEL _cmd, NSApplication* application, NSArray<NSURL*>* urls) {
     (void)self;
     (void)_cmd;
     (void)application;
@@ -109,24 +109,24 @@ void injectOpenFileMethodsIntoClass(Class cls) {
         return;
     }
     if (!class_respondsToSelector(cls, @selector(application:openFile:))) {
-        class_addMethod(cls, @selector(application:openFile:), (IMP)OgunOpenFile, "c@:@@");
+        class_addMethod(cls, @selector(application:openFile:), (IMP)MeshealOpenFile, "c@:@@");
     }
     if (!class_respondsToSelector(cls, @selector(application:openFiles:))) {
-        class_addMethod(cls, @selector(application:openFiles:), (IMP)OgunOpenFiles, "v@:@@");
+        class_addMethod(cls, @selector(application:openFiles:), (IMP)MeshealOpenFiles, "v@:@@");
     }
     if (!class_respondsToSelector(cls, @selector(application:openURLs:))) {
-        class_addMethod(cls, @selector(application:openURLs:), (IMP)OgunOpenURLs, "v@:@@");
+        class_addMethod(cls, @selector(application:openURLs:), (IMP)MeshealOpenURLs, "v@:@@");
     }
 }
 
 } // namespace
 
-@interface OgunAppleEventHandler : NSObject
+@interface MeshealAppleEventHandler : NSObject
 - (void)handleOpenDocumentsEvent:(NSAppleEventDescriptor*)event
                   withReplyEvent:(NSAppleEventDescriptor*)reply;
 @end
 
-@implementation OgunAppleEventHandler
+@implementation MeshealAppleEventHandler
 
 - (void)handleOpenDocumentsEvent:(NSAppleEventDescriptor*)event
                   withReplyEvent:(NSAppleEventDescriptor*)reply {
@@ -164,12 +164,12 @@ void injectOpenFileMethodsIntoClass(Class cls) {
 @end
 
 namespace {
-static OgunAppleEventHandler* gAppleEventHandler = nil;
+static MeshealAppleEventHandler* gAppleEventHandler = nil;
 } // namespace
 
 #endif
 
-namespace ogun {
+namespace mesheal {
 
 #ifdef __APPLE__
 
@@ -186,7 +186,7 @@ void installMacFileOpenHandler(std::function<bool()> isBusyPredicate) {
         }
 
         if (gAppleEventHandler == nil) {
-            gAppleEventHandler = [[OgunAppleEventHandler alloc] init];
+            gAppleEventHandler = [[MeshealAppleEventHandler alloc] init];
         }
         [[NSAppleEventManager sharedAppleEventManager]
             setEventHandler:gAppleEventHandler
@@ -254,7 +254,7 @@ bool launchNewMacAppInstance(const std::filesystem::path& stlPath) {
             [task launch];
             return true;
         } @catch (NSException* e) {
-            std::cerr << "Warning: failed to spawn new Ogun instance: "
+            std::cerr << "Warning: failed to spawn new Mesheal instance: "
                       << [[e reason] UTF8String] << "\n";
             return false;
         }
@@ -282,4 +282,4 @@ bool launchNewMacAppInstance(const std::filesystem::path& stlPath) {
 
 #endif
 
-} // namespace ogun
+} // namespace mesheal

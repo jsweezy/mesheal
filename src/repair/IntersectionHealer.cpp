@@ -21,7 +21,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace ogun {
+namespace mesheal {
 
 namespace PMP = CGAL::Polygon_mesh_processing;
 
@@ -271,7 +271,7 @@ bool fillIsland(CgalSurfaceMesh& sm, const std::vector<CgalFaceIndex>& faces, bo
         status = "The island was already removed by a neighbouring repair.";
         return false;
     }
-    auto selected = sm.add_property_map<CgalFaceIndex, bool>("f:ogun_cut", false).first;
+    auto selected = sm.add_property_map<CgalFaceIndex, bool>("f:mesheal_cut", false).first;
     std::vector<CgalFaceIndex> cut;
     for (int r = std::max(rings, 0);; r = 0) {
         for (const CgalFaceIndex f : cut) {
@@ -844,4 +844,4 @@ IslandBatchResult healIntersectionIslands(
     return result;
 }
 
-} // namespace ogun
+} // namespace mesheal

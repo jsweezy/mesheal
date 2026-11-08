@@ -9,11 +9,11 @@
 namespace {
 
 /// Cubes of the given side and min corner, one shell each; `shells` gets their face lists.
-ogun::Mesh cubes(const std::vector<std::pair<double, Eigen::Vector3d>>& specs,
+mesheal::Mesh cubes(const std::vector<std::pair<double, Eigen::Vector3d>>& specs,
                  std::vector<std::vector<Eigen::Index>>& shells) {
-    ogun::Mesh mesh;
+    mesheal::Mesh mesh;
     for (const auto& [side, offset] : specs) {
-        ogun::Mesh c = ogun::SampleMeshes::createCubeMesh(side, ogun::Unit::Millimeter);
+        mesheal::Mesh c = mesheal::SampleMeshes::createCubeMesh(side, mesheal::Unit::Millimeter);
         c.V.rowwise() += offset.transpose();
         const Eigen::Index nv = mesh.V.rows();
         const Eigen::Index nf = mesh.F.rows();
@@ -35,39 +35,39 @@ TEST_CASE("rayHitsTriangle counts hits in front of the origin only", "[diagnosti
     const Eigen::Vector3d a(0.0, 0.0, 0.0);
     const Eigen::Vector3d b(1.0, 0.0, 0.0);
     const Eigen::Vector3d c(0.0, 1.0, 0.0);
-    REQUIRE(ogun::rayHitsTriangle({0.2, 0.2, -1.0}, {0.0, 0.0, 1.0}, a, b, c));
-    REQUIRE_FALSE(ogun::rayHitsTriangle({0.2, 0.2, 1.0}, {0.0, 0.0, 1.0}, a, b, c));
-    REQUIRE_FALSE(ogun::rayHitsTriangle({0.8, 0.8, -1.0}, {0.0, 0.0, 1.0}, a, b, c));
-    REQUIRE_FALSE(ogun::rayHitsTriangle({0.2, 0.2, -1.0}, {1.0, 0.0, 0.0}, a, b, c));
+    REQUIRE(mesheal::rayHitsTriangle({0.2, 0.2, -1.0}, {0.0, 0.0, 1.0}, a, b, c));
+    REQUIRE_FALSE(mesheal::rayHitsTriangle({0.2, 0.2, 1.0}, {0.0, 0.0, 1.0}, a, b, c));
+    REQUIRE_FALSE(mesheal::rayHitsTriangle({0.8, 0.8, -1.0}, {0.0, 0.0, 1.0}, a, b, c));
+    REQUIRE_FALSE(mesheal::rayHitsTriangle({0.2, 0.2, -1.0}, {1.0, 0.0, 0.0}, a, b, c));
 }
 
 TEST_CASE("findNestedShells reports the smallest shell that contains another", "[diagnostics][shells]") {
     std::vector<std::vector<Eigen::Index>> shells;
-    const ogun::Mesh mesh = cubes({{10.0, {0.0, 0.0, 0.0}},
+    const mesheal::Mesh mesh = cubes({{10.0, {0.0, 0.0, 0.0}},
                                    {4.0, {3.0, 3.0, 3.0}},
                                    {1.0, {4.5, 4.5, 4.5}},
                                    {2.0, {20.0, 0.0, 0.0}}},
                                   shells);
 
-    const std::vector<int> nested = ogun::findNestedShells(mesh, shells, {});
+    const std::vector<int> nested = mesheal::findNestedShells(mesh, shells, {});
     REQUIRE(nested == std::vector<int>{-1, 0, 1, -1});
 
     // A crossing with the container rules it out; the next container is used instead
-    const std::vector<int> crossing = ogun::findNestedShells(mesh, shells, {{1, 2}});
+    const std::vector<int> crossing = mesheal::findNestedShells(mesh, shells, {{1, 2}});
     REQUIRE(crossing == std::vector<int>{-1, 0, 0, -1});
 }
 
 TEST_CASE("findShellContainers lists every container, smallest first, from either probe", "[diagnostics][shells]") {
     std::vector<std::vector<Eigen::Index>> shells;
-    const ogun::Mesh mesh = cubes({{10.0, {0.0, 0.0, 0.0}},
+    const mesheal::Mesh mesh = cubes({{10.0, {0.0, 0.0, 0.0}},
                                    {4.0, {3.0, 3.0, 3.0}},
                                    {1.0, {4.5, 4.5, 4.5}},
                                    {2.0, {20.0, 0.0, 0.0}}},
                                   shells);
-    for (const ogun::NestingProbe probe : {ogun::NestingProbe::FirstVertex, ogun::NestingProbe::FirstFaceCentroid}) {
-        const std::vector<std::vector<int>> containers = ogun::findShellContainers(mesh, shells, {}, probe);
+    for (const mesheal::NestingProbe probe : {mesheal::NestingProbe::FirstVertex, mesheal::NestingProbe::FirstFaceCentroid}) {
+        const std::vector<std::vector<int>> containers = mesheal::findShellContainers(mesh, shells, {}, probe);
         REQUIRE(containers == std::vector<std::vector<int>>{{}, {0}, {1, 0}, {}});
         // A crossing pair is never nested
-        REQUIRE(ogun::findShellContainers(mesh, shells, {{1, 2}}, probe)[2] == std::vector<int>{0});
+        REQUIRE(mesheal::findShellContainers(mesh, shells, {{1, 2}}, probe)[2] == std::vector<int>{0});
     }
 }

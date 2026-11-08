@@ -12,7 +12,7 @@
 #include <optional>
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -349,4 +349,4 @@ std::string describeRefusedGroup(
            ", which is wound inward: fix its orientation, or merge them by hand.";
 }
 
-} // namespace ogun
+} // namespace mesheal

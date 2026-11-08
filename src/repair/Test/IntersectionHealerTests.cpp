@@ -24,78 +24,78 @@
 
 namespace {
 
-Eigen::Index vertexAt(const ogun::Mesh& mesh, const Eigen::RowVector3d& p) {
+Eigen::Index vertexAt(const mesheal::Mesh& mesh, const Eigen::RowVector3d& p) {
     Eigen::Index best = 0;
     (mesh.V.rowwise() - p).rowwise().squaredNorm().minCoeff(&best);
     return best;
 }
 
 // 6 x 6 grid cube (side 6) with the top-centre vertex dragged 1.5 cells sideways in the top plane.
-ogun::Mesh makeFoldedCube() {
-    ogun::Mesh mesh = ogun::SampleMeshes::createGridCubeMesh(6, 6.0);
+mesheal::Mesh makeFoldedCube() {
+    mesheal::Mesh mesh = mesheal::SampleMeshes::createGridCubeMesh(6, 6.0);
     mesh.V.row(vertexAt(mesh, {3.0, 3.0, 6.0})) << 4.5, 3.2, 6.0;
     mesh.recomputeNormals();
     return mesh;
 }
 
 // Same cube with the top-centre vertex pushed down through the bottom wall.
-ogun::Mesh makePokedCube() {
-    ogun::Mesh mesh = ogun::SampleMeshes::createGridCubeMesh(6, 6.0);
+mesheal::Mesh makePokedCube() {
+    mesheal::Mesh mesh = mesheal::SampleMeshes::createGridCubeMesh(6, 6.0);
     mesh.V.row(vertexAt(mesh, {3.0, 3.0, 6.0})) << 3.0, 3.0, -1.0;
     mesh.recomputeNormals();
     return mesh;
 }
 
-ogun::Mesh twoOverlappingCubes() {
-    const ogun::Mesh a = ogun::SampleMeshes::createCubeMesh(10.0);
-    ogun::Mesh mesh = a;
-    ogun::Mesh b = a;
+mesheal::Mesh twoOverlappingCubes() {
+    const mesheal::Mesh a = mesheal::SampleMeshes::createCubeMesh(10.0);
+    mesheal::Mesh mesh = a;
+    mesheal::Mesh b = a;
     b.V = a.V.rowwise() + Eigen::RowVector3d(5.0, 5.0, 5.0);
-    ogun::appendMesh(mesh, b);
+    mesheal::appendMesh(mesh, b);
     return mesh;
 }
 
-std::size_t crossings(const ogun::Mesh& mesh) {
-    return ogun::checkSelfIntersections(mesh, ogun::CheckParams{}).size();
+std::size_t crossings(const mesheal::Mesh& mesh) {
+    return mesheal::checkSelfIntersections(mesh, mesheal::CheckParams{}).size();
 }
 
-bool closedManifold(const ogun::Mesh& mesh) {
-    return ogun::checkOpenEdges(mesh).empty() && ogun::checkNonManifoldEdges(mesh).empty();
+bool closedManifold(const mesheal::Mesh& mesh) {
+    return mesheal::checkOpenEdges(mesh).empty() && mesheal::checkNonManifoldEdges(mesh).empty();
 }
 
-std::vector<ogun::IntersectionIsland> islandsOf(const ogun::Mesh& mesh) {
-    const ogun::CategoryResult check = ogun::checkSelfIntersections(mesh, ogun::CheckParams{});
-    return ogun::clusterIntersectionIslands(mesh, check, ogun::shellIdsOfFaces(mesh));
+std::vector<mesheal::IntersectionIsland> islandsOf(const mesheal::Mesh& mesh) {
+    const mesheal::CategoryResult check = mesheal::checkSelfIntersections(mesh, mesheal::CheckParams{});
+    return mesheal::clusterIntersectionIslands(mesh, check, mesheal::shellIdsOfFaces(mesh));
 }
 
 } // namespace
 
 TEST_CASE("faceDiff ignores renumbering and reports real changes", "[repair][metrics]") {
-    const ogun::Mesh cube = ogun::SampleMeshes::createCubeMesh(2.0);
-    ogun::Mesh reordered = cube;
+    const mesheal::Mesh cube = mesheal::SampleMeshes::createCubeMesh(2.0);
+    mesheal::Mesh reordered = cube;
     reordered.F = cube.F.colwise().reverse();                  // faces in reverse order
     reordered.F.col(0).swap(reordered.F.col(1));               // ... and rotated corners
     reordered.F.col(1).swap(reordered.F.col(2));
-    REQUIRE(ogun::faceDiff(cube, reordered).removed.empty());
-    REQUIRE(ogun::faceDiff(cube, reordered).added.empty());
+    REQUIRE(mesheal::faceDiff(cube, reordered).removed.empty());
+    REQUIRE(mesheal::faceDiff(cube, reordered).added.empty());
 
-    ogun::Mesh moved = cube;
+    mesheal::Mesh moved = cube;
     moved.V.row(0) += Eigen::RowVector3d(0.1, 0.0, 0.0);
-    const ogun::FaceDiff diff = ogun::faceDiff(cube, moved);
+    const mesheal::FaceDiff diff = mesheal::faceDiff(cube, moved);
     REQUIRE_FALSE(diff.removed.empty());
     REQUIRE(diff.removed.size() == diff.added.size());
 }
 
 TEST_CASE("Repair metrics measure volume, area and deviation", "[repair][metrics]") {
-    const ogun::Mesh cube = ogun::SampleMeshes::createCubeMesh(2.0);
-    const ogun::RepairMetrics same = ogun::computeRepairMetrics(cube, cube, ogun::CheckParams{});
+    const mesheal::Mesh cube = mesheal::SampleMeshes::createCubeMesh(2.0);
+    const mesheal::RepairMetrics same = mesheal::computeRepairMetrics(cube, cube, mesheal::CheckParams{});
     REQUIRE(same.maxDeviation == Catch::Approx(0.0).margin(1e-12));
     REQUIRE(same.unchangedFraction == Catch::Approx(1.0));
     REQUIRE(same.watertight());
 
-    ogun::Mesh bigger = cube;
+    mesheal::Mesh bigger = cube;
     bigger.V *= 1.5;
-    const ogun::RepairMetrics m = ogun::computeRepairMetrics(cube, bigger, ogun::CheckParams{});
+    const mesheal::RepairMetrics m = mesheal::computeRepairMetrics(cube, bigger, mesheal::CheckParams{});
     REQUIRE(m.volumeBefore == Catch::Approx(8.0));
     REQUIRE(m.volumeAfter == Catch::Approx(27.0));
     REQUIRE(m.areaChangePercent() == Catch::Approx(125.0));
@@ -105,34 +105,34 @@ TEST_CASE("Repair metrics measure volume, area and deviation", "[repair][metrics
 
 TEST_CASE("Islands: a fold is local, a poke-through is not, crossings between shells are skipped",
           "[repair][intersections][islands]") {
-    const ogun::Mesh folded = makeFoldedCube();
+    const mesheal::Mesh folded = makeFoldedCube();
     REQUIRE(crossings(folded) > 0);
     const auto foldIslands = islandsOf(folded);
     REQUIRE(foldIslands.size() == 1);
     REQUIRE(foldIslands[0].local);
-    const ogun::IslandAnalysis fold = ogun::analyzeIsland(folded, foldIslands[0]);
-    REQUIRE(fold.recommended == ogun::IntersectionRepairMethod::FillFlat); // flat collar
+    const mesheal::IslandAnalysis fold = mesheal::analyzeIsland(folded, foldIslands[0]);
+    REQUIRE(fold.recommended == mesheal::IntersectionRepairMethod::FillFlat); // flat collar
 
-    const ogun::Mesh poked = makePokedCube();
+    const mesheal::Mesh poked = makePokedCube();
     const auto pokeIslands = islandsOf(poked);
     REQUIRE(pokeIslands.size() == 1);
     REQUIRE_FALSE(pokeIslands[0].local);
-    REQUIRE(ogun::analyzeIsland(poked, pokeIslands[0]).recommended == ogun::IntersectionRepairMethod::SelfUnion);
+    REQUIRE(mesheal::analyzeIsland(poked, pokeIslands[0]).recommended == mesheal::IntersectionRepairMethod::SelfUnion);
 
-    const ogun::Mesh cubes = twoOverlappingCubes();
+    const mesheal::Mesh cubes = twoOverlappingCubes();
     REQUIRE(crossings(cubes) > 0);
     REQUIRE(islandsOf(cubes).empty());
 }
 
 TEST_CASE("Every island method repairs a fold without new crossings", "[repair][intersections][islands]") {
-    const auto method = GENERATE(ogun::IntersectionRepairMethod::FillFlat, ogun::IntersectionRepairMethod::FillSmooth,
-                                 ogun::IntersectionRepairMethod::CgalLocalRepair, ogun::IntersectionRepairMethod::SelfUnion);
-    CAPTURE(ogun::intersectionRepairMethodLabel(method));
-    const ogun::Mesh folded = makeFoldedCube();
+    const auto method = GENERATE(mesheal::IntersectionRepairMethod::FillFlat, mesheal::IntersectionRepairMethod::FillSmooth,
+                                 mesheal::IntersectionRepairMethod::CgalLocalRepair, mesheal::IntersectionRepairMethod::SelfUnion);
+    CAPTURE(mesheal::intersectionRepairMethodLabel(method));
+    const mesheal::Mesh folded = makeFoldedCube();
     const auto islands = islandsOf(folded);
     REQUIRE(islands.size() == 1);
 
-    const ogun::IslandRepairResult r = ogun::repairIsland(folded, islands[0], method, ogun::CheckParams{});
+    const mesheal::IslandRepairResult r = mesheal::repairIsland(folded, islands[0], method, mesheal::CheckParams{});
     REQUIRE(r.success);
     REQUIRE(r.crossingsBefore > 0);
     REQUIRE(r.crossingsAfter == 0);
@@ -141,7 +141,7 @@ TEST_CASE("Every island method repairs a fold without new crossings", "[repair][
     REQUIRE(closedManifold(r.mesh));
     REQUIRE(std::abs(r.volumeChange) < 1.0); // the cube holds 216
 
-    const ogun::IslandRepairPreview preview = ogun::previewIslandRepair(folded, islands[0], method, ogun::CheckParams{});
+    const mesheal::IslandRepairPreview preview = mesheal::previewIslandRepair(folded, islands[0], method, mesheal::CheckParams{});
     REQUIRE(preview.valid);
     REQUIRE(preview.facesRemoved == r.removedFaces.size());
     REQUIRE(preview.sourceFaceIndices == r.removedFaces);
@@ -149,11 +149,11 @@ TEST_CASE("Every island method repairs a fold without new crossings", "[repair][
 }
 
 TEST_CASE("Cut & Merge Walls repairs a poke-through into a watertight shell", "[repair][intersections][islands]") {
-    const ogun::Mesh poked = makePokedCube();
+    const mesheal::Mesh poked = makePokedCube();
     const auto islands = islandsOf(poked);
     REQUIRE(islands.size() == 1);
-    const ogun::IslandRepairResult r =
-        ogun::repairIsland(poked, islands[0], ogun::IntersectionRepairMethod::SelfUnion, ogun::CheckParams{});
+    const mesheal::IslandRepairResult r =
+        mesheal::repairIsland(poked, islands[0], mesheal::IntersectionRepairMethod::SelfUnion, mesheal::CheckParams{});
     REQUIRE(r.success);
     REQUIRE(crossings(r.mesh) == 0);
     REQUIRE(closedManifold(r.mesh));
@@ -161,33 +161,33 @@ TEST_CASE("Cut & Merge Walls repairs a poke-through into a watertight shell", "[
 
 TEST_CASE("Filling an island on an open sheet keeps the sheet's own border open", "[repair][intersections][islands]") {
     // Top side of the folded cube only: an open 6 x 6 sheet with the fold in the middle
-    const ogun::Mesh folded = makeFoldedCube();
+    const mesheal::Mesh folded = makeFoldedCube();
     std::vector<Eigen::Index> top;
     for (Eigen::Index f = 0; f < folded.numFaces(); ++f) {
         if ((folded.V(folded.F(f, 0), 2) + folded.V(folded.F(f, 1), 2) + folded.V(folded.F(f, 2), 2)) > 17.9) {
             top.push_back(f);
         }
     }
-    const ogun::Mesh sheet = ogun::extractFaces(folded, top);
-    const std::size_t borderBefore = ogun::checkOpenEdges(sheet).size();
+    const mesheal::Mesh sheet = mesheal::extractFaces(folded, top);
+    const std::size_t borderBefore = mesheal::checkOpenEdges(sheet).size();
     const auto islands = islandsOf(sheet);
     REQUIRE(islands.size() == 1);
 
-    const ogun::IslandRepairResult r =
-        ogun::repairIsland(sheet, islands[0], ogun::IntersectionRepairMethod::FillFlat, ogun::CheckParams{});
+    const mesheal::IslandRepairResult r =
+        mesheal::repairIsland(sheet, islands[0], mesheal::IntersectionRepairMethod::FillFlat, mesheal::CheckParams{});
     REQUIRE(r.success);
     REQUIRE(crossings(r.mesh) == 0);
-    REQUIRE(ogun::checkOpenEdges(r.mesh).size() == borderBefore);
+    REQUIRE(mesheal::checkOpenEdges(r.mesh).size() == borderBefore);
 }
 
 TEST_CASE("Batch island repair: all islands, or only the seeded ones", "[repair][intersections][batch]") {
-    ogun::Mesh both = makeFoldedCube();
-    ogun::Mesh poked = makePokedCube();
+    mesheal::Mesh both = makeFoldedCube();
+    mesheal::Mesh poked = makePokedCube();
     poked.V.rowwise() += Eigen::RowVector3d(20.0, 0.0, 0.0);
-    ogun::appendMesh(both, poked);
+    mesheal::appendMesh(both, poked);
     REQUIRE(islandsOf(both).size() == 2);
 
-    const ogun::IslandBatchResult all = ogun::healIntersectionIslands(both, ogun::CheckParams{});
+    const mesheal::IslandBatchResult all = mesheal::healIntersectionIslands(both, mesheal::CheckParams{});
     REQUIRE(all.success);
     REQUIRE(all.islandsBefore == 2);
     REQUIRE(all.islandsAfter == 0);
@@ -198,7 +198,7 @@ TEST_CASE("Batch island repair: all islands, or only the seeded ones", "[repair]
     const auto islands = islandsOf(both);
     const auto& foldIsland = islands[0].local ? islands[0] : islands[1];
     const std::vector<Eigen::Index> seed{foldIsland.faces.front()};
-    const ogun::IslandBatchResult some = ogun::healIntersectionIslands(both, ogun::CheckParams{}, {}, seed);
+    const mesheal::IslandBatchResult some = mesheal::healIntersectionIslands(both, mesheal::CheckParams{}, {}, seed);
     REQUIRE(some.success);
     REQUIRE(some.islandsBefore == 1);
     REQUIRE(islandsOf(some.mesh).size() == 1); // the poke-through is untouched
@@ -210,37 +210,37 @@ TEST_CASE("Batch island repair keeps a CAD part's walls when a fill would bulge 
     const std::filesystem::path path =
         std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / "tom_x_axis_shuttle.stl";
     REQUIRE(std::filesystem::exists(path));
-    const ogun::Mesh shuttle = ogun::loadStl(path);
+    const mesheal::Mesh shuttle = mesheal::loadStl(path);
     REQUIRE(islandsOf(shuttle).size() == 6);
 
     // Without the guard the first round's fills cut whole walls out and bulge over them (the old behaviour)
-    ogun::IntersectionRepairSettings unguarded;
+    mesheal::IntersectionRepairSettings unguarded;
     unguarded.maxDeviationFraction = 0.0;
-    const ogun::IslandBatchResult old = ogun::healIntersectionIslands(shuttle, ogun::CheckParams{}, {}, {}, unguarded);
+    const mesheal::IslandBatchResult old = mesheal::healIntersectionIslands(shuttle, mesheal::CheckParams{}, {}, {}, unguarded);
     REQUIRE(old.success);
-    CHECK(ogun::maxSurfaceDistance(shuttle, old.mesh) > 5.0); // mm of wall lost
+    CHECK(mesheal::maxSurfaceDistance(shuttle, old.mesh) > 5.0); // mm of wall lost
 
     // With it that round is undone and the next method cuts along the crossings: nothing moves
-    const ogun::IslandBatchResult r = ogun::healIntersectionIslands(shuttle, ogun::CheckParams{});
+    const mesheal::IslandBatchResult r = mesheal::healIntersectionIslands(shuttle, mesheal::CheckParams{});
     REQUIRE(r.success);
     CHECK(r.islandsAfter == 0);
     CHECK(crossings(r.mesh) == 0);
     CHECK(r.roundsRefusedForShape >= 1);
     CHECK(r.statusMessage.find("would have changed the shape") != std::string::npos);
-    CHECK(ogun::maxSurfaceDistance(shuttle, r.mesh) < 0.01);
-    CHECK(ogun::maxSurfaceDistance(r.mesh, shuttle) < 0.01);
-    CHECK(ogun::signedVolume(r.mesh) == Catch::Approx(ogun::signedVolume(shuttle)).epsilon(1e-4));
+    CHECK(mesheal::maxSurfaceDistance(shuttle, r.mesh) < 0.01);
+    CHECK(mesheal::maxSurfaceDistance(r.mesh, shuttle) < 0.01);
+    CHECK(mesheal::signedVolume(r.mesh) == Catch::Approx(mesheal::signedVolume(shuttle)).epsilon(1e-4));
 }
 
 TEST_CASE("Global repairs merge overlapping cubes into one clean shell", "[repair][intersections][global]") {
-    const auto method = GENERATE(ogun::GlobalRepairMethod::SelfUnion, ogun::GlobalRepairMethod::WindingRebuild,
-                                 ogun::GlobalRepairMethod::AlphaWrap);
-    CAPTURE(ogun::globalRepairMethodLabel(method));
-    const ogun::Mesh cubes = twoOverlappingCubes();
-    ogun::GlobalRepairParams params;
+    const auto method = GENERATE(mesheal::GlobalRepairMethod::SelfUnion, mesheal::GlobalRepairMethod::WindingRebuild,
+                                 mesheal::GlobalRepairMethod::AlphaWrap);
+    CAPTURE(mesheal::globalRepairMethodLabel(method));
+    const mesheal::Mesh cubes = twoOverlappingCubes();
+    mesheal::GlobalRepairParams params;
     params.alphaWrapDetail = 20.0; // coarse: keeps the test fast
     params.windingResolution = 48;
-    const ogun::RepairCandidate c = ogun::runGlobalRepair(cubes, {}, method, params);
+    const mesheal::RepairCandidate c = mesheal::runGlobalRepair(cubes, {}, method, params);
     REQUIRE(c.success);
     REQUIRE(c.metrics.shellsBefore == 2);
     REQUIRE(c.metrics.shellsAfter == 1);
@@ -248,7 +248,7 @@ TEST_CASE("Global repairs merge overlapping cubes into one clean shell", "[repai
     REQUIRE(c.metrics.intersectingFacesAfter == 0);
     REQUIRE(c.metrics.watertight());
     REQUIRE_FALSE(c.changedFaces.empty());
-    if (method == ogun::GlobalRepairMethod::SelfUnion) {
+    if (method == mesheal::GlobalRepairMethod::SelfUnion) {
         // Union of two 10-cubes overlapping in a 5-cube: exact, and the uncrossed faces survive
         REQUIRE(c.metrics.volumeAfter == Catch::Approx(1875.0));
         REQUIRE(c.metrics.maxDeviation < 1e-9);
@@ -256,39 +256,39 @@ TEST_CASE("Global repairs merge overlapping cubes into one clean shell", "[repai
 }
 
 TEST_CASE("Alpha wrap offset is alpha / x and follows alpha", "[repair][global][wrap]") {
-    ogun::GlobalRepairParams params;
+    mesheal::GlobalRepairParams params;
     // The default x reproduces the old automatic offset, alpha / 30
-    REQUIRE(params.alphaWrapOffsetRatio == ogun::settings::kDefaultAlphaWrapOffsetRatio);
+    REQUIRE(params.alphaWrapOffsetRatio == mesheal::settings::kDefaultAlphaWrapOffsetRatio);
     REQUIRE(params.alphaWrapOffsetRatio == 30.0);
     const double diag = 100.0;
-    const double alpha = ogun::alphaWrapAlpha(params, diag);
-    REQUIRE(alpha == Catch::Approx(diag / ogun::settings::kDefaultAlphaWrapDetail));
-    REQUIRE(ogun::alphaWrapOffset(params, alpha) == Catch::Approx(alpha / 30.0));
+    const double alpha = mesheal::alphaWrapAlpha(params, diag);
+    REQUIRE(alpha == Catch::Approx(diag / mesheal::settings::kDefaultAlphaWrapDetail));
+    REQUIRE(mesheal::alphaWrapOffset(params, alpha) == Catch::Approx(alpha / 30.0));
 
     params.alphaWrapOffsetRatio = 75.0;
-    REQUIRE(ogun::alphaWrapOffset(params, alpha) == Catch::Approx(alpha / 75.0));
+    REQUIRE(mesheal::alphaWrapOffset(params, alpha) == Catch::Approx(alpha / 75.0));
 
     // For a fixed x, a larger alpha (lower detail) gives a proportionally larger offset
     params.alphaWrapDetail = 25.0;
-    const double coarseAlpha = ogun::alphaWrapAlpha(params, diag);
+    const double coarseAlpha = mesheal::alphaWrapAlpha(params, diag);
     REQUIRE(coarseAlpha == Catch::Approx(4.0 * alpha));
-    REQUIRE(ogun::alphaWrapOffset(params, coarseAlpha) == Catch::Approx(4.0 * ogun::alphaWrapOffset(params, alpha)));
-    REQUIRE(ogun::alphaWrapOffset(params, coarseAlpha) == Catch::Approx(coarseAlpha / 75.0));
+    REQUIRE(mesheal::alphaWrapOffset(params, coarseAlpha) == Catch::Approx(4.0 * mesheal::alphaWrapOffset(params, alpha)));
+    REQUIRE(mesheal::alphaWrapOffset(params, coarseAlpha) == Catch::Approx(coarseAlpha / 75.0));
 
     // A non-positive x (never set by the app) falls back to the default
     params.alphaWrapOffsetRatio = 0.0;
-    REQUIRE(ogun::alphaWrapOffset(params, alpha) == Catch::Approx(alpha / 30.0));
+    REQUIRE(mesheal::alphaWrapOffset(params, alpha) == Catch::Approx(alpha / 30.0));
 }
 
 TEST_CASE("The alpha wrap lies alpha / x outside the input", "[repair][global][wrap]") {
-    const ogun::Mesh cube = ogun::SampleMeshes::createCubeMesh(10.0);
-    ogun::GlobalRepairParams params;
+    const mesheal::Mesh cube = mesheal::SampleMeshes::createCubeMesh(10.0);
+    mesheal::GlobalRepairParams params;
     params.alphaWrapDetail = 20.0; // coarse: keeps the test fast
-    const double alpha = ogun::alphaWrapAlpha(params, cube.boundingBox().diagonal());
+    const double alpha = mesheal::alphaWrapAlpha(params, cube.boundingBox().diagonal());
 
-    const ogun::RepairCandidate standard = ogun::runGlobalRepair(cube, {}, ogun::GlobalRepairMethod::AlphaWrap, params);
+    const mesheal::RepairCandidate standard = mesheal::runGlobalRepair(cube, {}, mesheal::GlobalRepairMethod::AlphaWrap, params);
     params.alphaWrapOffsetRatio = 2.0;
-    const ogun::RepairCandidate wide = ogun::runGlobalRepair(cube, {}, ogun::GlobalRepairMethod::AlphaWrap, params);
+    const mesheal::RepairCandidate wide = mesheal::runGlobalRepair(cube, {}, mesheal::GlobalRepairMethod::AlphaWrap, params);
     REQUIRE(standard.success);
     REQUIRE(wide.success);
     REQUIRE(wide.metrics.watertight());
@@ -299,7 +299,7 @@ TEST_CASE("The alpha wrap lies alpha / x outside the input", "[repair][global][w
     for (const auto* c : {&standard, &wide}) {
         const double offset = alpha / c->params.alphaWrapOffsetRatio;
         CAPTURE(offset);
-        REQUIRE(ogun::alphaWrapOffset(c->params, alpha) == Catch::Approx(offset));
+        REQUIRE(mesheal::alphaWrapOffset(c->params, alpha) == Catch::Approx(offset));
         REQUIRE(c->metrics.maxDeviation >= 0.9 * offset);
         REQUIRE(c->metrics.maxDeviation <= 2.0 * offset);
         REQUIRE(c->metrics.volumeAfter > 1000.0);
@@ -314,8 +314,8 @@ TEST_CASE("The alpha wrap lies alpha / x outside the input", "[repair][global][w
 
 TEST_CASE("Winding-number rebuild of an axis-aligned cube has no degenerate faces", "[repair][intersections][global]") {
     // The cube's sides lie on grid planes unless the samples are shifted: w = 0.5 exactly there
-    const ogun::Mesh cube = ogun::SampleMeshes::createCubeMesh(10.0);
-    const ogun::Mesh rebuilt = ogun::windingNumberRebuild(cube, 16);
+    const mesheal::Mesh cube = mesheal::SampleMeshes::createCubeMesh(10.0);
+    const mesheal::Mesh rebuilt = mesheal::windingNumberRebuild(cube, 16);
     REQUIRE_FALSE(rebuilt.empty());
     for (Eigen::Index f = 0; f < rebuilt.numFaces(); ++f) {
         const Eigen::RowVector3d a = rebuilt.V.row(rebuilt.F(f, 0));
@@ -328,37 +328,37 @@ TEST_CASE("Winding-number rebuild of an axis-aligned cube has no degenerate face
 }
 
 TEST_CASE("Global repairs leave shells out of scope untouched", "[repair][intersections][global]") {
-    ogun::Mesh mesh = makeFoldedCube();
+    mesheal::Mesh mesh = makeFoldedCube();
     const Eigen::Index foldFaces = mesh.numFaces();
-    ogun::Mesh other = makePokedCube();
+    mesheal::Mesh other = makePokedCube();
     other.V.rowwise() += Eigen::RowVector3d(20.0, 0.0, 0.0);
-    ogun::appendMesh(mesh, other);
+    mesheal::appendMesh(mesh, other);
 
     std::vector<std::uint8_t> inScope(static_cast<std::size_t>(mesh.numFaces()), 0);
     std::fill(inScope.begin(), inScope.begin() + foldFaces, std::uint8_t{1});
 
-    const ogun::RepairCandidate c =
-        ogun::runGlobalRepair(mesh, inScope, ogun::GlobalRepairMethod::PatchIslands, ogun::GlobalRepairParams{});
+    const mesheal::RepairCandidate c =
+        mesheal::runGlobalRepair(mesh, inScope, mesheal::GlobalRepairMethod::PatchIslands, mesheal::GlobalRepairParams{});
     REQUIRE(c.success);
     REQUIRE(c.metrics.intersectingFacesAfter == 0);
     // The poked cube is copied as is and still crosses itself
     std::vector<Eigen::Index> otherFaces(static_cast<std::size_t>(other.numFaces()));
     std::iota(otherFaces.begin(), otherFaces.end(), Eigen::Index{0});
-    const ogun::Mesh kept = ogun::extractFaces(c.mesh, otherFaces);
-    REQUIRE(ogun::faceDiff(other, kept).removed.empty());
+    const mesheal::Mesh kept = mesheal::extractFaces(c.mesh, otherFaces);
+    REQUIRE(mesheal::faceDiff(other, kept).removed.empty());
     REQUIRE(crossings(c.mesh) > 0);
 }
 
 TEST_CASE("Self-union per shell keeps crossing shells apart", "[repair][intersections][global]") {
-    ogun::Mesh mesh = twoOverlappingCubes();
-    ogun::appendMesh(mesh, [] {
-        ogun::Mesh poked = makePokedCube();
+    mesheal::Mesh mesh = twoOverlappingCubes();
+    mesheal::appendMesh(mesh, [] {
+        mesheal::Mesh poked = makePokedCube();
         poked.V.rowwise() += Eigen::RowVector3d(30.0, 0.0, 0.0);
         return poked;
     }());
-    ogun::GlobalRepairParams params;
+    mesheal::GlobalRepairParams params;
     params.unionCrossingShells = false;
-    const ogun::RepairCandidate c = ogun::runGlobalRepair(mesh, {}, ogun::GlobalRepairMethod::SelfUnion, params);
+    const mesheal::RepairCandidate c = mesheal::runGlobalRepair(mesh, {}, mesheal::GlobalRepairMethod::SelfUnion, params);
     REQUIRE(c.success);
     REQUIRE(c.metrics.shellsAfter == 3);            // the two cubes stay separate
     REQUIRE(c.metrics.intersectingFacesAfter > 0);  // ... so they still cross each other
@@ -367,39 +367,39 @@ TEST_CASE("Self-union per shell keeps crossing shells apart", "[repair][intersec
 
 TEST_CASE("Voxel Heal & Remesh and Precision Isosurface heal overlapping cubes into a closed manifold",
           "[repair][intersections][global][remesh]") {
-    const ogun::Mesh cubes = twoOverlappingCubes();
+    const mesheal::Mesh cubes = twoOverlappingCubes();
     std::string voxelStatus;
-    const ogun::Mesh voxelOut = ogun::voxelHealAndRemesh(cubes, 0.75, 3, &voxelStatus);
+    const mesheal::Mesh voxelOut = mesheal::voxelHealAndRemesh(cubes, 0.75, 3, &voxelStatus);
     REQUIRE_FALSE(voxelOut.empty());
     REQUIRE(voxelStatus.find("Grid ") != std::string::npos);
     REQUIRE(crossings(voxelOut) == 0);
     REQUIRE(closedManifold(voxelOut));
 
     std::string isoStatus;
-    const ogun::Mesh isoOut = ogun::precisionIsosurfaceRemesh(cubes, 1.0, 0.10, 1, &isoStatus);
+    const mesheal::Mesh isoOut = mesheal::precisionIsosurfaceRemesh(cubes, 1.0, 0.10, 1, &isoStatus);
     REQUIRE_FALSE(isoOut.empty());
     REQUIRE(isoStatus.find("Isosurface extracted") != std::string::npos);
     REQUIRE(crossings(isoOut) == 0);
-    REQUIRE(ogun::ThinFaceChecker::check(isoOut).defects.empty());
+    REQUIRE(mesheal::ThinFaceChecker::check(isoOut).defects.empty());
     REQUIRE(closedManifold(isoOut));
 
-    const ogun::Mesh simplified = ogun::simplifyToFaceCount(isoOut, 64);
+    const mesheal::Mesh simplified = mesheal::simplifyToFaceCount(isoOut, 64);
     REQUIRE(crossings(simplified) == 0);
-    REQUIRE(ogun::ThinFaceChecker::check(simplified).defects.empty());
+    REQUIRE(mesheal::ThinFaceChecker::check(simplified).defects.empty());
     REQUIRE(closedManifold(simplified));
 
     // Cancellation via stop_token returns an empty mesh with status "Cancelled."
     std::stop_source stopSource;
     stopSource.request_stop();
     std::string cancelStatus;
-    REQUIRE(ogun::voxelHealAndRemesh(cubes, 0.75, 3, &cancelStatus, stopSource.get_token()).empty());
+    REQUIRE(mesheal::voxelHealAndRemesh(cubes, 0.75, 3, &cancelStatus, stopSource.get_token()).empty());
     REQUIRE(cancelStatus == "Cancelled.");
-    REQUIRE(ogun::precisionIsosurfaceRemesh(cubes, 1.0, 0.10, 1, &cancelStatus, stopSource.get_token()).empty());
+    REQUIRE(mesheal::precisionIsosurfaceRemesh(cubes, 1.0, 0.10, 1, &cancelStatus, stopSource.get_token()).empty());
     REQUIRE(cancelStatus == "Cancelled.");
 }
 
 TEST_CASE("Precision Isosurface rejects an open flat sheet without hanging", "[repair][intersections][global][remesh]") {
-    ogun::Mesh sheet;
+    mesheal::Mesh sheet;
     sheet.V.resize(4, 3);
     sheet.V << 0.0, 0.0, 0.0,
                10.0, 0.0, 0.0,
@@ -411,7 +411,7 @@ TEST_CASE("Precision Isosurface rejects an open flat sheet without hanging", "[r
     sheet.recomputeNormals();
 
     std::string status;
-    const ogun::Mesh out = ogun::precisionIsosurfaceRemesh(sheet, 1.0, 0.10, 1, &status);
+    const mesheal::Mesh out = mesheal::precisionIsosurfaceRemesh(sheet, 1.0, 0.10, 1, &status);
     REQUIRE(out.empty());
     REQUIRE(status.find("no enclosed volume") != std::string::npos);
 }

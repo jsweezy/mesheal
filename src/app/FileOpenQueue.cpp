@@ -1,6 +1,6 @@
 #include "app/FileOpenQueue.hpp"
 
-namespace ogun {
+namespace mesheal {
 
 FileOpenQueue& FileOpenQueue::instance() {
     static FileOpenQueue sInstance;
@@ -48,4 +48,4 @@ void FileOpenQueue::clear() {
     std::swap(queue_, empty);
 }
 
-} // namespace ogun
+} // namespace mesheal

@@ -7,7 +7,7 @@
 #include <memory>
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 // -----------------------------------------------------------------------------
 // Islands
@@ -499,4 +499,4 @@ bool AppController::applyGlobalRepair() {
     return true;
 }
 
-} // namespace ogun
+} // namespace mesheal

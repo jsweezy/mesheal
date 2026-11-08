@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 RepairJobRunner::~RepairJobRunner() {
     cancel();
@@ -115,4 +115,4 @@ void RepairJobRunner::run(std::stop_token stopToken, RepairRequest request, std:
     busy_ = false;
 }
 
-} // namespace ogun
+} // namespace mesheal

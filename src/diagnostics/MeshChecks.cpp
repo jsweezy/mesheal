@@ -12,7 +12,7 @@
 #include <unordered_map>
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -707,4 +707,4 @@ CategoryResult checkDuplicateFaces(const Mesh& mesh, std::stop_token stopToken) 
     return builder.finish(SortOrder::ByIndex);
 }
 
-} // namespace ogun
+} // namespace mesheal

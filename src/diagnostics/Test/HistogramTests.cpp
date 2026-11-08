@@ -9,7 +9,7 @@
 
 TEST_CASE("Linear histogram bins values low-is-worst from the left", "[diagnostics][histogram]") {
     const std::vector<double> values = {0.0, 1.0, 2.0, 3.0, 4.0, 10.0};
-    const ogun::MetricHistogram h = ogun::buildHistogram(values, 10, false, true);
+    const mesheal::MetricHistogram h = mesheal::buildHistogram(values, 10, false, true);
     REQUIRE(h.numBins() == 10);
     REQUIRE(std::accumulate(h.counts.begin(), h.counts.end(), std::size_t{0}) == values.size());
     REQUIRE(h.binOf(0.0) == 0);
@@ -22,7 +22,7 @@ TEST_CASE("Linear histogram bins values low-is-worst from the left", "[diagnosti
 
 TEST_CASE("High-is-worst histograms mirror the bins", "[diagnostics][histogram]") {
     const std::vector<double> values = {1.0, 2.0, 3.0, 9.0};
-    const ogun::MetricHistogram h = ogun::buildHistogram(values, 4, false, false);
+    const mesheal::MetricHistogram h = mesheal::buildHistogram(values, 4, false, false);
     REQUIRE(h.binOf(9.0) == 0);
     REQUIRE(h.binOf(1.0) == 3);
     REQUIRE(h.binLower(0) > h.binLower(3));
@@ -31,7 +31,7 @@ TEST_CASE("High-is-worst histograms mirror the bins", "[diagnostics][histogram]"
 
 TEST_CASE("Log histograms put zeros and non-finite values in the worst bin", "[diagnostics][histogram]") {
     const std::vector<double> values = {0.0, 1.0e-8, 1.0e-6, 1.0e-4, std::numeric_limits<double>::infinity()};
-    const ogun::MetricHistogram h = ogun::buildHistogram(values, 4, true, true);
+    const mesheal::MetricHistogram h = mesheal::buildHistogram(values, 4, true, true);
     REQUIRE(h.minValue == Catch::Approx(1.0e-8));
     REQUIRE(h.maxValue == Catch::Approx(1.0e-4));
     REQUIRE(h.binOf(0.0) == 0);
@@ -44,8 +44,8 @@ TEST_CASE("Log histograms put zeros and non-finite values in the worst bin", "[d
 }
 
 TEST_CASE("Histograms of empty or constant data are well defined", "[diagnostics][histogram]") {
-    REQUIRE(ogun::buildHistogram({}, 24).empty());
+    REQUIRE(mesheal::buildHistogram({}, 24).empty());
     const std::vector<double> same = {2.0, 2.0, 2.0};
-    const ogun::MetricHistogram h = ogun::buildHistogram(same, 24);
+    const mesheal::MetricHistogram h = mesheal::buildHistogram(same, 24);
     REQUIRE(h.counts[0] == 3);
 }

@@ -42,7 +42,7 @@
 #include <utility>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// Lifecycle of one Mesh Health row (UI_DESIGN.md §5.2).
 enum class HealthStatus {
@@ -376,7 +376,7 @@ struct UndoEntry {
     bool movesWholeMesh = false; ///< Scale or Transform: undoing it moves the whole mesh, so the view re-frames
 };
 
-/// Headless Presentation Model / Controller for the Ogun STL Repair application.
+/// Headless Presentation Model / Controller for the Mesheal STL Repair application.
 /// Owns all mesh state, unit/tolerance preferences, diagnostics reports, selection state,
 /// and 3D camera focus calculations without any OpenGL or Polyscope window dependencies.
 class AppController {
@@ -386,8 +386,8 @@ public:
 
     AppController();
 
-    /// Resolves the path to the Ogun application/toolbar icon asset (`assets/icons/ogun.png`
-    /// or `assets/icons/ogun.jpeg`), returning an empty path if not found.
+    /// Resolves the path to the Mesheal application/toolbar icon asset (`assets/icons/mesheal.png`
+    /// or `assets/icons/mesheal.jpeg`), returning an empty path if not found.
     [[nodiscard]] static std::filesystem::path resolveApplicationIconPath() noexcept;
 
     // -------------------------------------------------------------------------
@@ -1937,4 +1937,4 @@ private:
     OverlayAppearance overlayAppearance_{};
 };
 
-} // namespace ogun
+} // namespace mesheal

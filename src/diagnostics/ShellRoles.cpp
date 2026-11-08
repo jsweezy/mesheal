@@ -9,7 +9,7 @@
 #include <cstddef>
 #include <numeric>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -440,4 +440,4 @@ CategoryResult checkInvertedShells(
     return result;
 }
 
-} // namespace ogun
+} // namespace mesheal

@@ -10,7 +10,7 @@
 #include <unordered_map>
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -825,4 +825,4 @@ std::vector<int> AppController::fixAllRebuildFilledCavities() const {
     return cavitiesFilledByRebuild(mesh_, mask, intersectionTolerance_).value_or(std::vector<int>{});
 }
 
-} // namespace ogun
+} // namespace mesheal

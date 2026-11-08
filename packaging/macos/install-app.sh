@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Ogun — macOS Application Installer
-# Installs Ogun.app into /Applications and configures LaunchServices & CLI link.
+# Mesheal — macOS Application Installer
+# Installs Mesheal.app into /Applications and configures LaunchServices & CLI link.
 # ==============================================================================
 
 # Running this with `source` would leak `set -u`/`set -e` into the caller's
@@ -27,27 +27,27 @@ SOURCE_BUNDLE=""
 
 print_usage() {
     cat <<EOF
-Usage: $(basename "$0") [OPTIONS] [PATH_TO_OGUN_APP]
+Usage: $(basename "$0") [OPTIONS] [PATH_TO_MESHEAL_APP]
 
-Installs the Ogun STL Repair Tool application bundle into /Applications.
+Installs the Mesheal STL Repair Tool application bundle into /Applications.
 
 Arguments:
-  PATH_TO_OGUN_APP         Optional path to Ogun.app bundle. If not specified,
-                           the script looks in build_release/src/app/Ogun.app
-                           (or build/src/app/Ogun.app), building it if needed.
+  PATH_TO_MESHEAL_APP         Optional path to Mesheal.app bundle. If not specified,
+                           the script looks in build_release/src/app/Mesheal.app
+                           (or build/src/app/Mesheal.app), building it if needed.
 
 Options:
   -b, --build              Force building the release target before installing.
   -d, --dest <dir>         Destination directory (default: /Applications).
-      --cli-dir <dir>      Directory for the 'ogun' CLI symlink (default: ~/.local/bin).
+      --cli-dir <dir>      Directory for the 'mesheal' CLI symlink (default: ~/.local/bin).
       --no-cli             Do not create a CLI symlink.
-  -u, --uninstall          Remove Ogun.app from destination and clean up CLI symlink.
+  -u, --uninstall          Remove Mesheal.app from destination and clean up CLI symlink.
   -h, --help               Display this help message and exit.
 
 Examples:
   ./packaging/macos/install-app.sh
   ./packaging/macos/install-app.sh --build
-  ./packaging/macos/install-app.sh build_release/src/app/Ogun.app
+  ./packaging/macos/install-app.sh build_release/src/app/Mesheal.app
   ./packaging/macos/install-app.sh --uninstall
 EOF
 }
@@ -104,7 +104,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-DEST_APP="${DEST_DIR}/Ogun.app"
+DEST_APP="${DEST_DIR}/Mesheal.app"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
 needs_sudo() {
@@ -139,7 +139,7 @@ run_cmd() {
 
 # Handle uninstall
 if [[ "${UNINSTALL}" = true ]]; then
-    echo "==> Uninstalling Ogun from ${DEST_DIR}..."
+    echo "==> Uninstalling Mesheal from ${DEST_DIR}..."
     if [[ -d "${DEST_APP}" ]]; then
         if [[ -x "${LSREGISTER}" ]]; then
             echo "Unregistering from LaunchServices..."
@@ -151,30 +151,30 @@ if [[ "${UNINSTALL}" = true ]]; then
         echo "No application found at ${DEST_APP}."
     fi
 
-    if [[ -L "${CLI_DIR}/ogun" ]]; then
-        echo "Removing CLI symlink ${CLI_DIR}/ogun..."
-        rm -f "${CLI_DIR}/ogun"
+    if [[ -L "${CLI_DIR}/mesheal" ]]; then
+        echo "Removing CLI symlink ${CLI_DIR}/mesheal..."
+        rm -f "${CLI_DIR}/mesheal"
     fi
 
-    echo "Ogun has been uninstalled successfully."
+    echo "Mesheal has been uninstalled successfully."
     exit 0
 fi
 
-# Locate or build Ogun.app
-if [[ "${FORCE_BUILD}" = true ]] || [[ -z "${SOURCE_BUNDLE}" && ! -d "${REPO_DIR}/build_release/src/app/Ogun.app" && ! -d "${REPO_DIR}/build/src/app/Ogun.app" ]]; then
-    echo "==> Building Ogun (Release)..."
+# Locate or build Mesheal.app
+if [[ "${FORCE_BUILD}" = true ]] || [[ -z "${SOURCE_BUNDLE}" && ! -d "${REPO_DIR}/build_release/src/app/Mesheal.app" && ! -d "${REPO_DIR}/build/src/app/Mesheal.app" ]]; then
+    echo "==> Building Mesheal (Release)..."
     cmake -B "${REPO_DIR}/build_release" -DCMAKE_BUILD_TYPE=Release
-    cmake --build "${REPO_DIR}/build_release" --target ogun -j 2
+    cmake --build "${REPO_DIR}/build_release" --target mesheal -j 2
 fi
 
 if [[ -z "${SOURCE_BUNDLE}" ]]; then
-    if [[ -d "${REPO_DIR}/build_release/src/app/Ogun.app" ]]; then
-        SOURCE_BUNDLE="${REPO_DIR}/build_release/src/app/Ogun.app"
-    elif [[ -d "${REPO_DIR}/build/src/app/Ogun.app" ]]; then
-        SOURCE_BUNDLE="${REPO_DIR}/build/src/app/Ogun.app"
+    if [[ -d "${REPO_DIR}/build_release/src/app/Mesheal.app" ]]; then
+        SOURCE_BUNDLE="${REPO_DIR}/build_release/src/app/Mesheal.app"
+    elif [[ -d "${REPO_DIR}/build/src/app/Mesheal.app" ]]; then
+        SOURCE_BUNDLE="${REPO_DIR}/build/src/app/Mesheal.app"
     else
-        echo "Error: Could not find Ogun.app in build_release or build directory." >&2
-        echo "Please build Ogun first with: cmake --build build_release -j 2" >&2
+        echo "Error: Could not find Mesheal.app in build_release or build directory." >&2
+        echo "Please build Mesheal first with: cmake --build build_release -j 2" >&2
         exit 1
     fi
 fi
@@ -184,15 +184,15 @@ if [[ ! -d "${SOURCE_BUNDLE}" ]]; then
     exit 1
 fi
 
-if [[ ! -f "${SOURCE_BUNDLE}/Contents/MacOS/Ogun" ]]; then
-    echo "Error: '${SOURCE_BUNDLE}' does not appear to be a valid Ogun bundle (missing Contents/MacOS/Ogun)." >&2
+if [[ ! -f "${SOURCE_BUNDLE}/Contents/MacOS/Mesheal" ]]; then
+    echo "Error: '${SOURCE_BUNDLE}' does not appear to be a valid Mesheal bundle (missing Contents/MacOS/Mesheal)." >&2
     exit 1
 fi
 
-# Warn if Ogun is running
-if pgrep -x "Ogun" >/dev/null 2>&1; then
-    echo "Warning: Ogun is currently running."
-    echo "Please close running instances of Ogun before installing, or restart Ogun after installation."
+# Warn if Mesheal is running
+if pgrep -x "Mesheal" >/dev/null 2>&1; then
+    echo "Warning: Mesheal is currently running."
+    echo "Please close running instances of Mesheal before installing, or restart Mesheal after installation."
 fi
 
 # Ensure destination directory exists
@@ -202,7 +202,7 @@ if [[ ! -d "${DEST_DIR}" ]]; then
 fi
 
 # Install application bundle
-echo "==> Installing Ogun.app to ${DEST_APP}..."
+echo "==> Installing Mesheal.app to ${DEST_APP}..."
 if [[ -d "${DEST_APP}" ]]; then
     echo "Replacing existing installation at ${DEST_APP}..."
     run_cmd rm -rf "${DEST_APP}"
@@ -228,25 +228,25 @@ fi
 if [[ "${INSTALL_CLI}" = true ]]; then
     echo "==> Setting up CLI symlink..."
     mkdir -p "${CLI_DIR}"
-    ln -sf "${DEST_APP}/Contents/MacOS/Ogun" "${CLI_DIR}/ogun"
-    echo "Symlink created: ${CLI_DIR}/ogun -> ${DEST_APP}/Contents/MacOS/Ogun"
+    ln -sf "${DEST_APP}/Contents/MacOS/Mesheal" "${CLI_DIR}/mesheal"
+    echo "Symlink created: ${CLI_DIR}/mesheal -> ${DEST_APP}/Contents/MacOS/Mesheal"
 
     if [[ ":$PATH:" != *":${CLI_DIR}:"* ]]; then
         echo ""
         echo "Notice: '${CLI_DIR}' is not currently in your PATH."
-        echo "To run 'ogun' directly from any terminal session, add this to your ~/.zshrc or ~/.bashrc:"
+        echo "To run 'mesheal' directly from any terminal session, add this to your ~/.zshrc or ~/.bashrc:"
         echo "  export PATH=\"${CLI_DIR}:\$PATH\""
     fi
 fi
 
 echo ""
 echo "================================================================="
-echo "  Ogun successfully installed in ${DEST_APP}!"
+echo "  Mesheal successfully installed in ${DEST_APP}!"
 echo "================================================================="
-echo "You can launch Ogun by:"
-echo "  1. Opening Finder > Applications > Ogun"
-echo "  2. Running: open -a /Applications/Ogun.app [model.stl]"
+echo "You can launch Mesheal by:"
+echo "  1. Opening Finder > Applications > Mesheal"
+echo "  2. Running: open -a /Applications/Mesheal.app [model.stl]"
 if [[ "${INSTALL_CLI}" = true ]]; then
-    echo "  3. Running CLI: ogun [model.stl]"
+    echo "  3. Running CLI: mesheal [model.stl]"
 fi
 echo "================================================================="

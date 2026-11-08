@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -129,4 +129,4 @@ bool AppController::transformPreviewShown() const noexcept {
            transformPreviewV_.rows() == mesh_.numVertices() && transformPreviewShow_ != GlobalPreviewShow::Original;
 }
 
-} // namespace ogun
+} // namespace mesheal

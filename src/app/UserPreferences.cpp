@@ -16,7 +16,7 @@
 #include <utility>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -387,7 +387,7 @@ const std::vector<Field>& preferenceFields() {
         const char* mouse = "Preferences > Mouse";
         f.push_back(enumField(mouse, "mouse.preset", [](auto& p) -> auto& { return p.mouse.preset; },
                               std::array<std::pair<MousePreset, const char*>, kMousePresetCount>{{
-                                  {MousePreset::Ogun, mousePresetKey(MousePreset::Ogun)},
+                                  {MousePreset::Mesheal, mousePresetKey(MousePreset::Mesheal)},
                                   {MousePreset::Blender, mousePresetKey(MousePreset::Blender)},
                                   {MousePreset::OpenScad, mousePresetKey(MousePreset::OpenScad)},
                                   {MousePreset::Maya, mousePresetKey(MousePreset::Maya)},
@@ -451,7 +451,7 @@ std::filesystem::path preferencesFilePath(const std::filesystem::path& configDir
 }
 
 std::string formatUserPreferences(const UserPreferences& prefs) {
-    std::string text = "# Ogun preferences: written whenever a preference changes. Unknown keys are ignored;\n"
+    std::string text = "# Mesheal preferences: written whenever a preference changes. Unknown keys are ignored;\n"
                        "# a malformed value falls back to its default. Colors are \"r g b\" in [0, 1].\n";
     const char* section = nullptr;
     for (const Field& field : preferenceFields()) {
@@ -547,4 +547,4 @@ UserPreferences loadAndApplyUserPreferences(AppController& controller, const std
     return prefs;
 }
 
-} // namespace ogun
+} // namespace mesheal

@@ -8,7 +8,7 @@
 #include <fstream>
 #include <sstream>
 
-namespace ogun {
+namespace mesheal {
 
 struct TempTestDir {
     std::filesystem::path path;
@@ -25,7 +25,7 @@ struct TempTestDir {
 
 TEST_CASE("CliRunner argument parsing", "[app][cli]") {
     SECTION("Interactive launch with just file path") {
-        char const* argv[] = {"ogun", "model.stl"};
+        char const* argv[] = {"mesheal", "model.stl"};
         const CliOptions opt = parseCliArguments(2, argv);
         CHECK(opt.inputPath == "model.stl");
         CHECK(opt.action == CliAction::None);
@@ -34,7 +34,7 @@ TEST_CASE("CliRunner argument parsing", "[app][cli]") {
     }
 
     SECTION("FixAll headless action") {
-        char const* argv[] = {"ogun", "--fix-all", "model.stl", "--passes", "4", "--json"};
+        char const* argv[] = {"mesheal", "--fix-all", "model.stl", "--passes", "4", "--json"};
         const CliOptions opt = parseCliArguments(6, argv);
         CHECK(opt.inputPath == "model.stl");
         CHECK(opt.action == CliAction::FixAll);
@@ -44,14 +44,14 @@ TEST_CASE("CliRunner argument parsing", "[app][cli]") {
     }
 
     SECTION("Diagnostics action") {
-        char const* argv[] = {"ogun", "--diagnostics", "model.stl"};
+        char const* argv[] = {"mesheal", "--diagnostics", "model.stl"};
         const CliOptions opt = parseCliArguments(3, argv);
         CHECK(opt.action == CliAction::Diagnostics);
         CHECK(isHeadlessCommand(opt));
     }
 
     SECTION("Remesh options") {
-        char const* argv[] = {"ogun", "--remesh-voxel", "model.stl", "--edge-length", "1.5", "--smoothing", "4"};
+        char const* argv[] = {"mesheal", "--remesh-voxel", "model.stl", "--edge-length", "1.5", "--smoothing", "4"};
         const CliOptions opt = parseCliArguments(7, argv);
         CHECK(opt.action == CliAction::RemeshVoxel);
         CHECK(opt.edgeLength == 1.5);
@@ -112,4 +112,4 @@ TEST_CASE("CliRunner command execution", "[app][cli]") {
     }
 }
 
-} // namespace ogun
+} // namespace mesheal

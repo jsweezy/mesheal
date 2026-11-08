@@ -7,7 +7,7 @@
 #include <cmath>
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -98,4 +98,4 @@ std::optional<Eigen::Vector3d> facesCentroid(const Mesh& mesh, std::span<const E
     return totalArea > 0.0 ? weighted / totalArea : plain / static_cast<double>(count);
 }
 
-} // namespace ogun
+} // namespace mesheal

@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstdio>
 
-namespace ogun::gui {
+namespace mesheal::gui {
 
 namespace {
 
@@ -220,4 +220,4 @@ bool thinFaceThresholdFields(ThinFaceThresholds& thresholds, Unit unit, float wi
     return changed;
 }
 
-} // namespace ogun::gui
+} // namespace mesheal::gui

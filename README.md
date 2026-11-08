@@ -1,12 +1,12 @@
-# Ogun — STL Repair Tool for Simulation Meshes
+# Mesheal — STL Repair Tool for Simulation Meshes
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE.md)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.wikipedia.org/wiki/C%2B%2B20)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-brightgreen.svg)](benchmarks/)
 
-**Ogun** (named after the Yoruba Orisha of iron, metalwork, and forging) is an open-source geometry library, headless CLI, and interactive 3D desktop application for inspecting, diagnosing, and repairing STL surface meshes for simulation and engineering analysis (e.g., Monte Carlo particle transport, FEA, CFD, and ray tracing) where watertight 2-manifold surfaces are mandatory.
+**Mesheal** (formerly Ogun) is an open-source geometry library, headless CLI, and interactive 3D desktop application for inspecting, diagnosing, and repairing STL surface meshes for simulation and engineering analysis (e.g., Monte Carlo particle transport, FEA, CFD, and ray tracing) where watertight 2-manifold surfaces are mandatory.
 
-Unlike 3D printing tools that silently degrade mesh fidelity or complex 3D modeling suites like Blender, Ogun provides a deterministic, precision-oriented workflow: **multi-scale edge-aware welding, strict units verification, self-intersection resolution, thin/sliver face healing, volume change tracking, and universal multi-step undo.**
+Unlike 3D printing tools that silently degrade mesh fidelity or complex 3D modeling suites like Blender, Mesheal provides a deterministic, precision-oriented workflow: **multi-scale edge-aware welding, strict units verification, self-intersection resolution, thin/sliver face healing, volume change tracking, and universal multi-step undo.**
 
 ---
 
@@ -30,23 +30,23 @@ ctest --test-dir build_release -j 4
 ```
 
 Install desktop app (optional):
-- **macOS** (installs `Ogun.app` into `/Applications` & creates `~/.local/bin/ogun`):
+- **macOS** (installs `Mesheal.app` into `/Applications` & creates `~/.local/bin/mesheal`):
   ```bash
   ./packaging/macos/install-app.sh
   ```
-- **Linux** (installs desktop entry, MIME association, and `~/.local/bin/ogun`):
+- **Linux** (installs desktop entry, MIME association, and `~/.local/bin/mesheal`):
   ```bash
   ./packaging/linux/install-user-desktop.sh
   ```
 
 ---
 
-## Three Ways to Use Ogun
+## Three Ways to Use Mesheal
 
 ### 1. Interactive 3D Desktop Viewer
 Launch the interactive viewer with Blender-style navigation, live repair previews, and real-time Mesh Health inspection:
 ```bash
-./build_release/src/app/ogun [path/to/model.stl]
+./build_release/src/app/mesheal [path/to/model.stl]
 ```
 - **Blender Camera Controls**: Orbit (`Right Mouse` or `Alt + Left Mouse`), Pan (`Middle Mouse` or `Shift + Right Mouse`), Focus on Selection (`.`), and Toggle Normal View (`..` / `Shift + .`).
 - **Universal Undo**: Every repair, remesh, or geometry edit can be reverted step-by-step with `Ctrl+Z` / `Cmd+Z`.
@@ -59,33 +59,33 @@ Automate batch mesh repairs or diagnostics in pipelines and scripts without laun
 
 ```bash
 # Check mesh health and print volume/defects without modifying geometry
-./build_release/src/app/ogun model.stl --diagnostics
+./build_release/src/app/mesheal model.stl --diagnostics
 
 # Automatically repair mesh using multi-pass Fix All
 # (Never overwrites input: writes to model_fixed_1.stl, model_fixed_2.stl, etc.)
-./build_release/src/app/ogun model.stl --fix-all
+./build_release/src/app/mesheal model.stl --fix-all
 
 # Explicit output destination
-./build_release/src/app/ogun model.stl --fix-all -o repaired.stl
+./build_release/src/app/mesheal model.stl --fix-all -o repaired.stl
 
 # Remesh via Fast Voxel Marching Cubes with Taubin smoothing
-./build_release/src/app/ogun model.stl --remesh-voxel --edge-length 1.5 -o remeshed.stl
+./build_release/src/app/mesheal model.stl --remesh-voxel --edge-length 1.5 -o remeshed.stl
 
 # Precision FEA-grade level set remeshing
-./build_release/src/app/ogun model.stl --remesh-iso --edge-length 1.0 -o fea_mesh.stl
+./build_release/src/app/mesheal model.stl --remesh-iso --edge-length 1.0 -o fea_mesh.stl
 
 # Stream structured JSON metrics (volume change %, area change %, defects) to stdout
-./build_release/src/app/ogun model.stl --fix-all --json
+./build_release/src/app/mesheal model.stl --fix-all --json
 ```
 
-**Safe Auto-Naming Guarantee**: Ogun strictly prohibits overwriting input STLs. If `-o` is omitted, Ogun automatically increments available filenames (`desk_fixed_1.stl`, `desk_fixed_2.stl`, ...).
+**Safe Auto-Naming Guarantee**: Mesheal strictly prohibits overwriting input STLs. If `-o` is omitted, Mesheal automatically increments available filenames (`desk_fixed_1.stl`, `desk_fixed_2.stl`, ...).
 
 Full CLI flags and options are documented in **[docs/CLI.md](docs/CLI.md)**.
 
 ---
 
 ### 3. Python Interface & Benchmark Suite
-Ogun includes a Python API and benchmark harness modeled after the [FixSTL 3D Benchmark](https://fixstl.ai/benchmarks).
+Mesheal includes a Python API and benchmark harness modeled after the [FixSTL 3D Benchmark](https://fixstl.ai/benchmarks).
 
 #### Python API Example
 ```python
@@ -117,7 +117,7 @@ python3 -m benchmarks.run_benchmark --limit 5 --method remesh-iso
 # Dry run: download and verify cache only
 python3 -m benchmarks.run_benchmark --limit 20 --dry-run
 ```
-Models are cached locally in `~/.cache/ogun/benchmarks/models/` and verified with SHA-256 digests. Results are exported to standard FixSTL JSON schemas.
+Models are cached locally in `~/.cache/mesheal/benchmarks/models/` and verified with SHA-256 digests. Results are exported to standard FixSTL JSON schemas.
 
 Full Python API and dataset instructions are documented in **[docs/BENCHMARKS.md](docs/BENCHMARKS.md)**.
 
@@ -145,7 +145,7 @@ For detailed algorithmic descriptions of all repairs and diagnostics, see **[doc
 - **[docs/BENCHMARKS.md](docs/BENCHMARKS.md)**: Python benchmarking framework, FixSTL dataset integration, and local STL caching.
 - **[docs/FEATURES.md](docs/FEATURES.md)**: Exhaustive reference for welding tolerances, diagnostic checks, and repair algorithms.
 - **[docs/NAVIGATION.md](docs/NAVIGATION.md)**: 3D viewport navigation, mouse schemes, selection tools, and keyboard shortcuts.
-- **[docs/DESKTOP_INTEGRATION.md](docs/DESKTOP_INTEGRATION.md)**: Native desktop integration for macOS (`Ogun.app`) and Linux desktop environments.
+- **[docs/DESKTOP_INTEGRATION.md](docs/DESKTOP_INTEGRATION.md)**: Native desktop integration for macOS (`Mesheal.app`) and Linux desktop environments.
 - **[VISION.md](VISION.md)**: Physical simulation motivation, multi-scale tolerance philosophy, and design principles.
 - **[UI_DESIGN.md](UI_DESIGN.md)**: Specification and layout for GUI panels and inspection workflows.
 - **[PLAN.md](PLAN.md)**: Incremental development roadmap and Catch2 TDD testing guidelines.
@@ -156,7 +156,7 @@ For detailed algorithmic descriptions of all repairs and diagnostics, see **[doc
 
 ## Tech Stack & Dependencies
 
-- **Language Standard**: C++20 (`namespace ogun`) & Python 3.10+
+- **Language Standard**: C++20 (`namespace mesheal`) & Python 3.10+
 - **Build & Test**: CMake (3.20+), CTest, Catch2 v3, and Python `unittest`
 - **Visualization & UI**: Polyscope, Dear ImGui, and portable-file-dialogs
 - **Geometry & Mesh Kernels**: CGAL (v5.6+ / v6.x), Eigen3, libigl, and Manifold
@@ -165,4 +165,4 @@ For detailed algorithmic descriptions of all repairs and diagnostics, see **[doc
 
 ## License
 
-Ogun is licensed under the **[GNU General Public License v3.0 or later (GPL-3.0-or-later)](LICENSE.md)** in accordance with the inclusion of CGAL's `Polygon_mesh_processing` package.
+Mesheal is licensed under the **[GNU General Public License v3.0 or later (GPL-3.0-or-later)](LICENSE.md)** in accordance with the inclusion of CGAL's `Polygon_mesh_processing` package.

@@ -8,7 +8,7 @@
 #include <cmath>
 #include <limits>
 
-namespace ogun {
+namespace mesheal {
 
 const char* thinFaceSubtypeLabel(ThinFaceSubtype subtype) noexcept {
     switch (subtype) {
@@ -178,4 +178,4 @@ ThinFaceReport ThinFaceChecker::check(
     return report;
 }
 
-} // namespace ogun
+} // namespace mesheal

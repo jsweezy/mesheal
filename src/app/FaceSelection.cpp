@@ -13,7 +13,7 @@
 #include <functional>
 #include <limits>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -267,4 +267,4 @@ std::vector<Eigen::Index> facesInStroke(const Mesh& mesh, const ScreenView& view
     });
 }
 
-} // namespace ogun
+} // namespace mesheal

@@ -14,7 +14,7 @@
 #include <string_view>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// File in `configDirectory()` holding the saved preferences.
 inline constexpr const char* kPreferencesFileName = "preferences.conf";
@@ -75,4 +75,4 @@ bool saveUserPreferences(const UserPreferences& prefs, const std::filesystem::pa
 /// thin-face thresholds apply to it). Returns the loaded preferences for the GUI-only fields.
 UserPreferences loadAndApplyUserPreferences(AppController& controller, const std::filesystem::path& file);
 
-} // namespace ogun
+} // namespace mesheal

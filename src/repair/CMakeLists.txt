@@ -1,4 +1,4 @@
-add_library(ogun_repair STATIC
+add_library(mesheal_repair STATIC
     FixAll.cpp
     FixAllMerge.cpp
     FixAllReport.cpp
@@ -16,24 +16,24 @@ add_library(ogun_repair STATIC
     SurfaceRebuild.cpp
     TopologyCleanup.cpp
 )
-add_library(ogun::repair ALIAS ogun_repair)
+add_library(mesheal::repair ALIAS mesheal_repair)
 
-target_include_directories(ogun_repair
+target_include_directories(mesheal_repair
     PUBLIC
         "${CMAKE_SOURCE_DIR}/src"
         "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
-target_link_libraries(ogun_repair
+target_link_libraries(mesheal_repair
     PUBLIC
-        ogun::mesh
-        ogun::diagnostics
+        mesheal::mesh
+        mesheal::diagnostics
         CGAL::CGAL
         $<$<TARGET_EXISTS:CGAL::TBB_support>:CGAL::TBB_support>
     PRIVATE
-        ogun::warnings
+        mesheal::warnings
 )
 
-if(OGUN_BUILD_TESTS)
+if(MESHEAL_BUILD_TESTS)
     add_subdirectory(Test)
 endif()

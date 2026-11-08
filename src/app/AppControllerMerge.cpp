@@ -7,7 +7,7 @@
 #include <memory>
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -376,4 +376,4 @@ void AppController::waitForMerge() {
     pollMergeJob();
 }
 
-} // namespace ogun
+} // namespace mesheal

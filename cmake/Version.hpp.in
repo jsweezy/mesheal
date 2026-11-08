@@ -5,22 +5,22 @@
 #include <array>
 #include <string_view>
 
-namespace ogun {
+namespace mesheal {
 
-// Release version (project VERSION) and date (OGUN_VERSION_DATE)
-inline constexpr int kVersion = @OGUN_VERSION_NUMBER@;
-inline constexpr std::string_view kVersionString = "@OGUN_VERSION_NUMBER@";
-inline constexpr std::string_view kVersionDate = "@OGUN_VERSION_DATE@";
+// Release version (project VERSION) and date (MESHEAL_VERSION_DATE)
+inline constexpr int kVersion = @MESHEAL_VERSION_NUMBER@;
+inline constexpr std::string_view kVersionString = "@MESHEAL_VERSION_NUMBER@";
+inline constexpr std::string_view kVersionDate = "@MESHEAL_VERSION_DATE@";
 
 // Build info captured at configure time (strings are raw literals so quotes in flags are safe)
-inline constexpr std::string_view kBuildTimestamp = R"ogun(@OGUN_BUILD_TIMESTAMP@)ogun";
-inline constexpr std::string_view kBuildType = R"ogun(@OGUN_BUILD_TYPE@)ogun";
-inline constexpr std::string_view kCompilerId = R"ogun(@OGUN_COMPILER_ID@)ogun";
-inline constexpr std::string_view kCompilerVersion = R"ogun(@OGUN_COMPILER_VERSION@)ogun";
-inline constexpr std::string_view kCxxStandard = "C++@OGUN_CXX_STANDARD@";
-inline constexpr std::string_view kCxxFlags = R"ogun(@OGUN_CXX_FLAGS@)ogun";
-inline constexpr std::string_view kLinkerFlags = R"ogun(@OGUN_LINKER_FLAGS@)ogun";
-inline constexpr std::string_view kPlatform = R"ogun(@OGUN_PLATFORM@)ogun";
+inline constexpr std::string_view kBuildTimestamp = R"mesheal(@MESHEAL_BUILD_TIMESTAMP@)mesheal";
+inline constexpr std::string_view kBuildType = R"mesheal(@MESHEAL_BUILD_TYPE@)mesheal";
+inline constexpr std::string_view kCompilerId = R"mesheal(@MESHEAL_COMPILER_ID@)mesheal";
+inline constexpr std::string_view kCompilerVersion = R"mesheal(@MESHEAL_COMPILER_VERSION@)mesheal";
+inline constexpr std::string_view kCxxStandard = "C++@MESHEAL_CXX_STANDARD@";
+inline constexpr std::string_view kCxxFlags = R"mesheal(@MESHEAL_CXX_FLAGS@)mesheal";
+inline constexpr std::string_view kLinkerFlags = R"mesheal(@MESHEAL_LINKER_FLAGS@)mesheal";
+inline constexpr std::string_view kPlatform = R"mesheal(@MESHEAL_PLATFORM@)mesheal";
 
 struct DependencyInfo {
     std::string_view name;
@@ -28,6 +28,6 @@ struct DependencyInfo {
 };
 
 inline constexpr std::array kDependencies = std::to_array<DependencyInfo>({
-@OGUN_DEPENDENCY_ENTRIES@});
+@MESHEAL_DEPENDENCY_ENTRIES@});
 
-}  // namespace ogun
+}  // namespace mesheal

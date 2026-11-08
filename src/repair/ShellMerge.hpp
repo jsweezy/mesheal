@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// A hollow passed to `mergeShells`: its faces are kept as they are and never sent to Manifold.
 struct ShellMergeCavity {
@@ -122,4 +122,4 @@ struct CavityReach {
     const std::function<std::string(int)>& operandLabel,
     const std::function<std::string(int)>& cavityLabel);
 
-} // namespace ogun
+} // namespace mesheal

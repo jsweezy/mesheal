@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <fstream>
 
-namespace ogun {
+namespace mesheal {
 
 struct TempTestDir {
     std::filesystem::path path;
@@ -69,4 +69,4 @@ TEST_CASE("saveStl writes readable STL file", "[io][stl_writer]") {
     CHECK(std::filesystem::file_size(out) > 0);
 }
 
-} // namespace ogun
+} // namespace mesheal

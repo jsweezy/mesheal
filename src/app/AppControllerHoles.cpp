@@ -6,7 +6,7 @@
 #include <unordered_set>
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 const std::vector<HoleLoop>& AppController::holeLoops() {
     if (!holesValid_) {
@@ -217,4 +217,4 @@ bool AppController::deleteHoleRims() {
     return true;
 }
 
-} // namespace ogun
+} // namespace mesheal

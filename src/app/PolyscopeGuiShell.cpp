@@ -3,7 +3,7 @@
 #include "app/GuiWidgets.hpp"
 #include "app/PolyscopeGui.hpp"
 #include "core/Settings.hpp"
-#include "ogun/Version.hpp"
+#include "mesheal/Version.hpp"
 
 #ifdef __APPLE__
 #include "app/MacFileOpenHandler.h"
@@ -26,7 +26,7 @@
 #include <utility>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 using gui::modShortcut;
 using gui::dimensionSuffix;
@@ -249,7 +249,7 @@ void PolyscopeGui::drawMousePreferencesTab() {
     ImGui::SetNextItemWidth(160.0f);
     ImGui::SliderFloat("Zoom speed", &mapping.zoomSpeed, settings::kMinMouseZoomSpeed, settings::kMaxMouseZoomSpeed,
                        "%.2fx", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
-    tooltip("Multiplies each wheel and drag zoom step (1.00x: Ogun's default speed).");
+    tooltip("Multiplies each wheel and drag zoom step (1.00x: Mesheal's default speed).");
 }
 
 void PolyscopeGui::drawMouseBindingEditor() {
@@ -888,7 +888,7 @@ void PolyscopeGui::drawHelpMenu() {
     if (ImGui::MenuItem("Navigation & Shortcuts", "F1 / ?", showNavigationHelpWindow_)) {
         showNavigationHelpWindow_ = !showNavigationHelpWindow_;
     }
-    if (ImGui::MenuItem("About Ogun")) {
+    if (ImGui::MenuItem("About Mesheal")) {
         showAboutWindow_ = true;
     }
     ImGui::EndMenu();
@@ -1319,7 +1319,7 @@ void PolyscopeGui::drawPreferencesWindow(float top, float bottom, float rightCol
         applyPreferences(UserPreferences{});
         controller_.postStatusMessage("Preferences and Display styles reset to the built-in defaults.");
     }
-    tooltip("Restore every preference on these tabs (the Ogun mouse scheme included) and every Display panel style "
+    tooltip("Restore every preference on these tabs (the Mesheal mouse scheme included) and every Display panel style "
             "(colors, widths, preview, background) to its built-in value, and save.");
     if (preferencesFile_.empty()) {
         ImGui::TextDisabled("No home directory: preferences last for this session only.");
@@ -1516,7 +1516,7 @@ void PolyscopeGui::drawAboutWindow() {
     const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(ImVec2(560.0f, 520.0f), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("About Ogun", &showAboutWindow_)) {
+    if (!ImGui::Begin("About Mesheal", &showAboutWindow_)) {
         ImGui::End();
         return;
     }
@@ -1535,7 +1535,7 @@ void PolyscopeGui::drawAboutWindow() {
                 ImGui::TextUnformatted(text.c_str());
             };
             ImGui::Spacing();
-            centredText("Ogun");
+            centredText("Mesheal");
             centredText("Version " + std::string(kVersionString) + " (" + std::string(kVersionDate) + ")");
             centredText("By Jeremy Sweezy");
             ImGui::Spacing();
@@ -1628,7 +1628,7 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         return;
     }
     ImGui::TextWrapped(
-        "Ogun uses Blender-inspired selection-centric camera navigation so inspecting microscopic sliver "
+        "Mesheal uses Blender-inspired selection-centric camera navigation so inspecting microscopic sliver "
         "facets feels smooth at any zoom depth. Every button tooltip shows its key.");
     ImGui::Separator();
 
@@ -1657,7 +1657,7 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"Pan Camera & Pivot", inputs(MouseAction::Pan) + " (shifts the Orbit Pivot with the camera, scaled by depth)"},
         {"Zoom (Dolly)", inputs(MouseAction::WheelZoom) + "; drag: " + inputs(MouseAction::Zoom) +
                              " (speed scales with distance to the Orbit Pivot)"},
-        {"Near Clip Plane", inputs(MouseAction::NearClip) + " shifts the near clip plane (Ogun also adjusts it as you zoom)"},
+        {"Near Clip Plane", inputs(MouseAction::NearClip) + " shifts the near clip plane (Mesheal also adjusts it as you zoom)"},
         {"Select Face", inputs(MouseAction::Select) + " a face: if it is a defect of the selected Mesh Health row it becomes the focus (Inspector, Orbit Pivot at its centroid); with no row selected, the row containing it opens; a clean face only moves the Orbit Pivot. " +
                             inputs(MouseAction::ClearPick) + " clears the Polyscope pick."},
         {"Select Shell", inputs(MouseAction::SelectShell) + " a face selects its whole shell in the Shells panel (multi-shell meshes); with Ctrl/Cmd added it adds or removes it. A plain click never changes the shell selection."},
@@ -1700,4 +1700,4 @@ void PolyscopeGui::drawNavigationHelpWindow() {
     ImGui::End();
 }
 
-} // namespace ogun
+} // namespace mesheal

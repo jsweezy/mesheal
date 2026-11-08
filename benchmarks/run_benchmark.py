@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Runner script to execute Ogun repairs across FixSTL benchmark datasets."""
+"""Runner script to execute Mesheal repairs across FixSTL benchmark datasets."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from typing import Any, Dict, List
 
 from .cache import ModelCache
 from .evaluator import evaluate_repair_result
-from .runner import find_ogun_binary, repair
+from .runner import find_mesheal_binary, repair
 
 
 def load_benchmark_spec(spec_source: str) -> Dict[str, Any]:
@@ -24,14 +24,14 @@ def load_benchmark_spec(spec_source: str) -> Dict[str, Any]:
         with open(p, "r", encoding="utf-8") as f:
             return json.load(f)
 
-    headers = {"User-Agent": "Ogun-Benchmark-Tool/1.0"}
+    headers = {"User-Agent": "Mesheal-Benchmark-Tool/1.0"}
     req = urllib.request.Request(spec_source, headers=headers)
     with urllib.request.urlopen(req, timeout=30) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run Ogun benchmark tests matching FixSTL format")
+    parser = argparse.ArgumentParser(description="Run Mesheal benchmark tests matching FixSTL format")
     parser.add_argument(
         "--benchmark-json",
         default="https://fixstl.ai/benchmarks/thingi10k-200-2026-10-27.json",
@@ -53,16 +53,16 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=0, help="Limit number of models to process (0 = all)")
     parser.add_argument("--cache-dir", type=str, default=None, help="Directory to cache downloaded models")
     parser.add_argument("-o", "--output", type=str, default=None, help="Output benchmark JSON path")
-    parser.add_argument("--ogun-bin", type=str, default=None, help="Explicit path to ogun binary")
+    parser.add_argument("--mesheal-bin", type=str, default=None, help="Explicit path to mesheal binary")
     parser.add_argument("--dry-run", action="store_true", help="Download and verify cache only without running repair")
 
     args = parser.parse_args()
 
-    # Verify ogun binary
+    # Verify mesheal binary
     if not args.dry_run:
         try:
-            bin_path = find_ogun_binary() if not args.ogun_bin else Path(args.ogun_bin)
-            print(f"Using Ogun binary: {bin_path}")
+            bin_path = find_mesheal_binary() if not args.mesheal_bin else Path(args.mesheal_bin)
+            print(f"Using Mesheal binary: {bin_path}")
         except FileNotFoundError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
@@ -115,11 +115,11 @@ def main() -> int:
                 input_file=model_path,
                 method=args.method,
                 output_file=out_fixed,
-                ogun_bin=args.ogun_bin,
+                mesheal_bin=args.mesheal_bin,
             )
 
             eval_res = evaluate_repair_result(defective, result)
-            entry.setdefault("results", {})["ogun"] = eval_res
+            entry.setdefault("results", {})["mesheal"] = eval_res
 
             if eval_res.get("repaired"):
                 repaired_count += 1
@@ -144,7 +144,7 @@ def main() -> int:
     else:
         out_dir = Path("benchmarks") / "results"
         out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / f"ogun-{args.method}-{len(files)}-{date_str}.json"
+        out_path = out_dir / f"mesheal-{args.method}-{len(files)}-{date_str}.json"
 
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)

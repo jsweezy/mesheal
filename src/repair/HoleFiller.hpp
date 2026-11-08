@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// Repair strategy for one hole (Inspector radio buttons).
 enum class HoleFillMethod {
@@ -201,4 +201,4 @@ struct HoleBatchResult {
     std::stop_token stopToken = {},
     std::atomic<float>* progress = nullptr);
 
-} // namespace ogun
+} // namespace mesheal

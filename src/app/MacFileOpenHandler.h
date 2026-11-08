@@ -3,7 +3,7 @@
 #include <filesystem>
 #include <functional>
 
-namespace ogun {
+namespace mesheal {
 
 /// Installs the macOS AppleEvent listener and Cocoa delegate hooks for file opening.
 void installMacFileOpenHandler(std::function<bool()> isBusyPredicate);
@@ -17,7 +17,7 @@ void markMacInitialLaunchComplete();
 /// Updates the currently loaded model path so duplicate open events for the same file are ignored.
 void setMacCurrentLoadedPath(const std::filesystem::path& path);
 
-/// Launches a new instance of the Ogun application loaded with the given STL file.
+/// Launches a new instance of the Mesheal application loaded with the given STL file.
 bool launchNewMacAppInstance(const std::filesystem::path& stlPath);
 
-} // namespace ogun
+} // namespace mesheal

@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cstdio>
 
-namespace ogun {
+namespace mesheal {
 
 std::size_t AppController::selectFaces(std::span<const Eigen::Index> faces, bool select) {
     faceSelected_.resize(static_cast<std::size_t>(mesh_.numFaces()), 0);
@@ -330,4 +330,4 @@ std::size_t AppController::edgesShorterThanCount(double distance) const {
     return std::get<2>(*shortEdgeCountCache_);
 }
 
-} // namespace ogun
+} // namespace mesheal

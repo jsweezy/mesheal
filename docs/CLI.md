@@ -1,19 +1,19 @@
-# Ogun Command-Line Interface (CLI)
+# Mesheal Command-Line Interface (CLI)
 
-Ogun provides a headless command-line interface for batch mesh repair, remeshing, diagnostics inspection, and benchmarking without initializing or launching the 3D GUI window.
+Mesheal provides a headless command-line interface for batch mesh repair, remeshing, diagnostics inspection, and benchmarking without initializing or launching the 3D GUI window.
 
 ## Usage
 
 ```bash
-ogun [options] <input.stl>
+mesheal [options] <input.stl>
 ```
 
-When invoked with any action flag (`--fix-all`, `--remesh-voxel`, `--remesh-iso`, `--rebuild-alpha`, `--rebuild-union`, `--rebuild-winding`, `--diagnostics`, `--inspect`) or `--json`, Ogun executes headlessly in the console.
+When invoked with any action flag (`--fix-all`, `--remesh-voxel`, `--remesh-iso`, `--rebuild-alpha`, `--rebuild-union`, `--rebuild-winding`, `--diagnostics`, `--inspect`) or `--json`, Mesheal executes headlessly in the console.
 
 ## Safe File Output & Collision-Free Auto-Naming
 
-- **Overwriting Guard**: Ogun strictly prohibits overwriting the input mesh. If an explicit output path equals the input file path, Ogun aborts with an error.
-- **Auto-Naming**: If `-o` or `--output` is omitted, Ogun automatically increments an available filename:
+- **Overwriting Guard**: Mesheal strictly prohibits overwriting the input mesh. If an explicit output path equals the input file path, Mesheal aborts with an error.
+- **Auto-Naming**: If `-o` or `--output` is omitted, Mesheal automatically increments an available filename:
   ```
   input:  models/bracket.stl
   output: models/bracket_fixed_1.stl  (or _2.stl, _3.stl if prior files exist)

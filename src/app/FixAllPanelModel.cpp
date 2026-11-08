@@ -7,7 +7,7 @@
 #include <cmath>
 #include <cstdio>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -693,4 +693,4 @@ std::string fixAllRebuildCavityText(const std::vector<int>& cavities) {
     return text + " will be filled in.";
 }
 
-} // namespace ogun
+} // namespace mesheal

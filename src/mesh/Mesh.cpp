@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -204,4 +204,4 @@ Mesh fromMeshGL(const manifold::MeshGL& meshGl, Unit unit) {
     return Mesh::fromMeshGL(meshGl, unit);
 }
 
-} // namespace ogun
+} // namespace mesheal

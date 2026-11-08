@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -177,7 +177,7 @@ bool AppController::flipShells(std::span<const int> shells) {
         faceSets.push_back(shells_.shell(static_cast<std::size_t>(s)).faces);
         labels.push_back("#" + std::to_string(s + 1));
     }
-    FlipShellsResult result = ogun::flipShells(mesh_, faceSets);
+    FlipShellsResult result = mesheal::flipShells(mesh_, faceSets);
     pushUndoEntry(std::string(chosen.size() == 1 ? "Flip Shell " : "Flip Shells ") + joinLabels(labels));
     finishMeshEdit(std::move(result.mesh));
     lastRepairStatusMessage_ = "Flipped " + joinLabels(labels) + " (" + countOf(result.flippedFaces, "face", "faces") +
@@ -186,4 +186,4 @@ bool AppController::flipShells(std::span<const int> shells) {
     return true;
 }
 
-} // namespace ogun
+} // namespace mesheal

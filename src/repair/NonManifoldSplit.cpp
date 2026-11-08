@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -90,4 +90,4 @@ NonManifoldSplitResult splitNonManifoldEdges(const Mesh& mesh, std::span<const s
     return result;
 }
 
-} // namespace ogun
+} // namespace mesheal

@@ -3,7 +3,7 @@
 #include <atomic>
 #include <cstdint>
 
-namespace ogun {
+namespace mesheal {
 
 /// A number never handed out before in this process. A state stamped with it on every change can be
 /// told apart from every earlier state by comparing stamps, and a copy keeps its stamp (it is the same
@@ -13,4 +13,4 @@ namespace ogun {
     return counter.fetch_add(1, std::memory_order_relaxed) + 1;
 }
 
-} // namespace ogun
+} // namespace mesheal

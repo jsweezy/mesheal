@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// Fix All's merge plan (phase 2): which shells in scope are united in which groups, which nested solids
 /// are deleted, which groups are refused because a shell reaches into a cavity, which shells are skipped,
@@ -177,4 +177,4 @@ struct MergePlan {
 [[nodiscard]] std::string mergeVolumeProblem(std::span<const double> solidVolumes, double unionVolume,
                                              std::span<const double> cavityVolumes, double signedTotal);
 
-} // namespace ogun
+} // namespace mesheal

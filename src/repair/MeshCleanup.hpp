@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// Whole-mesh (or selected-faces) clean-up operations: Mesh > Modify > Merge by Distance,
 /// Mesh > Modify > Weld, and Mesh > Simplify > Decimate. `faceInScope` (one flag per face,
@@ -78,4 +78,4 @@ struct DecimateResult {
 /// scope stay fixed, so the result joins the rest of the mesh exactly. Fails on a non-manifold region.
 [[nodiscard]] DecimateResult decimate(const Mesh& mesh, double ratio, std::span<const std::uint8_t> faceInScope = {});
 
-} // namespace ogun
+} // namespace mesheal

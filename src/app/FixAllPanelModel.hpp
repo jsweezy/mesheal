@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// How a row of the Fix All plan can be switched.
 enum class FixAllRowSwitch : std::uint8_t {
@@ -194,4 +194,4 @@ struct FixAllRebuildCopy {
 [[nodiscard]] std::vector<std::string> fixAllWrapLines(const std::string& text, float width,
                                                        const std::function<float(std::string_view)>& measure);
 
-} // namespace ogun
+} // namespace mesheal

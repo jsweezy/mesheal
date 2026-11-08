@@ -14,7 +14,7 @@
 #include <string>
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -596,4 +596,4 @@ MergePlan planMerge(const Mesh& mesh, const FixAllScope& scope, const MergePlanP
     return finish();
 }
 
-} // namespace ogun
+} // namespace mesheal

@@ -6,7 +6,7 @@
 
 #include <cstddef>
 
-namespace ogun {
+namespace mesheal {
 
 bool setMacApplicationIconFromRgba(const unsigned char* rgbaPixels, int width, int height) {
 #ifdef __APPLE__
@@ -58,4 +58,4 @@ bool setMacApplicationIconFromRgba(const unsigned char* rgbaPixels, int width, i
 #endif
 }
 
-} // namespace ogun
+} // namespace mesheal

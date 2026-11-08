@@ -29,11 +29,11 @@ class ModelCache:
         if cache_dir:
             self.cache_dir = Path(cache_dir).resolve()
         else:
-            env_dir = os.getenv("OGUN_BENCHMARK_CACHE")
+            env_dir = os.getenv("MESHEAL_BENCHMARK_CACHE")
             if env_dir:
                 self.cache_dir = Path(env_dir).resolve()
             else:
-                self.cache_dir = Path.home() / ".cache" / "ogun" / "benchmarks" / "models"
+                self.cache_dir = Path.home() / ".cache" / "mesheal" / "benchmarks" / "models"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def get_cached_path(self, source_id: str, expected_sha256: Optional[str] = None) -> Optional[Path]:
@@ -107,7 +107,7 @@ class ModelCache:
         )
 
     def _download_url_data(self, url: str) -> bytes:
-        headers = {"User-Agent": "Ogun-Benchmark-Tool/1.0"}
+        headers = {"User-Agent": "Mesheal-Benchmark-Tool/1.0"}
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=30) as resp:
             return resp.read()

@@ -11,7 +11,7 @@
 #include <span>
 #include <string>
 
-namespace ogun {
+namespace mesheal {
 
 using gui::dimensionSuffix;
 using gui::signedPercent;
@@ -525,7 +525,7 @@ bool PolyscopeGui::drawCategoryWarnings(const CategoryResult& result) {
             requestSync();
             focusCameraOnSelection(FocusNormalSide::PreserveViewDirection);
         }
-        tooltip("Select these shells in the Shells panel and frame them. Not counted in the row: Ogun will not "
+        tooltip("Select these shells in the Shells panel and frame them. Not counted in the row: Mesheal will not "
                 "guess which way they should face.");
         const auto flipButton = [&](const char* label, std::span<const int> flipped, const std::string& help) {
             ImGui::SameLine();
@@ -1225,4 +1225,4 @@ void PolyscopeGui::confirmSetOriginToSelection() {
     }
 }
 
-} // namespace ogun
+} // namespace mesheal

@@ -4,7 +4,7 @@
 #include "app/GuiWidgets.hpp"
 #include "core/Constants.hpp"
 #include "core/Settings.hpp"
-#include "ogun/Version.hpp"
+#include "mesheal/Version.hpp"
 
 #ifdef __APPLE__
 #include "app/MacAppIcon.hpp"
@@ -42,7 +42,7 @@ unsigned char* stbi_load(const char* filename, int* x, int* y, int* channels_in_
 void stbi_image_free(void* retval_from_stbi_load);
 }
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -269,7 +269,7 @@ void scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
 } // namespace
 
 void PolyscopeGui::run() {
-    polyscope::options::programName = "Ogun v" + std::string(kVersionString) + " - STL Mesh Inspection & Repair Tool";
+    polyscope::options::programName = "Mesheal v" + std::string(kVersionString) + " - STL Mesh Inspection & Repair Tool";
     polyscope::options::autocenterStructures = false;
     polyscope::options::autoscaleStructures = false;
     polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
@@ -541,7 +541,7 @@ void PolyscopeGui::handleViewportMouseNavigation() {
         ? rawDist
         : std::max(minNavDist, 1.0e-3 * meshDiag);
 
-    // Preferences > Mouse decides which input does what (Ogun's scheme by default)
+    // Preferences > Mouse decides which input does what (Mesheal's scheme by default)
     const MouseModifiers mods = gui::heldMouseModifiers();
     const double zoomSpeed = static_cast<double>(mouseMapping_.zoomSpeed);
 
@@ -1572,4 +1572,4 @@ void PolyscopeGui::resetCameraAndPivotToHome() {
     polyscope::view::flyToHomeView();
 }
 
-} // namespace ogun
+} // namespace mesheal

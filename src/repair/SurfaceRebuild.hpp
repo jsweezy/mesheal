@@ -8,7 +8,7 @@
 #include <stop_token>
 #include <string>
 
-namespace ogun {
+namespace mesheal {
 
 /// Whole-surface operations behind the global intersection repairs. Each takes a mesh (any number
 /// of shells, crossings allowed) and returns a new mesh; `statusOut` explains failures.
@@ -58,4 +58,4 @@ namespace ogun {
 /// input unchanged when it is already small enough or cannot be converted.
 [[nodiscard]] Mesh simplifyToFaceCount(const Mesh& mesh, std::size_t targetFaces);
 
-} // namespace ogun
+} // namespace mesheal

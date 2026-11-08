@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-namespace ogun::fixall_detail {
+namespace mesheal::fixall_detail {
 
 /// "1 face" / "3 faces".
 [[nodiscard]] std::string counted(std::size_t n, const char* one, const char* many);
@@ -72,4 +72,4 @@ struct FinalReportInput {
 /// Steps 18 and 19 on `result.mesh`: fills `result.report`. False when stopped.
 [[nodiscard]] bool buildFinalReport(FixAllResult& result, FinalReportInput input, std::stop_token stopToken);
 
-} // namespace ogun::fixall_detail
+} // namespace mesheal::fixall_detail

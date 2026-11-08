@@ -12,7 +12,7 @@
 #include <stop_token>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// Combinatorial clean-ups that only remove faces: nothing moves and the vertex list `V` is kept as it
 /// is (no vertex is renumbered; a vertex no face uses any more stays, unused). Each takes an optional
@@ -133,4 +133,4 @@ struct TinyShellRemovalResult {
     double intersectionTolerance = settings::kDefaultIntersectionTolerance,
     std::stop_token stopToken = {});
 
-} // namespace ogun
+} // namespace mesheal

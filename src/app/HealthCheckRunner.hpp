@@ -12,7 +12,7 @@
 #include <thread>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// One background job: run `categories` in order on an immutable mesh snapshot.
 struct CheckRequest {
@@ -66,4 +66,4 @@ private:
     std::vector<CategoryResult> finished_;
 };
 
-} // namespace ogun
+} // namespace mesheal

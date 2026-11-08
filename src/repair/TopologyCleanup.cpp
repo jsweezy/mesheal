@@ -12,7 +12,7 @@
 #include <numeric>
 #include <optional>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -642,4 +642,4 @@ TinyShellRemovalResult removeTinyFloatingShells(
     return result;
 }
 
-} // namespace ogun
+} // namespace mesheal

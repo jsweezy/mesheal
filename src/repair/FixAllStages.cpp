@@ -21,7 +21,7 @@
 #include <unordered_map>
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 namespace fixall_detail {
 
@@ -982,4 +982,4 @@ std::vector<FixAllStage> fixAllCleanupStages() {
     return stages;
 }
 
-} // namespace ogun
+} // namespace mesheal

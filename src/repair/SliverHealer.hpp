@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// Shape classification of a thin / degenerate triangle.
 enum class SliverType {
@@ -216,7 +216,7 @@ public:
         const SliverHealOptions& options = {});
 
     /// Name of the per-vertex `std::uint8_t` property (1 = pinned) that `applyHealAction` honours.
-    static constexpr const char* kPinnedVertexProperty = "v:ogun_pinned";
+    static constexpr const char* kPinnedVertexProperty = "v:mesheal_pinned";
 };
 
-} // namespace ogun
+} // namespace mesheal

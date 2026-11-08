@@ -1,12 +1,12 @@
-# Ogun Feature Reference & Repair Algorithms
+# Mesheal Feature Reference & Repair Algorithms
 
-This document provides detailed algorithmic explanations for Ogun's mesh diagnostics, welding tolerances, repair operators, and surface rebuild pipelines.
+This document provides detailed algorithmic explanations for Mesheal's mesh diagnostics, welding tolerances, repair operators, and surface rebuild pipelines.
 
 ---
 
 ## 1. Edge-Aware Multi-Scale Vertex Welding
 
-Raw STL files are unindexed soups of detached triangle facets ($3|F|$ coordinates). On file loading, Ogun welds duplicate vertex coordinates into a shared-vertex indexed mesh using local coordinate-relative tolerances:
+Raw STL files are unindexed soups of detached triangle facets ($3|F|$ coordinates). On file loading, Mesheal welds duplicate vertex coordinates into a shared-vertex indexed mesh using local coordinate-relative tolerances:
 - **Relative Tolerance**: $10^{-9}$ of the local coordinate magnitude.
 - **Absolute Floor**: $10^{-9}\text{ cm}$ atomic coordinate floor to prevent collapse near the origin.
 - **Edge-Aware Guard**: Two corners belonging to the same triangle are never merged into the same vertex index, strictly preserving zero-area and thin sliver faces for user inspection.
@@ -59,7 +59,7 @@ Targeted Euler operators for localized defects:
 - **Close Crack**: Snaps opposing boundary edges together across narrow gaps without introducing new faces.
 
 ### 3.4 Remesh & Watertight Rebuild Pipelines
-For severely corrupted meshes, Ogun provides whole-surface reconstruction pipelines guaranteed to produce watertight, 2-manifold shells:
+For severely corrupted meshes, Mesheal provides whole-surface reconstruction pipelines guaranteed to produce watertight, 2-manifold shells:
 - **Shrink-Wrap (Outer Envelope)**: Evaluates `CGAL::alpha_wrap_3` with customizable detail ($\alpha$) and offset parameters.
 - **Pipeline A — Voxel Heal & Remesh (Fast)**: Evaluates generalized winding numbers ($W = 0.5$) on a 3D grid, extracts the Marching Cubes isosurface, applies volume-preserving Taubin ($\lambda = 0.50, \mu = -0.53$) smoothing, and runs isotropic remeshing.
 - **Pipeline B — Precision Isosurface (FEA Grade)**: Traces exact winding-number level sets via `CGAL::make_mesh_3` with Delaunay refinement ($\ge 30^\circ$ angles) adapting to curvature via chord tolerance, followed by tangential relaxation.

@@ -21,7 +21,7 @@
 #include <utility>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -716,4 +716,4 @@ bool fixall_detail::buildFinalReport(FixAllResult& result, FinalReportInput inpu
     return true;
 }
 
-} // namespace ogun
+} // namespace mesheal

@@ -5,7 +5,7 @@
 
 #include <functional>
 
-namespace ogun::gui {
+namespace mesheal::gui {
 
 namespace {
 
@@ -109,4 +109,4 @@ void setUiTheme(UiTheme theme) {
     }
 }
 
-} // namespace ogun::gui
+} // namespace mesheal::gui

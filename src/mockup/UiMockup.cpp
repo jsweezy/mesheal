@@ -28,7 +28,7 @@
 #include <tuple>
 #include <utility>
 
-namespace ogun::mockup {
+namespace mesheal::mockup {
 namespace {
 
 constexpr const char* kMeshName = "STL Surface Mesh";
@@ -422,7 +422,7 @@ void UiMockup::generateFakeDefects() {
 }
 
 void UiMockup::run() {
-    polyscope::options::programName = "Ogun - UI Mockup (simulated fixes)";
+    polyscope::options::programName = "Mesheal - UI Mockup (simulated fixes)";
     polyscope::options::autocenterStructures = false;
     polyscope::options::autoscaleStructures = false;
     polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
@@ -469,11 +469,11 @@ void UiMockup::drawFrame() {
         drawHelpWindow();
     }
     if (showAbout_) {
-        ImGui::OpenPopup("About Ogun");
+        ImGui::OpenPopup("About Mesheal");
         showAbout_ = false;
     }
-    if (ImGui::BeginPopupModal("About Ogun", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextUnformatted("Ogun - STL Mesh Inspection & Repair Tool");
+    if (ImGui::BeginPopupModal("About Mesheal", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextUnformatted("Mesheal - STL Mesh Inspection & Repair Tool");
         ImGui::TextDisabled("UI mockup build. See UI_DESIGN.md.");
         if (ImGui::Button("Close")) {
             ImGui::CloseCurrentPopup();
@@ -781,7 +781,7 @@ float UiMockup::drawMenuBar() {
 
     if (ImGui::BeginMenu("Help")) {
         if (ImGui::MenuItem("Navigation & Shortcuts", "F1")) showHelp_ = !showHelp_;
-        if (ImGui::MenuItem("About Ogun")) showAbout_ = true;
+        if (ImGui::MenuItem("About Mesheal")) showAbout_ = true;
         ImGui::EndMenu();
     }
 
@@ -2979,4 +2979,4 @@ void UiMockup::drawMergeTool() {
     ImGui::TextDisabled("Apply is one undo step (%s+Z). Mockup: simulated.", kMod);
 }
 
-} // namespace ogun::mockup
+} // namespace mesheal::mockup

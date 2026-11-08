@@ -26,7 +26,7 @@
 #include <span>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 namespace PMP = CGAL::Polygon_mesh_processing;
 
@@ -51,7 +51,7 @@ Eigen::Vector3d areaNormal(const Triangle& t) {
 }
 
 bool hasReliableNormal(const Triangle& t) {
-    return ogun::hasReliableNormal(t[0], t[1], t[2]);
+    return mesheal::hasReliableNormal(t[0], t[1], t[2]);
 }
 
 bool isLiveFace(const CgalSurfaceMesh& mesh, CgalFaceIndex f) {
@@ -61,8 +61,8 @@ bool isLiveFace(const CgalSurfaceMesh& mesh, CgalFaceIndex f) {
 using PinMap = CgalSurfaceMesh::Property_map<CgalVertexIndex, std::uint8_t>;
 using VertexOriginMap = CgalSurfaceMesh::Property_map<CgalVertexIndex, std::int64_t>;
 using FaceOriginMap = CgalSurfaceMesh::Property_map<CgalFaceIndex, std::int64_t>;
-constexpr const char* kVertexOriginProperty = "v:ogun_origin";
-constexpr const char* kFaceOriginProperty = "f:ogun_origin";
+constexpr const char* kVertexOriginProperty = "v:mesheal_origin";
+constexpr const char* kFaceOriginProperty = "f:mesheal_origin";
 
 std::optional<PinMap> pinMap(const CgalSurfaceMesh& mesh) {
     return mesh.property_map<CgalVertexIndex, std::uint8_t>(SliverHealer::kPinnedVertexProperty);
@@ -1787,7 +1787,7 @@ void runPmpCleanup(
     if (pins) {
         beforeCleanup = surface;
     }
-    auto creaseMap = surface.add_property_map<CgalEdgeIndex, bool>("e:ogun_crease", false).first;
+    auto creaseMap = surface.add_property_map<CgalEdgeIndex, bool>("e:mesheal_crease", false).first;
     PMP::detect_sharp_edges(surface, settings.creaseAngleDeg, creaseMap);
     bool cleanupFailed = false;
     try {
@@ -2202,4 +2202,4 @@ RepairResults SliverHealer::healAllThinFaces(
     return results;
 }
 
-} // namespace ogun
+} // namespace mesheal

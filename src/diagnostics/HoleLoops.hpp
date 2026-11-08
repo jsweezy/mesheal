@@ -12,7 +12,7 @@
 #include <span>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// Shape of a hole, which decides the recommended fill. The order matches the Open edges sub-types.
 enum class HoleShape : std::uint8_t {
@@ -71,4 +71,4 @@ void measureHoleLoop(const Mesh& mesh, HoleLoop& hole, const HoleShapeParams& pa
 /// Index of the hole whose rim contains the undirected edge {a, b}, or -1.
 [[nodiscard]] int findHoleOfEdge(std::span<const HoleLoop> holes, int a, int b) noexcept;
 
-} // namespace ogun
+} // namespace mesheal

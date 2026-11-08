@@ -1,23 +1,23 @@
-"""Unit tests for the Ogun Python runner."""
+"""Unit tests for the Mesheal Python runner."""
 
 from pathlib import Path
 import tempfile
 import unittest
 
-from benchmarks.runner import diagnostics, find_ogun_binary, repair
+from benchmarks.runner import diagnostics, find_mesheal_binary, repair
 
 
-class TestOgunRunner(unittest.TestCase):
+class TestMeshealRunner(unittest.TestCase):
     def setUp(self):
-        self.ogun_bin = find_ogun_binary()
+        self.mesheal_bin = find_mesheal_binary()
         self.repo_root = Path(__file__).resolve().parent.parent.parent
         self.example_box = self.repo_root / "examples" / "self_intersecting_box.stl"
 
-    def test_find_ogun_binary(self):
-        self.assertTrue(self.ogun_bin.is_file())
+    def test_find_mesheal_binary(self):
+        self.assertTrue(self.mesheal_bin.is_file())
 
     def test_diagnostics_on_box(self):
-        res = diagnostics(self.example_box, ogun_bin=self.ogun_bin)
+        res = diagnostics(self.example_box, mesheal_bin=self.mesheal_bin)
         self.assertTrue(res.is_success)
         self.assertIsNotNone(res.metrics)
         self.assertEqual(res.metrics.self_intersecting_faces_before, 6)
@@ -26,7 +26,7 @@ class TestOgunRunner(unittest.TestCase):
     def test_repair_fix_all_on_box(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             out_file = Path(tmpdir) / "repaired.stl"
-            res = repair(self.example_box, method="fix-all", output_file=out_file, ogun_bin=self.ogun_bin)
+            res = repair(self.example_box, method="fix-all", output_file=out_file, mesheal_bin=self.mesheal_bin)
             self.assertTrue(res.is_success)
             self.assertIsNotNone(res.metrics)
             self.assertEqual(res.metrics.self_intersecting_faces_after, 0)

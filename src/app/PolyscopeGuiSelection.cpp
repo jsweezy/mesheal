@@ -16,7 +16,7 @@
 #include <cmath>
 #include <string>
 
-namespace ogun {
+namespace mesheal {
 
 using gui::tooltip;
 using gui::withThousands;
@@ -213,4 +213,4 @@ void PolyscopeGui::drawSelectFacesMenu() {
     ImGui::EndMenu();
 }
 
-} // namespace ogun
+} // namespace mesheal

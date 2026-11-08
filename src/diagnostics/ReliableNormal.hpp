@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace ogun {
+namespace mesheal {
 
 /// True when the triangle (v0, v1, v2) has a normal that is more than rounding noise: every
 /// coordinate is finite, its smallest height h_min = 2A / l_max exceeds `kReliableNormalRatio`
@@ -35,4 +35,4 @@ namespace ogun {
            minHeight > settings::kNormalFloorCoordinateFactor * largestCoordinate;
 }
 
-} // namespace ogun
+} // namespace mesheal

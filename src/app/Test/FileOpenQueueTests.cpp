@@ -7,7 +7,7 @@
 #include <vector>
 
 TEST_CASE("FileOpenQueue enqueues, dequeues and clears paths", "[app][file_queue]") {
-    ogun::FileOpenQueue& queue = ogun::FileOpenQueue::instance();
+    mesheal::FileOpenQueue& queue = mesheal::FileOpenQueue::instance();
     queue.clear();
 
     REQUIRE_FALSE(queue.hasPendingFiles());

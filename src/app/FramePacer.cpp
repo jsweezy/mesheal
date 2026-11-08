@@ -4,7 +4,7 @@
 
 #include <algorithm>
 
-namespace ogun {
+namespace mesheal {
 
 FrameWait FramePacer::plan(double now, const FrameActivity& activity, int maxFps) {
     if (activity.input || activity.animating) {
@@ -33,4 +33,4 @@ FrameWait FramePacer::plan(double now, const FrameActivity& activity, int maxFps
     return wait;
 }
 
-} // namespace ogun
+} // namespace mesheal

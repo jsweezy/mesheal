@@ -2,7 +2,7 @@
 
 #include <numbers>
 
-namespace ogun {
+namespace mesheal {
 
 // Fundamental mathematical constants
 inline constexpr double kPi = std::numbers::pi;
@@ -28,4 +28,4 @@ inline constexpr double kReliableNormalRatio = 1.0e-10;
 inline constexpr double kGridMinCellCoordinateShare = 1.0e-9;
 inline constexpr double kGridCellRoundingMargin = 1.0e-6;
 
-} // namespace ogun
+} // namespace mesheal

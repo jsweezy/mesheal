@@ -12,7 +12,7 @@
 #include <cstdio>
 #include <string>
 
-namespace ogun {
+namespace mesheal {
 
 using gui::tooltip;
 using gui::withThousands;
@@ -201,4 +201,4 @@ void PolyscopeGui::drawHoleFillSettings() {
     }
 }
 
-} // namespace ogun
+} // namespace mesheal

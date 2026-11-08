@@ -13,7 +13,7 @@
 #include <stop_token>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// What `orientShells` does.
 struct OrientShellsOptions {
@@ -73,4 +73,4 @@ struct FlipShellsResult {
 /// *Flip* for shells Fix All will not guess about. The faces are the scope; nothing else changes.
 [[nodiscard]] FlipShellsResult flipShells(const Mesh& mesh, std::span<const std::vector<Eigen::Index>> shellFaceSets);
 
-} // namespace ogun
+} // namespace mesheal

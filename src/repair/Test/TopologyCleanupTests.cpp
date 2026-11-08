@@ -22,12 +22,12 @@
 
 namespace {
 
-using ogun::DefectCategory;
-using ogun::Mesh;
-using ogun::SampleMeshes;
+using mesheal::DefectCategory;
+using mesheal::Mesh;
+using mesheal::SampleMeshes;
 
 std::size_t count(DefectCategory category, const Mesh& mesh) {
-    return ogun::runCategoryCheck(category, mesh, ogun::CheckParams{}).size();
+    return mesheal::runCategoryCheck(category, mesh, mesheal::CheckParams{}).size();
 }
 
 /// `mesh` with `faces` appended (normals left as they are, so faces with a bad index are allowed).
@@ -66,17 +66,17 @@ TEST_CASE("Faces that repeat a vertex or use a bad index are removed and no edge
           "[repair][topology][degenerate]") {
     const Mesh cube = SampleMeshes::createCubeMesh();
     const Mesh mesh = withFaces(cube, {{6, 6, 7}, {0, 1, 99}, {3, 3, 3}});
-    const ogun::EdgeTopology topoBefore = ogun::buildEdgeTopology(mesh);
+    const mesheal::EdgeTopology topoBefore = mesheal::buildEdgeTopology(mesh);
     REQUIRE(count(DefectCategory::Degenerate, mesh) == 3);
 
-    const ogun::RepeatedVertexFacesResult result = ogun::removeRepeatedVertexFaces(mesh);
+    const mesheal::RepeatedVertexFacesResult result = mesheal::removeRepeatedVertexFaces(mesh);
     REQUIRE(result.removed == 3);
     REQUIRE(result.mesh.F == cube.F);
     requireFaceMap(mesh, result.mesh, result.faceMap);
     REQUIRE(result.faceMap[12] == -1);
     REQUIRE(result.faceMap[13] == -1);
     REQUIRE(result.faceMap[14] == -1);
-    const ogun::EdgeTopology topoAfter = ogun::buildEdgeTopology(result.mesh);
+    const mesheal::EdgeTopology topoAfter = mesheal::buildEdgeTopology(result.mesh);
     REQUIRE(topoAfter.edges == topoBefore.edges);
     REQUIRE(topoAfter.incidentFaces == topoBefore.incidentFaces);
     REQUIRE(count(DefectCategory::Degenerate, result.mesh) == 0);
@@ -85,7 +85,7 @@ TEST_CASE("Faces that repeat a vertex or use a bad index are removed and no edge
     SECTION("faces out of scope are kept") {
         std::vector<std::uint8_t> scope(static_cast<std::size_t>(mesh.numFaces()), 1);
         scope[13] = 0;
-        const ogun::RepeatedVertexFacesResult scoped = ogun::removeRepeatedVertexFaces(mesh, scope);
+        const mesheal::RepeatedVertexFacesResult scoped = mesheal::removeRepeatedVertexFaces(mesh, scope);
         REQUIRE(scoped.removed == 2);
         requireFaceMap(mesh, scoped.mesh, scoped.faceMap);
         REQUIRE(scoped.faceMap[13] == 12);
@@ -93,7 +93,7 @@ TEST_CASE("Faces that repeat a vertex or use a bad index are removed and no edge
     }
 
     SECTION("a clean mesh is unchanged") {
-        const ogun::RepeatedVertexFacesResult clean = ogun::removeRepeatedVertexFaces(cube);
+        const mesheal::RepeatedVertexFacesResult clean = mesheal::removeRepeatedVertexFaces(cube);
         REQUIRE(clean.removed == 0);
         REQUIRE(clean.mesh.F == cube.F);
         REQUIRE(clean.mesh.N == cube.N);
@@ -106,7 +106,7 @@ TEST_CASE("Copies wound the same way keep the first face", "[repair][topology][d
     const Mesh mesh = withFaces(cube, {{5, 6, 4}, {6, 4, 5}, {2, 6, 1}});
     REQUIRE(count(DefectCategory::Duplicates, mesh) == 3);
 
-    const ogun::DuplicateFacesResult result = ogun::removeDuplicateFaces(mesh);
+    const mesheal::DuplicateFacesResult result = mesheal::removeDuplicateFaces(mesh);
     REQUIRE(result.groups == 2);
     REQUIRE(result.removedSameWinding == 3);
     REQUIRE(result.removedOppositeWinding == 0);
@@ -134,7 +134,7 @@ TEST_CASE("A copy wound the other way inside a closed cube: the face its neighbo
         mesh.recomputeNormals();
         REQUIRE(count(DefectCategory::Duplicates, mesh) == 1);
 
-        const ogun::DuplicateFacesResult result = ogun::removeDuplicateFaces(mesh);
+        const mesheal::DuplicateFacesResult result = mesheal::removeDuplicateFaces(mesh);
         REQUIRE(result.removedOppositeWinding == 1);
         REQUIRE(result.removedSameWinding == 0);
         REQUIRE(result.mesh.F == cube.F);
@@ -156,7 +156,7 @@ TEST_CASE("Copies wound both ways with no neighbour to agree with follow the par
 
     SECTION("an opposite pair: both go, the cube is untouched") {
         const Mesh mesh = withFaces(base, {{8, 9, 10}, {8, 10, 9}});
-        const ogun::DuplicateFacesResult result = ogun::removeDuplicateFaces(mesh);
+        const mesheal::DuplicateFacesResult result = mesheal::removeDuplicateFaces(mesh);
         REQUIRE(result.removedOppositeWinding == 2);
         REQUIRE(result.mesh.F == cube.F);
         REQUIRE(result.faceMap[12] == -1);
@@ -165,7 +165,7 @@ TEST_CASE("Copies wound both ways with no neighbour to agree with follow the par
     }
     SECTION("two one way and one the other: one face of the majority stays") {
         const Mesh mesh = withFaces(base, {{8, 10, 9}, {8, 9, 10}, {9, 10, 8}});
-        const ogun::DuplicateFacesResult result = ogun::removeDuplicateFaces(mesh);
+        const mesheal::DuplicateFacesResult result = mesheal::removeDuplicateFaces(mesh);
         REQUIRE(result.removedOppositeWinding == 2);
         REQUIRE(result.mesh.numFaces() == 13);
         REQUIRE(result.faceMap[13] == 12); // the first of the majority (8, 9, 10)
@@ -190,7 +190,7 @@ TEST_CASE("Copies wound both ways with no neighbour to agree with follow the par
             }
         }
         REQUIRE(count(DefectCategory::Duplicates, boxes) == 2);
-        const ogun::DuplicateFacesResult result = ogun::removeDuplicateFaces(boxes);
+        const mesheal::DuplicateFacesResult result = mesheal::removeDuplicateFaces(boxes);
         REQUIRE(result.groups == 2);
         REQUIRE(result.removedOppositeWinding == 4);
         REQUIRE(result.mesh.numFaces() == 20);
@@ -210,7 +210,7 @@ TEST_CASE("Duplicate removal leaves faces out of scope untouched", "[repair][top
     std::vector<std::uint8_t> scope(static_cast<std::size_t>(mesh.numFaces()), 0);
     std::fill(scope.begin(), scope.begin() + 13, std::uint8_t{1});
 
-    const ogun::DuplicateFacesResult result = ogun::removeDuplicateFaces(mesh, scope);
+    const mesheal::DuplicateFacesResult result = mesheal::removeDuplicateFaces(mesh, scope);
     REQUIRE(result.removedSameWinding == 1);
     requireFaceMap(mesh, result.mesh, result.faceMap);
     for (std::size_t f = 13; f < 26; ++f) {
@@ -222,7 +222,7 @@ TEST_CASE("Duplicate removal leaves faces out of scope untouched", "[repair][top
         // Only the copy (face 12) of the first cube's top face is in scope
         std::vector<std::uint8_t> copyOnly(static_cast<std::size_t>(mesh.numFaces()), 0);
         copyOnly[12] = 1;
-        const ogun::DuplicateFacesResult copy = ogun::removeDuplicateFaces(mesh, copyOnly);
+        const mesheal::DuplicateFacesResult copy = mesheal::removeDuplicateFaces(mesh, copyOnly);
         REQUIRE(copy.removedSameWinding == 1);
         REQUIRE(copy.faceMap[12] == -1);
 
@@ -230,7 +230,7 @@ TEST_CASE("Duplicate removal leaves faces out of scope untouched", "[repair][top
         std::vector<std::uint8_t> originalOnly(static_cast<std::size_t>(mesh.numFaces()), 0);
         constexpr Eigen::Index top = 2;
         originalOnly[top] = 1;
-        const ogun::DuplicateFacesResult original = ogun::removeDuplicateFaces(mesh, originalOnly);
+        const mesheal::DuplicateFacesResult original = mesheal::removeDuplicateFaces(mesh, originalOnly);
         REQUIRE(original.removedSameWinding == 1);
         REQUIRE(original.faceMap[static_cast<std::size_t>(top)] == -1);
         REQUIRE(original.faceMap[12] >= 0);
@@ -241,7 +241,7 @@ TEST_CASE("Duplicate removal leaves faces out of scope untouched", "[repair][top
         cube.recomputeNormals();
         std::vector<std::uint8_t> keepCopy(13, 1);
         keepCopy[12] = 0;
-        const ogun::DuplicateFacesResult skipped = ogun::removeDuplicateFaces(cube, keepCopy);
+        const mesheal::DuplicateFacesResult skipped = mesheal::removeDuplicateFaces(cube, keepCopy);
         REQUIRE(skipped.removed() == 0);
         REQUIRE(skipped.groupsSkipped == 1);
         REQUIRE(skipped.mesh.F == cube.F);
@@ -254,10 +254,10 @@ TEST_CASE("The doubled faces cube sample has 2 degenerate and 2 duplicate faces 
     REQUIRE(count(DefectCategory::Degenerate, mesh) == 2);
     REQUIRE(count(DefectCategory::Duplicates, mesh) == 2);
 
-    const ogun::RepeatedVertexFacesResult dropped = ogun::removeRepeatedVertexFaces(mesh);
+    const mesheal::RepeatedVertexFacesResult dropped = mesheal::removeRepeatedVertexFaces(mesh);
     REQUIRE(dropped.removed == 1);
     REQUIRE(dropped.faceMap[SampleMeshes::kRepeatedVertexFaceIndex] == -1);
-    const ogun::DuplicateFacesResult deduped = ogun::removeDuplicateFaces(dropped.mesh);
+    const mesheal::DuplicateFacesResult deduped = mesheal::removeDuplicateFaces(dropped.mesh);
     REQUIRE(deduped.removedSameWinding == 1);
     REQUIRE(deduped.removedOppositeWinding == 1);
     REQUIRE(deduped.mesh.numFaces() == SampleMeshes::kFlatCapFaceIndex + 1);
@@ -274,14 +274,14 @@ std::filesystem::path examplePath(const char* name) {
 }
 
 std::size_t openEdges(const Mesh& mesh) {
-    return ogun::checkOpenEdges(mesh).infoCount;
+    return mesheal::checkOpenEdges(mesh).infoCount;
 }
 
 /// Non-manifold edges of one sub-type: 0 Touching, 1 Fin / other.
 std::size_t nonManifoldEdges(const Mesh& mesh, int subtype) {
-    const ogun::CategoryResult result = ogun::checkNonManifoldEdges(mesh);
+    const mesheal::CategoryResult result = mesheal::checkNonManifoldEdges(mesh);
     return static_cast<std::size_t>(std::count_if(result.elements.begin(), result.elements.end(),
-                                                  [subtype](const ogun::DefectElement& e) { return e.subtype == subtype; }));
+                                                  [subtype](const mesheal::DefectElement& e) { return e.subtype == subtype; }));
 }
 
 /// Welds the vertices of `mesh` that sit at exactly the same position (the STL reader's exact weld).
@@ -356,13 +356,13 @@ bool onPlane(double a, double b) {
 TEST_CASE("Fin removal takes the fin off the touching cubes and keeps the touching contact", "[repair][topology][fins]") {
     for (const bool loaded : {false, true}) {
         const Mesh raw = SampleMeshes::createTouchingCubesMesh();
-        const Mesh mesh = loaded ? ogun::separateTouchingContacts(raw) : raw;
+        const Mesh mesh = loaded ? mesheal::separateTouchingContacts(raw) : raw;
         const std::size_t touchingBefore = nonManifoldEdges(mesh, 0);
         REQUIRE(touchingBefore == (loaded ? 0u : 2u));
         REQUIRE(nonManifoldEdges(mesh, 1) == 1);
         REQUIRE(openEdges(mesh) == 2);
 
-        const ogun::FinRemovalResult result = ogun::removeFinFaces(mesh);
+        const mesheal::FinRemovalResult result = mesheal::removeFinFaces(mesh);
         REQUIRE(result.removedFaces == std::vector<Eigen::Index>{mesh.numFaces() - 1}); // the fin triangle
         REQUIRE(result.finFaces == 1);
         REQUIRE(result.wallFaces == 0);
@@ -376,7 +376,7 @@ TEST_CASE("Fin removal takes the fin off the touching cubes and keeps the touchi
         REQUIRE(openEdges(result.mesh) == 0);
 
         // Nothing left to do
-        const ogun::FinRemovalResult again = ogun::removeFinFaces(result.mesh);
+        const mesheal::FinRemovalResult again = mesheal::removeFinFaces(result.mesh);
         REQUIRE(again.removedFaces.empty());
         REQUIRE(again.finEdgesBefore == 0);
         REQUIRE(again.mesh.F == result.mesh.F);
@@ -389,7 +389,7 @@ TEST_CASE("A wall that holds a seam shut is removed, the seam opens and the fill
     REQUIRE(nonManifoldEdges(mesh, 1) == 3);
     REQUIRE(openEdges(mesh) == 3);
 
-    const ogun::FinRemovalResult result = ogun::removeFinFaces(mesh);
+    const mesheal::FinRemovalResult result = mesheal::removeFinFaces(mesh);
     REQUIRE(result.removedFaces == std::vector<Eigen::Index>{18, 19}); // the wall
     REQUIRE(result.wallFaces == 2);
     REQUIRE(result.finFaces == 0);
@@ -398,14 +398,14 @@ TEST_CASE("A wall that holds a seam shut is removed, the seam opens and the fill
     requireFaceMap(mesh, result.mesh, result.faceMap);
     REQUIRE(nonManifoldEdges(result.mesh, 1) == 0);
     REQUIRE(openEdges(result.mesh) == 4);
-    const std::vector<ogun::HoleLoop> holes = ogun::findHoleLoops(result.mesh);
+    const std::vector<mesheal::HoleLoop> holes = mesheal::findHoleLoops(result.mesh);
     REQUIRE(holes.size() == 1);
 
-    const ogun::HoleBatchResult filled = ogun::fillHoles(result.mesh, holes);
+    const mesheal::HoleBatchResult filled = mesheal::fillHoles(result.mesh, holes);
     REQUIRE(filled.success);
     REQUIRE(openEdges(filled.mesh) == 0);
     REQUIRE(count(DefectCategory::NonManifoldEdges, filled.mesh) == 0);
-    REQUIRE(ogun::signedVolume(filled.mesh) == Catch::Approx(2.0));
+    REQUIRE(mesheal::signedVolume(filled.mesh) == Catch::Approx(2.0));
 }
 
 TEST_CASE("Internal walls inside a closed box are removed and the box stays closed", "[repair][topology][fins]") {
@@ -423,12 +423,12 @@ TEST_CASE("Internal walls inside a closed box are removed and the box stays clos
         triangles.insert(triangles.end(), w.begin(), w.end());
         const Mesh mesh = fromTriangles(triangles);
         REQUIRE(nonManifoldEdges(mesh, 1) == 4);
-        const ogun::FinRemovalResult result = ogun::removeFinFaces(mesh);
+        const mesheal::FinRemovalResult result = mesheal::removeFinFaces(mesh);
         REQUIRE(result.wallFaces == 2);
         REQUIRE(result.seamEdgesOpened == 0);
         REQUIRE(openEdges(result.mesh) == 0);
         REQUIRE(count(DefectCategory::NonManifoldEdges, result.mesh) == 0);
-        REQUIRE(ogun::signedVolume(result.mesh) == Catch::Approx(2.0));
+        REQUIRE(mesheal::signedVolume(result.mesh) == Catch::Approx(2.0));
     }
 
     SECTION("two shells welded face to face: the wall is a pair of opposite copies") {
@@ -441,20 +441,20 @@ TEST_CASE("Internal walls inside a closed box are removed and the box stays clos
         REQUIRE(count(DefectCategory::Duplicates, mesh) == 2);
 
         // Duplicate removal first (Fix All's order) takes the wall away; fin removal then finds nothing
-        const ogun::DuplicateFacesResult deduped = ogun::removeDuplicateFaces(mesh);
+        const mesheal::DuplicateFacesResult deduped = mesheal::removeDuplicateFaces(mesh);
         REQUIRE(deduped.removedOppositeWinding == 4);
-        const ogun::FinRemovalResult afterDedupe = ogun::removeFinFaces(deduped.mesh);
+        const mesheal::FinRemovalResult afterDedupe = mesheal::removeFinFaces(deduped.mesh);
         REQUIRE(afterDedupe.finEdgesBefore == 0);
         REQUIRE(afterDedupe.removedFaces.empty());
         REQUIRE(openEdges(afterDedupe.mesh) == 0);
 
         // Fin removal alone removes it too
-        const ogun::FinRemovalResult alone = ogun::removeFinFaces(mesh);
+        const mesheal::FinRemovalResult alone = mesheal::removeFinFaces(mesh);
         REQUIRE(alone.wallFaces == 4);
         REQUIRE(alone.removedFaces == std::vector<Eigen::Index>{20, 21, 22, 23});
         REQUIRE(openEdges(alone.mesh) == 0);
         REQUIRE(count(DefectCategory::NonManifoldEdges, alone.mesh) == 0);
-        REQUIRE(ogun::signedVolume(alone.mesh) == Catch::Approx(2.0));
+        REQUIRE(mesheal::signedVolume(alone.mesh) == Catch::Approx(2.0));
     }
 
     SECTION("two shells welded face to face, each with its own wall faces") {
@@ -464,12 +464,12 @@ TEST_CASE("Internal walls inside a closed box are removed and the box stays clos
         triangles.insert(triangles.end(), w.begin(), w.end());
         triangles.insert(triangles.end(), w2.begin(), w2.end());
         const Mesh mesh = fromTriangles(triangles);
-        const ogun::DuplicateFacesResult deduped = ogun::removeDuplicateFaces(mesh);
-        const ogun::FinRemovalResult result = ogun::removeFinFaces(deduped.mesh);
+        const mesheal::DuplicateFacesResult deduped = mesheal::removeDuplicateFaces(mesh);
+        const mesheal::FinRemovalResult result = mesheal::removeFinFaces(deduped.mesh);
         REQUIRE(result.mesh.numFaces() == 20);
         REQUIRE(openEdges(result.mesh) == 0);
         REQUIRE(count(DefectCategory::NonManifoldEdges, result.mesh) == 0);
-        REQUIRE(ogun::signedVolume(result.mesh) == Catch::Approx(2.0));
+        REQUIRE(mesheal::signedVolume(result.mesh) == Catch::Approx(2.0));
     }
 }
 
@@ -482,11 +482,11 @@ TEST_CASE("Fin removal leaves a sheet as big as the body and sheets out of scope
     };
 
     // A small flap on the top back edge goes; a flap larger than half the cube's area stays
-    const ogun::FinRemovalResult small = ogun::removeFinFaces(withFlap({0.5, 1.5, 1.5}));
+    const mesheal::FinRemovalResult small = mesheal::removeFinFaces(withFlap({0.5, 1.5, 1.5}));
     REQUIRE(small.finFaces == 1);
     REQUIRE(small.finEdgesLeft == 0);
     const Mesh big = withFlap({0.5, 10.0, 10.0});
-    const ogun::FinRemovalResult kept = ogun::removeFinFaces(big);
+    const mesheal::FinRemovalResult kept = mesheal::removeFinFaces(big);
     REQUIRE(kept.removedFaces.empty());
     REQUIRE(kept.finEdgesLeft == 1);
     REQUIRE(kept.mesh.F == big.F);
@@ -495,7 +495,7 @@ TEST_CASE("Fin removal leaves a sheet as big as the body and sheets out of scope
     const Mesh touching = SampleMeshes::createTouchingCubesMesh();
     std::vector<std::uint8_t> scope(static_cast<std::size_t>(touching.numFaces()), 1);
     scope.back() = 0;
-    const ogun::FinRemovalResult outOfScope = ogun::removeFinFaces(touching, scope);
+    const mesheal::FinRemovalResult outOfScope = mesheal::removeFinFaces(touching, scope);
     REQUIRE(outOfScope.removedFaces.empty());
     REQUIRE(outOfScope.sheetsOutOfScope == 1);
     REQUIRE(outOfScope.finEdgesLeft == 1);
@@ -505,10 +505,10 @@ TEST_CASE("Fin removal leaves a sheet as big as the body and sheets out of scope
 
 TEST_CASE("Only the far tiny tetrahedron is a tiny floating shell", "[repair][topology][tiny]") {
     const Mesh mesh = SampleMeshes::createTinyFloatingShellsMesh();
-    const auto shells = ogun::shellsLargestFirst(mesh);
+    const auto shells = mesheal::shellsLargestFirst(mesh);
     REQUIRE(shells.size() == 5);
 
-    const ogun::TinyFloatingShellsResult found = ogun::findTinyFloatingShells(mesh);
+    const mesheal::TinyFloatingShellsResult found = mesheal::findTinyFloatingShells(mesh);
     REQUIRE(found.complete);
     REQUIRE(found.modelDiagonal == Catch::Approx(std::sqrt(2.0 * 20.01 * 20.01 + 10.01 * 10.01)));
     REQUIRE(found.shells.size() == 1);
@@ -518,64 +518,64 @@ TEST_CASE("Only the far tiny tetrahedron is a tiny floating shell", "[repair][to
     REQUIRE(found.largestFraction() < 0.001);
 
     // Fraction 0: none; 5 %: the 0.5 cube too (2.9 %), never the cavity or the touching tetrahedron
-    ogun::TinyShellSearch none;
+    mesheal::TinyShellSearch none;
     none.fraction = 0.0;
-    REQUIRE(ogun::findTinyFloatingShells(mesh, none).shells.empty());
-    ogun::TinyShellSearch wide;
+    REQUIRE(mesheal::findTinyFloatingShells(mesh, none).shells.empty());
+    mesheal::TinyShellSearch wide;
     wide.fraction = 0.05;
-    const ogun::TinyFloatingShellsResult two = ogun::findTinyFloatingShells(mesh, wide);
+    const mesheal::TinyFloatingShellsResult two = mesheal::findTinyFloatingShells(mesh, wide);
     REQUIRE(two.shells.size() == 2);
     REQUIRE(two.shells[0].shell == 1);
     REQUIRE(two.shells[1].shell == 4);
 
     // Scope shells, and relations handed in, give the same answers
-    ogun::TinyShellSearch scoped;
+    mesheal::TinyShellSearch scoped;
     scoped.scopeShells = {0, 1, 2, 3};
-    REQUIRE(ogun::findTinyFloatingShells(mesh, scoped).shells.empty());
-    const ogun::ShellRelations relations = ogun::computeShellRelations(mesh);
-    ogun::TinyShellSearch withRelations;
+    REQUIRE(mesheal::findTinyFloatingShells(mesh, scoped).shells.empty());
+    const mesheal::ShellRelations relations = mesheal::computeShellRelations(mesh);
+    mesheal::TinyShellSearch withRelations;
     withRelations.relations = &relations;
-    const ogun::TinyFloatingShellsResult same = ogun::findTinyFloatingShells(mesh, withRelations);
+    const mesheal::TinyFloatingShellsResult same = mesheal::findTinyFloatingShells(mesh, withRelations);
     REQUIRE(same.shells.size() == 1);
     REQUIRE(same.shells[0].shell == 4);
 
     // Removal: 4 faces go, the map marks them, the rest keep their rows
-    const ogun::TinyShellRemovalResult removed = ogun::removeTinyFloatingShells(mesh);
+    const mesheal::TinyShellRemovalResult removed = mesheal::removeTinyFloatingShells(mesh);
     REQUIRE(removed.removedFaces == 4);
     REQUIRE(removed.found.shells.size() == 1);
     requireFaceMap(mesh, removed.mesh, removed.faceMap);
     for (const Eigen::Index f : shells[4]) {
         REQUIRE(removed.faceMap[static_cast<std::size_t>(f)] == -1);
     }
-    REQUIRE(ogun::shellsLargestFirst(removed.mesh).size() == 4);
+    REQUIRE(mesheal::shellsLargestFirst(removed.mesh).size() == 4);
 
     // A face scope without the tetrahedron: nothing goes
     std::vector<std::uint8_t> scope(static_cast<std::size_t>(mesh.numFaces()), 1);
     scope[static_cast<std::size_t>(shells[4].front())] = 0;
-    const ogun::TinyShellRemovalResult outOfScope = ogun::removeTinyFloatingShells(mesh, scope);
+    const mesheal::TinyShellRemovalResult outOfScope = mesheal::removeTinyFloatingShells(mesh, scope);
     REQUIRE(outOfScope.removedFaces == 0);
     REQUIRE(outOfScope.mesh.F == mesh.F);
 }
 
 TEST_CASE("The Turkey has no tiny floating shell and no fins", "[repair][topology][tiny][.slow]") {
-    const Mesh turkey = ogun::loadStl(examplePath("Turkey.stl"));
+    const Mesh turkey = mesheal::loadStl(examplePath("Turkey.stl"));
     const auto start = std::chrono::steady_clock::now();
-    const ogun::TinyFloatingShellsResult found = ogun::findTinyFloatingShells(turkey);
+    const mesheal::TinyFloatingShellsResult found = mesheal::findTinyFloatingShells(turkey);
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     REQUIRE(found.complete);
     REQUIRE(found.shells.empty());
 
     // The smallest shell (the 70-face cavity #28) is about 1.23 % of the model's size
-    const std::vector<ogun::ShellFacts> shells = ogun::describeShells(turkey, ogun::shellsLargestFirst(turkey));
+    const std::vector<mesheal::ShellFacts> shells = mesheal::describeShells(turkey, mesheal::shellsLargestFirst(turkey));
     double smallest = 1.0;
-    for (const ogun::ShellFacts& shell : shells) {
+    for (const mesheal::ShellFacts& shell : shells) {
         smallest = std::min(smallest, shell.box.diagonal() / found.modelDiagonal);
     }
     REQUIRE(smallest > 0.01);
     WARN("Turkey findTinyFloatingShells: " << ms << " ms; smallest shell " << 100.0 * smallest << " % of the model");
 
     const auto finStart = std::chrono::steady_clock::now();
-    const ogun::FinRemovalResult fins = ogun::removeFinFaces(turkey);
+    const mesheal::FinRemovalResult fins = mesheal::removeFinFaces(turkey);
     const double finMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - finStart).count();
     WARN("Turkey removeFinFaces: " << finMs << " ms");
     REQUIRE(fins.finEdgesBefore == 0);

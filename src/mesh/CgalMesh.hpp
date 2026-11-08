@@ -8,7 +8,7 @@
 
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 using CgalKernel = CGAL::Exact_predicates_inexact_constructions_kernel;
 using CgalPoint3 = CgalKernel::Point_3;
@@ -43,5 +43,5 @@ CgalFaceIndex extractLocalPatch(
     CgalSurfaceMesh& outPatch,
     std::vector<CgalFaceIndex>* sourceFacesOut = nullptr);
 
-} // namespace ogun
+} // namespace mesheal
 

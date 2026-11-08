@@ -17,7 +17,7 @@
 #include <utility>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -430,7 +430,7 @@ DecimateResult decimate(const Mesh& mesh, double ratio, std::span<const std::uin
 
     // The region as a Surface_mesh that remembers each vertex's original index
     CgalSurfaceMesh surface;
-    auto origMap = surface.add_property_map<CgalVertexIndex, int>("v:ogun_orig", -1).first;
+    auto origMap = surface.add_property_map<CgalVertexIndex, int>("v:mesheal_orig", -1).first;
     std::vector<CgalVertexIndex> local(nv);
     std::vector<std::uint8_t> added(nv, 0);
     for (const Eigen::Index f : region) {
@@ -453,7 +453,7 @@ DecimateResult decimate(const Mesh& mesh, double ratio, std::span<const std::uin
     }
 
     // Constrained: border edges (holes, the region's edge) and every edge at a pinned vertex
-    auto constrained = surface.add_property_map<CgalEdgeIndex, bool>("e:ogun_constrained", false).first;
+    auto constrained = surface.add_property_map<CgalEdgeIndex, bool>("e:mesheal_constrained", false).first;
     for (const CgalEdgeIndex e : surface.edges()) {
         const CgalHalfedgeIndex h = surface.halfedge(e);
         const bool pinnedEnd = pinned[static_cast<std::size_t>(origMap[surface.source(h)])] != 0 ||
@@ -505,4 +505,4 @@ DecimateResult decimate(const Mesh& mesh, double ratio, std::span<const std::uin
     return result;
 }
 
-} // namespace ogun
+} // namespace mesheal

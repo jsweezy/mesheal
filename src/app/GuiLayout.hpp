@@ -6,7 +6,7 @@
 #include <string_view>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// A screen rectangle in ImGui units (top-left corner and size).
 struct LayoutRect {
@@ -38,4 +38,4 @@ struct LayoutRect {
 [[nodiscard]] std::vector<std::string> wrapText(std::string_view text, float maxWidth,
                                                 const std::function<float(const std::string&)>& measure);
 
-} // namespace ogun
+} // namespace mesheal

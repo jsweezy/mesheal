@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// Mouse button or wheel of a binding (`None`: the slot is unused).
 enum class MouseInput : std::uint8_t { None, Left, Middle, Right, Wheel };
@@ -47,10 +47,10 @@ inline constexpr std::array<MouseAction, kMouseActionCount> kAllMouseActions = {
 };
 
 /// Built-in schemes; `Custom` is any edited mapping.
-enum class MousePreset : std::uint8_t { Ogun, Blender, OpenScad, Maya, Fusion360, SolidWorks, Custom };
+enum class MousePreset : std::uint8_t { Mesheal, Blender, OpenScad, Maya, Fusion360, SolidWorks, Custom };
 inline constexpr std::size_t kMousePresetCount = 7;
 inline constexpr std::array<MousePreset, kMousePresetCount> kAllMousePresets = {
-    MousePreset::Ogun,      MousePreset::Blender,    MousePreset::OpenScad, MousePreset::Maya,
+    MousePreset::Mesheal,      MousePreset::Blender,    MousePreset::OpenScad, MousePreset::Maya,
     MousePreset::Fusion360, MousePreset::SolidWorks, MousePreset::Custom,
 };
 
@@ -63,18 +63,18 @@ struct MouseBinding {
     bool operator==(const MouseBinding&) const = default;
 };
 
-/// Inputs per action (Ogun's Pan has three: Shift + Left, Right and Middle drag).
+/// Inputs per action (Mesheal's Pan has three: Shift + Left, Right and Middle drag).
 inline constexpr std::size_t kMaxMouseBindingsPerAction = 3;
 using MouseActionBindings = std::array<MouseBinding, kMaxMouseBindingsPerAction>;
 using MouseBindingTable = std::array<MouseActionBindings, kMouseActionCount>;
 
-/// The bindings of `preset` (`Custom` gives Ogun's), bound slots first.
+/// The bindings of `preset` (`Custom` gives Mesheal's), bound slots first.
 [[nodiscard]] MouseBindingTable mousePresetBindings(MousePreset preset);
 
-/// Which mouse input drives each viewport action (Preferences > Mouse). Default = Ogun's scheme.
+/// Which mouse input drives each viewport action (Preferences > Mouse). Default = Mesheal's scheme.
 struct MouseMapping {
-    MousePreset preset = MousePreset::Ogun;
-    MouseBindingTable bindings = mousePresetBindings(MousePreset::Ogun);
+    MousePreset preset = MousePreset::Mesheal;
+    MouseBindingTable bindings = mousePresetBindings(MousePreset::Mesheal);
     bool invertWheelZoom = false;                       ///< Wheel up zooms out instead of in
     float zoomSpeed = settings::kDefaultMouseZoomSpeed; ///< Multiplies wheel and drag zoom steps
 
@@ -107,7 +107,7 @@ bool setMouseBinding(MouseMapping& mapping, MouseAction action, std::size_t slot
 void applyMousePresetBindings(MouseMapping& mapping);
 
 /// The drag action of `button` with `held` modifiers. Modifiers that no drag binding of that button uses
-/// are ignored (Ogun: Alt + Left drag still orbits); the others must match exactly (Ctrl + Left drag:
+/// are ignored (Mesheal: Alt + Left drag still orbits); the others must match exactly (Ctrl + Left drag:
 /// nothing). On a conflict the first action in `kAllMouseActions` order wins.
 [[nodiscard]] std::optional<MouseAction> resolveMouseDrag(const MouseMapping& mapping, MouseInput button,
                                                           MouseModifiers held);
@@ -122,7 +122,7 @@ struct MouseClickMatch {
 };
 
 /// The click action of `button` with `held` modifiers: an exact match first; else the most specific binding
-/// whose modifiers are all held, Toggle Face excepted (Ogun: Ctrl + Shift + click selects, Shift + Alt +
+/// whose modifiers are all held, Toggle Face excepted (Mesheal: Ctrl + Shift + click selects, Shift + Alt +
 /// click selects the shell).
 [[nodiscard]] std::optional<MouseClickMatch> resolveMouseClick(const MouseMapping& mapping, MouseInput button,
                                                                MouseModifiers held);
@@ -168,4 +168,4 @@ struct MouseConflict {
 /// Parses `formatMouseBindingList` text; nullopt when malformed or not valid for `action`.
 [[nodiscard]] std::optional<MouseActionBindings> parseMouseBindingList(std::string_view text, MouseAction action);
 
-} // namespace ogun
+} // namespace mesheal

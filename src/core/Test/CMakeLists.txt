@@ -1,12 +1,12 @@
-add_executable(ogun_core_tests
+add_executable(mesheal_core_tests
     CoreTests.cpp
 )
 
-target_link_libraries(ogun_core_tests
+target_link_libraries(mesheal_core_tests
     PRIVATE
-        ogun::core
+        mesheal::core
         Catch2::Catch2WithMain
-        ogun::warnings
+        mesheal::warnings
 )
 
-catch_discover_tests(ogun_core_tests)
+catch_discover_tests(mesheal_core_tests)

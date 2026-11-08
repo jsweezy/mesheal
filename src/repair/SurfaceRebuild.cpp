@@ -47,7 +47,7 @@
 #include <utility>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 namespace PMP = CGAL::Polygon_mesh_processing;
 
@@ -905,4 +905,4 @@ Mesh simplifyToFaceCount(const Mesh& mesh, std::size_t targetFaces) {
     return polishRebuiltMesh(fromCgalSurfaceMesh(surface, mesh.fileUnit));
 }
 
-} // namespace ogun
+} // namespace mesheal

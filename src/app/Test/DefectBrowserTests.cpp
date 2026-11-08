@@ -8,11 +8,11 @@
 namespace {
 
 /// Thin-face style result: element i has metric 10^-(n-i) (worst first) and subtype i % 2.
-ogun::CategoryResult makeResult(std::size_t n) {
-    ogun::CategoryResult result;
-    result.category = ogun::DefectCategory::ThinFaces;
+mesheal::CategoryResult makeResult(std::size_t n) {
+    mesheal::CategoryResult result;
+    result.category = mesheal::DefectCategory::ThinFaces;
     for (std::size_t i = 0; i < n; ++i) {
-        ogun::DefectElement e;
+        mesheal::DefectElement e;
         e.index = static_cast<Eigen::Index>(100 + i);
         e.metric = std::pow(10.0, -static_cast<double>(n - i));
         e.columns = {e.metric, static_cast<double>(n - i), 0.0};
@@ -27,8 +27,8 @@ ogun::CategoryResult makeResult(std::size_t n) {
 } // namespace
 
 TEST_CASE("DefectBrowser click, Ctrl-toggle and Shift-range selection", "[app][browser]") {
-    const ogun::CategoryResult result = makeResult(6);
-    ogun::DefectBrowser browser;
+    const mesheal::CategoryResult result = makeResult(6);
+    mesheal::DefectBrowser browser;
     browser.setResult(&result);
     REQUIRE(browser.visibleRows().size() == 6);
     REQUIRE_FALSE(browser.hasFocus());
@@ -59,8 +59,8 @@ TEST_CASE("DefectBrowser click, Ctrl-toggle and Shift-range selection", "[app][b
 }
 
 TEST_CASE("DefectBrowser filters prune hidden selection and focus (FB-13)", "[app][browser]") {
-    const ogun::CategoryResult result = makeResult(6);
-    ogun::DefectBrowser browser;
+    const mesheal::CategoryResult result = makeResult(6);
+    mesheal::DefectBrowser browser;
     browser.setResult(&result);
 
     browser.clickRow(0, false, false);
@@ -76,7 +76,7 @@ TEST_CASE("DefectBrowser filters prune hidden selection and focus (FB-13)", "[ap
     REQUIRE(browser.visiblePositionOf(4) == 2);
 
     // The histogram covers only the sub-type-filtered rows; a bin filter hides the rest
-    REQUIRE(browser.histogram().numBins() == ogun::settings::kHistogramBins);
+    REQUIRE(browser.histogram().numBins() == mesheal::settings::kHistogramBins);
     browser.focusElement(4);
     browser.selectBin(0, false);
     REQUIRE(browser.binFilter().has_value());
@@ -84,7 +84,7 @@ TEST_CASE("DefectBrowser filters prune hidden selection and focus (FB-13)", "[ap
     REQUIRE_FALSE(browser.hasFocus());
     REQUIRE(browser.countInBins(*browser.binFilter()) == 1);
 
-    browser.selectBin(ogun::settings::kHistogramBins - 1, true); // Shift: grow the range to every bin
+    browser.selectBin(mesheal::settings::kHistogramBins - 1, true); // Shift: grow the range to every bin
     REQUIRE(browser.visibleRows().size() == 3);
     browser.clearBinFilter();
     browser.setSubtypeFilter(-1);
@@ -92,8 +92,8 @@ TEST_CASE("DefectBrowser filters prune hidden selection and focus (FB-13)", "[ap
 }
 
 TEST_CASE("DefectBrowser steps the focus worst first within the filter and wraps", "[app][browser]") {
-    const ogun::CategoryResult result = makeResult(5);
-    ogun::DefectBrowser browser;
+    const mesheal::CategoryResult result = makeResult(5);
+    mesheal::DefectBrowser browser;
     browser.setResult(&result);
 
     REQUIRE(browser.focusStep(+1));
@@ -114,12 +114,12 @@ TEST_CASE("DefectBrowser steps the focus worst first within the filter and wraps
     REQUIRE(browser.focusedElement() == 1);
 
     REQUIRE(browser.findVisibleElementWithFace(103) == 3);
-    REQUIRE(browser.findVisibleElementWithFace(102) == ogun::DefectBrowser::kNone);
+    REQUIRE(browser.findVisibleElementWithFace(102) == mesheal::DefectBrowser::kNone);
 }
 
 TEST_CASE("DefectBrowser list cap, bin stepping, sorting and reset", "[app][browser]") {
-    const ogun::CategoryResult result = makeResult(8);
-    ogun::DefectBrowser browser;
+    const mesheal::CategoryResult result = makeResult(8);
+    mesheal::DefectBrowser browser;
     browser.setResult(&result);
     REQUIRE(browser.showList(8));
     REQUIRE_FALSE(browser.showList(7));

@@ -4,7 +4,7 @@
 #include <numeric>
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 void DefectBrowser::setResult(const CategoryResult* result) {
     revision_ = nextRevision();
@@ -334,4 +334,4 @@ std::size_t DefectBrowser::findVisibleElementWithFace(Eigen::Index face) const n
     return kNone;
 }
 
-} // namespace ogun
+} // namespace mesheal

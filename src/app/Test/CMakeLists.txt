@@ -1,4 +1,4 @@
-add_executable(ogun_app_tests
+add_executable(mesheal_app_tests
     AboutInfoTests.cpp
     AppControllerTests.cpp
     CliRunnerTests.cpp
@@ -19,11 +19,11 @@ add_executable(ogun_app_tests
     UserPreferencesTests.cpp
 )
 
-target_link_libraries(ogun_app_tests
+target_link_libraries(mesheal_app_tests
     PRIVATE
-        ogun::app_controller
+        mesheal::app_controller
         Catch2::Catch2WithMain
-        ogun::warnings
+        mesheal::warnings
 )
 
-catch_discover_tests(ogun_app_tests)
+catch_discover_tests(mesheal_app_tests)

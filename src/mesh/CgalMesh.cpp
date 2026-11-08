@@ -12,7 +12,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 namespace PMP = CGAL::Polygon_mesh_processing;
 
@@ -200,4 +200,4 @@ CgalFaceIndex extractLocalPatch(
     return mappedCenter;
 }
 
-} // namespace ogun
+} // namespace mesheal

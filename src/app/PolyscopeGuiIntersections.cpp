@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 using gui::dimensionSuffix;
 using gui::signedPercent;
@@ -840,4 +840,4 @@ void PolyscopeGui::drawGlobalCandidateTable() {
     }
 }
 
-} // namespace ogun
+} // namespace mesheal

@@ -7,7 +7,7 @@
 #include <optional>
 #include <span>
 
-namespace ogun {
+namespace mesheal {
 
 /// Rigid transform of Mesh > Transform > Translate / Rotate: p' = R * (p + t), with
 /// R = Rz * Ry * Rx (rotate about the world X axis first, then world Y, then world Z, all about the
@@ -41,4 +41,4 @@ void transformMesh(Mesh& mesh, const Eigen::Vector3d& translation, const Eigen::
 /// skipped; returns nullopt when none is left.
 [[nodiscard]] std::optional<Eigen::Vector3d> facesCentroid(const Mesh& mesh, std::span<const Eigen::Index> faces);
 
-} // namespace ogun
+} // namespace mesheal

@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <fstream>
 
-namespace ogun {
+namespace mesheal {
 
 std::filesystem::path recentFilesPath(const std::filesystem::path& configDirectory) {
     return configDirectory.empty() ? std::filesystem::path{} : configDirectory / kRecentFilesFileName;
@@ -62,4 +62,4 @@ void RecentFiles::add(const std::filesystem::path& path) {
     }
 }
 
-} // namespace ogun
+} // namespace mesheal

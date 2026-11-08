@@ -32,8 +32,8 @@ namespace {
 
 // Planar cap (s, t, a) with neighbor (t, s, o) across its longest edge s-t and two faces above the side-arms.
 // Vertices: s = 0, t = 1, a = 2, o = 3, u = 4. Face 0 is the cap.
-ogun::Mesh makeCapMesh(double apexY, const Eigen::RowVector3d& opposite = {0.0, -1.0, 0.0}) {
-    ogun::Mesh mesh;
+mesheal::Mesh makeCapMesh(double apexY, const Eigen::RowVector3d& opposite = {0.0, -1.0, 0.0}) {
+    mesheal::Mesh mesh;
     mesh.V.resize(5, 3);
     mesh.V << -1.0, 0.0, 0.0,
                1.0, 0.0, 0.0,
@@ -51,12 +51,12 @@ ogun::Mesh makeCapMesh(double apexY, const Eigen::RowVector3d& opposite = {0.0, 
 }
 
 double capApexForAngle(double maxAngleDeg) {
-    return std::tan((180.0 - maxAngleDeg) * 0.5 * ogun::kDegToRad);
+    return std::tan((180.0 - maxAngleDeg) * 0.5 * mesheal::kDegToRad);
 }
 
 // Planar disk with needle (p, q, r) (face 0) whose 1e-4 short edge p-q is shared with needle (q, p, w).
-ogun::Mesh makeNeedleMesh() {
-    ogun::Mesh mesh;
+mesheal::Mesh makeNeedleMesh() {
+    mesheal::Mesh mesh;
     mesh.V.resize(6, 3);
     mesh.V << -1.0,   0.0, 0.0,  // L
                0.0,   0.0, 0.0,  // p
@@ -75,8 +75,8 @@ ogun::Mesh makeNeedleMesh() {
     return mesh;
 }
 
-ogun::Mesh makeTetrahedron() {
-    ogun::Mesh mesh;
+mesheal::Mesh makeTetrahedron() {
+    mesheal::Mesh mesh;
     mesh.V.resize(4, 3);
     mesh.V << 0.0, 0.0, 0.0,
               1.0, 0.0, 0.0,
@@ -92,7 +92,7 @@ ogun::Mesh makeTetrahedron() {
 }
 
 // Closed cube [0, side]^3 with every face subdivided into an n x n grid of quads (2 triangles each).
-ogun::Mesh makeSubdividedCube(int n, double side) {
+mesheal::Mesh makeSubdividedCube(int n, double side) {
     std::map<std::array<int, 3>, int> ids;
     std::vector<Eigen::Vector3d> points;
     std::vector<std::array<int, 3>> tris;
@@ -133,7 +133,7 @@ ogun::Mesh makeSubdividedCube(int n, double side) {
             }
         }
     }
-    ogun::Mesh mesh;
+    mesheal::Mesh mesh;
     mesh.V.resize(static_cast<Eigen::Index>(points.size()), 3);
     for (std::size_t i = 0; i < points.size(); ++i) {
         mesh.V.row(static_cast<Eigen::Index>(i)) = points[i].transpose();
@@ -146,7 +146,7 @@ ogun::Mesh makeSubdividedCube(int n, double side) {
     return mesh;
 }
 
-Eigen::Index nearestFace(const ogun::Mesh& mesh, const Eigen::Vector3d& target) {
+Eigen::Index nearestFace(const mesheal::Mesh& mesh, const Eigen::Vector3d& target) {
     Eigen::Index best = 0;
     double bestDist = std::numeric_limits<double>::infinity();
     for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
@@ -161,12 +161,12 @@ Eigen::Index nearestFace(const ogun::Mesh& mesh, const Eigen::Vector3d& target) 
     return best;
 }
 
-Eigen::Vector3d vertexOf(const ogun::Mesh& mesh, Eigen::Index f, Eigen::Index corner) {
+Eigen::Vector3d vertexOf(const mesheal::Mesh& mesh, Eigen::Index f, Eigen::Index corner) {
     return mesh.V.row(mesh.F(f, corner)).transpose();
 }
 
 // Splits face f = (a, b, c) at `pos` into (a, b, m), (b, c, m), (c, a, m); returns m's index.
-int splitFace(ogun::Mesh& mesh, Eigen::Index f, const Eigen::Vector3d& pos) {
+int splitFace(mesheal::Mesh& mesh, Eigen::Index f, const Eigen::Vector3d& pos) {
     const int a = mesh.F(f, 0);
     const int b = mesh.F(f, 1);
     const int c = mesh.F(f, 2);
@@ -182,12 +182,12 @@ int splitFace(ogun::Mesh& mesh, Eigen::Index f, const Eigen::Vector3d& pos) {
     return m;
 }
 
-bool isClosedManifold(const ogun::Mesh& mesh) {
-    ogun::CgalSurfaceMesh surface;
-    return ogun::toCgalSurfaceMesh(mesh, surface) && CGAL::is_closed(surface) && surface.is_valid(false);
+bool isClosedManifold(const mesheal::Mesh& mesh) {
+    mesheal::CgalSurfaceMesh surface;
+    return mesheal::toCgalSurfaceMesh(mesh, surface) && CGAL::is_closed(surface) && surface.is_valid(false);
 }
 
-bool allNormalsAlign(const ogun::Mesh& mesh, const Eigen::Vector3d& n, double minDot) {
+bool allNormalsAlign(const mesheal::Mesh& mesh, const Eigen::Vector3d& n, double minDot) {
     for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
         if (mesh.N.row(f).dot(n.transpose()) < minDot) {
             return false;
@@ -199,8 +199,8 @@ bool allNormalsAlign(const ogun::Mesh& mesh, const Eigen::Vector3d& n, double mi
 
 // ---- CAD-style test geometry (built in memory) ----------------------------------------------------------------
 
-ogun::Mesh meshFromPoints(const std::vector<Eigen::Vector3d>& points, const std::vector<std::array<int, 3>>& tris) {
-    ogun::Mesh mesh;
+mesheal::Mesh meshFromPoints(const std::vector<Eigen::Vector3d>& points, const std::vector<std::array<int, 3>>& tris) {
+    mesheal::Mesh mesh;
     mesh.V.resize(static_cast<Eigen::Index>(points.size()), 3);
     for (std::size_t i = 0; i < points.size(); ++i) {
         mesh.V.row(static_cast<Eigen::Index>(i)) = points[i].transpose();
@@ -221,7 +221,7 @@ ogun::Mesh meshFromPoints(const std::vector<Eigen::Vector3d>& points, const std:
 // Face 2 is the cap.
 constexpr Eigen::Index kCornerCapFace = 2;
 
-ogun::Mesh makeCornerPatch(int needleSegments = 180) {
+mesheal::Mesh makeCornerPatch(int needleSegments = 180) {
     std::vector<Eigen::Vector3d> P;
     const auto add = [&](double x, double y, double z) {
         P.emplace_back(x, y, z);
@@ -254,7 +254,7 @@ ogun::Mesh makeCornerPatch(int needleSegments = 180) {
 
 // Flat strip [0, 40] x [0, 1] (or two halves folded 90 degrees along the rung at x = 20) triangulated badly: fans
 // from two corners over the far edges. Every triangle is a long needle that Delaunay flips turn into compact ones.
-ogun::Mesh makeFannedStrip(bool fold) {
+mesheal::Mesh makeFannedStrip(bool fold) {
     constexpr int kCells = 20;
     std::vector<Eigen::Vector3d> P;
     std::array<int, kCells + 1> b{};
@@ -285,7 +285,7 @@ ogun::Mesh makeFannedStrip(bool fold) {
 
 // Flat 40 x 40 plate (z = 0) with a 96-sided hole of radius 3 whose wall goes 3 down. The plate is fanned from its
 // four corners into needles whose short edge is a hole-rim segment, like a CAD hole.
-ogun::Mesh makeHolePlate() {
+mesheal::Mesh makeHolePlate() {
     constexpr int kSides = 96;
     constexpr double kRadius = 3.0;
     std::vector<Eigen::Vector3d> P;
@@ -297,11 +297,11 @@ ogun::Mesh makeHolePlate() {
     std::array<int, kSides> top{};
     std::array<int, kSides> bottom{};
     for (int k = 0; k < kSides; ++k) {
-        const double a = 2.0 * ogun::kPi * k / kSides;
+        const double a = 2.0 * mesheal::kPi * k / kSides;
         top[static_cast<std::size_t>(k)] = add(20 + kRadius * std::cos(a), 20 + kRadius * std::sin(a), 0.0);
     }
     for (int k = 0; k < kSides; ++k) {
-        const double a = 2.0 * ogun::kPi * k / kSides;
+        const double a = 2.0 * mesheal::kPi * k / kSides;
         bottom[static_cast<std::size_t>(k)] = add(20 + kRadius * std::cos(a), 20 + kRadius * std::sin(a), -3.0);
     }
     const auto Top = [&](int k) { return top[static_cast<std::size_t>(k % kSides)]; };
@@ -321,7 +321,7 @@ ogun::Mesh makeHolePlate() {
     return meshFromPoints(P, T);
 }
 
-bool hasVertexAt(const ogun::Mesh& mesh, const Eigen::Vector3d& p) {
+bool hasVertexAt(const mesheal::Mesh& mesh, const Eigen::Vector3d& p) {
     for (Eigen::Index i = 0; i < mesh.numVertices(); ++i) {
         if ((mesh.V.row(i).transpose() - p).norm() == 0.0) {
             return true;
@@ -330,7 +330,7 @@ bool hasVertexAt(const ogun::Mesh& mesh, const Eigen::Vector3d& p) {
     return false;
 }
 
-bool hasEdgeBetween(const ogun::Mesh& mesh, const Eigen::Vector3d& p, const Eigen::Vector3d& q) {
+bool hasEdgeBetween(const mesheal::Mesh& mesh, const Eigen::Vector3d& p, const Eigen::Vector3d& q) {
     const auto at = [&](Eigen::Index f, int k) { return Eigen::Vector3d(mesh.V.row(mesh.F(f, k)).transpose()); };
     for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
         for (int k = 0; k < 3; ++k) {
@@ -342,53 +342,53 @@ bool hasEdgeBetween(const ogun::Mesh& mesh, const Eigen::Vector3d& p, const Eige
     return false;
 }
 
-bool sameMesh(const ogun::Mesh& a, const ogun::Mesh& b) {
+bool sameMesh(const mesheal::Mesh& a, const mesheal::Mesh& b) {
     return a.V.rows() == b.V.rows() && a.F.rows() == b.F.rows() && a.V == b.V && a.F == b.F;
 }
 
-std::size_t countIntersectingFaces(const ogun::Mesh& mesh) {
-    return ogun::checkSelfIntersections(mesh, ogun::CheckParams{}).size();
+std::size_t countIntersectingFaces(const mesheal::Mesh& mesh) {
+    return mesheal::checkSelfIntersections(mesh, mesheal::CheckParams{}).size();
 }
 
 } // namespace
 
 TEST_CASE("analyzeFace classifies Caps vs. Needles", "[repair][classify]") {
     SECTION("179.5 deg cap with equal side-arms is a Cap that recommends FlipLongestEdge") {
-        const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(makeCapMesh(capApexForAngle(179.5)), 0);
+        const mesheal::SliverAnalysis a = mesheal::SliverHealer::analyzeFace(makeCapMesh(capApexForAngle(179.5)), 0);
         CHECK(a.faceIndex == 0);
-        CHECK(a.type == ogun::SliverType::Cap);
-        CHECK(a.recommendedAction == ogun::HealAction::FlipLongestEdge);
+        CHECK(a.type == mesheal::SliverType::Cap);
+        CHECK(a.recommendedAction == mesheal::HealAction::FlipLongestEdge);
         CHECK(a.maxAngleDeg == Catch::Approx(179.5).margin(1e-6));
         CHECK(a.longestEdgeFlippable);
         CHECK_FALSE(a.longestEdgeIsBorder);
     }
 
     SECTION("triangle with l_min / l_max = 1e-4 is a Needle that recommends CollapseShortestEdge") {
-        const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(makeNeedleMesh(), 0);
-        CHECK(a.type == ogun::SliverType::Needle);
-        CHECK(a.recommendedAction == ogun::HealAction::CollapseShortestEdge);
+        const mesheal::SliverAnalysis a = mesheal::SliverHealer::analyzeFace(makeNeedleMesh(), 0);
+        CHECK(a.type == mesheal::SliverType::Needle);
+        CHECK(a.recommendedAction == mesheal::HealAction::CollapseShortestEdge);
         CHECK(a.edgeRatio == Catch::Approx(1e-4).margin(1e-7));
         CHECK(a.violatesThresholds);
     }
 
     SECTION("well-shaped faces are Healthy") {
-        const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(ogun::SampleMeshes::createCubeMesh(), 0);
-        CHECK(a.type == ogun::SliverType::Healthy);
-        CHECK(a.recommendedAction == ogun::HealAction::None);
+        const mesheal::SliverAnalysis a = mesheal::SliverHealer::analyzeFace(mesheal::SampleMeshes::createCubeMesh(), 0);
+        CHECK(a.type == mesheal::SliverType::Healthy);
+        CHECK(a.recommendedAction == mesheal::HealAction::None);
         CHECK(a.maxAngleDeg == Catch::Approx(90.0));
     }
 
     SECTION("isolated microscopic island is a DanglingFlap that recommends RemoveDegenerateFace") {
         // Well shaped (aspect 2): only an advanced height floor flags it
-        const ogun::Mesh sample = ogun::createSampleDefectiveMesh();
-        CHECK(ogun::SliverHealer::analyzeFace(sample, ogun::SampleMeshes::kMicroscopicFaceIndex).type ==
-              ogun::SliverType::Healthy);
-        const ogun::ThinFaceThresholds heightFloor{1.0e-4, 0.0, ogun::settings::kDefaultThinFaceMaxAspectRatio};
-        const ogun::SliverAnalysis a =
-            ogun::SliverHealer::analyzeFace(sample, ogun::SampleMeshes::kMicroscopicFaceIndex, heightFloor);
+        const mesheal::Mesh sample = mesheal::createSampleDefectiveMesh();
+        CHECK(mesheal::SliverHealer::analyzeFace(sample, mesheal::SampleMeshes::kMicroscopicFaceIndex).type ==
+              mesheal::SliverType::Healthy);
+        const mesheal::ThinFaceThresholds heightFloor{1.0e-4, 0.0, mesheal::settings::kDefaultThinFaceMaxAspectRatio};
+        const mesheal::SliverAnalysis a =
+            mesheal::SliverHealer::analyzeFace(sample, mesheal::SampleMeshes::kMicroscopicFaceIndex, heightFloor);
         CHECK(a.numBorderEdges == 3);
-        CHECK(a.type == ogun::SliverType::DanglingFlap);
-        CHECK(a.recommendedAction == ogun::HealAction::RemoveDegenerateFace);
+        CHECK(a.type == mesheal::SliverType::DanglingFlap);
+        CHECK(a.recommendedAction == mesheal::HealAction::RemoveDegenerateFace);
     }
 }
 
@@ -396,71 +396,71 @@ TEST_CASE("FlipLongestEdge heals coplanar caps", "[repair][flip]") {
     const double apexY = GENERATE(capApexForAngle(179.5), 0.0);
     CAPTURE(apexY);
 
-    const ogun::Mesh mesh = makeCapMesh(apexY);
-    ogun::CgalSurfaceMesh surface;
-    REQUIRE(ogun::toCgalSurfaceMesh(mesh, surface));
-    REQUIRE(ogun::SliverHealer::analyzeFace(surface, ogun::CgalFaceIndex(0)).type == ogun::SliverType::Cap);
+    const mesheal::Mesh mesh = makeCapMesh(apexY);
+    mesheal::CgalSurfaceMesh surface;
+    REQUIRE(mesheal::toCgalSurfaceMesh(mesh, surface));
+    REQUIRE(mesheal::SliverHealer::analyzeFace(surface, mesheal::CgalFaceIndex(0)).type == mesheal::SliverType::Cap);
 
     std::string status;
-    REQUIRE(ogun::SliverHealer::applyHealAction(
-        surface, ogun::CgalFaceIndex(0), ogun::HealAction::FlipLongestEdge, {}, &status));
+    REQUIRE(mesheal::SliverHealer::applyHealAction(
+        surface, mesheal::CgalFaceIndex(0), mesheal::HealAction::FlipLongestEdge, {}, &status));
     CHECK_FALSE(status.empty());
 
-    const ogun::Mesh healed = ogun::fromCgalSurfaceMesh(surface);
+    const mesheal::Mesh healed = mesheal::fromCgalSurfaceMesh(surface);
     CHECK(healed.numVertices() == mesh.numVertices());
     CHECK(healed.numFaces() == mesh.numFaces());
     CHECK(allNormalsAlign(healed, Eigen::Vector3d::UnitZ(), 0.999));
-    CHECK(ogun::ThinFaceChecker::check(healed).empty());
+    CHECK(mesheal::ThinFaceChecker::check(healed).empty());
 }
 
 TEST_CASE("FlipLongestEdge rejects creases and non-convex quads", "[repair][flip]") {
     const double apexY = capApexForAngle(179.5);
 
     SECTION("neighbor across a 90 deg crease") {
-        ogun::CgalSurfaceMesh surface;
-        REQUIRE(ogun::toCgalSurfaceMesh(makeCapMesh(apexY, {0.0, 0.0, -1.0}), surface));
-        const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(surface, ogun::CgalFaceIndex(0));
-        CHECK(a.type == ogun::SliverType::Cap);
+        mesheal::CgalSurfaceMesh surface;
+        REQUIRE(mesheal::toCgalSurfaceMesh(makeCapMesh(apexY, {0.0, 0.0, -1.0}), surface));
+        const mesheal::SliverAnalysis a = mesheal::SliverHealer::analyzeFace(surface, mesheal::CgalFaceIndex(0));
+        CHECK(a.type == mesheal::SliverType::Cap);
         CHECK_FALSE(a.longestEdgeFlippable);
-        CHECK(a.recommendedAction == ogun::HealAction::DissolveCollinearVertex);
+        CHECK(a.recommendedAction == mesheal::HealAction::DissolveCollinearVertex);
 
         std::string status;
-        CHECK_FALSE(ogun::SliverHealer::applyHealAction(
-            surface, ogun::CgalFaceIndex(0), ogun::HealAction::FlipLongestEdge, {}, &status));
+        CHECK_FALSE(mesheal::SliverHealer::applyHealAction(
+            surface, mesheal::CgalFaceIndex(0), mesheal::HealAction::FlipLongestEdge, {}, &status));
         CHECK(status.find("crease") != std::string::npos);
         CHECK(surface.number_of_faces() == 4);
     }
 
     SECTION("neighbor forms a non-convex quad") {
-        ogun::CgalSurfaceMesh surface;
-        REQUIRE(ogun::toCgalSurfaceMesh(makeCapMesh(apexY, {-2.0, -0.001, 0.0}), surface));
+        mesheal::CgalSurfaceMesh surface;
+        REQUIRE(mesheal::toCgalSurfaceMesh(makeCapMesh(apexY, {-2.0, -0.001, 0.0}), surface));
         std::string status;
-        CHECK_FALSE(ogun::SliverHealer::applyHealAction(
-            surface, ogun::CgalFaceIndex(0), ogun::HealAction::FlipLongestEdge, {}, &status));
+        CHECK_FALSE(mesheal::SliverHealer::applyHealAction(
+            surface, mesheal::CgalFaceIndex(0), mesheal::HealAction::FlipLongestEdge, {}, &status));
         CHECK(status.find("non-convex") != std::string::npos);
     }
 
     SECTION("neighbor flip would still leave a thin / sliver face") {
-        ogun::CgalSurfaceMesh surface;
+        mesheal::CgalSurfaceMesh surface;
         // With opposite very close to the edge (y = -1e-4), post-flip triangles are slivers (aspect > 100)
-        REQUIRE(ogun::toCgalSurfaceMesh(makeCapMesh(apexY, {0.0, -1.0e-4, 0.0}), surface));
-        const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(surface, ogun::CgalFaceIndex(0));
-        CHECK(a.type == ogun::SliverType::Cap);
+        REQUIRE(mesheal::toCgalSurfaceMesh(makeCapMesh(apexY, {0.0, -1.0e-4, 0.0}), surface));
+        const mesheal::SliverAnalysis a = mesheal::SliverHealer::analyzeFace(surface, mesheal::CgalFaceIndex(0));
+        CHECK(a.type == mesheal::SliverType::Cap);
         CHECK_FALSE(a.longestEdgeFlippable);
-        CHECK(a.recommendedAction == ogun::HealAction::DissolveCollinearVertex);
+        CHECK(a.recommendedAction == mesheal::HealAction::DissolveCollinearVertex);
 
         std::string status;
-        CHECK_FALSE(ogun::SliverHealer::applyHealAction(
-            surface, ogun::CgalFaceIndex(0), ogun::HealAction::FlipLongestEdge, {}, &status));
+        CHECK_FALSE(mesheal::SliverHealer::applyHealAction(
+            surface, mesheal::CgalFaceIndex(0), mesheal::HealAction::FlipLongestEdge, {}, &status));
         CHECK(status.find("still leave a thin") != std::string::npos);
     }
 }
 
 TEST_CASE("CollapseShortestEdge dissolves needles and respects the link condition", "[repair][collapse]") {
     SECTION("needle collapse removes one vertex and two faces without inverting neighbors") {
-        const ogun::Mesh mesh = makeNeedleMesh();
-        const ogun::RepairResults r =
-            ogun::SliverHealer::healSingleFace(mesh, 0, ogun::HealAction::CollapseShortestEdge);
+        const mesheal::Mesh mesh = makeNeedleMesh();
+        const mesheal::RepairResults r =
+            mesheal::SliverHealer::healSingleFace(mesh, 0, mesheal::HealAction::CollapseShortestEdge);
         REQUIRE(r.success);
         CHECK(r.edgeCollapses == 1);
         CHECK(r.mesh.numVertices() == mesh.numVertices() - 1);
@@ -471,18 +471,18 @@ TEST_CASE("CollapseShortestEdge dissolves needles and respects the link conditio
     }
 
     SECTION("collapse on a minimal tetrahedron violates the link condition") {
-        const ogun::Mesh tet = makeTetrahedron();
-        ogun::CgalSurfaceMesh surface;
-        REQUIRE(ogun::toCgalSurfaceMesh(tet, surface));
+        const mesheal::Mesh tet = makeTetrahedron();
+        mesheal::CgalSurfaceMesh surface;
+        REQUIRE(mesheal::toCgalSurfaceMesh(tet, surface));
         std::string status;
-        CHECK_FALSE(ogun::SliverHealer::applyHealAction(
-            surface, ogun::CgalFaceIndex(0), ogun::HealAction::CollapseShortestEdge, {}, &status));
+        CHECK_FALSE(mesheal::SliverHealer::applyHealAction(
+            surface, mesheal::CgalFaceIndex(0), mesheal::HealAction::CollapseShortestEdge, {}, &status));
         CHECK(status.find("link condition") != std::string::npos);
         CHECK(surface.number_of_vertices() == 4);
         CHECK(surface.number_of_faces() == 4);
 
-        const ogun::RepairResults r =
-            ogun::SliverHealer::healSingleFace(tet, 0, ogun::HealAction::CollapseShortestEdge);
+        const mesheal::RepairResults r =
+            mesheal::SliverHealer::healSingleFace(tet, 0, mesheal::HealAction::CollapseShortestEdge);
         CHECK_FALSE(r.success);
         CHECK(r.mesh.V == tet.V);
         CHECK(r.mesh.F == tet.F);
@@ -491,9 +491,9 @@ TEST_CASE("CollapseShortestEdge dissolves needles and respects the link conditio
 
 TEST_CASE("SnapCollinearCollapse snaps a creased cap onto its corner vertex", "[repair][snap]") {
     // Cap across a 90 deg crease: flipping is rejected, so the apex is collapsed onto a fixed corner.
-    const ogun::Mesh mesh = makeCapMesh(capApexForAngle(179.5), {0.0, 0.0, -1.0});
-    const ogun::RepairResults r =
-        ogun::SliverHealer::healSingleFace(mesh, 0, ogun::HealAction::SnapCollinearCollapse);
+    const mesheal::Mesh mesh = makeCapMesh(capApexForAngle(179.5), {0.0, 0.0, -1.0});
+    const mesheal::RepairResults r =
+        mesheal::SliverHealer::healSingleFace(mesh, 0, mesheal::HealAction::SnapCollinearCollapse);
     REQUIRE(r.success);
     CHECK(r.mesh.numVertices() == mesh.numVertices() - 1);
     CHECK(r.mesh.numFaces() == mesh.numFaces() - 2);
@@ -514,25 +514,25 @@ TEST_CASE("DissolveCollinearVertex dissolves apex and retriangulates coplanar pa
     const double apexY = capApexForAngle(179.5);
     // Neighbor face across longest edge is at a 90 deg crease (z = -1), so FlipLongestEdge is rejected.
     // Incident faces around the apex are all coplanar in the XY plane -> DissolveCollinearVertex recommended.
-    const ogun::Mesh mesh = makeCapMesh(apexY, {0.0, 0.0, -1.0});
-    ogun::CgalSurfaceMesh surface;
-    REQUIRE(ogun::toCgalSurfaceMesh(mesh, surface));
-    const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(surface, ogun::CgalFaceIndex(0));
-    CHECK(a.type == ogun::SliverType::Cap);
+    const mesheal::Mesh mesh = makeCapMesh(apexY, {0.0, 0.0, -1.0});
+    mesheal::CgalSurfaceMesh surface;
+    REQUIRE(mesheal::toCgalSurfaceMesh(mesh, surface));
+    const mesheal::SliverAnalysis a = mesheal::SliverHealer::analyzeFace(surface, mesheal::CgalFaceIndex(0));
+    CHECK(a.type == mesheal::SliverType::Cap);
     CHECK_FALSE(a.longestEdgeFlippable);
-    CHECK(a.recommendedAction == ogun::HealAction::DissolveCollinearVertex);
+    CHECK(a.recommendedAction == mesheal::HealAction::DissolveCollinearVertex);
 
-    const ogun::RepairResults r =
-        ogun::SliverHealer::healSingleFace(mesh, 0, ogun::HealAction::DissolveCollinearVertex);
+    const mesheal::RepairResults r =
+        mesheal::SliverHealer::healSingleFace(mesh, 0, mesheal::HealAction::DissolveCollinearVertex);
     REQUIRE(r.success);
     CHECK(r.facesRemoved >= 1);
     CHECK(r.mesh.numVertices() == mesh.numVertices() - 1);
-    CHECK(ogun::ThinFaceChecker::check(r.mesh).empty());
+    CHECK(mesheal::ThinFaceChecker::check(r.mesh).empty());
 }
 
 TEST_CASE("SplitNeighborEdge splits neighbor face without moving vertex on a crease", "[repair][split]") {
     const double apexY = capApexForAngle(179.5);
-    ogun::Mesh mesh;
+    mesheal::Mesh mesh;
     mesh.V.resize(6, 3);
     mesh.V << -1.0, 0.0, 1.0,     // 0: s
                1.0, 0.0, 1.0,     // 1: t
@@ -548,21 +548,21 @@ TEST_CASE("SplitNeighborEdge splits neighbor face without moving vertex on a cre
               2, 5, 4;  // wall
     mesh.recomputeNormals();
 
-    ogun::CgalSurfaceMesh surface;
-    REQUIRE(ogun::toCgalSurfaceMesh(mesh, surface));
-    auto pins = surface.add_property_map<ogun::CgalVertexIndex, std::uint8_t>(
-        ogun::SliverHealer::kPinnedVertexProperty, 0).first;
-    pins[ogun::CgalVertexIndex(2)] = 1; // Pin apex (must stay fixed in place)
+    mesheal::CgalSurfaceMesh surface;
+    REQUIRE(mesheal::toCgalSurfaceMesh(mesh, surface));
+    auto pins = surface.add_property_map<mesheal::CgalVertexIndex, std::uint8_t>(
+        mesheal::SliverHealer::kPinnedVertexProperty, 0).first;
+    pins[mesheal::CgalVertexIndex(2)] = 1; // Pin apex (must stay fixed in place)
 
-    const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(surface, ogun::CgalFaceIndex(0));
-    CHECK(a.type == ogun::SliverType::Cap);
+    const mesheal::SliverAnalysis a = mesheal::SliverHealer::analyzeFace(surface, mesheal::CgalFaceIndex(0));
+    CHECK(a.type == mesheal::SliverType::Cap);
     CHECK_FALSE(a.longestEdgeFlippable);
     // Apex is pinned and on a crease: cannot dissolve or collapse, so SplitNeighborEdge is recommended.
-    CHECK(a.recommendedAction == ogun::HealAction::SplitNeighborEdge);
+    CHECK(a.recommendedAction == mesheal::HealAction::SplitNeighborEdge);
 
     std::string status;
-    CHECK(ogun::SliverHealer::applyHealAction(
-        surface, ogun::CgalFaceIndex(0), ogun::HealAction::SplitNeighborEdge, {}, &status));
+    CHECK(mesheal::SliverHealer::applyHealAction(
+        surface, mesheal::CgalFaceIndex(0), mesheal::HealAction::SplitNeighborEdge, {}, &status));
     CHECK(status.find("Split the neighbor face") != std::string::npos);
 
     // Verify all original vertex coordinates are exactly preserved
@@ -580,34 +580,34 @@ TEST_CASE("SplitNeighborEdge splits neighbor face without moving vertex on a cre
 }
 
 TEST_CASE("RemoveDegenerateFace removes only dangling faces", "[repair][remove]") {
-    const ogun::Mesh sample = ogun::createSampleDefectiveMesh();
-    const ogun::RepairResults removed = ogun::SliverHealer::healSingleFace(
-        sample, ogun::SampleMeshes::kNeedleSliverFaceIndex, ogun::HealAction::RemoveDegenerateFace);
+    const mesheal::Mesh sample = mesheal::createSampleDefectiveMesh();
+    const mesheal::RepairResults removed = mesheal::SliverHealer::healSingleFace(
+        sample, mesheal::SampleMeshes::kNeedleSliverFaceIndex, mesheal::HealAction::RemoveDegenerateFace);
     REQUIRE(removed.success);
     CHECK(removed.mesh.numFaces() == sample.numFaces() - 1);
     CHECK(removed.remainingThinFaces == removed.initialThinFaces - 1);
 
-    const ogun::RepairResults rejected =
-        ogun::SliverHealer::healSingleFace(makeNeedleMesh(), 0, ogun::HealAction::RemoveDegenerateFace);
+    const mesheal::RepairResults rejected =
+        mesheal::SliverHealer::healSingleFace(makeNeedleMesh(), 0, mesheal::HealAction::RemoveDegenerateFace);
     CHECK_FALSE(rejected.success);
     CHECK(rejected.statusMessage.find("hole") != std::string::npos);
 }
 
 TEST_CASE("previewSingleFaceRepair heals a 2-ring patch without touching the base mesh", "[repair][preview]") {
-    const ogun::Mesh mesh = makeNeedleMesh();
-    const ogun::Mesh before = mesh;
+    const mesheal::Mesh mesh = makeNeedleMesh();
+    const mesheal::Mesh before = mesh;
 
-    const ogun::SingleFaceRepairPreview preview = ogun::SliverHealer::previewSingleFaceRepair(mesh, 0);
+    const mesheal::SingleFaceRepairPreview preview = mesheal::SliverHealer::previewSingleFaceRepair(mesh, 0);
     REQUIRE(preview.valid);
-    CHECK(preview.analysis.type == ogun::SliverType::Needle);
-    CHECK(preview.appliedAction == ogun::HealAction::CollapseShortestEdge);
+    CHECK(preview.analysis.type == mesheal::SliverType::Needle);
+    CHECK(preview.appliedAction == mesheal::HealAction::CollapseShortestEdge);
     CHECK_FALSE(preview.statusMessage.empty());
 
     CHECK(mesh.V == before.V);
     CHECK(mesh.F == before.F);
 
     // The whole disk is within 2 rings, so the healed patch has the needle pair removed.
-    const ogun::Mesh& patch = preview.previewPatchMesh;
+    const mesheal::Mesh& patch = preview.previewPatchMesh;
     REQUIRE_FALSE(patch.empty());
     CHECK(patch.numFaces() == mesh.numFaces() - 2);
     CHECK(patch.numVertices() == mesh.numVertices() - 1);
@@ -618,50 +618,50 @@ TEST_CASE("previewSingleFaceRepair heals a 2-ring patch without touching the bas
     CHECK(replaced == std::vector<Eigen::Index>{0, 1, 2, 3, 4, 5});
 
     // Planar patch is lifted along +Z by previewOffsetFactor * bounding diagonal.
-    const double expectedOffset = ogun::SliverHealerSettings{}.previewOffsetFactor * std::sqrt(8.0);
+    const double expectedOffset = mesheal::SliverHealerSettings{}.previewOffsetFactor * std::sqrt(8.0);
     for (Eigen::Index i = 0; i < patch.numVertices(); ++i) {
         CHECK(patch.V(i, 2) == Catch::Approx(expectedOffset).epsilon(1e-6));
     }
 
     SECTION("an unsafe strategy yields an invalid preview with a reason") {
-        const ogun::SingleFaceRepairPreview bad = ogun::SliverHealer::previewSingleFaceRepair(
-            mesh, 0, ogun::HealAction::RemoveDegenerateFace);
+        const mesheal::SingleFaceRepairPreview bad = mesheal::SliverHealer::previewSingleFaceRepair(
+            mesh, 0, mesheal::HealAction::RemoveDegenerateFace);
         CHECK_FALSE(bad.valid);
-        CHECK(bad.appliedAction == ogun::HealAction::RemoveDegenerateFace);
+        CHECK(bad.appliedAction == mesheal::HealAction::RemoveDegenerateFace);
         CHECK_FALSE(bad.statusMessage.empty());
         CHECK(bad.previewPatchMesh.empty());
         CHECK(bad.sourceFaceIndices.empty());
     }
 
     SECTION("a healthy face needs no preview") {
-        const ogun::SingleFaceRepairPreview healthy =
-            ogun::SliverHealer::previewSingleFaceRepair(ogun::SampleMeshes::createCubeMesh(), 0);
+        const mesheal::SingleFaceRepairPreview healthy =
+            mesheal::SliverHealer::previewSingleFaceRepair(mesheal::SampleMeshes::createCubeMesh(), 0);
         CHECK_FALSE(healthy.valid);
-        CHECK(healthy.appliedAction == ogun::HealAction::None);
+        CHECK(healthy.appliedAction == mesheal::HealAction::None);
     }
 }
 
 TEST_CASE("healAllThinFaces heals every thin face", "[repair][batch]") {
     SECTION("sample defective mesh") {
-        const ogun::Mesh sample = ogun::createSampleDefectiveMesh();
+        const mesheal::Mesh sample = mesheal::createSampleDefectiveMesh();
         // Zero-area and needle; the well-shaped microscopic face is not thin at 100 : 1
-        REQUIRE(ogun::ThinFaceChecker::check(sample).numDefects() == 2);
+        REQUIRE(mesheal::ThinFaceChecker::check(sample).numDefects() == 2);
 
-        const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(sample);
+        const mesheal::RepairResults r = mesheal::SliverHealer::healAllThinFaces(sample);
         CHECK(r.success);
         CHECK(r.initialThinFaces == 2);
         CHECK(r.remainingThinFaces == 0);
-        CHECK(ogun::ThinFaceChecker::check(r.mesh).empty());
+        CHECK(mesheal::ThinFaceChecker::check(r.mesh).empty());
         CHECK(r.mesh.fileUnit == sample.fileUnit);
     }
 
     SECTION("subdivided manifold cube with injected Cap, Needle and Microscopic slivers") {
         // The 1e-5-scale triangle is Microscopic only under an advanced height floor
-        const ogun::ThinFaceThresholds heightFloor{1.0e-4, 0.0, ogun::settings::kDefaultThinFaceMaxAspectRatio};
-        ogun::Mesh cube = makeSubdividedCube(4, 10.0);
+        const mesheal::ThinFaceThresholds heightFloor{1.0e-4, 0.0, mesheal::settings::kDefaultThinFaceMaxAspectRatio};
+        mesheal::Mesh cube = makeSubdividedCube(4, 10.0);
         REQUIRE(isClosedManifold(cube));
-        REQUIRE(ogun::ThinFaceChecker::check(cube, heightFloor).empty());
-        const ogun::BoundingBox box = cube.boundingBox();
+        REQUIRE(mesheal::ThinFaceChecker::check(cube, heightFloor).empty());
+        const mesheal::BoundingBox box = cube.boundingBox();
 
         // Cap: vertex 1e-5 off the midpoint of an interior grid edge on the top face.
         {
@@ -692,37 +692,37 @@ TEST_CASE("healAllThinFaces heals every thin face", "[repair][batch]") {
         }
         REQUIRE(isClosedManifold(cube));
 
-        const ogun::ThinFaceReport before = ogun::ThinFaceChecker::check(cube, heightFloor);
+        const mesheal::ThinFaceReport before = mesheal::ThinFaceChecker::check(cube, heightFloor);
         REQUIRE(before.numDefects() >= 3);
         bool sawCap = false;
         bool sawNeedle = false;
         bool sawMicroscopic = false;
         for (const Eigen::Index f : before.faceIndices) {
-            const ogun::SliverType type = ogun::SliverHealer::analyzeFace(cube, f, heightFloor).type;
-            sawCap = sawCap || type == ogun::SliverType::Cap;
-            sawNeedle = sawNeedle || type == ogun::SliverType::Needle;
-            sawMicroscopic = sawMicroscopic || type == ogun::SliverType::Microscopic;
+            const mesheal::SliverType type = mesheal::SliverHealer::analyzeFace(cube, f, heightFloor).type;
+            sawCap = sawCap || type == mesheal::SliverType::Cap;
+            sawNeedle = sawNeedle || type == mesheal::SliverType::Needle;
+            sawMicroscopic = sawMicroscopic || type == mesheal::SliverType::Microscopic;
         }
         CHECK(sawCap);
         CHECK(sawNeedle);
         CHECK(sawMicroscopic);
 
-        const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(cube, heightFloor);
+        const mesheal::RepairResults r = mesheal::SliverHealer::healAllThinFaces(cube, heightFloor);
         CHECK(r.success);
         CHECK(r.remainingThinFaces == 0);
-        CHECK(ogun::ThinFaceChecker::check(r.mesh, heightFloor).empty());
+        CHECK(mesheal::ThinFaceChecker::check(r.mesh, heightFloor).empty());
         CHECK(r.edgeFlips >= 1);
         CHECK(r.edgeCollapses >= 2);
         CHECK(isClosedManifold(r.mesh));
 
-        const ogun::BoundingBox after = r.mesh.boundingBox();
+        const mesheal::BoundingBox after = r.mesh.boundingBox();
         CHECK((after.min - box.min).norm() < 1e-9);
         CHECK((after.max - box.max).norm() < 1e-9);
     }
 }
 
 TEST_CASE("healFaces repairs only the listed faces with their recommended actions", "[repair][selected]") {
-    ogun::Mesh cube = makeSubdividedCube(4, 10.0);
+    mesheal::Mesh cube = makeSubdividedCube(4, 10.0);
     {
         const Eigen::Index f = nearestFace(cube, {4.17, 3.33, 10.0});
         const Eigen::Vector3d a = vertexOf(cube, f, 0);
@@ -737,26 +737,26 @@ TEST_CASE("healFaces repairs only the listed faces with their recommended action
         const Eigen::Vector3d centroid = (vertexOf(cube, f, 0) + vertexOf(cube, f, 1) + c) / 3.0;
         splitFace(cube, f, c + 1e-5 * (centroid - c).normalized());
     }
-    const ogun::ThinFaceReport before = ogun::ThinFaceChecker::check(cube);
+    const mesheal::ThinFaceReport before = mesheal::ThinFaceChecker::check(cube);
     REQUIRE(before.numDefects() >= 2);
 
-    const ogun::RepairResults one = ogun::SliverHealer::healFaces(cube, {before.faceIndices.front()});
+    const mesheal::RepairResults one = mesheal::SliverHealer::healFaces(cube, {before.faceIndices.front()});
     CHECK(one.success);
     CHECK(one.remainingThinFaces < before.numDefects());
     CHECK(one.remainingThinFaces > 0);
 
-    const ogun::RepairResults all = ogun::SliverHealer::healFaces(cube, before.faceIndices);
+    const mesheal::RepairResults all = mesheal::SliverHealer::healFaces(cube, before.faceIndices);
     CHECK(all.success);
     CHECK(all.remainingThinFaces < one.remainingThinFaces);
 
-    const ogun::RepairResults none = ogun::SliverHealer::healFaces(cube, {});
+    const mesheal::RepairResults none = mesheal::SliverHealer::healFaces(cube, {});
     CHECK_FALSE(none.success);
     CHECK(none.mesh.numFaces() == cube.numFaces());
 }
 
 TEST_CASE("The aspect-110 Small face is collapsed along its shortest edge", "[repair][thin-faces]") {
     // Planar patch around the Small face (p, q, r): aspect 110, short edge p-r 5.08 %, largest angle 169.2 deg
-    ogun::Mesh mesh;
+    mesheal::Mesh mesh;
     mesh.V.resize(6, 3);
     mesh.V << 0.0,   0.0,          0.0,  // p
               1.0,   0.0,          0.0,  // q
@@ -772,19 +772,19 @@ TEST_CASE("The aspect-110 Small face is collapsed along its shortest edge", "[re
               2, 4, 5;
     mesh.recomputeNormals();
 
-    const ogun::ThinFaceReport before = ogun::ThinFaceChecker::check(mesh);
+    const mesheal::ThinFaceReport before = mesheal::ThinFaceChecker::check(mesh);
     REQUIRE(before.faceIndices == std::vector<Eigen::Index>{0});
-    REQUIRE(ogun::classifyThinDefect(before.defects[0]) == ogun::ThinFaceSubtype::Small);
+    REQUIRE(mesheal::classifyThinDefect(before.defects[0]) == mesheal::ThinFaceSubtype::Small);
 
-    const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(mesh, 0);
-    CHECK(a.type == ogun::SliverType::Microscopic);
-    CHECK(a.recommendedAction == ogun::HealAction::CollapseShortestEdge);
+    const mesheal::SliverAnalysis a = mesheal::SliverHealer::analyzeFace(mesh, 0);
+    CHECK(a.type == mesheal::SliverType::Microscopic);
+    CHECK(a.recommendedAction == mesheal::HealAction::CollapseShortestEdge);
 
     // The Delaunay flip pass would heal this planar patch without a collapse (see the flip-first test below);
     // switch it off to keep exercising the collapse of the shortest edge.
-    ogun::SliverHealerSettings noFlips;
+    mesheal::SliverHealerSettings noFlips;
     noFlips.delaunayFlipFirst = false;
-    const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(mesh, {}, noFlips);
+    const mesheal::RepairResults r = mesheal::SliverHealer::healAllThinFaces(mesh, {}, noFlips);
     REQUIRE(r.success);
     CHECK(r.initialThinFaces == 1);
     CHECK(r.remainingThinFaces == 0);
@@ -799,7 +799,7 @@ namespace {
 
 /// A closed subdivided cube with one needle: a vertex 1e-5 from grid vertex `c` on the +X face.
 struct NeedleCube {
-    ogun::Mesh mesh;
+    mesheal::Mesh mesh;
     int c = -1; ///< The grid vertex
     int m = -1; ///< The vertex next to it
 };
@@ -821,10 +821,10 @@ TEST_CASE("The batch sliver heals stop when asked and return the input", "[repai
     const NeedleCube cube = makeNeedleCube();
     std::stop_source stop;
     stop.request_stop();
-    ogun::SliverHealOptions options;
+    mesheal::SliverHealOptions options;
     options.stopToken = stop.get_token();
 
-    const ogun::RepairResults all = ogun::SliverHealer::healAllThinFaces(cube.mesh, {}, {}, options);
+    const mesheal::RepairResults all = mesheal::SliverHealer::healAllThinFaces(cube.mesh, {}, {}, options);
     CHECK_FALSE(all.success);
     CHECK(all.cancelled);
     CHECK(all.statusMessage == "Cancelled.");
@@ -833,24 +833,24 @@ TEST_CASE("The batch sliver heals stop when asked and return the input", "[repai
     CHECK(all.faceMap.size() == static_cast<std::size_t>(cube.mesh.numFaces()));
     CHECK(all.faceMap.back() == cube.mesh.numFaces() - 1);
 
-    const ogun::RepairResults some = ogun::SliverHealer::healFaces(cube.mesh, ogun::ThinFaceChecker::check(cube.mesh).faceIndices, {}, {}, options);
+    const mesheal::RepairResults some = mesheal::SliverHealer::healFaces(cube.mesh, mesheal::ThinFaceChecker::check(cube.mesh).faceIndices, {}, {}, options);
     CHECK(some.cancelled);
     CHECK(some.mesh.F == cube.mesh.F);
 
     // Not stopped: healed as before
-    const ogun::RepairResults healed = ogun::SliverHealer::healAllThinFaces(cube.mesh);
+    const mesheal::RepairResults healed = mesheal::SliverHealer::healAllThinFaces(cube.mesh);
     CHECK_FALSE(healed.cancelled);
     CHECK(healed.remainingThinFaces == 0);
 }
 
 TEST_CASE("Pinned vertices never move in the sliver healer", "[repair][batch][pinned]") {
     const NeedleCube cube = makeNeedleCube();
-    const ogun::Mesh& mesh = cube.mesh;
-    REQUIRE(ogun::ThinFaceChecker::check(mesh).numDefects() >= 2);
+    const mesheal::Mesh& mesh = cube.mesh;
+    REQUIRE(mesheal::ThinFaceChecker::check(mesh).numDefects() >= 2);
     std::vector<std::uint8_t> pinned(static_cast<std::size_t>(mesh.numVertices()), 0);
-    ogun::SliverHealOptions options;
+    mesheal::SliverHealOptions options;
 
-    const auto requirePinsKept = [&](const ogun::RepairResults& r) {
+    const auto requirePinsKept = [&](const mesheal::RepairResults& r) {
         REQUIRE(r.vertexMap.size() == static_cast<std::size_t>(mesh.numVertices()));
         for (std::size_t v = 0; v < pinned.size(); ++v) {
             if (pinned[v] != 0) {
@@ -862,7 +862,7 @@ TEST_CASE("Pinned vertices never move in the sliver healer", "[repair][batch][pi
 
     SECTION("The grid vertex pinned: the needle collapses onto it") {
         // Without pins the collapse goes to the midpoint (the grid vertex moves by 5e-6)
-        const ogun::RepairResults free = ogun::SliverHealer::healAllThinFaces(mesh);
+        const mesheal::RepairResults free = mesheal::SliverHealer::healAllThinFaces(mesh);
         REQUIRE(free.remainingThinFaces == 0);
         const Eigen::Index cAfter = free.vertexMap[static_cast<std::size_t>(cube.c)];
         const Eigen::Index merged = cAfter >= 0 ? cAfter : free.vertexMap[static_cast<std::size_t>(cube.m)];
@@ -871,9 +871,9 @@ TEST_CASE("Pinned vertices never move in the sliver healer", "[repair][batch][pi
 
         pinned[static_cast<std::size_t>(cube.c)] = 1;
         options.pinnedVertices = pinned;
-        for (const ogun::RepairResults& r :
-             {ogun::SliverHealer::healAllThinFaces(mesh, {}, {}, options),
-              ogun::SliverHealer::healFaces(mesh, ogun::ThinFaceChecker::check(mesh).faceIndices, {}, {}, options)}) {
+        for (const mesheal::RepairResults& r :
+             {mesheal::SliverHealer::healAllThinFaces(mesh, {}, {}, options),
+              mesheal::SliverHealer::healFaces(mesh, mesheal::ThinFaceChecker::check(mesh).faceIndices, {}, {}, options)}) {
             REQUIRE(r.success);
             REQUIRE(r.edgeCollapses >= 1);
             REQUIRE(r.remainingThinFaces == 0);
@@ -887,14 +887,14 @@ TEST_CASE("Pinned vertices never move in the sliver healer", "[repair][batch][pi
         pinned[static_cast<std::size_t>(cube.c)] = 1;
         pinned[static_cast<std::size_t>(cube.m)] = 1;
         options.pinnedVertices = pinned;
-        const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(mesh, {}, {}, options);
+        const mesheal::RepairResults r = mesheal::SliverHealer::healAllThinFaces(mesh, {}, {}, options);
         requirePinsKept(r);
     }
 
     SECTION("Every vertex pinned: the surface is unchanged") {
         std::fill(pinned.begin(), pinned.end(), std::uint8_t{1});
         options.pinnedVertices = pinned;
-        const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(mesh, {}, {}, options);
+        const mesheal::RepairResults r = mesheal::SliverHealer::healAllThinFaces(mesh, {}, {}, options);
         REQUIRE(r.edgeCollapses == 0);
         REQUIRE(r.edgeFlips == 0);
         requirePinsKept(r);
@@ -904,7 +904,7 @@ TEST_CASE("Pinned vertices never move in the sliver healer", "[repair][batch][pi
     SECTION("A pin mask of the wrong size is refused") {
         const std::vector<std::uint8_t> wrong(3, 1);
         options.pinnedVertices = wrong;
-        const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(mesh, {}, {}, options);
+        const mesheal::RepairResults r = mesheal::SliverHealer::healAllThinFaces(mesh, {}, {}, options);
         REQUIRE_FALSE(r.success);
         REQUIRE(r.mesh.F == mesh.F);
     }
@@ -913,9 +913,9 @@ TEST_CASE("Pinned vertices never move in the sliver healer", "[repair][batch][pi
 TEST_CASE("The batch sliver heals return face and vertex maps in input order", "[repair][batch][maps]") {
     const NeedleCube cube = makeNeedleCube();
     // Isolate the collapse: the Delaunay flip pass may re-corner faces next to the needle (they keep their map entry).
-    ogun::SliverHealerSettings noFlips;
+    mesheal::SliverHealerSettings noFlips;
     noFlips.delaunayFlipFirst = false;
-    const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(cube.mesh, {}, noFlips);
+    const mesheal::RepairResults r = mesheal::SliverHealer::healAllThinFaces(cube.mesh, {}, noFlips);
     REQUIRE(r.success);
     REQUIRE(r.faceMap.size() == static_cast<std::size_t>(cube.mesh.numFaces()));
     Eigen::Index next = 0;
@@ -947,16 +947,16 @@ TEST_CASE("SliverHealer heals micro-cluster needles on Turkey_left_with_needles"
     if (!std::filesystem::exists(needleStl)) {
         return;
     }
-    const ogun::Mesh mesh = ogun::loadStl(needleStl);
-    const ogun::ThinFaceReport before = ogun::ThinFaceChecker::check(mesh, {});
+    const mesheal::Mesh mesh = mesheal::loadStl(needleStl);
+    const mesheal::ThinFaceReport before = mesheal::ThinFaceChecker::check(mesh, {});
     REQUIRE(before.numDefects() == 8);
 
-    const ogun::RepairResults rAll = ogun::SliverHealer::healAllThinFaces(mesh);
+    const mesheal::RepairResults rAll = mesheal::SliverHealer::healAllThinFaces(mesh);
     REQUIRE(rAll.success);
     CHECK(rAll.remainingThinFaces == 0);
     CHECK(rAll.edgeCollapses > 0);
 
-    const ogun::RepairResults rScoped = ogun::SliverHealer::healFaces(mesh, before.faceIndices);
+    const mesheal::RepairResults rScoped = mesheal::SliverHealer::healFaces(mesh, before.faceIndices);
     REQUIRE(rScoped.success);
     CHECK(rScoped.remainingThinFaces <= 1);
 }
@@ -967,21 +967,21 @@ TEST_CASE("SliverHealer heals curved-surface cap on turkey_single_cap", "[repair
     if (!std::filesystem::exists(capStl)) {
         return;
     }
-    const ogun::Mesh mesh = ogun::loadStl(capStl);
-    const ogun::ThinFaceReport before = ogun::ThinFaceChecker::check(mesh, {});
+    const mesheal::Mesh mesh = mesheal::loadStl(capStl);
+    const mesheal::ThinFaceReport before = mesheal::ThinFaceChecker::check(mesh, {});
     REQUIRE(before.numDefects() == 1);
 
-    const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(mesh, before.faceIndices[0]);
-    CHECK(a.type == ogun::SliverType::Cap);
+    const mesheal::SliverAnalysis a = mesheal::SliverHealer::analyzeFace(mesh, before.faceIndices[0]);
+    CHECK(a.type == mesheal::SliverType::Cap);
     CHECK(a.longestEdgeFlippable);
-    CHECK(a.recommendedAction == ogun::HealAction::FlipLongestEdge);
+    CHECK(a.recommendedAction == mesheal::HealAction::FlipLongestEdge);
 
-    const ogun::RepairResults rAll = ogun::SliverHealer::healAllThinFaces(mesh);
+    const mesheal::RepairResults rAll = mesheal::SliverHealer::healAllThinFaces(mesh);
     REQUIRE(rAll.success);
     CHECK(rAll.remainingThinFaces == 0);
     CHECK(rAll.edgeFlips == 1);
 
-    const ogun::RepairResults rScoped = ogun::SliverHealer::healFaces(mesh, before.faceIndices);
+    const mesheal::RepairResults rScoped = mesheal::SliverHealer::healFaces(mesh, before.faceIndices);
     REQUIRE(rScoped.success);
     CHECK(rScoped.remainingThinFaces == 0);
     CHECK(rScoped.edgeFlips == 1);
@@ -994,41 +994,41 @@ TEST_CASE("SliverHealer heals all thin faces on cuboctahedron_faces.stl via link
     if (!std::filesystem::exists(stlPath)) {
         return;
     }
-    const ogun::Mesh mesh = ogun::loadStl(stlPath);
+    const mesheal::Mesh mesh = mesheal::loadStl(stlPath);
     REQUIRE(mesh.numFaces() == 112);
 
     // Initial mesh has 33 thin/sliver faces
-    const ogun::ThinFaceReport thinReport = ogun::ThinFaceChecker::check(mesh, {});
+    const mesheal::ThinFaceReport thinReport = mesheal::ThinFaceChecker::check(mesh, {});
     REQUIRE(thinReport.numDefects() == 33);
 
     // Single-face repair preview and execution on Face 33 (which violates CGAL's Euler link condition)
-    const ogun::SingleFaceRepairPreview preview = ogun::SliverHealer::previewSingleFaceRepair(mesh, 33);
+    const mesheal::SingleFaceRepairPreview preview = mesheal::SliverHealer::previewSingleFaceRepair(mesh, 33);
     REQUIRE(preview.valid);
-    CHECK(preview.appliedAction == ogun::HealAction::CollapseShortestEdge);
+    CHECK(preview.appliedAction == mesheal::HealAction::CollapseShortestEdge);
 
-    const ogun::RepairResults singleRes =
-        ogun::SliverHealer::healSingleFace(mesh, 33, ogun::HealAction::CollapseShortestEdge);
+    const mesheal::RepairResults singleRes =
+        mesheal::SliverHealer::healSingleFace(mesh, 33, mesheal::HealAction::CollapseShortestEdge);
     REQUIRE(singleRes.success);
     CHECK(singleRes.remainingThinFaces < thinReport.numDefects());
 
     // SliverHealer heals all 33 thin faces (CGAL passes heal 31, raw collapse fallback heals the remaining 2)
-    const ogun::RepairResults results = ogun::SliverHealer::healAllThinFaces(mesh);
+    const mesheal::RepairResults results = mesheal::SliverHealer::healAllThinFaces(mesh);
     REQUIRE(results.success);
     CHECK(results.remainingThinFaces == 0);
     CHECK(results.edgeCollapses == 25);
 
-    const ogun::ThinFaceReport afterReport = ogun::ThinFaceChecker::check(results.mesh, {});
+    const mesheal::ThinFaceReport afterReport = mesheal::ThinFaceChecker::check(results.mesh, {});
     REQUIRE(afterReport.numDefects() == 0);
 }
 
 TEST_CASE("The flip pass heals a fan of needles on a flat strip without moving a vertex", "[repair][batch][flip-first]") {
     const bool fold = GENERATE(false, true);
     CAPTURE(fold);
-    const ogun::Mesh strip = makeFannedStrip(fold);
-    const std::size_t thinBefore = ogun::ThinFaceChecker::check(strip).numDefects();
+    const mesheal::Mesh strip = makeFannedStrip(fold);
+    const std::size_t thinBefore = mesheal::ThinFaceChecker::check(strip).numDefects();
     REQUIRE(thinBefore >= 10);
 
-    const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(strip);
+    const mesheal::RepairResults r = mesheal::SliverHealer::healAllThinFaces(strip);
     REQUIRE(r.success);
     CHECK(r.remainingThinFaces == 0);
     CHECK(r.edgeFlips > 0);
@@ -1037,9 +1037,9 @@ TEST_CASE("The flip pass heals a fan of needles on a flat strip without moving a
     // Same vertices, same positions, same face count: only the diagonals changed
     CHECK(r.mesh.V == strip.V);
     CHECK(r.mesh.numFaces() == strip.numFaces());
-    CHECK(ogun::surfaceArea(r.mesh) == Catch::Approx(ogun::surfaceArea(strip)).epsilon(1e-12));
-    CHECK(ogun::signedVolume(r.mesh) == Catch::Approx(ogun::signedVolume(strip)).margin(1e-9));
-    CHECK(ogun::computeRepairGeometryMetrics(strip, r.mesh).maxDeviation < 1e-9);
+    CHECK(mesheal::surfaceArea(r.mesh) == Catch::Approx(mesheal::surfaceArea(strip)).epsilon(1e-12));
+    CHECK(mesheal::signedVolume(r.mesh) == Catch::Approx(mesheal::signedVolume(strip)).margin(1e-9));
+    CHECK(mesheal::computeRepairGeometryMetrics(strip, r.mesh).maxDeviation < 1e-9);
 
     if (fold) {
         // The crease between the two halves (the rung at x = 20) is never flipped
@@ -1048,23 +1048,23 @@ TEST_CASE("The flip pass heals a fan of needles on a flat strip without moving a
 }
 
 TEST_CASE("The scoped heal flips the listed thin faces without moving a vertex", "[repair][selected][flip-first]") {
-    const ogun::Mesh strip = makeFannedStrip(false);
-    const ogun::ThinFaceReport before = ogun::ThinFaceChecker::check(strip);
+    const mesheal::Mesh strip = makeFannedStrip(false);
+    const mesheal::ThinFaceReport before = mesheal::ThinFaceChecker::check(strip);
     REQUIRE(before.numDefects() >= 10);
 
-    const ogun::RepairResults r = ogun::SliverHealer::healFaces(strip, before.faceIndices);
+    const mesheal::RepairResults r = mesheal::SliverHealer::healFaces(strip, before.faceIndices);
     REQUIRE(r.success);
     CHECK(r.edgeFlips > 0);
     CHECK(r.edgeCollapses == 0);
     CHECK(r.remainingThinFaces == 0);
     CHECK(r.mesh.V == strip.V);
     CHECK(r.mesh.numFaces() == strip.numFaces());
-    CHECK(ogun::surfaceArea(r.mesh) == Catch::Approx(ogun::surfaceArea(strip)).epsilon(1e-12));
+    CHECK(mesheal::surfaceArea(r.mesh) == Catch::Approx(mesheal::surfaceArea(strip)).epsilon(1e-12));
 }
 
 // A flat quad cut into a cap (apex 0.002 off the long edge, aspect 500) and an ordinary triangle below it.
 // Flipping the shared edge gives two well-shaped triangles; the ordinary one is not thin, so it is never listed.
-ogun::Mesh makeCapOnQuad() {
+mesheal::Mesh makeCapOnQuad() {
     const std::vector<Eigen::Vector3d> P = {{0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, {0.5, 0.002, 0.0}, {0.5, -0.5, 0.0}};
     return meshFromPoints(P, {{0, 1, 2}, {1, 0, 3}});
 }
@@ -1072,34 +1072,34 @@ ogun::Mesh makeCapOnQuad() {
 TEST_CASE("The scoped heal flips a thin face with a neighbour that is not thin", "[repair][selected][flip-first]") {
     // Fix All heals only the listed thin faces. The flip partner of a lone cap is a normal triangle, so a flip
     // limited to listed faces could never run (the last cap of the Turkey Fix All test was left that way).
-    const ogun::Mesh quad = makeCapOnQuad();
-    const ogun::ThinFaceReport before = ogun::ThinFaceChecker::check(quad);
+    const mesheal::Mesh quad = makeCapOnQuad();
+    const mesheal::ThinFaceReport before = mesheal::ThinFaceChecker::check(quad);
     REQUIRE(before.faceIndices == std::vector<Eigen::Index>{0});
 
-    const ogun::RepairResults r = ogun::SliverHealer::healFaces(quad, {0});
+    const mesheal::RepairResults r = mesheal::SliverHealer::healFaces(quad, {0});
     REQUIRE(r.success);
     CHECK(r.edgeFlips == 1);
     CHECK(r.edgeCollapses == 0);
     CHECK(r.remainingThinFaces == 0);
     CHECK(r.mesh.V == quad.V); // no vertex moved
     CHECK(r.mesh.numFaces() == 2);
-    CHECK(ogun::surfaceArea(r.mesh) == Catch::Approx(ogun::surfaceArea(quad)).epsilon(1e-12));
+    CHECK(mesheal::surfaceArea(r.mesh) == Catch::Approx(mesheal::surfaceArea(quad)).epsilon(1e-12));
 }
 
 TEST_CASE("A needle whose long edge flips into two healthy triangles is flipped, not collapsed", "[repair][needle][flip]") {
     // Needle 0-1-2 (short edge 1-2, aspect over 100) and a neighbour across its long edge 0-2. Collapsing the
     // short edge moves a vertex and can leave another needle; the flip moves nothing.
     const std::vector<Eigen::Vector3d> P = {{0.0, 0.0, 0.0}, {10.0, 0.0, 0.0}, {10.3, 0.08, 0.0}, {6.0, 3.0, 0.0}};
-    const ogun::Mesh mesh = meshFromPoints(P, {{0, 1, 2}, {0, 2, 3}});
-    REQUIRE(ogun::ThinFaceChecker::check(mesh).faceIndices == std::vector<Eigen::Index>{0});
+    const mesheal::Mesh mesh = meshFromPoints(P, {{0, 1, 2}, {0, 2, 3}});
+    REQUIRE(mesheal::ThinFaceChecker::check(mesh).faceIndices == std::vector<Eigen::Index>{0});
 
-    const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(mesh, 0);
-    REQUIRE(a.type == ogun::SliverType::Needle);
-    CHECK(a.recommendedAction == ogun::HealAction::FlipLongestEdge);
+    const mesheal::SliverAnalysis a = mesheal::SliverHealer::analyzeFace(mesh, 0);
+    REQUIRE(a.type == mesheal::SliverType::Needle);
+    CHECK(a.recommendedAction == mesheal::HealAction::FlipLongestEdge);
 
-    ogun::SliverHealerSettings noFlipPass; // the action itself, not the Delaunay pass in front of it
+    mesheal::SliverHealerSettings noFlipPass; // the action itself, not the Delaunay pass in front of it
     noFlipPass.delaunayFlipFirst = false;
-    const ogun::RepairResults r = ogun::SliverHealer::healFaces(mesh, {0}, {}, noFlipPass);
+    const mesheal::RepairResults r = mesheal::SliverHealer::healFaces(mesh, {0}, {}, noFlipPass);
     REQUIRE(r.success);
     CHECK(r.edgeFlips == 1);
     CHECK(r.edgeCollapses == 0);
@@ -1110,22 +1110,22 @@ TEST_CASE("A needle whose long edge flips into two healthy triangles is flipped,
 TEST_CASE("The scoped heal also heals the thin faces its own flips and repairs leave", "[repair][selected][flip-first]") {
     // One listed needle in a fan of needles: each flip or collapse can pass the needle on to a neighbour that
     // was not listed. Those join the list, so the call does not stop with thin faces next to where it worked.
-    const ogun::Mesh strip = makeFannedStrip(false);
-    const ogun::ThinFaceReport before = ogun::ThinFaceChecker::check(strip);
+    const mesheal::Mesh strip = makeFannedStrip(false);
+    const mesheal::ThinFaceReport before = mesheal::ThinFaceChecker::check(strip);
     REQUIRE(before.numDefects() >= 10);
 
-    const ogun::RepairResults r = ogun::SliverHealer::healFaces(strip, {before.faceIndices.front()});
+    const mesheal::RepairResults r = mesheal::SliverHealer::healFaces(strip, {before.faceIndices.front()});
     REQUIRE(r.success);
     CHECK(r.remainingThinFaces == 0);
 }
 
 TEST_CASE("The scoped heal never flips an edge on the rim of a pinned scope", "[repair][selected][flip-first][pinned]") {
     // Both ends of the shared edge pinned (Fix All pins the vertices a scope shares with the rest of the mesh)
-    const ogun::Mesh quad = makeCapOnQuad();
+    const mesheal::Mesh quad = makeCapOnQuad();
     const std::vector<std::uint8_t> pinned = {1, 1, 0, 0};
-    ogun::SliverHealOptions options;
+    mesheal::SliverHealOptions options;
     options.pinnedVertices = pinned;
-    const ogun::RepairResults r = ogun::SliverHealer::healFaces(quad, {0}, {}, {}, options);
+    const mesheal::RepairResults r = mesheal::SliverHealer::healFaces(quad, {0}, {}, {}, options);
     CHECK(r.edgeFlips == 0);
     for (const int v : {0, 1}) { // still there, at the same place (a collapse may renumber the free vertices)
         CHECK(hasVertexAt(r.mesh, quad.V.row(v).transpose()));
@@ -1138,7 +1138,7 @@ TEST_CASE("The flip pass ends on a fan of nearly cocircular points", "[repair][b
     constexpr int kPoints = 400;
     std::vector<Eigen::Vector3d> P;
     for (int i = 0; i < kPoints; ++i) {
-        const double a = 2.0 * ogun::kPi * i / kPoints;
+        const double a = 2.0 * mesheal::kPi * i / kPoints;
         const double r = 10.0 * (1.0 + 1.0e-9 * std::sin(7.0 * i));
         P.emplace_back(r * std::cos(a), r * std::sin(a), 0.0);
     }
@@ -1146,38 +1146,38 @@ TEST_CASE("The flip pass ends on a fan of nearly cocircular points", "[repair][b
     for (int i = 1; i + 1 < kPoints; ++i) {
         T.push_back({0, i, i + 1});
     }
-    const ogun::Mesh fan = meshFromPoints(P, T);
-    REQUIRE(ogun::ThinFaceChecker::check(fan).numDefects() > 100);
+    const mesheal::Mesh fan = meshFromPoints(P, T);
+    REQUIRE(mesheal::ThinFaceChecker::check(fan).numDefects() > 100);
 
-    ogun::SliverHealerSettings flipsOnly;
+    mesheal::SliverHealerSettings flipsOnly;
     flipsOnly.maxBatchIterations = 1;
-    const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(fan, {}, flipsOnly);
+    const mesheal::RepairResults r = mesheal::SliverHealer::healAllThinFaces(fan, {}, flipsOnly);
     // It returns: the flips end even though nearly every edge is a tie (collapses may follow; not checked here)
     CHECK(r.edgeFlips > 0);
 }
 
 TEST_CASE("Snap is refused at a corner vertex where walls meet", "[repair][snap][corner]") {
-    const ogun::Mesh patch = makeCornerPatch(30);
+    const mesheal::Mesh patch = makeCornerPatch(30);
     const Eigen::Vector3d corner(12.0, 0.0, 5.7);
     REQUIRE(hasVertexAt(patch, corner));
 
-    const ogun::SliverAnalysis a = ogun::SliverHealer::analyzeFace(patch, kCornerCapFace);
-    REQUIRE(a.type == ogun::SliverType::Cap);
+    const mesheal::SliverAnalysis a = mesheal::SliverHealer::analyzeFace(patch, kCornerCapFace);
+    REQUIRE(a.type == mesheal::SliverType::Cap);
     CHECK_FALSE(a.longestEdgeFlippable);
 
     // Even with the old, permissive normal limit the corner must not slide onto R: the step wall would tilt
-    for (const double minNormalDot : {ogun::settings::kDefaultMinNormalDot, 0.1}) {
+    for (const double minNormalDot : {mesheal::settings::kDefaultMinNormalDot, 0.1}) {
         CAPTURE(minNormalDot);
-        ogun::SliverHealerSettings settings;
+        mesheal::SliverHealerSettings settings;
         settings.minNormalDot = minNormalDot;
-        ogun::CgalSurfaceMesh surface;
-        REQUIRE(ogun::toCgalSurfaceMesh(patch, surface));
+        mesheal::CgalSurfaceMesh surface;
+        REQUIRE(mesheal::toCgalSurfaceMesh(patch, surface));
         std::string status;
-        CHECK_FALSE(ogun::SliverHealer::applyHealAction(
-            surface, ogun::CgalFaceIndex(static_cast<std::uint32_t>(kCornerCapFace)), ogun::HealAction::SnapCollinearCollapse, settings, &status));
+        CHECK_FALSE(mesheal::SliverHealer::applyHealAction(
+            surface, mesheal::CgalFaceIndex(static_cast<std::uint32_t>(kCornerCapFace)), mesheal::HealAction::SnapCollinearCollapse, settings, &status));
         CHECK_FALSE(status.empty());
-        const ogun::RepairResults single =
-            ogun::SliverHealer::healSingleFace(patch, kCornerCapFace, ogun::HealAction::SnapCollinearCollapse, {}, settings);
+        const mesheal::RepairResults single =
+            mesheal::SliverHealer::healSingleFace(patch, kCornerCapFace, mesheal::HealAction::SnapCollinearCollapse, {}, settings);
         CHECK_FALSE(single.success);
         CHECK(sameMesh(single.mesh, patch));
     }
@@ -1186,17 +1186,17 @@ TEST_CASE("Snap is refused at a corner vertex where walls meet", "[repair][snap]
 TEST_CASE("healAllThinFaces leaves a CAD corner and its step wall in place", "[repair][batch][corner]") {
     // Measured on the previous healer (snap onto R, minNormalDot 0.1): signed volume -290 -> -1971, area +74 %,
     // surface moved by 11.8 mm. Now the flip pass and the guarded snap keep the part.
-    const ogun::Mesh patch = makeCornerPatch();
-    const std::size_t thinBefore = ogun::ThinFaceChecker::check(patch).numDefects();
+    const mesheal::Mesh patch = makeCornerPatch();
+    const std::size_t thinBefore = mesheal::ThinFaceChecker::check(patch).numDefects();
     REQUIRE(thinBefore >= 100);
     REQUIRE(countIntersectingFaces(patch) == 0);
 
-    const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(patch);
+    const mesheal::RepairResults r = mesheal::SliverHealer::healAllThinFaces(patch);
     REQUIRE(r.success);
     CHECK(r.remainingThinFaces == 0);
     CHECK(r.edgeFlips > 0);
 
-    const ogun::RepairMetrics m = ogun::computeRepairGeometryMetrics(patch, r.mesh);
+    const mesheal::RepairMetrics m = mesheal::computeRepairGeometryMetrics(patch, r.mesh);
     CHECK(m.maxDeviation < 0.01);
     CHECK(std::abs(m.volumeAfter - m.volumeBefore) < 0.01 * std::abs(m.volumeBefore));
     CHECK(std::abs(m.areaAfter - m.areaBefore) < 0.01 * m.areaBefore);
@@ -1208,20 +1208,20 @@ TEST_CASE("healAllThinFaces leaves a CAD corner and its step wall in place", "[r
 }
 
 TEST_CASE("The safety net rejects a heal that moves the surface too far", "[repair][batch][safety]") {
-    const ogun::Mesh plate = makeHolePlate();
-    REQUIRE(ogun::ThinFaceChecker::check(plate).numDefects() >= 50);
+    const mesheal::Mesh plate = makeHolePlate();
+    REQUIRE(mesheal::ThinFaceChecker::check(plate).numDefects() >= 50);
 
     SECTION("with the default limit the rim collapses stay inside it") {
-        const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(plate);
+        const mesheal::RepairResults r = mesheal::SliverHealer::healAllThinFaces(plate);
         REQUIRE(r.success);
         CHECK(r.remainingThinFaces == 0);
-        CHECK(ogun::computeRepairGeometryMetrics(plate, r.mesh).maxDeviation <= 0.01 * plate.boundingBox().diagonal());
+        CHECK(mesheal::computeRepairGeometryMetrics(plate, r.mesh).maxDeviation <= 0.01 * plate.boundingBox().diagonal());
     }
 
     SECTION("a tight deviation limit returns the input unchanged and says why") {
-        ogun::SliverHealerSettings settings;
+        mesheal::SliverHealerSettings settings;
         settings.maxDeviationFraction = 1.0e-4;
-        const ogun::RepairResults r = ogun::SliverHealer::healAllThinFaces(plate, {}, settings);
+        const mesheal::RepairResults r = mesheal::SliverHealer::healAllThinFaces(plate, {}, settings);
         CHECK_FALSE(r.success);
         CHECK(sameMesh(r.mesh, plate));
         CHECK(r.edgeCollapses == 0);
@@ -1233,16 +1233,16 @@ TEST_CASE("The safety net rejects a heal that moves the surface too far", "[repa
 
         // Switched off, the same heal goes through (and is what the net caught)
         settings.enableSafetyNet = false;
-        const ogun::RepairResults unchecked = ogun::SliverHealer::healAllThinFaces(plate, {}, settings);
+        const mesheal::RepairResults unchecked = mesheal::SliverHealer::healAllThinFaces(plate, {}, settings);
         CHECK(unchecked.success);
         CHECK_FALSE(sameMesh(unchecked.mesh, plate));
     }
 
     SECTION("the scoped heal is guarded too") {
-        ogun::SliverHealerSettings settings;
+        mesheal::SliverHealerSettings settings;
         settings.maxDeviationFraction = 1.0e-4;
-        const ogun::ThinFaceReport thin = ogun::ThinFaceChecker::check(plate);
-        const ogun::RepairResults r = ogun::SliverHealer::healFaces(plate, thin.faceIndices, {}, settings);
+        const mesheal::ThinFaceReport thin = mesheal::ThinFaceChecker::check(plate);
+        const mesheal::RepairResults r = mesheal::SliverHealer::healFaces(plate, thin.faceIndices, {}, settings);
         CHECK_FALSE(r.success);
         CHECK(sameMesh(r.mesh, plate));
         CHECK(r.statusMessage.find("not applied") != std::string::npos);
@@ -1251,32 +1251,32 @@ TEST_CASE("The safety net rejects a heal that moves the surface too far", "[repa
 
 TEST_CASE("The safety net rejects a volume change on a closed mesh only", "[repair][batch][safety]") {
     // A sphere with a needle next to a vertex: collapsing it moves the curved surface a hair, so the volume changes
-    ogun::Mesh sphere = ogun::SampleMeshes::createSphereMesh(8, 12, 5.0);
+    mesheal::Mesh sphere = mesheal::SampleMeshes::createSphereMesh(8, 12, 5.0);
     const Eigen::Index f = nearestFace(sphere, {2.0, 2.0, 4.0});
     const Eigen::Vector3d c = vertexOf(sphere, f, 2);
     const Eigen::Vector3d centroid = (vertexOf(sphere, f, 0) + vertexOf(sphere, f, 1) + c) / 3.0;
     splitFace(sphere, f, c + 1e-5 * (centroid - c).normalized());
     REQUIRE(isClosedManifold(sphere));
-    REQUIRE(ogun::ThinFaceChecker::check(sphere).numDefects() >= 1);
+    REQUIRE(mesheal::ThinFaceChecker::check(sphere).numDefects() >= 1);
 
-    ogun::SliverHealerSettings strict;
+    mesheal::SliverHealerSettings strict;
     strict.maxVolumeChange = 1.0e-14;
     strict.maxDeviationFraction = 1.0; // only the volume can trip the net
-    const ogun::RepairResults rejected = ogun::SliverHealer::healAllThinFaces(sphere, {}, strict);
+    const mesheal::RepairResults rejected = mesheal::SliverHealer::healAllThinFaces(sphere, {}, strict);
     CHECK_FALSE(rejected.success);
     CHECK(sameMesh(rejected.mesh, sphere));
     CHECK(rejected.statusMessage.find("change the volume by") != std::string::npos);
     CHECK(rejected.statusMessage.find("left unchanged") != std::string::npos);
 
     // The default limit (0.5 %) accepts this harmless heal
-    const ogun::RepairResults accepted = ogun::SliverHealer::healAllThinFaces(sphere);
+    const mesheal::RepairResults accepted = mesheal::SliverHealer::healAllThinFaces(sphere);
     CHECK(accepted.success);
     CHECK(accepted.remainingThinFaces == 0);
 
     // An open mesh has no meaningful volume: the same tiny volume limit does not reject it
-    ogun::Mesh open = makeCornerPatch(30);
-    ogun::SliverHealerSettings volumeOnly;
+    mesheal::Mesh open = makeCornerPatch(30);
+    mesheal::SliverHealerSettings volumeOnly;
     volumeOnly.maxVolumeChange = 1.0e-14;
-    const ogun::RepairResults openResult = ogun::SliverHealer::healAllThinFaces(open, {}, volumeOnly);
+    const mesheal::RepairResults openResult = mesheal::SliverHealer::healAllThinFaces(open, {}, volumeOnly);
     CHECK(openResult.success);
 }

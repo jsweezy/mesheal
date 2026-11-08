@@ -15,7 +15,7 @@
 #include <utility>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// What `computeShellRelations` works out, and for which shells.
 struct ShellRelationParams {
@@ -113,4 +113,4 @@ struct ShellRelations {
     double tolerance,
     std::stop_token stopToken = {});
 
-} // namespace ogun
+} // namespace mesheal

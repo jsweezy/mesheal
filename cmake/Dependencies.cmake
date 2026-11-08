@@ -15,15 +15,15 @@ set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "Skip network updates once p
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build shared libraries" FORCE)
 
 # Dependency name/version pairs shown in the About dialog (see Version.cmake)
-set(OGUN_DEPENDENCY_LIST "")
-function(ogun_record_dependency name version)
-    list(APPEND OGUN_DEPENDENCY_LIST "${name}|${version}")
-    set(OGUN_DEPENDENCY_LIST "${OGUN_DEPENDENCY_LIST}" PARENT_SCOPE)
+set(MESHEAL_DEPENDENCY_LIST "")
+function(mesheal_record_dependency name version)
+    list(APPEND MESHEAL_DEPENDENCY_LIST "${name}|${version}")
+    set(MESHEAL_DEPENDENCY_LIST "${MESHEAL_DEPENDENCY_LIST}" PARENT_SCOPE)
 endfunction()
 
 # Helper to mark a third-party target's include directories as SYSTEM (-isystem)
-# so strict compiler warnings on Ogun targets do not trigger inside dependencies.
-function(ogun_mark_target_includes_system target_name)
+# so strict compiler warnings on Mesheal targets do not trigger inside dependencies.
+function(mesheal_mark_target_includes_system target_name)
     if(TARGET "${target_name}")
         get_target_property(_aliased "${target_name}" ALIASED_TARGET)
         if(_aliased)
@@ -41,7 +41,7 @@ endfunction()
 # ------------------------------------------------------------------------------
 # 1. Catch2 (v3) — Unit Testing Framework
 # ------------------------------------------------------------------------------
-if(OGUN_BUILD_TESTS)
+if(MESHEAL_BUILD_TESTS)
     FetchContent_Declare(
         Catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git
@@ -51,9 +51,9 @@ if(OGUN_BUILD_TESTS)
     FetchContent_MakeAvailable(Catch2)
     list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
     include(Catch)
-    ogun_mark_target_includes_system(Catch2::Catch2)
-    ogun_mark_target_includes_system(Catch2::Catch2WithMain)
-    ogun_record_dependency("Catch2 (tests)" "3.7.1")
+    mesheal_mark_target_includes_system(Catch2::Catch2)
+    mesheal_mark_target_includes_system(Catch2::Catch2WithMain)
+    mesheal_record_dependency("Catch2 (tests)" "3.7.1")
 endif()
 
 # ------------------------------------------------------------------------------
@@ -70,18 +70,18 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 FetchContent_MakeAvailable(libigl)
-ogun_mark_target_includes_system(Eigen3::Eigen)
-ogun_mark_target_includes_system(igl::core)
-ogun_record_dependency("libigl" "2.5.0")
-set(_ogun_eigen_version "3.4.0")
-set(_ogun_eigen_macros "${eigen_SOURCE_DIR}/Eigen/src/Core/util/Macros.h")
-if(EXISTS "${_ogun_eigen_macros}")
-    file(STRINGS "${_ogun_eigen_macros}" _ogun_eigen_lines
+mesheal_mark_target_includes_system(Eigen3::Eigen)
+mesheal_mark_target_includes_system(igl::core)
+mesheal_record_dependency("libigl" "2.5.0")
+set(_mesheal_eigen_version "3.4.0")
+set(_mesheal_eigen_macros "${eigen_SOURCE_DIR}/Eigen/src/Core/util/Macros.h")
+if(EXISTS "${_mesheal_eigen_macros}")
+    file(STRINGS "${_mesheal_eigen_macros}" _mesheal_eigen_lines
          REGEX "^#define EIGEN_(WORLD|MAJOR|MINOR)_VERSION [0-9]+")
-    string(REGEX MATCHALL "[0-9]+" _ogun_eigen_parts "${_ogun_eigen_lines}")
-    list(JOIN _ogun_eigen_parts "." _ogun_eigen_version)
+    string(REGEX MATCHALL "[0-9]+" _mesheal_eigen_parts "${_mesheal_eigen_lines}")
+    list(JOIN _mesheal_eigen_parts "." _mesheal_eigen_version)
 endif()
-ogun_record_dependency("Eigen" "${_ogun_eigen_version}")
+mesheal_record_dependency("Eigen" "${_mesheal_eigen_version}")
 
 # ------------------------------------------------------------------------------
 # 3. Manifold (v3.0.1) — Manifold Mesh Kernel & MeshGL Interop
@@ -101,8 +101,8 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 FetchContent_MakeAvailable(manifold)
-ogun_mark_target_includes_system(manifold::manifold)
-ogun_record_dependency("Manifold" "3.0.1")
+mesheal_mark_target_includes_system(manifold::manifold)
+mesheal_record_dependency("Manifold" "3.0.1")
 
 # ------------------------------------------------------------------------------
 # 3b. CGAL — Halfedge Mesh Repair (system install preferred, FetchContent fallback)
@@ -117,31 +117,31 @@ if(NOT CGAL_FOUND)
     FetchContent_MakeAvailable(cgal)
     find_package(CGAL CONFIG REQUIRED PATHS "${cgal_SOURCE_DIR}" NO_DEFAULT_PATH)
 endif()
-ogun_mark_target_includes_system(CGAL::CGAL)
-ogun_record_dependency("CGAL" "${CGAL_VERSION}")
+mesheal_mark_target_includes_system(CGAL::CGAL)
+mesheal_record_dependency("CGAL" "${CGAL_VERSION}")
 find_package(TBB CONFIG QUIET HINTS /opt/homebrew/opt/tbb /usr/local/opt/tbb)
 if(TBB_FOUND)
     include(CGAL_TBB_support)
-    ogun_mark_target_includes_system(TBB::tbb)
-    ogun_mark_target_includes_system(TBB::tbbmalloc)
-    ogun_record_dependency("oneTBB" "${TBB_VERSION}")
+    mesheal_mark_target_includes_system(TBB::tbb)
+    mesheal_mark_target_includes_system(TBB::tbbmalloc)
+    mesheal_record_dependency("oneTBB" "${TBB_VERSION}")
 endif()
 if(Boost_VERSION)
-    ogun_record_dependency("Boost" "${Boost_VERSION}")
+    mesheal_record_dependency("Boost" "${Boost_VERSION}")
 elseif(Boost_VERSION_STRING)
-    ogun_record_dependency("Boost" "${Boost_VERSION_STRING}")
+    mesheal_record_dependency("Boost" "${Boost_VERSION_STRING}")
 endif()
 if(GMP_VERSION)
-    ogun_record_dependency("GMP" "${GMP_VERSION}")
+    mesheal_record_dependency("GMP" "${GMP_VERSION}")
 endif()
 if(MPFR_VERSION)
-    ogun_record_dependency("MPFR" "${MPFR_VERSION}")
+    mesheal_record_dependency("MPFR" "${MPFR_VERSION}")
 endif()
 
 # ------------------------------------------------------------------------------
 # 4. Polyscope + Dear ImGui & portable-file-dialogs (GUI Dependencies)
 # ------------------------------------------------------------------------------
-if(OGUN_BUILD_GUI)
+if(MESHEAL_BUILD_GUI)
     FetchContent_Declare(
         polyscope
         GIT_REPOSITORY https://github.com/nmwsharp/polyscope.git
@@ -151,17 +151,17 @@ if(OGUN_BUILD_GUI)
         PATCH_COMMAND  git submodule update --init --recursive --depth 1
     )
     FetchContent_MakeAvailable(polyscope)
-    ogun_mark_target_includes_system(polyscope)
-    ogun_mark_target_includes_system(imgui)
-    ogun_mark_target_includes_system(glm)
-    ogun_record_dependency("Polyscope" "2.4.0")
-    set(_ogun_imgui_version "unknown")
-    file(STRINGS "${polyscope_SOURCE_DIR}/deps/imgui/imgui/imgui.h" _ogun_imgui_line
+    mesheal_mark_target_includes_system(polyscope)
+    mesheal_mark_target_includes_system(imgui)
+    mesheal_mark_target_includes_system(glm)
+    mesheal_record_dependency("Polyscope" "2.4.0")
+    set(_mesheal_imgui_version "unknown")
+    file(STRINGS "${polyscope_SOURCE_DIR}/deps/imgui/imgui/imgui.h" _mesheal_imgui_line
          REGEX "^#define IMGUI_VERSION +\"")
-    if(_ogun_imgui_line MATCHES "\"([^\"]+)\"")
-        set(_ogun_imgui_version "${CMAKE_MATCH_1}")
+    if(_mesheal_imgui_line MATCHES "\"([^\"]+)\"")
+        set(_mesheal_imgui_version "${CMAKE_MATCH_1}")
     endif()
-    ogun_record_dependency("Dear ImGui" "${_ogun_imgui_version}")
+    mesheal_record_dependency("Dear ImGui" "${_mesheal_imgui_version}")
 
     FetchContent_Declare(
         portable_file_dialogs
@@ -179,5 +179,5 @@ if(OGUN_BUILD_GUI)
             "${portable_file_dialogs_SOURCE_DIR}"
         )
     endif()
-    ogun_record_dependency("portable-file-dialogs" "main (unpinned)")
+    mesheal_record_dependency("portable-file-dialogs" "main (unpinned)")
 endif()

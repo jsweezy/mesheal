@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -164,4 +164,4 @@ bool AppController::fixAllDuplicateFaces() {
     return true;
 }
 
-} // namespace ogun
+} // namespace mesheal

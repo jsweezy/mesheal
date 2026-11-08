@@ -7,13 +7,13 @@
     <key>CFBundleExecutable</key>
     <string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
     <key>CFBundleIdentifier</key>
-    <string>io.github.jsweezy.ogun</string>
+    <string>io.github.jsweezy.mesheal</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Ogun</string>
+    <string>Mesheal</string>
     <key>CFBundleDisplayName</key>
-    <string>Ogun</string>
+    <string>Mesheal</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -21,7 +21,7 @@
     <key>CFBundleVersion</key>
     <string>${PROJECT_VERSION}</string>
     <key>CFBundleIconFile</key>
-    <string>ogun.icns</string>
+    <string>mesheal.icns</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSSupportsAutomaticGraphicsSwitching</key>
@@ -34,7 +34,7 @@
             <key>CFBundleTypeRole</key>
             <string>Editor</string>
             <key>CFBundleTypeIconFile</key>
-            <string>ogun.icns</string>
+            <string>mesheal.icns</string>
             <key>LSHandlerRank</key>
             <string>Alternate</string>
             <key>CFBundleTypeExtensions</key>

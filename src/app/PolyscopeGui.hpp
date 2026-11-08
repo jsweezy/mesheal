@@ -23,9 +23,9 @@ namespace polyscope::render {
 class TextureBuffer;
 } // namespace polyscope::render
 
-namespace ogun {
+namespace mesheal {
 
-/// Thin Polyscope + Dear ImGui visual presentation layer bound to `ogun::AppController`.
+/// Thin Polyscope + Dear ImGui visual presentation layer bound to `mesheal::AppController`.
 /// Layout (UI_DESIGN.md §3): menu bar, left column (Display / Navigate / Shells / Structures), right
 /// column (Mesh Health + Tool slot) and a status bar, all docked by code every frame.
 /// Implementation is split across PolyscopeGui.cpp (Polyscope sync, mouse, keys),
@@ -366,4 +366,4 @@ private:
     FramePacer framePacer_;
 };
 
-} // namespace ogun
+} // namespace mesheal

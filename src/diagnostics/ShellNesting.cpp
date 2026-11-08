@@ -9,7 +9,7 @@
 #include <limits>
 #include <numeric>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -146,4 +146,4 @@ std::vector<std::vector<int>> findShellContainers(
     return containersOf(mesh, shellFaces, crossingPairs, probe, false);
 }
 
-} // namespace ogun
+} // namespace mesheal

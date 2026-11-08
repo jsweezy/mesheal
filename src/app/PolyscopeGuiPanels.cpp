@@ -18,7 +18,7 @@
 #include <string>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 using gui::tooltip;
 
@@ -589,7 +589,7 @@ void PolyscopeGui::drawNoMeshHint(float left, float top, float bottom) {
     const auto covers = [&textRect](const ImVec2& pos, const ImVec2& size) {
         return textRect.Overlaps(ImRect(pos, ImVec2(pos.x + size.x, pos.y + size.y)));
     };
-    for (const char* name : {"Preferences", "About Ogun", "Polyscope: Slice Planes", "Polyscope: Appearance",
+    for (const char* name : {"Preferences", "About Mesheal", "Polyscope: Slice Planes", "Polyscope: Appearance",
                              "Polyscope: Camera & Clipping", "Polyscope: Render & Debug"}) {
         const ImGuiWindow* window = ImGui::FindWindowByName(name);
         if (window != nullptr && window->Active && !window->Hidden && covers(window->Pos, window->Size)) {
@@ -608,4 +608,4 @@ void PolyscopeGui::drawNoMeshHint(float left, float top, float bottom) {
     }
 }
 
-} // namespace ogun
+} // namespace mesheal

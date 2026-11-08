@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// Whole-mesh ("Repair All") strategies for intersecting faces and holes, from surgical to coarse.
 enum class GlobalRepairMethod {
@@ -252,4 +252,4 @@ struct RepairCandidate {
     double intersectionTolerance = settings::kDefaultIntersectionTolerance,
     std::stop_token stopToken = {});
 
-} // namespace ogun
+} // namespace mesheal

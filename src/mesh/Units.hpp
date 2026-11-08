@@ -3,7 +3,7 @@
 #include <array>
 #include <string_view>
 
-namespace ogun {
+namespace mesheal {
 
 struct Mesh;
 
@@ -87,4 +87,4 @@ void setFileUnit(Mesh& mesh, Unit newUnit) noexcept;
 /// Explicitly scales `mesh.V` from `mesh.fileUnit` into `targetUnit` and updates `mesh.fileUnit`.
 void scaleMeshToUnit(Mesh& mesh, Unit targetUnit);
 
-} // namespace ogun
+} // namespace mesheal

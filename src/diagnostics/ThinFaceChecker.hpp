@@ -10,7 +10,7 @@
 #include <limits>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// User-configurable thresholds for flagging thin triangles. The aspect ratio is the main,
 /// scale-free measure; the height and area floors are optional (0 = off), in the active `mesh.fileUnit`.
@@ -90,7 +90,7 @@ inline constexpr int kThinFaceSubtypeCount = 4;
     double needleEdgeRatio = settings::kDefaultNeedleEdgeRatio,
     double capAngleDeg = settings::kDefaultCapAngleDeg) noexcept;
 
-/// Result of running `ThinFaceChecker::check()` across an entire `ogun::Mesh`.
+/// Result of running `ThinFaceChecker::check()` across an entire `mesheal::Mesh`.
 struct ThinFaceReport {
     Unit unit = Unit::Millimeter;
     ThinFaceThresholds thresholds{};
@@ -141,4 +141,4 @@ public:
         const ThinFaceThresholds& thresholds = {});
 };
 
-} // namespace ogun
+} // namespace mesheal

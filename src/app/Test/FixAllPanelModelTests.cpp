@@ -14,11 +14,11 @@
 #include <utility>
 #include <vector>
 
-using ogun::AppController;
-using ogun::FixAllPlanRow;
-using ogun::FixAllRowSwitch;
-using ogun::Mesh;
-using ogun::SampleMeshes;
+using mesheal::AppController;
+using mesheal::FixAllPlanRow;
+using mesheal::FixAllRowSwitch;
+using mesheal::Mesh;
+using mesheal::SampleMeshes;
 using Eigen::Vector3d;
 
 namespace {
@@ -47,7 +47,7 @@ TEST_CASE("Fix All panel rows: the twelve rows, their phases and switches", "[ap
     controller.openFixAll(3);
     controller.waitForFixAllPlan();
 
-    const std::vector<FixAllPlanRow> rows = ogun::fixAllPlanRows(controller);
+    const std::vector<FixAllPlanRow> rows = mesheal::fixAllPlanRows(controller);
     REQUIRE(rows.size() == 12);
     for (int i = 0; i < 12; ++i) {
         CHECK(rowOf(rows, i).number == i);
@@ -75,16 +75,16 @@ TEST_CASE("Fix All panel rows: found-now counts are ? until Check Mesh, then the
     controller.setMesh(overlappingCubes(), "cubes");
     controller.openFixAll(3);
     controller.waitForFixAllPlan();
-    std::vector<FixAllPlanRow> rows = ogun::fixAllPlanRows(controller);
+    std::vector<FixAllPlanRow> rows = mesheal::fixAllPlanRows(controller);
     controller.checkMesh();
     const bool anyUnknown = rowOf(rows, 1).found == "?" || rowOf(rows, 7).found == "?";
-    rows = ogun::fixAllPlanRows(controller);
+    rows = mesheal::fixAllPlanRows(controller);
     CHECK(rowOf(rows, 1).found == "0 + 0");
     CHECK(rowOf(rows, 2).found == "0");
     CHECK(rowOf(rows, 7).found == "0");
     CHECK(rowOf(rows, 8).found == "0 holes");
     CHECK(rowOf(rows, 5).found == "0 faces");
-    CHECK((anyUnknown || controller.categoryHealth(ogun::DefectCategory::Degenerate).status != ogun::HealthStatus::NotRun));
+    CHECK((anyUnknown || controller.categoryHealth(mesheal::DefectCategory::Degenerate).status != mesheal::HealthStatus::NotRun));
 }
 
 TEST_CASE("Fix All panel rows: merge estimate and the default tick", "[app][fixall][gui]") {
@@ -93,25 +93,25 @@ TEST_CASE("Fix All panel rows: merge estimate and the default tick", "[app][fixa
         controller.setMesh(overlappingCubes(), "cubes");
         controller.openFixAll(3);
         controller.waitForFixAllPlan();
-        const std::vector<FixAllPlanRow> rows = ogun::fixAllPlanRows(controller);
+        const std::vector<FixAllPlanRow> rows = mesheal::fixAllPlanRows(controller);
         CHECK(rowOf(rows, 10).on);
         CHECK(rowOf(rows, 10).found == "2 -> 1 shell");
         CHECK(rowOf(rows, 11).on);
         CHECK(rowOf(rows, 11).found == "(required after 10)");
         REQUIRE(controller.fixAllMergePlan() != nullptr);
-        CHECK(ogun::shellsInPlanScope(*controller.fixAllMergePlan()) == 2);
-        CHECK(ogun::shellsAfterPlannedMerge(*controller.fixAllMergePlan()) == 1);
+        CHECK(mesheal::shellsInPlanScope(*controller.fixAllMergePlan()) == 2);
+        CHECK(mesheal::shellsAfterPlannedMerge(*controller.fixAllMergePlan()) == 1);
     }
     {
         AppController controller;
         controller.setMesh(separateCubes(), "cubes");
         controller.openFixAll(3);
         controller.waitForFixAllPlan();
-        const std::vector<FixAllPlanRow> rows = ogun::fixAllPlanRows(controller);
+        const std::vector<FixAllPlanRow> rows = mesheal::fixAllPlanRows(controller);
         CHECK_FALSE(rowOf(rows, 10).on);
         CHECK(rowOf(rows, 10).found == "nothing to merge");
         CHECK(rowOf(rows, 11).found == "(skipped: runs only after a merge)");
-        CHECK(ogun::shellsAfterPlannedMerge(*controller.fixAllMergePlan()) == 2);
+        CHECK(mesheal::shellsAfterPlannedMerge(*controller.fixAllMergePlan()) == 2);
     }
 }
 
@@ -122,7 +122,7 @@ TEST_CASE("Fix All panel rows: a face selection turns off the whole-shell rows",
     controller.selectFaces(faces, true);
     controller.openFixAll(3);
     controller.waitForFixAllPlan();
-    const std::vector<FixAllPlanRow> rows = ogun::fixAllPlanRows(controller);
+    const std::vector<FixAllPlanRow> rows = mesheal::fixAllPlanRows(controller);
     CHECK_FALSE(rowOf(rows, 3).available);
     CHECK(rowOf(rows, 3).found == "needs whole shells");
     CHECK_FALSE(rowOf(rows, 10).available);
@@ -137,10 +137,10 @@ TEST_CASE("Fix All panel rows: the row 10 tick follows the user's click and para
     controller.openFixAll(3);
     controller.waitForFixAllPlan();
     controller.setFixAllMergeShells(false);
-    ogun::FixAllParams params = controller.fixAllParams();
+    mesheal::FixAllParams params = controller.fixAllParams();
     params.weld = false;
     controller.setFixAllParams(params);
-    const std::vector<FixAllPlanRow> rows = ogun::fixAllPlanRows(controller);
+    const std::vector<FixAllPlanRow> rows = mesheal::fixAllPlanRows(controller);
     CHECK_FALSE(rowOf(rows, 10).on);
     CHECK_FALSE(rowOf(rows, 11).on);
     CHECK_FALSE(rowOf(rows, 0).on);
@@ -148,29 +148,29 @@ TEST_CASE("Fix All panel rows: the row 10 tick follows the user's click and para
 }
 
 TEST_CASE("Fix All panel: the weld note appears only for a large tolerance", "[app][fixall][gui]") {
-    ogun::FixAllWeldPlan weld;
+    mesheal::FixAllWeldPlan weld;
     weld.maxTolerance = 1.0e-6;
     weld.scopeDiagonal = 100.0;
-    CHECK(ogun::weldNoteText(weld, ogun::Unit::Millimeter).empty());
+    CHECK(mesheal::weldNoteText(weld, mesheal::Unit::Millimeter).empty());
     weld.noteNeeded = true;
     weld.maxTolerance = 0.5;
-    const std::string note = ogun::weldNoteText(weld, ogun::Unit::Millimeter);
+    const std::string note = mesheal::weldNoteText(weld, mesheal::Unit::Millimeter);
     CHECK_FALSE(note.empty());
     CHECK(note.find("mm") != std::string::npos);
 }
 
 TEST_CASE("Fix All panel: merge estimate text", "[app][fixall][gui]") {
-    ogun::MergePlan plan;
+    mesheal::MergePlan plan;
     plan.needsWholeShells = true;
-    CHECK(ogun::mergeEstimateText(plan) == "needs whole shells");
+    CHECK(mesheal::mergeEstimateText(plan) == "needs whole shells");
     plan.needsWholeShells = false;
     plan.shellInScope = {1, 1, 1};
-    CHECK(ogun::mergeEstimateText(plan) == "nothing to merge");
+    CHECK(mesheal::mergeEstimateText(plan) == "nothing to merge");
     plan.groups.push_back({{0, 1, 2}, {}});
-    CHECK(ogun::mergeEstimateText(plan) == "3 -> 1 shell");
+    CHECK(mesheal::mergeEstimateText(plan) == "3 -> 1 shell");
     plan.groups.clear();
     plan.groups.push_back({{0, 1}, {}});
-    CHECK(ogun::mergeEstimateText(plan) == "3 -> 2 shells");
+    CHECK(mesheal::mergeEstimateText(plan) == "3 -> 2 shells");
 }
 
 TEST_CASE("Fix All panel rows: rows with no box carry a plain note, never a greyed box", "[app][fixall][gui]") {
@@ -178,7 +178,7 @@ TEST_CASE("Fix All panel rows: rows with no box carry a plain note, never a grey
     controller.setMesh(overlappingCubes(), "cubes");
     controller.openFixAll(3);
     controller.waitForFixAllPlan();
-    std::vector<FixAllPlanRow> rows = ogun::fixAllPlanRows(controller);
+    std::vector<FixAllPlanRow> rows = mesheal::fixAllPlanRows(controller);
     for (const int n : {0, 3, 4, 6, 7, 10}) {
         CHECK(rowOf(rows, n).hasBox());
         CHECK(rowOf(rows, n).note.empty());
@@ -193,35 +193,35 @@ TEST_CASE("Fix All panel rows: rows with no box carry a plain note, never a grey
     // A face selection removes the box of the whole-shell rows too
     controller.selectFaces(std::vector<Eigen::Index>{0, 1, 2}, true);
     controller.waitForFixAllPlan();
-    rows = ogun::fixAllPlanRows(controller);
+    rows = mesheal::fixAllPlanRows(controller);
     CHECK_FALSE(rowOf(rows, 3).hasBox());
     CHECK(rowOf(rows, 3).note == "needs whole shells");
     CHECK_FALSE(rowOf(rows, 10).hasBox());
 }
 
 TEST_CASE("Fix All panel: step numbers, times and the running text", "[app][fixall][gui]") {
-    using ogun::FixAllPhase;
-    using ogun::FixAllStageId;
-    CHECK(ogun::fixAllStepNumber(FixAllStageId::Weld, FixAllPhase::Repair) == 0);
-    CHECK(ogun::fixAllStepNumber(FixAllStageId::Dedupe, FixAllPhase::Repair) == 1);
-    CHECK(ogun::fixAllStepNumber(FixAllStageId::OrientAgain, FixAllPhase::Repair) == 5);
-    CHECK(ogun::fixAllStepNumber(FixAllStageId::FillHoles, FixAllPhase::Repair) == 8);
-    CHECK(ogun::fixAllStepNumber(FixAllStageId::MergeShells, FixAllPhase::Merge) == 10);
-    CHECK(ogun::fixAllStepNumber(FixAllStageId::FillHoles, FixAllPhase::Cleanup) == 11);
+    using mesheal::FixAllPhase;
+    using mesheal::FixAllStageId;
+    CHECK(mesheal::fixAllStepNumber(FixAllStageId::Weld, FixAllPhase::Repair) == 0);
+    CHECK(mesheal::fixAllStepNumber(FixAllStageId::Dedupe, FixAllPhase::Repair) == 1);
+    CHECK(mesheal::fixAllStepNumber(FixAllStageId::OrientAgain, FixAllPhase::Repair) == 5);
+    CHECK(mesheal::fixAllStepNumber(FixAllStageId::FillHoles, FixAllPhase::Repair) == 8);
+    CHECK(mesheal::fixAllStepNumber(FixAllStageId::MergeShells, FixAllPhase::Merge) == 10);
+    CHECK(mesheal::fixAllStepNumber(FixAllStageId::FillHoles, FixAllPhase::Cleanup) == 11);
 
-    CHECK(ogun::fixAllTimeText(6.2) == "6 ms");
-    CHECK(ogun::fixAllTimeText(1234.0) == "1.2 s");
-    CHECK(ogun::fixAllTimeText(65000.0) == "1 min 5 s");
+    CHECK(mesheal::fixAllTimeText(6.2) == "6 ms");
+    CHECK(mesheal::fixAllTimeText(1234.0) == "1.2 s");
+    CHECK(mesheal::fixAllTimeText(65000.0) == "1 min 5 s");
 
-    const ogun::FixAllRunningText full = ogun::fixAllRunningText("pass 2 of 3, phase 2, merging 28 shells...");
+    const mesheal::FixAllRunningText full = mesheal::fixAllRunningText("pass 2 of 3, phase 2, merging 28 shells...");
     CHECK(full.pass == "Pass 2 of 3");
     CHECK(full.phase == "Phase 2: merge shells");
     CHECK(full.detail == "merging 28 shells...");
-    const ogun::FixAllRunningText noPhase = ogun::fixAllRunningText("pass 1 of 1, checking the result...");
+    const mesheal::FixAllRunningText noPhase = mesheal::fixAllRunningText("pass 1 of 1, checking the result...");
     CHECK(noPhase.pass == "Pass 1 of 1");
     CHECK(noPhase.phase.empty());
     CHECK(noPhase.detail == "checking the result...");
-    const ogun::FixAllRunningText other = ogun::fixAllRunningText("checking the mesh...");
+    const mesheal::FixAllRunningText other = mesheal::fixAllRunningText("checking the mesh...");
     CHECK(other.pass.empty());
     CHECK(other.detail == "checking the mesh...");
 }
@@ -232,48 +232,48 @@ TEST_CASE("Fix All panel: step lists and report lines of a real run", "[app][fix
     controller.openFixAll(3);
     controller.waitForFixAllPlan();
     controller.previewFixAll();
-    REQUIRE(controller.fixAllState() == ogun::FixAllPanelState::Result);
-    const ogun::FixAllCandidate* run = controller.fixAllShown();
+    REQUIRE(controller.fixAllState() == mesheal::FixAllPanelState::Result);
+    const mesheal::FixAllCandidate* run = controller.fixAllShown();
     REQUIRE(run != nullptr);
-    const ogun::FixAllResult& result = run->result;
+    const mesheal::FixAllResult& result = run->result;
 
-    const std::vector<ogun::FixAllPassLines> passes = ogun::fixAllPassLines(controller, result);
+    const std::vector<mesheal::FixAllPassLines> passes = mesheal::fixAllPassLines(controller, result);
     REQUIRE(passes.size() == result.passes.size());
     REQUIRE_FALSE(passes.empty());
     std::size_t steps = 0;
-    for (const ogun::FixAllPassLines& pass : passes) {
+    for (const mesheal::FixAllPassLines& pass : passes) {
         CHECK(pass.header.starts_with("Pass " + std::to_string(pass.pass) + ": "));
         steps += pass.steps.size();
-        for (const ogun::FixAllStepLine& line : pass.steps) {
+        for (const mesheal::FixAllStepLine& line : pass.steps) {
             CHECK_FALSE(line.text.empty());
             CHECK(line.number >= 0);
             CHECK(line.number <= 11);
         }
     }
     CHECK(steps > 0);
-    CHECK(ogun::fixAllStepsSummary(result).find("pass") != std::string::npos);
+    CHECK(mesheal::fixAllStepsSummary(result).find("pass") != std::string::npos);
     bool sawMerge = false;
-    for (const ogun::FixAllStepLine& line : passes.front().steps) {
-        sawMerge = sawMerge || (line.number == 10 && line.dot == ogun::FixAllDot::Green);
+    for (const mesheal::FixAllStepLine& line : passes.front().steps) {
+        sawMerge = sawMerge || (line.number == 10 && line.dot == mesheal::FixAllDot::Green);
     }
     CHECK(sawMerge);
 
-    const std::vector<ogun::FixAllResultLine> before = ogun::fixAllResultLines(result, true);
+    const std::vector<mesheal::FixAllResultLine> before = mesheal::fixAllResultLines(result, true);
     REQUIRE(before.size() >= 4);
     CHECK(before.front().text == result.report.passesLine);
-    const auto has = [](const std::vector<ogun::FixAllResultLine>& lines, const std::string& text) {
-        return std::any_of(lines.begin(), lines.end(), [&](const ogun::FixAllResultLine& l) { return l.text == text; });
+    const auto has = [](const std::vector<mesheal::FixAllResultLine>& lines, const std::string& text) {
+        return std::any_of(lines.begin(), lines.end(), [&](const mesheal::FixAllResultLine& l) { return l.text == text; });
     };
     CHECK(has(before, result.report.shellsLine));
     CHECK(has(before, result.report.closedLine));
     CHECK(result.report.shellsLine.starts_with("Shells: 2 -> 1"));
-    const bool removedLine = std::any_of(before.begin(), before.end(), [](const ogun::FixAllResultLine& l) {
-        return l.action == ogun::FixAllLineAction::ShowRemoved;
+    const bool removedLine = std::any_of(before.begin(), before.end(), [](const mesheal::FixAllResultLine& l) {
+        return l.action == mesheal::FixAllLineAction::ShowRemoved;
     });
     CHECK(removedLine == !result.mergeRemovedFaces.empty());
-    const std::vector<ogun::FixAllResultLine> after = ogun::fixAllResultLines(result, false);
-    CHECK(std::none_of(after.begin(), after.end(), [](const ogun::FixAllResultLine& l) {
-        return l.action == ogun::FixAllLineAction::ShowRemoved;
+    const std::vector<mesheal::FixAllResultLine> after = mesheal::fixAllResultLines(result, false);
+    CHECK(std::none_of(after.begin(), after.end(), [](const mesheal::FixAllResultLine& l) {
+        return l.action == mesheal::FixAllLineAction::ShowRemoved;
     }));
 }
 
@@ -284,9 +284,9 @@ TEST_CASE("Fix All: Back to plan drops the preview and changes nothing", "[app][
     controller.openFixAll(3);
     controller.waitForFixAllPlan();
     controller.previewFixAll();
-    REQUIRE(controller.fixAllState() == ogun::FixAllPanelState::Result);
+    REQUIRE(controller.fixAllState() == mesheal::FixAllPanelState::Result);
     controller.backToFixAllPlan();
-    CHECK(controller.fixAllState() == ogun::FixAllPanelState::Plan);
+    CHECK(controller.fixAllState() == mesheal::FixAllPanelState::Plan);
     CHECK(controller.fixAllCandidate() == nullptr);
     CHECK(controller.mesh().numFaces() == faces);
     CHECK_FALSE(controller.canUndo());
@@ -294,33 +294,33 @@ TEST_CASE("Fix All: Back to plan drops the preview and changes nothing", "[app][
     // After an Apply the Report comes back, and Undo Fix All is still the top entry
     controller.previewFixAll();
     REQUIRE(controller.applyFixAll());
-    REQUIRE(controller.fixAllState() == ogun::FixAllPanelState::Report);
+    REQUIRE(controller.fixAllState() == mesheal::FixAllPanelState::Report);
     controller.runFixAllOneMorePass();
-    REQUIRE(controller.fixAllState() == ogun::FixAllPanelState::Result);
+    REQUIRE(controller.fixAllState() == mesheal::FixAllPanelState::Result);
     controller.backToFixAllPlan();
-    CHECK(controller.fixAllState() == ogun::FixAllPanelState::Report);
+    CHECK(controller.fixAllState() == mesheal::FixAllPanelState::Report);
     CHECK(controller.fixAllUndoAvailable());
     CHECK(controller.undoFixAll());
     CHECK(controller.mesh().numFaces() == faces);
 }
 
 TEST_CASE("Fix All Rebuild side: the copy carries the live numbers and the trade-offs", "[app][fixall][gui][rebuild]") {
-    const ogun::FixAllRebuildCopy copy = ogun::fixAllRebuildCopy("0.006 mm", "0.17 mm");
+    const mesheal::FixAllRebuildCopy copy = mesheal::fixAllRebuildCopy("0.006 mm", "0.17 mm");
     REQUIRE(copy.costs.size() == 4);
     CHECK(copy.costs[0].find("0.006 mm") != std::string::npos);
     CHECK(copy.costs[1].find("0.17 mm") != std::string::npos);
     CHECK(copy.costs[2].find("cavities") != std::string::npos);
     CHECK(copy.guarantee.find("no original face") != std::string::npos);
     CHECK(copy.advice.find("Repair") != std::string::npos);
-    const std::string tradeOff = ogun::fixAllRebuildTradeOffText();
+    const std::string tradeOff = mesheal::fixAllRebuildTradeOffText();
     for (const char* word : {"offset", "narrower than alpha", "cavities", "original faces", "Apply"}) {
         CHECK(tradeOff.find(word) != std::string::npos);
     }
-    CHECK(ogun::fixAllRebuildButtonLabel(11) == "Rebuild shell #12...");
-    CHECK(ogun::fixAllRebuildCavityText({}).empty());
-    CHECK(ogun::fixAllRebuildCavityText({1}) == "Closed cavity #2 will be filled in.");
-    CHECK(ogun::fixAllRebuildCavityText({1, 4}) == "Closed cavities #2 and #5 will be filled in.");
-    CHECK(ogun::fixAllRebuildCavityText({1, 4, 6}) == "Closed cavities #2, #5 and #7 will be filled in.");
+    CHECK(mesheal::fixAllRebuildButtonLabel(11) == "Rebuild shell #12...");
+    CHECK(mesheal::fixAllRebuildCavityText({}).empty());
+    CHECK(mesheal::fixAllRebuildCavityText({1}) == "Closed cavity #2 will be filled in.");
+    CHECK(mesheal::fixAllRebuildCavityText({1, 4}) == "Closed cavities #2 and #5 will be filled in.");
+    CHECK(mesheal::fixAllRebuildCavityText({1, 4, 6}) == "Closed cavities #2, #5 and #7 will be filled in.");
 }
 
 TEST_CASE("Fix All Rebuild side: a cavity box names the cavity an alpha wrap would fill", "[app][fixall][gui][rebuild]") {
@@ -330,54 +330,54 @@ TEST_CASE("Fix All Rebuild side: a cavity box names the cavity an alpha wrap wou
     controller.waitForFixAllPlan();
     const std::vector<int> cavities = controller.fixAllRebuildFilledCavities();
     REQUIRE(cavities.size() == 1);
-    CHECK(ogun::fixAllRebuildCavityText(cavities) == "Closed cavity #" + std::to_string(cavities.front() + 1) + " will be filled in.");
+    CHECK(mesheal::fixAllRebuildCavityText(cavities) == "Closed cavity #" + std::to_string(cavities.front() + 1) + " will be filled in.");
     // A face selection has no whole shells: the GUI hides the switch (the scope kind says so)
     controller.selectFaces(std::vector<Eigen::Index>{0, 1, 2}, true);
-    CHECK(controller.fixAllScope().kind == ogun::FixAllScopeKind::Faces);
+    CHECK(controller.fixAllScope().kind == mesheal::FixAllScopeKind::Faces);
 }
 
 TEST_CASE("Fix All Rebuild: the residue line offers the button, the rows are tagged, the Report says what was rebuilt",
           "[app][fixall][gui][rebuild]") {
     AppController controller;
     controller.setMesh(SampleMeshes::createOpenShellAmongCubesMesh(), "Overlapping boxes, one open");
-    auto hooks = std::make_shared<ogun::FixAllTestHooks>();
-    hooks->adjustStages = [](int, ogun::FixAllPhase, std::vector<ogun::FixAllStage>& stages) {
-        std::erase_if(stages, [](const ogun::FixAllStage& s) {
-            return s.id == ogun::FixAllStageId::FillHoles || s.id == ogun::FixAllStageId::CloseCracks;
+    auto hooks = std::make_shared<mesheal::FixAllTestHooks>();
+    hooks->adjustStages = [](int, mesheal::FixAllPhase, std::vector<mesheal::FixAllStage>& stages) {
+        std::erase_if(stages, [](const mesheal::FixAllStage& s) {
+            return s.id == mesheal::FixAllStageId::FillHoles || s.id == mesheal::FixAllStageId::CloseCracks;
         });
     };
     controller.setFixAllTestHooks(hooks);
     controller.openFixAll(3);
-    ogun::GlobalRepairParams params = controller.globalRepairParams();
-    params.alphaWrapDetail = ogun::settings::kMinAlphaWrapDetail;
-    params.windingResolution = ogun::settings::kMinWindingGridResolution;
+    mesheal::GlobalRepairParams params = controller.globalRepairParams();
+    params.alphaWrapDetail = mesheal::settings::kMinAlphaWrapDetail;
+    params.windingResolution = mesheal::settings::kMinWindingGridResolution;
     controller.setGlobalRepairParams(params);
     controller.previewFixAll();
     REQUIRE(controller.fixAllCandidate() != nullptr);
 
     // Before Apply the open shell's line carries the shell to rebuild; the Report's lines are the same
-    const std::vector<ogun::FixAllResultLine> lines = ogun::fixAllResultLines(controller.fixAllCandidate()->fixAll->result, true);
-    const auto it = std::find_if(lines.begin(), lines.end(), [](const ogun::FixAllResultLine& l) { return l.rebuildShell >= 0; });
+    const std::vector<mesheal::FixAllResultLine> lines = mesheal::fixAllResultLines(controller.fixAllCandidate()->fixAll->result, true);
+    const auto it = std::find_if(lines.begin(), lines.end(), [](const mesheal::FixAllResultLine& l) { return l.rebuildShell >= 0; });
     REQUIRE(it != lines.end());
     CHECK(it->warning);
-    CHECK(ogun::fixAllRebuildButtonLabel(it->rebuildShell) == "Rebuild shell #2...");
+    CHECK(mesheal::fixAllRebuildButtonLabel(it->rebuildShell) == "Rebuild shell #2...");
 
     controller.rebuildFixAllShell(it->rebuildShell);
-    const std::vector<ogun::RepairCandidate>& rows = controller.fixAllRebuilds();
-    REQUIRE(rows.size() == ogun::kShellRebuildMethods.size());
-    CHECK(ogun::fixAllRebuildRowLabel(rows[0]) == "+ Shrink-Wrap (Outer Envelope) #2  (suggested)");
-    CHECK(ogun::fixAllRebuildRowLabel(rows[1]) == "+ Self-union #2");
-    CHECK(ogun::fixAllRebuildRowLabel(*controller.fixAllCandidate()) == "Fix All");
+    const std::vector<mesheal::RepairCandidate>& rows = controller.fixAllRebuilds();
+    REQUIRE(rows.size() == mesheal::kShellRebuildMethods.size());
+    CHECK(mesheal::fixAllRebuildRowLabel(rows[0]) == "+ Shrink-Wrap (Outer Envelope) #2  (suggested)");
+    CHECK(mesheal::fixAllRebuildRowLabel(rows[1]) == "+ Self-union #2");
+    CHECK(mesheal::fixAllRebuildRowLabel(*controller.fixAllCandidate()) == "Fix All");
     REQUIRE(rows[0].success);
-    CHECK(ogun::fixAllRebuiltLine(*rows[0].fixAll->rebuild) == "Shell #2 rebuilt by shrink-Wrap (Outer Envelope) and merged.");
+    CHECK(mesheal::fixAllRebuiltLine(*rows[0].fixAll->rebuild) == "Shell #2 rebuilt by shrink-Wrap (Outer Envelope) and merged.");
 
     // Show the row, Apply the shown row: one undo step "Fix All + Rebuild #2", the Report knows the rebuild
-    controller.showFixAllRebuild(ogun::GlobalRepairMethod::AlphaWrap);
+    controller.showFixAllRebuild(mesheal::GlobalRepairMethod::AlphaWrap);
     REQUIRE(controller.applyGlobalRepair());
     CHECK(controller.lastUndoActionLabel() == "Fix All + Rebuild #2");
     REQUIRE(controller.fixAllShown() != nullptr);
     REQUIRE(controller.fixAllShown()->rebuild.has_value());
-    CHECK(ogun::fixAllRebuiltLine(*controller.fixAllShown()->rebuild) == "Shell #2 rebuilt by shrink-Wrap (Outer Envelope) and merged.");
+    CHECK(mesheal::fixAllRebuiltLine(*controller.fixAllShown()->rebuild) == "Shell #2 rebuilt by shrink-Wrap (Outer Envelope) and merged.");
 }
 
 TEST_CASE("Fix All Rebuild side: a whole-scope rebuild previews and applies as one undo step", "[app][fixall][gui][rebuild][undo]") {
@@ -385,15 +385,15 @@ TEST_CASE("Fix All Rebuild side: a whole-scope rebuild previews and applies as o
     controller.setMesh(overlappingCubes(), "cubes");
     controller.openFixAll(3);
     controller.waitForFixAllPlan();
-    ogun::GlobalRepairParams params = controller.globalRepairParams();
-    params.alphaWrapDetail = ogun::settings::kMinAlphaWrapDetail;
+    mesheal::GlobalRepairParams params = controller.globalRepairParams();
+    params.alphaWrapDetail = mesheal::settings::kMinAlphaWrapDetail;
     controller.setGlobalRepairParams(params);
     const Mesh before = controller.mesh();
-    controller.setGlobalRepairMethod(ogun::GlobalRepairMethod::AlphaWrap);
+    controller.setGlobalRepairMethod(mesheal::GlobalRepairMethod::AlphaWrap);
     controller.previewGlobalRepair();
     REQUIRE(controller.shownGlobalCandidate() != nullptr);
     REQUIRE(controller.shownGlobalCandidate()->success);
-    CHECK(controller.fixAllState() == ogun::FixAllPanelState::Plan); // no Fix All row: the Rebuild side stays in the plan
+    CHECK(controller.fixAllState() == mesheal::FixAllPanelState::Plan); // no Fix All row: the Rebuild side stays in the plan
     CHECK(controller.mesh().F == before.F);
     REQUIRE(controller.applyGlobalRepair());
     CHECK(controller.lastUndoActionLabel() == "Rebuild (Shrink-Wrap (Outer Envelope))");
@@ -411,32 +411,32 @@ TEST_CASE("Fix All lines: a cavity another shell reaches into is not also report
     controller.previewFixAll();
     REQUIRE(controller.fixAllCandidate() != nullptr);
     REQUIRE(controller.fixAllCandidate()->fixAll != nullptr);
-    const ogun::FixAllResult& result = controller.fixAllCandidate()->fixAll->result;
-    const std::vector<ogun::FixAllResultLine> lines = ogun::fixAllResultLines(result, true);
+    const mesheal::FixAllResult& result = controller.fixAllCandidate()->fixAll->result;
+    const std::vector<mesheal::FixAllResultLine> lines = mesheal::fixAllResultLines(result, true);
     const auto count = [&](const std::string& part) {
-        return std::count_if(lines.begin(), lines.end(), [&](const ogun::FixAllResultLine& l) { return l.text.find(part) != std::string::npos; });
+        return std::count_if(lines.begin(), lines.end(), [&](const mesheal::FixAllResultLine& l) { return l.text.find(part) != std::string::npos; });
     };
     CHECK(count("reaches into cavity") >= 1);
     CHECK(count("cavity or inside out?") == 0);
 }
 
 TEST_CASE("Fix All lines: repeated crossing lines fold into one group", "[app][fixall][gui]") {
-    std::vector<ogun::FixAllResultLine> lines(1);
+    std::vector<mesheal::FixAllResultLine> lines(1);
     lines[0].text = "Shells: 9 -> 9";
     for (int i = 0; i < 5; ++i) {
-        ogun::FixAllResultLine l;
+        mesheal::FixAllResultLine l;
         l.text = "#" + std::to_string(i + 1) + " and #9 still cross";
         l.shells = {i, 8};
         l.groupKey = "their group reaches into cavity #28";
         lines.push_back(l);
     }
     for (int i = 0; i < 2; ++i) { // too few to group
-        ogun::FixAllResultLine l;
+        mesheal::FixAllResultLine l;
         l.shells = {i, 7};
         l.groupKey = "the merge is off";
         lines.push_back(l);
     }
-    const std::vector<ogun::FixAllLineGroup> groups = ogun::fixAllLineGroups(lines);
+    const std::vector<mesheal::FixAllLineGroup> groups = mesheal::fixAllLineGroups(lines);
     REQUIRE(groups.size() == 1);
     CHECK(groups[0].summary == "5 shell pairs among 6 shells still cross: their group reaches into cavity #28.");
     CHECK(groups[0].members == std::vector<std::size_t>{1, 2, 3, 4, 5});
@@ -455,11 +455,11 @@ bool hasLetterOrDigit(const std::string& word) {
 }
 
 /// A residue line "#k still crosses <others>: <why>." as the engine words it (crossing only).
-ogun::FixAllShellResidue crossingResidue(int shell, std::vector<int> others, const std::string& why) {
-    ogun::FixAllShellResidue r;
+mesheal::FixAllShellResidue crossingResidue(int shell, std::vector<int> others, const std::string& why) {
+    mesheal::FixAllShellResidue r;
     r.shell = shell;
     r.crosses = others;
-    r.suggestion = ogun::FixAllSuggestion::ReportOnly;
+    r.suggestion = mesheal::FixAllSuggestion::ReportOnly;
     std::string list;
     for (std::size_t i = 0; i < others.size(); ++i) {
         if (i > 0) {
@@ -473,8 +473,8 @@ ogun::FixAllShellResidue crossingResidue(int shell, std::vector<int> others, con
     return r;
 }
 
-ogun::FixAllCrossingLeft crossingPair(int a, int b, const std::string& why) {
-    ogun::FixAllCrossingLeft left;
+mesheal::FixAllCrossingLeft crossingPair(int a, int b, const std::string& why) {
+    mesheal::FixAllCrossingLeft left;
     left.a = a;
     left.b = b;
     left.facePairs = 9;
@@ -483,8 +483,8 @@ ogun::FixAllCrossingLeft crossingPair(int a, int b, const std::string& why) {
     return left;
 }
 
-std::size_t countContaining(const std::vector<ogun::FixAllResultLine>& lines, const std::string& part) {
-    return static_cast<std::size_t>(std::count_if(lines.begin(), lines.end(), [&](const ogun::FixAllResultLine& l) {
+std::size_t countContaining(const std::vector<mesheal::FixAllResultLine>& lines, const std::string& part) {
+    return static_cast<std::size_t>(std::count_if(lines.begin(), lines.end(), [&](const mesheal::FixAllResultLine& l) {
         return l.text.find(part) != std::string::npos;
     }));
 }
@@ -495,16 +495,16 @@ TEST_CASE("Fix All panel: plan labels wrap only at spaces, never inside a number
     // The Turkey's row 3 wrapped as "Delete tiny floating shells (< 0." / "1 %)"
     const std::string row3 = "3  Delete tiny floating shells (< 0.1 %)";
     for (float width = 8.0f; width <= 45.0f; width += 1.0f) {
-        const std::vector<std::string> lines = ogun::fixAllWrapLines(row3, width, charWidth);
+        const std::vector<std::string> lines = mesheal::fixAllWrapLines(row3, width, charWidth);
         const bool together = std::any_of(lines.begin(), lines.end(), [](const std::string& l) {
             return l.find("(< 0.1 %)") != std::string::npos;
         });
         CHECK(together);
     }
-    CHECK(ogun::fixAllWrapLines(row3, 100.0f, charWidth) == std::vector<std::string>{row3});
-    CHECK(ogun::fixAllWrapLines("Heal thin faces (stretched over 100 : 1)", 30.0f, charWidth) ==
+    CHECK(mesheal::fixAllWrapLines(row3, 100.0f, charWidth) == std::vector<std::string>{row3});
+    CHECK(mesheal::fixAllWrapLines("Heal thin faces (stretched over 100 : 1)", 30.0f, charWidth) ==
           std::vector<std::string>{"Heal thin faces (stretched", "over 100 : 1)"});
-    CHECK(ogun::fixAllWrapLines("", 10.0f, charWidth) == std::vector<std::string>{""});
+    CHECK(mesheal::fixAllWrapLines("", 10.0f, charWidth) == std::vector<std::string>{""});
 
     // Every row of the plan at every width: lines are the label's words in order, split only at spaces, and
     // no line starts or ends with a word that has no letter or digit
@@ -512,10 +512,10 @@ TEST_CASE("Fix All panel: plan labels wrap only at spaces, never inside a number
     controller.setMesh(overlappingCubes(), "cubes");
     controller.openFixAll(3);
     controller.waitForFixAllPlan();
-    for (const FixAllPlanRow& row : ogun::fixAllPlanRows(controller)) {
+    for (const FixAllPlanRow& row : mesheal::fixAllPlanRows(controller)) {
         const std::string text = std::to_string(row.number) + "  " + row.label;
         for (float width = 6.0f; width <= 60.0f; width += 1.0f) {
-            const std::vector<std::string> lines = ogun::fixAllWrapLines(text, width, charWidth);
+            const std::vector<std::string> lines = mesheal::fixAllWrapLines(text, width, charWidth);
             std::string joined;
             for (const std::string& line : lines) {
                 joined += (joined.empty() ? "" : " ") + line;
@@ -545,10 +545,10 @@ TEST_CASE("Fix All lines: each crossing pair is said once", "[app][fixall][gui]"
         controller.setFixAllMergeShells(false);
         controller.previewFixAll();
         REQUIRE(controller.fixAllCandidate() != nullptr);
-        const ogun::FixAllResult& result = controller.fixAllCandidate()->fixAll->result;
+        const mesheal::FixAllResult& result = controller.fixAllCandidate()->fixAll->result;
         REQUIRE(result.report.crossingsLeft.size() == 1);
         REQUIRE(result.report.residue.size() == 2); // the engine still has a line per shell
-        const std::vector<ogun::FixAllResultLine> lines = ogun::fixAllResultLines(result, true);
+        const std::vector<mesheal::FixAllResultLine> lines = mesheal::fixAllResultLines(result, true);
         CHECK(countContaining(lines, "still cross") == 1);
         CHECK(countContaining(lines, "#1 and #2 still cross (") == 1);
         CHECK(countContaining(lines, "the merge is off. Tick Merge shells and preview again.") == 1);
@@ -561,17 +561,17 @@ TEST_CASE("Fix All lines: each crossing pair is said once", "[app][fixall][gui]"
         controller.waitForFixAllPlan();
         controller.previewFixAll();
         REQUIRE(controller.fixAllCandidate() != nullptr);
-        const std::vector<ogun::FixAllResultLine> lines = ogun::fixAllResultLines(controller.fixAllCandidate()->fixAll->result, true);
+        const std::vector<mesheal::FixAllResultLine> lines = mesheal::fixAllResultLines(controller.fixAllCandidate()->fixAll->result, true);
         CHECK(countContaining(lines, "is not selected") == 1);
         CHECK(countContaining(lines, "still crosses") == 0);
         CHECK(countContaining(lines, "still cross (") == 1);
     }
     SECTION("A shell line naming a pair without its own line is kept") {
-        ogun::FixAllResult result;
+        mesheal::FixAllResult result;
         result.report.complete = true;
         result.report.residue.push_back(crossingResidue(0, {1, 2}, "the merge is off"));
         result.report.crossingsLeft.push_back(crossingPair(0, 1, "the merge is off"));
-        const std::vector<ogun::FixAllResultLine> lines = ogun::fixAllResultLines(result, true);
+        const std::vector<mesheal::FixAllResultLine> lines = mesheal::fixAllResultLines(result, true);
         CHECK(countContaining(lines, "#1 still crosses #2 and #3") == 1);
         CHECK(countContaining(lines, "#1 and #2 still cross (") == 1);
     }
@@ -580,7 +580,7 @@ TEST_CASE("Fix All lines: each crossing pair is said once", "[app][fixall][gui]"
 TEST_CASE("Fix All lines: shells that cross for the same reason fold into one group, whatever shells they name",
           "[app][fixall][gui]") {
     const std::string why = "their group reaches into cavity #7 of #5, so it is not merged (merge them by hand)";
-    ogun::FixAllResult result;
+    mesheal::FixAllResult result;
     result.report.complete = true;
     // As on the Turkey: each shell crosses different shells, so the texts differ but the reason is one
     result.report.residue.push_back(crossingResidue(0, {1, 2, 3}, why));
@@ -590,15 +590,15 @@ TEST_CASE("Fix All lines: shells that cross for the same reason fold into one gr
     result.report.residue.push_back(crossingResidue(5, {4}, "#5 is not selected"));
 
     SECTION("Shell lines without pair lines: one summary of the shells") {
-        const std::vector<ogun::FixAllResultLine> lines = ogun::fixAllResultLines(result, false);
-        const std::vector<ogun::FixAllLineGroup> groups = ogun::fixAllLineGroups(lines);
+        const std::vector<mesheal::FixAllResultLine> lines = mesheal::fixAllResultLines(result, false);
+        const std::vector<mesheal::FixAllLineGroup> groups = mesheal::fixAllLineGroups(lines);
         REQUIRE(groups.size() == 1);
-        CHECK(groups[0].kind == ogun::FixAllLineGroupKind::Shells);
+        CHECK(groups[0].kind == mesheal::FixAllLineGroupKind::Shells);
         CHECK(groups[0].summary == "4 shells still cross other shells: " + why + ".");
         REQUIRE(groups[0].members.size() == 4);
         for (const std::size_t m : groups[0].members) {
             CHECK(lines[m].text.find(why) != std::string::npos);
-            CHECK(lines[m].action == ogun::FixAllLineAction::ShowThem);
+            CHECK(lines[m].action == mesheal::FixAllLineAction::ShowThem);
         }
         CHECK(groups[0].shells == std::vector<int>{0, 1, 2, 3});
         CHECK(countContaining(lines, "#6 still crosses #5: #5 is not selected.") == 1); // its own reason: alone
@@ -608,11 +608,11 @@ TEST_CASE("Fix All lines: shells that cross for the same reason fold into one gr
             result.report.crossingsLeft.push_back(crossingPair(a, b, why));
         }
         result.report.crossingsLeft.push_back(crossingPair(4, 5, "#5 is not selected"));
-        const std::vector<ogun::FixAllResultLine> lines = ogun::fixAllResultLines(result, false);
+        const std::vector<mesheal::FixAllResultLine> lines = mesheal::fixAllResultLines(result, false);
         CHECK(countContaining(lines, "still crosses") == 0);
-        const std::vector<ogun::FixAllLineGroup> groups = ogun::fixAllLineGroups(lines);
+        const std::vector<mesheal::FixAllLineGroup> groups = mesheal::fixAllLineGroups(lines);
         REQUIRE(groups.size() == 1);
-        CHECK(groups[0].kind == ogun::FixAllLineGroupKind::ShellPairs);
+        CHECK(groups[0].kind == mesheal::FixAllLineGroupKind::ShellPairs);
         CHECK(groups[0].summary == "4 shell pairs among 4 shells still cross: " + why + ".");
         CHECK(groups[0].members.size() == 4);
     }

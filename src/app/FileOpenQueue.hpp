@@ -6,7 +6,7 @@
 #include <optional>
 #include <queue>
 
-namespace ogun {
+namespace mesheal {
 
 /// Thread-safe queue for file paths requested to be opened in the application
 /// (via Finder double-click, OS AppleEvents, CLI arguments, or viewport drag-and-drop).
@@ -36,4 +36,4 @@ private:
     std::function<void()> wakeCallback_;
 };
 
-} // namespace ogun
+} // namespace mesheal

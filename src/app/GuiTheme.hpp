@@ -2,10 +2,10 @@
 
 #include "app/UiTheme.hpp"
 
-namespace ogun::gui {
+namespace mesheal::gui {
 
 /// Sets the ImGui colours of `theme` (sizes and rounding stay as Polyscope set them). Needs an ImGui
-/// context. `PolyscopeDefault` re-runs the style callback Polyscope had installed before Ogun's.
+/// context. `PolyscopeDefault` re-runs the style callback Polyscope had installed before Mesheal's.
 void applyUiTheme(UiTheme theme);
 
 /// Remembers the theme and replaces `polyscope::options::configureImGuiStyleCallback` so that Polyscope's
@@ -15,4 +15,4 @@ void installUiTheme(UiTheme theme);
 /// Changes the theme now and for later Polyscope style set-ups.
 void setUiTheme(UiTheme theme);
 
-} // namespace ogun::gui
+} // namespace mesheal::gui

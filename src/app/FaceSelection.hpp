@@ -10,7 +10,7 @@
 #include <span>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// A slice plane cutting the view: points with `(p - origin) . normal < 0` are cut away and not drawn
 /// (Polyscope's scene slice planes).
@@ -100,4 +100,4 @@ private:
                                                       const Eigen::Vector2d& b, double radius, const FaceVisibility* visibility,
                                                       std::span<const std::uint8_t> shown = {});
 
-} // namespace ogun
+} // namespace mesheal

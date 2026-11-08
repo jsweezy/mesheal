@@ -1,7 +1,7 @@
 #include "mesh/Units.hpp"
 #include "mesh/Mesh.hpp"
 
-namespace ogun {
+namespace mesheal {
 
 void setFileUnit(Mesh& mesh, Unit newUnit) noexcept {
     mesh.fileUnit = newUnit;
@@ -18,4 +18,4 @@ void scaleMeshToUnit(Mesh& mesh, Unit targetUnit) {
     mesh.fileUnit = targetUnit;
 }
 
-} // namespace ogun
+} // namespace mesheal

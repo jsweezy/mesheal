@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <span>
 
-namespace ogun {
+namespace mesheal {
 
 /// Outcome of a vertex split. Coordinates never move: split vertices get copies at the same position.
 struct NonManifoldSplitResult {
@@ -26,4 +26,4 @@ struct NonManifoldSplitResult {
 /// Edges that are not Touching (`touchingEdges`) are left unchanged and counted in `edgesSkipped`.
 [[nodiscard]] NonManifoldSplitResult splitNonManifoldEdges(const Mesh& mesh, std::span<const std::array<int, 2>> edges);
 
-} // namespace ogun
+} // namespace mesheal

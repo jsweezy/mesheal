@@ -1,10 +1,10 @@
-# Ogun Benchmarks & FixSTL Evaluation Suite
+# Mesheal Benchmarks & FixSTL Evaluation Suite
 
-Ogun includes a Python-driven benchmarking framework modeled after the [FixSTL 3D Repair Benchmark](https://fixstl.ai/benchmarks). It automates pulling models from benchmark datasets (such as Thingi10K), caching them locally without tracking them in git, running Ogun repairs (Fix All, Voxel Remesh, Precision Isosurface, Shrink-Wrap), and evaluating results in standardized JSON format.
+Mesheal includes a Python-driven benchmarking framework modeled after the [FixSTL 3D Repair Benchmark](https://fixstl.ai/benchmarks). It automates pulling models from benchmark datasets (such as Thingi10K), caching them locally without tracking them in git, running Mesheal repairs (Fix All, Voxel Remesh, Precision Isosurface, Shrink-Wrap), and evaluating results in standardized JSON format.
 
 ## Key Features
 
-- **Decoupled Local Caching**: Models are downloaded on demand and cached in `~/.cache/ogun/benchmarks/models/` (or a custom path via `OGUN_BENCHMARK_CACHE` or `--cache-dir`). No benchmark STLs are checked into git.
+- **Decoupled Local Caching**: Models are downloaded on demand and cached in `~/.cache/mesheal/benchmarks/models/` (or a custom path via `MESHEAL_BENCHMARK_CACHE` or `--cache-dir`). No benchmark STLs are checked into git.
 - **Deduplication & Integrity**: Verifies SHA-256 digests against dataset specifications.
 - **Thingiverse Zip Extraction & Mirror Fallbacks**: Supports extracting target STLs from Thingiverse project zip archives (`https://www.thingiverse.com/thing:<id>/zip`) or direct Thingi10K raw repository mirrors.
 - **Volume & Area Tracking**: Directly tracks volume before/after, volume change percentage ($\Delta V\%$), surface area change percentage ($\Delta A\%$), and full defect counts.
@@ -14,7 +14,7 @@ Ogun includes a Python-driven benchmarking framework modeled after the [FixSTL 3
 
 ## Python Benchmark API
 
-You can script Ogun repairs directly in Python:
+You can script Mesheal repairs directly in Python:
 
 ```python
 from benchmarks import repair, diagnostics
@@ -66,8 +66,8 @@ python3 -m benchmarks.run_benchmark --limit 20 --dry-run
 | `--benchmark-json` | `https://fixstl.ai/benchmarks/thingi10k-200-2026-10-27.json` | Path or URL to benchmark specification. |
 | `--method` | `fix-all` | Repair method (`fix-all`, `remesh-voxel`, `remesh-iso`, etc.). |
 | `--limit` | 0 (all) | Maximum number of models to process. |
-| `--cache-dir` | `~/.cache/ogun/benchmarks/models/` | Directory where downloaded STLs are stored. |
-| `-o, --output` | `benchmarks/results/ogun-<method>-<N>-<date>.json` | Destination path for benchmark results JSON. |
+| `--cache-dir` | `~/.cache/mesheal/benchmarks/models/` | Directory where downloaded STLs are stored. |
+| `-o, --output` | `benchmarks/results/mesheal-<method>-<N>-<date>.json` | Destination path for benchmark results JSON. |
 | `--dry-run` | false | Downloads and caches models without running repair passes. |
 
 ---
@@ -84,7 +84,7 @@ Results are output in the format matching FixSTL's JSON benchmark specifications
   "input_sha256": "68d0a591bc0dd6366b7151b301dc682917de8669818bb53413338d99398a787a",
   "defective": true,
   "results": {
-    "ogun": {
+    "mesheal": {
       "status": "output",
       "solid": true,
       "shapeKept": true,

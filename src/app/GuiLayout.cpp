@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace ogun {
+namespace mesheal {
 
 std::vector<LayoutRect> tileWindows(const LayoutRect& area, std::size_t count, float preferredWidth, float minWidth,
                                     float gap, const std::vector<float>& preferredHeights) {
@@ -85,4 +85,4 @@ std::vector<std::string> wrapText(std::string_view text, float maxWidth,
     return lines;
 }
 
-} // namespace ogun
+} // namespace mesheal

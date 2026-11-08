@@ -6,11 +6,11 @@
 
 namespace {
 
-using ogun::FrameActivity;
-using ogun::FramePacer;
-using ogun::FrameWait;
-using ogun::FrameWaitKind;
-namespace settings = ogun::settings;
+using mesheal::FrameActivity;
+using mesheal::FramePacer;
+using mesheal::FrameWait;
+using mesheal::FrameWaitKind;
+namespace settings = mesheal::settings;
 
 FrameActivity input() {
     FrameActivity a;

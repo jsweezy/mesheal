@@ -16,7 +16,7 @@
 #include <limits>
 #include <unordered_map>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -194,4 +194,4 @@ RepairMetrics computeRepairMetrics(
     return m;
 }
 
-} // namespace ogun
+} // namespace mesheal

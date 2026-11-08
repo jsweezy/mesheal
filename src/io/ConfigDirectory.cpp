@@ -9,14 +9,14 @@
 #include <unistd.h>
 #endif
 
-namespace ogun {
+namespace mesheal {
 
 std::filesystem::path configDirectoryFor(const char* xdgConfigHome, const char* home) {
     if (xdgConfigHome != nullptr && *xdgConfigHome != '\0') {
-        return std::filesystem::path(xdgConfigHome) / "ogun";
+        return std::filesystem::path(xdgConfigHome) / "mesheal";
     }
     if (home != nullptr && *home != '\0') {
-        return std::filesystem::path(home) / ".config" / "ogun";
+        return std::filesystem::path(home) / ".config" / "mesheal";
     }
     return {};
 }
@@ -31,6 +31,19 @@ std::filesystem::path configDirectory() {
     }
 #endif
     return configDirectoryFor(std::getenv("XDG_CONFIG_HOME"), home);
+}
+
+bool migrateLegacyConfigDirectory(const std::filesystem::path& configDir) {
+    if (configDir.empty() || !configDir.has_parent_path()) {
+        return false;
+    }
+    const std::filesystem::path legacy = configDir.parent_path() / "ogun";
+    std::error_code ec;
+    if (!std::filesystem::is_directory(legacy, ec) || std::filesystem::exists(configDir, ec)) {
+        return false;
+    }
+    std::filesystem::rename(legacy, configDir, ec);
+    return !ec;
 }
 
 bool writeFileAtomically(const std::filesystem::path& file, std::string_view contents, std::string* error) {
@@ -77,4 +90,4 @@ bool writeFileAtomically(const std::filesystem::path& file, std::string_view con
     return true;
 }
 
-} // namespace ogun
+} // namespace mesheal

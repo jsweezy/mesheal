@@ -4,7 +4,7 @@
 
 #include <array>
 
-namespace ogun {
+namespace mesheal {
 
 using Triangle3d = std::array<Eigen::Vector3d, 3>;
 
@@ -32,4 +32,4 @@ struct TriTriHit {
 /// cheaper plane test first).
 [[nodiscard]] bool trianglesWithin(const Triangle3d& a, const Triangle3d& b, double tol);
 
-} // namespace ogun
+} // namespace mesheal

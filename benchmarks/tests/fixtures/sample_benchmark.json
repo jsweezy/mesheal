@@ -1,6 +1,6 @@
 {
   "description": "Local test benchmark",
-  "corpus": "Ogun Local Test",
+  "corpus": "Mesheal Local Test",
   "definitions": {
     "defective": "input fails at least one strict-solid check",
     "solid": "output is closed, edge- and vertex-manifold, consistently wound, free of self-intersections, duplicate and zero-area faces, with outward shells"

@@ -14,7 +14,7 @@
 #include <chrono>
 #include <unordered_set>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -782,4 +782,4 @@ std::optional<std::vector<int>> cavitiesFilledByRebuild(
     return cavities;
 }
 
-} // namespace ogun
+} // namespace mesheal

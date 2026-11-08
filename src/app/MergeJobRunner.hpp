@@ -14,7 +14,7 @@
 #include <thread>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// One Merge Shells job on a mesh snapshot.
 struct MergeRequest {
@@ -66,4 +66,4 @@ private:
     std::optional<FinishedMerge> finished_;
 };
 
-} // namespace ogun
+} // namespace mesheal

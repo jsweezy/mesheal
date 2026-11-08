@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 enum class CliAction {
     None,
@@ -55,5 +55,5 @@ struct CliOptions {
 /// Returns process exit code (0 for success, non-zero for error).
 int executeCliCommand(const CliOptions& options);
 
-} // namespace ogun
+} // namespace mesheal
 

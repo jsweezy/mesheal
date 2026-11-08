@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 FinishedFixAllPlan computeFixAllPlan(const FixAllPlanRequest& request, std::stop_token stopToken) {
     FinishedFixAllPlan finished;
@@ -67,4 +67,4 @@ std::optional<FinishedFixAllPlan> FixAllPlanRunner::takeFinished() {
     return std::exchange(finished_, std::nullopt);
 }
 
-} // namespace ogun
+} // namespace mesheal

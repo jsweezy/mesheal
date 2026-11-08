@@ -9,7 +9,7 @@
 #include <thread>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -448,4 +448,4 @@ CategoryResult checkSelfIntersections(
     return buildResult(*pairs);
 }
 
-} // namespace ogun
+} // namespace mesheal

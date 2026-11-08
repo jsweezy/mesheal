@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// What a shell is, judged by rule O from its signed volume and the winding-independent nesting.
 enum class ShellRole : std::uint8_t {
@@ -83,4 +83,4 @@ struct ShellRoles {
     std::stop_token stopToken = {},
     std::atomic<float>* progress = nullptr);
 
-} // namespace ogun
+} // namespace mesheal

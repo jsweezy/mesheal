@@ -10,7 +10,7 @@
 #include <istream>
 #include <string>
 
-namespace ogun {
+namespace mesheal {
 
 /// Welds duplicate vertices across triangles using local coordinate-relative tolerance
 /// (`tolConfig`) while enforcing the Edge-Aware Guard: two corners belonging to the
@@ -58,4 +58,4 @@ bool loadStl(
     const ToleranceConfig& tolConfig = ToleranceConfig{},
     std::string* errorOut = nullptr);
 
-} // namespace ogun
+} // namespace mesheal

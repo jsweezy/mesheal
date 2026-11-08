@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace ogun {
+namespace mesheal {
 
 /// Colour theme of the ImGui panels (Preferences > Interface). Independent of the 3D viewport background.
 enum class UiTheme : std::uint8_t {
@@ -25,4 +25,4 @@ inline constexpr std::array<UiTheme, kUiThemeCount> kAllUiThemes = {
 /// Stable word saved in preferences.conf (never the display name).
 [[nodiscard]] const char* uiThemeKey(UiTheme theme) noexcept;
 
-} // namespace ogun
+} // namespace mesheal

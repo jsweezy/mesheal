@@ -14,7 +14,7 @@
 #include <sstream>
 #include <string_view>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -57,7 +57,7 @@ std::string actionName(CliAction action) {
 
 void printUsage(const char* prog) {
     std::cout
-        << "Ogun STL Repair Tool — Headless CLI & 3D Viewer\n\n"
+        << "Mesheal STL Repair Tool — Headless CLI & 3D Viewer\n\n"
         << "Usage:\n"
         << "  " << prog << " [options] <input.stl>\n\n"
         << "Repair & Rebuild Actions:\n"
@@ -149,7 +149,7 @@ bool isHeadlessCommand(const CliOptions& options) noexcept {
 
 int executeCliCommand(const CliOptions& options) {
     if (options.action == CliAction::Help) {
-        printUsage("ogun");
+        printUsage("mesheal");
         return 0;
     }
     if (options.action == CliAction::Version) {
@@ -377,4 +377,4 @@ int executeCliCommand(const CliOptions& options) {
     return 0;
 }
 
-} // namespace ogun
+} // namespace mesheal

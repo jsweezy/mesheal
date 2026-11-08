@@ -16,7 +16,7 @@
 #include <unordered_set>
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 const char* previewDisplayModeLabel(PreviewDisplayMode mode) noexcept {
     switch (mode) {
@@ -78,15 +78,15 @@ AppController::AppController()
 
 std::filesystem::path AppController::resolveApplicationIconPath() noexcept {
     const std::array<std::filesystem::path, 4> candidates = {
-        std::filesystem::path("assets/icons/ogun.png"),
-        std::filesystem::path("assets/icons/ogun.jpeg"),
-#ifdef OGUN_SOURCE_ICON_PNG_PATH
-        std::filesystem::path(OGUN_SOURCE_ICON_PNG_PATH),
+        std::filesystem::path("assets/icons/mesheal.png"),
+        std::filesystem::path("assets/icons/mesheal.jpeg"),
+#ifdef MESHEAL_SOURCE_ICON_PNG_PATH
+        std::filesystem::path(MESHEAL_SOURCE_ICON_PNG_PATH),
 #else
         std::filesystem::path{},
 #endif
-#ifdef OGUN_SOURCE_ICON_JPEG_PATH
-        std::filesystem::path(OGUN_SOURCE_ICON_JPEG_PATH),
+#ifdef MESHEAL_SOURCE_ICON_JPEG_PATH
+        std::filesystem::path(MESHEAL_SOURCE_ICON_JPEG_PATH),
 #else
         std::filesystem::path{},
 #endif
@@ -104,8 +104,8 @@ std::filesystem::path AppController::resolveApplicationIconPath() noexcept {
 std::filesystem::path AppController::resolveExamplePath(std::string_view fileName) {
     const std::array<std::filesystem::path, 2> candidates = {
         std::filesystem::path("examples") / fileName,
-#ifdef OGUN_SOURCE_EXAMPLES_DIR
-        std::filesystem::path(OGUN_SOURCE_EXAMPLES_DIR) / fileName,
+#ifdef MESHEAL_SOURCE_EXAMPLES_DIR
+        std::filesystem::path(MESHEAL_SOURCE_EXAMPLES_DIR) / fileName,
 #else
         std::filesystem::path{},
 #endif
@@ -122,7 +122,7 @@ std::filesystem::path AppController::resolveExamplePath(std::string_view fileNam
 bool AppController::loadStlFile(const std::filesystem::path& filepath) {
     Mesh loadedMesh;
     std::string err;
-    if (!ogun::loadStl(filepath, loadedMesh, mesh_.fileUnit, toleranceConfig_, &err)) {
+    if (!mesheal::loadStl(filepath, loadedMesh, mesh_.fileUnit, toleranceConfig_, &err)) {
         lastErrorMessage_ = std::move(err);
         postStatusMessage(lastErrorMessage_, true);
         return false;
@@ -219,7 +219,7 @@ void AppController::rebuildCgalMesh() {
 
 bool AppController::saveStlFile(const std::filesystem::path& filepath, StlFormat format) {
     std::string err;
-    if (!ogun::saveStl(filepath, mesh_, format, &err)) {
+    if (!mesheal::saveStl(filepath, mesh_, format, &err)) {
         lastErrorMessage_ = err.empty() ? "Failed to save STL file." : std::move(err);
         postStatusMessage(lastErrorMessage_, true);
         return false;
@@ -243,7 +243,7 @@ void AppController::setFileUnit(Unit newUnit) noexcept {
         return;
     }
 
-    ogun::setFileUnit(mesh_, newUnit);
+    mesheal::setFileUnit(mesh_, newUnit);
     // Units are a label only: thresholds and results keep their numbers, so nothing is rechecked
 }
 
@@ -258,7 +258,7 @@ void AppController::scaleMeshCoordinatesToUnit(Unit targetUnit) {
         std::string(unitSymbol(targetUnit)) + ")",
         true);
     Mesh scaled = mesh_;
-    ogun::scaleMeshToUnit(scaled, targetUnit);
+    mesheal::scaleMeshToUnit(scaled, targetUnit);
     thresholds_ = thresholds_.convertedToUnit(oldUnit, targetUnit);
     // Keeps its physical size; deliberately not clamped to the slider range
     const double factor = unitConversionFactor(oldUnit, targetUnit);
@@ -1633,7 +1633,7 @@ bool AppController::saveSelectedShells(const std::filesystem::path& path, StlFor
         return false;
     }
     std::string err;
-    if (!ogun::saveStl(path, extractFaces(mesh_, shells_.facesOf(selected)), format, &err)) {
+    if (!mesheal::saveStl(path, extractFaces(mesh_, shells_.facesOf(selected)), format, &err)) {
         lastErrorMessage_ = err.empty() ? "Failed to save STL file." : std::move(err);
         postStatusMessage(lastErrorMessage_, true);
         return false;
@@ -1665,7 +1665,7 @@ std::size_t AppController::saveEachSelectedShell(const std::filesystem::path& di
         const std::filesystem::path path = directory / (stem + "_shell_" + number.data() + ".stl");
         const std::array<std::size_t, 1> one{s};
         std::string err;
-        if (!ogun::saveStl(path, extractFaces(mesh_, shells_.facesOf(one)), format, &err)) {
+        if (!mesheal::saveStl(path, extractFaces(mesh_, shells_.facesOf(one)), format, &err)) {
             lastErrorMessage_ = err.empty() ? "Failed to save " + path.string() : std::move(err);
             postStatusMessage(lastErrorMessage_, true);
             return written;
@@ -2424,4 +2424,4 @@ CameraFocusTarget AppController::focusOnSelection(
     return focus;
 }
 
-} // namespace ogun
+} // namespace mesheal

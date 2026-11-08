@@ -215,8 +215,8 @@ If you develop a new program, and you want it to be of the greatest possible use
 To do so, attach the following notices to the program. It is safest to attach them to the start of each source file to most effectively state the exclusion of warranty; and each file should have at least the "copyright" line and a pointer to where the full notice is found.
 
 ```text
-Ogun — STL Repair Tool for Simulation Meshes
-Copyright (C) 2026 Ogun Contributors
+Mesheal — STL Repair Tool for Simulation Meshes
+Copyright (C) 2026 Mesheal Contributors
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -236,7 +236,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ## Third-Party Libraries and Licenses
 
-Ogun integrates the following open-source dependencies:
+Mesheal integrates the following open-source dependencies:
 
 | Dependency | License | Role / Description |
 | :--- | :--- | :--- |

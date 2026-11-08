@@ -1,4 +1,4 @@
-# Agent Guidelines for Ogun (STL Repair Tool)
+# Agent Guidelines for Mesheal (STL Repair Tool)
 
 ## 0. Answer Questions Immediately and Directly
 
@@ -53,11 +53,11 @@ Whenever you add, modify, or remove features, workflows, UI controls, diagnostic
 - **Running `build_release`**:
   - Build with: `cmake --build build_release -j 2`
   - **Always run tests for the Release build (`build_release/`) unless actively debugging**:
-    - In `build_release/`, fully optimized `-O3` binaries execute the entire test suite in ~13–20 seconds (`ctest --test-dir build_release -j 4` or `./build_release/src/<path>/ogun_*_tests`).
+    - In `build_release/`, fully optimized `-O3` binaries execute the entire test suite in ~13–20 seconds (`ctest --test-dir build_release -j 4` or `./build_release/src/<path>/mesheal_*_tests`).
     - Running tests in `build/` (Debug) takes 5+ minutes because compiler optimizations are disabled and heavy assertions are active on large meshes (e.g. `Turkey.stl` with 259k faces, `stanford_bunny.stl`). Only use `build/` for running tests when actively debugging with a debugger or investigating unoptimized assertions.
 - **Testing Guidelines**:
   - **Always default to `build_release/`**: Unless actively debugging, execute tests in `build_release/` (`ctest --test-dir build_release -j 4`).
-  - **Target specific test filters**: During feature development or active debugging, run only the relevant test cases using tags or test names (e.g. `./build_release/src/app/Test/ogun_app_tests "[app][weld]"` or `./build_release/src/repair/Test/ogun_repair_tests "[repair][merge]"`), which run in milliseconds.
+  - **Target specific test filters**: During feature development or active debugging, run only the relevant test cases using tags or test names (e.g. `./build_release/src/app/Test/mesheal_app_tests "[app][weld]"` or `./build_release/src/repair/Test/mesheal_repair_tests "[repair][merge]"`), which run in milliseconds.
   - **Timeouts & Baselines**: Establish a runtime baseline first, and always run test commands with an explicit timeout (with a reasonable buffer) to prevent hanging if a test enters an infinite loop or deadlock.
 
 - **Driving the GUI**: `cliclick` (Homebrew, `/opt/homebrew/bin/cliclick`) clicks and types in the running app, e.g. `cliclick m:X,Y w:300 dd:X,Y w:300 du:X,Y` (press). A quick `c:X,Y` only works on list rows: ImGui buttons, radio buttons and headers need the button held for about 300 ms. `t:"text"` types text (not shortcut keys), `kp:return` presses a key. Take screenshots with `screencapture -x <file>.png` and look at them. Coordinates are screen points: compare the screenshot size with `system_profiler SPDisplaysDataType` ("UI Looks like"); on this Mac they equal pixels (2560 x 1600). cliclick needs Accessibility permission for the terminal running the agent (System Settings > Privacy & Security > Accessibility); without it, it warns "Accessibility privileges not enabled".
@@ -67,8 +67,8 @@ Whenever you add, modify, or remove features, workflows, UI controls, diagnostic
 - **Do not hardcode magic decimal values or re-declare mathematical constants in individual files**:
   - Always use standard C++20 `<numbers>` (`std::numbers::pi`, `std::numbers::phi`, `std::numbers::sqrt2`, etc.) and `constexpr` arithmetic rather than manual floating-point approximations (e.g., use `kAlphaY = 1.0 / std::numbers::phi;`, `kAlphaZ = std::numbers::sqrt2 - 1.0;`).
 - **File Organization**:
-  - **Mathematical / Geometric Constants**: Place system-wide mathematical, trigonometric, and numerical constants in `src/core/Constants.hpp` under `namespace ogun`.
-  - **Application Defaults & Tunable Settings**: Place viewport defaults, camera FOV bounds, diagnostic thresholds, healing tolerances, and vertex welding defaults in `src/core/Settings.hpp` under `namespace ogun::settings`.
+  - **Mathematical / Geometric Constants**: Place system-wide mathematical, trigonometric, and numerical constants in `src/core/Constants.hpp` under `namespace mesheal`.
+  - **Application Defaults & Tunable Settings**: Place viewport defaults, camera FOV bounds, diagnostic thresholds, healing tolerances, and vertex welding defaults in `src/core/Settings.hpp` under `namespace mesheal::settings`.
 - **Common Format & Style**:
   - Use `inline constexpr` at namespace scope.
   - Prefix constant names with `k` in camelCase (e.g., `kPi`, `kDegToRad`, `kDefaultHighlightPointRadius`, `kDefaultNeedleEdgeRatio`).

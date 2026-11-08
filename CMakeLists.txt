@@ -1,15 +1,15 @@
 cmake_minimum_required(VERSION 3.20)
 
-# RELEASE VERSION: edit the VERSION integer below and OGUN_VERSION_DATE together
+# RELEASE VERSION: edit the VERSION integer below and MESHEAL_VERSION_DATE together
 # (see RELEASE_PROCESS.md). Versions are simple integers: 1, 2, 3, ...
 project(
-    Ogun
-    VERSION 2
-    DESCRIPTION "Ogun — STL Repair Tool for Simulation Meshes"
+    Mesheal
+    VERSION 3
+    DESCRIPTION "Mesheal — STL Repair Tool for Simulation Meshes"
     LANGUAGES CXX C
 )
 
-set(OGUN_VERSION_DATE "2026-11-07")  # ISO release date (YYYY-MM-DD)
+set(MESHEAL_VERSION_DATE "2026-11-07")  # ISO release date (YYYY-MM-DD)
 
 # ------------------------------------------------------------------------------
 # Language Standard & Global Settings
@@ -22,19 +22,19 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # ------------------------------------------------------------------------------
 # Build Options
 # ------------------------------------------------------------------------------
-option(OGUN_BUILD_TESTS "Build Ogun Catch2 unit tests" ON)
-option(OGUN_BUILD_GUI   "Build Ogun Polyscope/ImGui desktop application" ON)
+option(MESHEAL_BUILD_TESTS "Build Mesheal Catch2 unit tests" ON)
+option(MESHEAL_BUILD_GUI   "Build Mesheal Polyscope/ImGui desktop application" ON)
 
 # ------------------------------------------------------------------------------
-# Project-Wide Compiler Warnings (applied only to Ogun targets)
+# Project-Wide Compiler Warnings (applied only to Mesheal targets)
 # ------------------------------------------------------------------------------
-add_library(ogun_warnings INTERFACE)
-add_library(ogun::warnings ALIAS ogun_warnings)
+add_library(mesheal_warnings INTERFACE)
+add_library(mesheal::warnings ALIAS mesheal_warnings)
 
 if(MSVC)
-    target_compile_options(ogun_warnings INTERFACE /W4 /permissive-)
+    target_compile_options(mesheal_warnings INTERFACE /W4 /permissive-)
 else()
-    target_compile_options(ogun_warnings INTERFACE
+    target_compile_options(mesheal_warnings INTERFACE
         -Wall
         -Wextra
         -Wpedantic
@@ -46,7 +46,7 @@ endif()
 # ------------------------------------------------------------------------------
 # Testing Setup (CTest)
 # ------------------------------------------------------------------------------
-if(OGUN_BUILD_TESTS)
+if(MESHEAL_BUILD_TESTS)
     include(CTest)
     enable_testing()
 endif()
@@ -59,7 +59,7 @@ include(Dependencies)
 include(Version)
 
 # ------------------------------------------------------------------------------
-# Ogun Source Modules (each with co-located Test/ directory)
+# Mesheal Source Modules (each with co-located Test/ directory)
 # ------------------------------------------------------------------------------
 add_subdirectory(src/core)
 add_subdirectory(src/mesh)
@@ -68,6 +68,6 @@ add_subdirectory(src/diagnostics)
 add_subdirectory(src/repair)
 add_subdirectory(src/app)
 
-if(OGUN_BUILD_GUI)
+if(MESHEAL_BUILD_GUI)
     add_subdirectory(src/mockup)
 endif()

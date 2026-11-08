@@ -1,6 +1,14 @@
-# Ogun Releases
+# Mesheal Releases
 
 Release notes, newest first. Versions are simple integers (v1, v2, ...) tagged in git as `v#`. See [RELEASE_PROCESS.md](RELEASE_PROCESS.md) for how to cut a release.
+
+## v3 — 2026-11-07
+
+First release as Mesheal (formerly Ogun).
+
+- Renamed the project, app (`Mesheal.app`), executable, namespaces and bundle identifier to Mesheal.
+- New application icon.
+- Saved preferences and recent files move automatically from `~/.config/ogun` to `~/.config/mesheal`.
 
 ## v2 — 2026-11-07
 
@@ -26,4 +34,4 @@ First release.
 - Mesh > Transform: Set Origin to Selection and Translate / Rotate with preview.
 - Universal multi-step undo (`Ctrl+Z` / `Cmd+Z`) for every mesh modification.
 - File > Open Recent (last 10 STLs), Load Sample meshes, and Save / Save As in binary or ASCII STL.
-- Preferences and display styles saved to `~/.config/ogun/preferences.conf`.
+- Preferences and display styles saved to `~/.config/mesheal/preferences.conf`.

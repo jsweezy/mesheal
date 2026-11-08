@@ -36,7 +36,7 @@ class TestBenchmarkE2E(unittest.TestCase):
             self.assertTrue(res.is_success)
 
             ev = evaluate_repair_result(defective_input=True, result=res)
-            spec["files"][0]["results"]["ogun"] = ev
+            spec["files"][0]["results"]["mesheal"] = ev
 
             out_json = tmp_path / "result.json"
             with open(out_json, "w") as f:
@@ -46,15 +46,15 @@ class TestBenchmarkE2E(unittest.TestCase):
             with open(out_json, "r") as f:
                 saved_data = json.load(f)
 
-            ogun_res = saved_data["files"][0]["results"]["ogun"]
-            self.assertEqual(ogun_res["status"], "output")
-            self.assertTrue(ogun_res["solid"])
+            mesheal_res = saved_data["files"][0]["results"]["mesheal"]
+            self.assertEqual(mesheal_res["status"], "output")
+            self.assertTrue(mesheal_res["solid"])
             # Self-intersecting box has 19% area change when unfolded, so shapeKept is False under strict 5% limit
-            self.assertFalse(ogun_res["shapeKept"])
-            self.assertFalse(ogun_res["repaired"])
-            self.assertEqual(ogun_res["volume_before"], 250.0)
-            self.assertGreater(ogun_res["volume_after"], 250.0)
-            self.assertIn("volume_change_pct", ogun_res)
+            self.assertFalse(mesheal_res["shapeKept"])
+            self.assertFalse(mesheal_res["repaired"])
+            self.assertEqual(mesheal_res["volume_before"], 250.0)
+            self.assertGreater(mesheal_res["volume_after"], 250.0)
+            self.assertIn("volume_change_pct", mesheal_res)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace ogun {
+namespace mesheal {
 
 /// What happened in the current frame, as seen by the frame pacer.
 struct FrameActivity {
@@ -44,4 +44,4 @@ private:
     bool active_ = true;
 };
 
-} // namespace ogun
+} // namespace mesheal

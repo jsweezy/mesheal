@@ -18,7 +18,7 @@
 #include <unordered_map>
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -463,4 +463,4 @@ std::string mergeVolumeProblem(std::span<const double> solidVolumes, double unio
     return {};
 }
 
-} // namespace ogun
+} // namespace mesheal

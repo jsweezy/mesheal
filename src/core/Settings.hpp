@@ -3,7 +3,7 @@
 #include <array>
 #include <cstddef>
 
-namespace ogun::settings {
+namespace mesheal::settings {
 
 // -----------------------------------------------------------------------------
 // 3D Viewport & Defect Highlight Overlay Sizing Defaults
@@ -255,4 +255,4 @@ inline constexpr double kFixAllMergePlanProgressShare = 0.2;       // Share of p
 inline constexpr double kFixAllMergeVolumeRelTolerance = 1.0e-6;   // Merge guard: volume sanity bounds (max V <= V_union <= sum V) hold within this share of sum V
 inline constexpr std::size_t kFixAllReportShellsNamed = 8;       // Final report: shells named in the "Left after N passes" line before "and N more"
 
-} // namespace ogun::settings
+} // namespace mesheal::settings

@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 MergeJobRunner::~MergeJobRunner() {
     discard();
@@ -45,4 +45,4 @@ std::optional<FinishedMerge> MergeJobRunner::takeFinished() {
     return std::exchange(finished_, std::nullopt);
 }
 
-} // namespace ogun
+} // namespace mesheal

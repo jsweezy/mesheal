@@ -11,7 +11,7 @@
 #include <numeric>
 #include <unordered_map>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -206,4 +206,4 @@ int findHoleOfEdge(std::span<const HoleLoop> holes, int a, int b) noexcept {
     return -1;
 }
 
-} // namespace ogun
+} // namespace mesheal

@@ -15,7 +15,7 @@
 #include <tuple>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -324,4 +324,4 @@ bool loadStl(
     }
 }
 
-} // namespace ogun
+} // namespace mesheal

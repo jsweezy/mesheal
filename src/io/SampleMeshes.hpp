@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// Built-in synthetic and defective test mesh generators for unit tests and the GUI.
 struct SampleMeshes {
@@ -289,4 +289,4 @@ struct SampleMeshes {
     return SampleMeshes::createSampleDefectiveMesh(unit);
 }
 
-} // namespace ogun
+} // namespace mesheal

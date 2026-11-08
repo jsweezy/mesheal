@@ -9,16 +9,16 @@
 #include <filesystem>
 #include <vector>
 
-using ogun::DefectCategory;
-using ogun::GlobalRepairMethod;
-using ogun::HoleFillMethod;
-using ogun::HoleShape;
+using mesheal::DefectCategory;
+using mesheal::GlobalRepairMethod;
+using mesheal::HoleFillMethod;
+using mesheal::HoleShape;
 
 namespace {
 
 /// Loads File > Load Sample > "Holes" (four shells, one hole each) and opens the Open edges row.
-void loadHolesSample(ogun::AppController& controller) {
-    controller.setMesh(ogun::separateTouchingContacts(ogun::SampleMeshes::createHolesSampleMesh()), "holes");
+void loadHolesSample(mesheal::AppController& controller) {
+    controller.setMesh(mesheal::separateTouchingContacts(mesheal::SampleMeshes::createHolesSampleMesh()), "holes");
     REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 4); // one row per hole
     controller.selectCategory(DefectCategory::OpenEdges);
 }
@@ -28,8 +28,8 @@ std::filesystem::path examplePath(const char* name) {
 }
 
 /// Focuses the first hole with `shape`. Returns false if none.
-bool focusHole(ogun::AppController& controller, HoleShape shape) {
-    const ogun::CategoryResult& result = *controller.browser().result();
+bool focusHole(mesheal::AppController& controller, HoleShape shape) {
+    const mesheal::CategoryResult& result = *controller.browser().result();
     for (std::size_t e = 0; e < result.size(); ++e) {
         if (result.elements[e].subtype == static_cast<int>(shape)) {
             controller.focusDefect(e);
@@ -42,9 +42,9 @@ bool focusHole(ogun::AppController& controller, HoleShape shape) {
 } // namespace
 
 TEST_CASE("R commits the focused hole's fill, and refuses an unsafe one", "[app][holes][repair][undo]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     loadHolesSample(controller);
-    const ogun::Mesh before = controller.mesh();
+    const mesheal::Mesh before = controller.mesh();
     REQUIRE_FALSE(controller.commitFocusedRepair()); // row open, nothing focused
     REQUIRE(controller.statusMessage().find("focus a thin face") != std::string::npos);
 
@@ -63,9 +63,9 @@ TEST_CASE("R commits the focused hole's fill, and refuses an unsafe one", "[app]
 }
 
 TEST_CASE("Hole Inspector: recommended fill per shape, live preview, commit and undo", "[app][holes][repair][undo]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     loadHolesSample(controller);
-    const ogun::Mesh before = controller.mesh();
+    const mesheal::Mesh before = controller.mesh();
     REQUIRE(controller.holeCountInScope() == 4);
 
     REQUIRE(focusHole(controller, HoleShape::Crack));
@@ -81,7 +81,7 @@ TEST_CASE("Hole Inspector: recommended fill per shape, live preview, commit and 
     REQUIRE(controller.selectedHoleMethod() == HoleFillMethod::Flat);
 
     REQUIRE(focusHole(controller, HoleShape::Curved));
-    const ogun::HoleLoop hole = *controller.focusedHole();
+    const mesheal::HoleLoop hole = *controller.focusedHole();
     REQUIRE(hole.edgeCount() == 24);
     REQUIRE(controller.selectedHoleMethod() == HoleFillMethod::Smooth);
     REQUIRE(controller.holePreview().valid);
@@ -97,7 +97,7 @@ TEST_CASE("Hole Inspector: recommended fill per shape, live preview, commit and 
     }
     for (const HoleFillMethod method : {HoleFillMethod::Flat, HoleFillMethod::Refine, HoleFillMethod::Smooth}) {
         controller.setSelectedHoleMethod(method);
-        INFO(ogun::holeFillMethodLabel(method));
+        INFO(mesheal::holeFillMethodLabel(method));
         REQUIRE(controller.holePreview().method == method);
         REQUIRE(controller.holePreview().valid);
         REQUIRE(controller.holePreview().newCrossings == 0);
@@ -120,38 +120,38 @@ TEST_CASE("Hole Inspector: recommended fill per shape, live preview, commit and 
 }
 
 TEST_CASE("Hole Inspector frames a hole looking into it along its outward normal", "[app][holes][camera]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     loadHolesSample(controller);
     REQUIRE(focusHole(controller, HoleShape::Flat));
-    const ogun::HoleLoop& hole = *controller.focusedHole();
-    const ogun::CameraFocusTarget plus = controller.computeCameraFocusTarget(Eigen::Vector3d(0.0, 0.0, -1.0),
-                                                                             ogun::FocusNormalSide::PositiveNormal);
+    const mesheal::HoleLoop& hole = *controller.focusedHole();
+    const mesheal::CameraFocusTarget plus = controller.computeCameraFocusTarget(Eigen::Vector3d(0.0, 0.0, -1.0),
+                                                                             mesheal::FocusNormalSide::PositiveNormal);
     REQUIRE(plus.valid);
     REQUIRE(plus.normalSideSign == 1);
     REQUIRE((plus.cameraPosition - plus.targetCenter).normalized().dot(hole.normal) > 0.999);
-    const ogun::CameraFocusTarget minus = controller.computeCameraFocusTarget(Eigen::Vector3d(0.0, 0.0, -1.0),
-                                                                              ogun::FocusNormalSide::NegativeNormal);
+    const mesheal::CameraFocusTarget minus = controller.computeCameraFocusTarget(Eigen::Vector3d(0.0, 0.0, -1.0),
+                                                                              mesheal::FocusNormalSide::NegativeNormal);
     REQUIRE((minus.cameraPosition - minus.targetCenter).normalized().dot(hole.normal) < -0.999);
 }
 
 TEST_CASE("Committing a fill that crosses other faces is refused", "[app][holes][repair]") {
     // Open cylinder with a wide plate just above it: the smooth dome would pass through the plate
-    ogun::Mesh mesh = ogun::SampleMeshes::createCylinderMesh(32, 4, 5.0, 10.0);
+    mesheal::Mesh mesh = mesheal::SampleMeshes::createCylinderMesh(32, 4, 5.0, 10.0);
     std::vector<Eigen::Index> keep;
     for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
         if (mesh.N(f, 2) < 0.99 || mesh.V(mesh.F(f, 0), 2) < 9.99) {
             keep.push_back(f);
         }
     }
-    mesh = ogun::extractFaces(mesh, keep);
-    ogun::Mesh plate = ogun::SampleMeshes::createCubeMesh(14.0);
+    mesh = mesheal::extractFaces(mesh, keep);
+    mesheal::Mesh plate = mesheal::SampleMeshes::createCubeMesh(14.0);
     plate.V.col(0).array() -= 7.0;
     plate.V.col(1).array() -= 7.0;
     plate.V.col(2) = plate.V.col(2) * (0.2 / 14.0);
     plate.V.col(2).array() += 10.5;
-    ogun::appendMesh(mesh, plate);
+    mesheal::appendMesh(mesh, plate);
 
-    ogun::AppController controller;
+    mesheal::AppController controller;
     controller.setMesh(std::move(mesh), "cylinder and plate");
     controller.selectCategory(DefectCategory::OpenEdges);
     controller.focusDefect(0);
@@ -167,9 +167,9 @@ TEST_CASE("Committing a fill that crosses other faces is refused", "[app][holes]
 }
 
 TEST_CASE("Fix Selected fills the selected holes in one undo step", "[app][holes][repair][undo]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     loadHolesSample(controller);
-    const ogun::Mesh before = controller.mesh();
+    const mesheal::Mesh before = controller.mesh();
 
     // One selected row fills its hole, and only that hole
     controller.setSubtypeFilter(static_cast<int>(HoleShape::Curved));
@@ -185,7 +185,7 @@ TEST_CASE("Fix Selected fills the selected holes in one undo step", "[app][holes
     REQUIRE(controller.fixSelectedHoles());
     REQUIRE(controller.lastUndoActionLabel() == "Fix Selected Holes (4 holes)");
     REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 0);
-    REQUIRE(controller.watertightState() == ogun::WatertightState::Watertight);
+    REQUIRE(controller.watertightState() == mesheal::WatertightState::Watertight);
     REQUIRE(controller.shells().size() == 4);
 
     REQUIRE(controller.undoLastModification());
@@ -194,11 +194,11 @@ TEST_CASE("Fix Selected fills the selected holes in one undo step", "[app][holes
 }
 
 TEST_CASE("Each of the bunny's holes is a row: step through them or click a rim face", "[app][holes]") {
-    ogun::AppController controller;
-    controller.setMesh(ogun::loadStl(examplePath("stanford_bunny.stl")), "bunny");
+    mesheal::AppController controller;
+    controller.setMesh(mesheal::loadStl(examplePath("stanford_bunny.stl")), "bunny");
     REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 5);
     controller.selectCategory(DefectCategory::OpenEdges);
-    const ogun::CategoryResult& result = *controller.browser().result();
+    const mesheal::CategoryResult& result = *controller.browser().result();
     REQUIRE(result.infoCount == 39 + 22 + 42 + 80 + 40);
 
     // Next / previous visit every hole once, each opening the Inspector on that hole
@@ -219,38 +219,38 @@ TEST_CASE("Each of the bunny's holes is a row: step through them or click a rim 
 
     // Clicking any rim face of a hole focuses that hole's row
     const std::size_t last = result.size() - 1;
-    REQUIRE(controller.pickFace(result.facesOf(last).back()) == ogun::PickOutcome::FocusedDefect);
+    REQUIRE(controller.pickFace(result.facesOf(last).back()) == mesheal::PickOutcome::FocusedDefect);
     REQUIRE(controller.browser().focusedElement() == last);
     REQUIRE(controller.focusedHoleNumber() == 5);
 }
 
 TEST_CASE("Repair All Holes: compare fills and rebuilds, apply and undo", "[app][holes][repair][undo][global]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     loadHolesSample(controller);
-    const ogun::Mesh before = controller.mesh();
+    const mesheal::Mesh before = controller.mesh();
 
     controller.openRepairAllHoles();
-    REQUIRE(controller.activeTool() == ogun::ToolSlot::RepairAllHoles);
+    REQUIRE(controller.activeTool() == mesheal::ToolSlot::RepairAllHoles);
     REQUIRE(controller.repairAllOpen());
     REQUIRE(controller.globalRepairTarget() == DefectCategory::OpenEdges);
     REQUIRE(controller.globalRepairMethod() == GlobalRepairMethod::FillHoles);
 
     controller.previewGlobalRepair();
-    const ogun::RepairCandidate* shown = controller.shownGlobalCandidate();
+    const mesheal::RepairCandidate* shown = controller.shownGlobalCandidate();
     REQUIRE(shown != nullptr);
     REQUIRE(shown->success);
     REQUIRE(shown->metrics.watertight());
     REQUIRE(shown->metrics.openEdgesBefore == 62);
     REQUIRE(controller.globalPreviewShown());
 
-    ogun::GlobalRepairParams params = controller.globalRepairParams();
+    mesheal::GlobalRepairParams params = controller.globalRepairParams();
     params.windingResolution = 32;
     params.alphaWrapDetail = 20.0;
     controller.setGlobalRepairParams(params);
     controller.compareAllGlobalRepairs();
-    REQUIRE(controller.globalCandidates().size() == ogun::kHoleRepairMethods.size());
-    for (const ogun::RepairCandidate& c : controller.globalCandidates()) {
-        INFO(ogun::globalRepairMethodLabel(c.method));
+    REQUIRE(controller.globalCandidates().size() == mesheal::kHoleRepairMethods.size());
+    for (const mesheal::RepairCandidate& c : controller.globalCandidates()) {
+        INFO(mesheal::globalRepairMethodLabel(c.method));
         REQUIRE(c.success);
         REQUIRE(c.metrics.watertight());
     }
@@ -268,7 +268,7 @@ TEST_CASE("Repair All Holes: compare fills and rebuilds, apply and undo", "[app]
     REQUIRE(controller.applyGlobalRepair());
     REQUIRE(controller.lastUndoActionLabel() == "Repair All Holes (Fill each hole)");
     REQUIRE(controller.rowCount(DefectCategory::OpenEdges) == 0);
-    REQUIRE(controller.activeTool() == ogun::ToolSlot::RepairAllHoles);
+    REQUIRE(controller.activeTool() == mesheal::ToolSlot::RepairAllHoles);
 
     REQUIRE(controller.undoLastModification());
     REQUIRE(controller.mesh().F == before.F);
@@ -281,7 +281,7 @@ TEST_CASE("Repair All Holes: compare fills and rebuilds, apply and undo", "[app]
 }
 
 TEST_CASE("Hole counts and Fill each hole follow the shell scope", "[app][holes][shells]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     loadHolesSample(controller);
     REQUIRE(controller.shells().size() == 4);
     // Select the sphere (its box spans x in [12, 16])
@@ -298,11 +298,11 @@ TEST_CASE("Hole counts and Fill each hole follow the shell scope", "[app][holes]
     controller.openRepairAllHoles();
     controller.previewGlobalRepair();
     REQUIRE(controller.applyGlobalRepair());
-    REQUIRE(ogun::checkOpenEdges(controller.mesh()).size() == 3); // the other holes stay open
+    REQUIRE(mesheal::checkOpenEdges(controller.mesh()).size() == 3); // the other holes stay open
 }
 
 TEST_CASE("Delete Rim removes the faces along the focused or selected holes", "[app][holes][undo]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     loadHolesSample(controller);
     const Eigen::Index facesBefore = controller.mesh().numFaces();
 
@@ -320,7 +320,7 @@ TEST_CASE("Delete Rim removes the faces along the focused or selected holes", "[
 }
 
 TEST_CASE("Plus and minus grow and shrink the hole rim selection before Delete", "[app][holes][selection]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     loadHolesSample(controller);
     const Eigen::Index facesBefore = controller.mesh().numFaces();
     controller.selectCategory(DefectCategory::OpenEdges);

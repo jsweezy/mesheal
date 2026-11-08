@@ -1,6 +1,6 @@
-# Ogun 3D Viewport Navigation & Shortcuts Guide
+# Mesheal 3D Viewport Navigation & Shortcuts Guide
 
-Ogun uses **Blender-inspired, selection-centric 3D camera navigation** tailored for inspecting both whole STL meshes and microscopic sliver/degenerate facets ($10^{-4}\text{ mm}$ and smaller).
+Mesheal uses **Blender-inspired, selection-centric 3D camera navigation** tailored for inspecting both whole STL meshes and microscopic sliver/degenerate facets ($10^{-4}\text{ mm}$ and smaller).
 
 ---
 
@@ -8,14 +8,14 @@ Ogun uses **Blender-inspired, selection-centric 3D camera navigation** tailored 
 
 ### Mouse Controls (3D Viewport)
 
-These are the bindings of the default **Ogun** mouse scheme. *Edit > Preferences > Mouse* switches to a Blender, OpenSCAD, Maya, Fusion 360 or SolidWorks scheme, or rebinds any action (see [Mouse Schemes](#mouse-schemes-edit--preferences--mouse) below). The in-app **3D Viewport Navigation & Shortcuts** window always lists the active bindings.
+These are the bindings of the default **Mesheal** mouse scheme. *Edit > Preferences > Mouse* switches to a Blender, OpenSCAD, Maya, Fusion 360 or SolidWorks scheme, or rebinds any action (see [Mouse Schemes](#mouse-schemes-edit--preferences--mouse) below). The in-app **3D Viewport Navigation & Shortcuts** window always lists the active bindings.
 
 | Action | Input | Behavior |
 | :--- | :--- | :--- |
 | **Orbit / Rotate** | `Left-Click Drag` | Orbits the camera around the active **Orbit Pivot** (respecting the active Polyscope camera style: *Turntable* or *Free*). |
 | **Pan Camera & Pivot** | `Shift + Left-Click Drag`, `Right-Click Drag`, or `Middle-Click Drag` | Translates both the camera and the **Orbit Pivot** in the view plane. Pan speed scales automatically with the distance to the Orbit Pivot so the surface stays locked under the cursor at any zoom depth. |
 | **Zoom (Dolly)** | `Scroll Wheel` or `Ctrl + Shift + Left-Click Drag` | Dollies the camera toward/away from the active **Orbit Pivot**. Zoom step size scales proportionally with the distance to the pivot so you never overshoot microscopic facets. |
-| **Adjust Near Clip Plane** | `Shift + Scroll Wheel` | Manually shifts the camera near clipping plane (in addition to Ogun's automatic zoom-proportional near clip adjustment). |
+| **Adjust Near Clip Plane** | `Shift + Scroll Wheel` | Manually shifts the camera near clipping plane (in addition to Mesheal's automatic zoom-proportional near clip adjustment). |
 | **Select Face / Clear Pick** | `Left-Click` / `Right-Click` | Left-clicking a face without dragging: if it is a defect of the selected **Mesh Health** row, it becomes the **focus** (highlighted, the **Orbit Pivot** moves to its centroid, and for thin / sliver faces the **Inspector** opens with a live 3D repair preview). This works even when the row has more defects than the list cap and no list is shown. With no row selected, clicking a defective face opens the row that contains it (thin / sliver faces first). Clicking a face of another type, or a clean face, only shows a status-bar message (a clean face also moves the Orbit Pivot). Right-clicking clears the Polyscope pick. |
 | **Toggle Face in the Face Selection** | `Shift + Left-Click` (no drag) | Adds the face under the cursor to the **face selection** (magenta), or removes it. Faces cut away by a slice plane are clicked through. *Decimate*, *Merge by Distance* and *Weld* work on the selected faces when there are any. |
 | **Box / Circle Select Faces** | `B` then drag / `C` then paint | See the keyboard table. In these modes the left mouse button selects instead of orbiting. |
@@ -24,9 +24,9 @@ These are the bindings of the default **Ogun** mouse scheme. *Edit > Preferences
 
 ### Mouse Schemes (Edit > Preferences > Mouse)
 
-The **Mouse** tab of Preferences has a **Scheme** combo and a table with one row per action. Each input is a small button: click it to change it (press the mouse button, or turn the wheel, over the capture box while holding the modifier keys, or pick the button and the Shift / Ctrl / Alt boxes by hand) or remove it; **+** adds another input (up to three per action). Picking a scheme replaces every binding; editing any binding switches the scheme to **Custom**. *Reset to defaults* at the bottom of Preferences also restores the Ogun scheme.
+The **Mouse** tab of Preferences has a **Scheme** combo and a table with one row per action. Each input is a small button: click it to change it (press the mouse button, or turn the wheel, over the capture box while holding the modifier keys, or pick the button and the Shift / Ctrl / Alt boxes by hand) or remove it; **+** adds another input (up to three per action). Picking a scheme replaces every binding; editing any binding switches the scheme to **Custom**. *Reset to defaults* at the bottom of Preferences also restores the Mesheal scheme.
 
-| Action | Ogun (default) | Blender | OpenSCAD | Maya | Fusion 360 | SolidWorks |
+| Action | Mesheal (default) | Blender | OpenSCAD | Maya | Fusion 360 | SolidWorks |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | Orbit | `Left drag` | `Middle drag` | `Left drag`, `Shift + Left drag` | `Alt + Left drag` | `Shift + Middle drag` | `Middle drag` |
 | Pan | `Shift + Left`, `Right` or `Middle drag` | `Shift + Middle drag` | `Right drag` | `Alt + Middle drag` | `Middle drag` | `Ctrl + Middle drag` |
@@ -39,14 +39,14 @@ The **Mouse** tab of Preferences has a **Scheme** combo and a table with one row
 | Clear pick | `Right click` | same | same | same | same | same |
 
 How inputs are matched:
-- A **click** is a press and release without moving the mouse, so a drag and a click on the same button never conflict (Ogun: `Left drag` orbits, `Left click` selects; Maya: `Alt + Left drag` tumbles, `Alt + Left click` selects a shell). The press must be in the 3D view: a press on a panel (e.g. dragging a slider) released over the view is not a click.
-- **Drags and the wheel:** modifiers that no binding of that button uses are ignored, and the others must match exactly. In the Ogun scheme `Alt + Left drag` still orbits, `Shift + Alt + Left drag` pans, and `Ctrl + Left drag` does nothing; in Blender `Left drag` does nothing, so left-click selection never fights the camera.
+- A **click** is a press and release without moving the mouse, so a drag and a click on the same button never conflict (Mesheal: `Left drag` orbits, `Left click` selects; Maya: `Alt + Left drag` tumbles, `Alt + Left click` selects a shell). The press must be in the 3D view: a press on a panel (e.g. dragging a slider) released over the view is not a click.
+- **Drags and the wheel:** modifiers that no binding of that button uses are ignored, and the others must match exactly. In the Mesheal scheme `Alt + Left drag` still orbits, `Shift + Alt + Left drag` pans, and `Ctrl + Left drag` does nothing; in Blender `Left drag` does nothing, so left-click selection never fights the camera.
 - **Clicks:** an exact match first; otherwise the binding with the most modifiers that are all held (*Toggle face* needs its exact modifiers). So `Ctrl + Shift + Left click` selects and `Shift + Alt + Left click` selects the shell. Adding `Ctrl` (when the Select shell binding does not already use it) or `Cmd` to a Select shell click adds or removes the shell.
 - **Conflicts:** two actions of the same kind on the same input are drawn red in the table with a warning below it; the action higher in the table wins.
 - **Box (`B`) and Circle (`C`) select** draw with the first button of *Select face*: Left in every built-in scheme. Right-click cancels them unless *Select face* is on the right button; middle-drag erases in Circle select unless *Select face* is on the middle button.
 - **Ctrl** is the Control key, also on macOS (keyboard shortcuts still use Cmd).
 - **Zoom options:** *Invert wheel zoom* (off: wheel up zooms in) and *Zoom speed* (0.1x to 5x, default 1x) multiply every wheel and drag zoom step.
-- The scheme is saved with the other preferences (`mouse.preset`, `mouse.invert_wheel_zoom`, `mouse.zoom_speed` and one `mouse.<action>` line per action, e.g. `mouse.pan = shift+left, right, middle`). A built-in scheme always uses its own bindings; only *Custom* reads the binding lines. An unknown scheme name gives the Ogun scheme, and an invalid binding line keeps the Ogun binding of that action.
+- The scheme is saved with the other preferences (`mouse.preset`, `mouse.invert_wheel_zoom`, `mouse.zoom_speed` and one `mouse.<action>` line per action, e.g. `mouse.pan = shift+left, right, middle`). A built-in scheme always uses its own bindings; only *Custom* reads the binding lines. An unknown scheme name gives the Mesheal scheme, and an invalid binding line keeps the Mesheal binding of that action.
 
 ---
 
@@ -91,7 +91,7 @@ How inputs are matched:
 
 ### Mouse in the Shells panel (multi-shell meshes)
 
-**View > Compass** draws X / Y / Z axes (red / green / blue) in the bottom-left corner of the 3D view; they turn with the camera. It is off by default and remembered. **View > Polyscope** opens Polyscope's Appearance, Slice Planes, Structures, Camera & Clipping and Render & Debug sections (floating windows and sidebar panel). Each floating window opens in its own place side by side along the top of the free 3D view (in rows when the view is narrow), so several open at once do not overlap. Ogun starts empty when no STL is given on the command line.
+**View > Compass** draws X / Y / Z axes (red / green / blue) in the bottom-left corner of the 3D view; they turn with the camera. It is off by default and remembered. **View > Polyscope** opens Polyscope's Appearance, Slice Planes, Structures, Camera & Clipping and Render & Debug sections (floating windows and sidebar panel). Each floating window opens in its own place side by side along the top of the free 3D view (in rows when the view is narrow), so several open at once do not overlap. Mesheal starts empty when no STL is given on the command line.
 
 The **Shells** panel (left column, between Navigate and Structures) appears only when the mesh has more than one shell. Mesh Health covers the **selected** shells, or the **visible** shells when none is selected; a *Scope* line in Mesh Health says so, with an *All shells* button. A crossing counts only when both of its shells are in scope.
 
@@ -109,7 +109,7 @@ The **Shells** panel (left column, between Navigate and Structures) appears only
 
 ### Auto-Orbit Around Selection Centroid
 When you focus a defect (click its row in the Tool panel's list, click it in 3D, or press `N`; a row click and `N` also fly the camera to it):
-- Ogun highlights the triangle's surface, edges, and vertices in 3D.
+- Mesheal highlights the triangle's surface, edges, and vertices in 3D.
 - The 3D **Orbit Pivot** (center of rotation) immediately moves to the triangle's true geometric vertex centroid:
   $$\mathbf{c} = \frac{\mathbf{v}_0 + \mathbf{v}_1 + \mathbf{v}_2}{3}$$
 - Even before pressing `.` to zoom in, left-click dragging in the viewport orbits smoothly around the selected facet rather than swinging the facet out of view around the global mesh center.
@@ -121,7 +121,7 @@ In STL repair, inspecting a defective facet from both its outward (`+N`) and inw
 2. **Second `.` press (or `..`):** Because the camera is already aligned with `+Normal` on that facet, pressing `.` again flips the camera to $\mathbf{c} - r\,\hat{\mathbf{n}}$, looking along $+\hat{\mathbf{n}}$ at the back (`-Normal`) of the triangle.
 3. **Rotating away resets the toggle:** If you orbit the camera manually with the mouse to inspect an oblique angle, pressing `.` again returns you cleanly to the canonical `+Normal` view first.
 4. **Direct `-Normal` access:** Pressing `Shift + .` always jumps straight to the `-Normal` side regardless of current camera angle.
-5. **Collinear zero-area triangles:** If a defective triangle has three strictly collinear vertices ($\|(\mathbf{v}_1 - \mathbf{v}_0) \times (\mathbf{v}_2 - \mathbf{v}_0)\| = 0$), its geometric normal is undefined. Ogun automatically computes a viewing axis **perpendicular to the triangle's longest edge** so `.` and `Shift + .` still frame the degenerate segment broadside from opposite directions.
+5. **Collinear zero-area triangles:** If a defective triangle has three strictly collinear vertices ($\|(\mathbf{v}_1 - \mathbf{v}_0) \times (\mathbf{v}_2 - \mathbf{v}_0)\| = 0$), its geometric normal is undefined. Mesheal automatically computes a viewing axis **perpendicular to the triangle's longest edge** so `.` and `Shift + .` still frame the degenerate segment broadside from opposite directions.
 
 ### Selecting & Repairing a Face in the Viewport
 1. Select the **Thin / sliver faces** row in **Mesh Health**, then **left-click** a highlighted face in the 3D viewport, click its row in the Tool panel's list, or press `N`. Zero-area faces have no visible surface to click, so pick those from the list (the *Zero-area* filter) or with `N`.
@@ -135,8 +135,8 @@ In STL repair, inspecting a defective facet from both its outward (`+N`) and inw
 ### Depth-Scaled Zoom, Pan & Dynamic Highlight Sizing
 - **Proportional Zoom & Pan:** Dolly and pan speeds scale with $\|\mathbf{p}_{\text{cam}} - \mathbf{p}_{\text{pivot}}\|$ (the distance from the camera to the Orbit Pivot). Whether you are viewing a $100\text{ mm}$ housing or a $10^{-4}\text{ mm}$ sliver triangle, scroll-zooming and panning move at a consistent screen-space rate.
 - **Pivot-Tracking Pan:** Panning shifts the Orbit Pivot in world space by the exact camera translation vector so subsequent rotations always pivot around the center of your screen.
-- **Near Clip Scaling:** As you zoom closer to a facet, Ogun reduces the camera's near clipping ratio so microscopic triangles are never clipped.
+- **Near Clip Scaling:** As you zoom closer to a facet, Mesheal reduces the camera's near clipping ratio so microscopic triangles are never clipped.
 - **Constant Screen-Size Overlays:** Defect vertex spheres (Display > Defect highlight > **Point radius**, default `3 px`) and defect / pre-repair edge lines (**Edge width**, default `1 px`) keep the same on-screen size at any zoom depth. Each sphere and tube end is sized for its own distance from the camera, so defects near the camera stay small even when the focused defect is far away.
 - **3D Overlay Cap:** Selecting a row tints all of its defects. Edge tubes and vertex spheres are drawn for all of them only up to the overlay cap (default 5,000 faces, Preferences > Performance); above it they are drawn just for the selected / focused defects, which keeps 20,000-defect rows responsive.
-- **Styles:** The **Display** panel holds the base-mesh color, edges, transparency, back-face mode (*Custom* makes flipped normals easy to spot) and shading, the defect highlight colors, and the repair-preview styles. The **Structures (advanced)** panel still shows Polyscope's own per-structure controls; Ogun remembers each edge width when you toggle **Edges** off and on.
+- **Styles:** The **Display** panel holds the base-mesh color, edges, transparency, back-face mode (*Custom* makes flipped normals easy to spot) and shading, the defect highlight colors, and the repair-preview styles. The **Structures (advanced)** panel still shows Polyscope's own per-structure controls; Mesheal remembers each edge width when you toggle **Edges** off and on.
 

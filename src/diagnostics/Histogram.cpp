@@ -4,7 +4,7 @@
 #include <cmath>
 #include <limits>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -91,4 +91,4 @@ MetricHistogram buildHistogram(std::span<const double> values, std::size_t numBi
     return histogram;
 }
 
-} // namespace ogun
+} // namespace mesheal

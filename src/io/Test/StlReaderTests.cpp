@@ -19,14 +19,14 @@
 
 namespace {
 
-double computeTriangleArea(const ogun::Mesh& mesh, Eigen::Index faceIdx) {
+double computeTriangleArea(const mesheal::Mesh& mesh, Eigen::Index faceIdx) {
     const Eigen::Vector3d v0 = mesh.V.row(mesh.F(faceIdx, 0)).transpose();
     const Eigen::Vector3d v1 = mesh.V.row(mesh.F(faceIdx, 1)).transpose();
     const Eigen::Vector3d v2 = mesh.V.row(mesh.F(faceIdx, 2)).transpose();
     return 0.5 * (v1 - v0).cross(v2 - v0).norm();
 }
 
-double computeTriangleMinAltitude(const ogun::Mesh& mesh, Eigen::Index faceIdx) {
+double computeTriangleMinAltitude(const mesheal::Mesh& mesh, Eigen::Index faceIdx) {
     const Eigen::Vector3d v0 = mesh.V.row(mesh.F(faceIdx, 0)).transpose();
     const Eigen::Vector3d v1 = mesh.V.row(mesh.F(faceIdx, 1)).transpose();
     const Eigen::Vector3d v2 = mesh.V.row(mesh.F(faceIdx, 2)).transpose();
@@ -46,19 +46,19 @@ double computeTriangleMinAltitude(const ogun::Mesh& mesh, Eigen::Index faceIdx) 
 TEST_CASE("Loading synthetic cube STL (ASCII and binary) welds 36 soup vertices into 8 vertices and 12 triangles",
           "[io][stl]") {
     SECTION("ASCII STL stream and file loading") {
-        const std::string asciiStl = ogun::SampleMeshes::createCubeAsciiStl(10.0);
+        const std::string asciiStl = mesheal::SampleMeshes::createCubeAsciiStl(10.0);
         REQUIRE_FALSE(asciiStl.empty());
 
         std::istringstream stream(asciiStl);
-        const ogun::Mesh mesh = ogun::loadStl(stream, ogun::Unit::Millimeter);
+        const mesheal::Mesh mesh = mesheal::loadStl(stream, mesheal::Unit::Millimeter);
 
-        REQUIRE(mesh.fileUnit == ogun::Unit::Millimeter);
+        REQUIRE(mesh.fileUnit == mesheal::Unit::Millimeter);
         REQUIRE(mesh.numVertices() == 8);
         REQUIRE(mesh.numFaces() == 12);
         REQUIRE(mesh.N.rows() == 12);
         REQUIRE(mesh.N.cols() == 3);
 
-        const ogun::BoundingBox bbox = mesh.boundingBox();
+        const mesheal::BoundingBox bbox = mesh.boundingBox();
         REQUIRE(bbox.min.isApprox(Eigen::Vector3d(0.0, 0.0, 0.0), 1e-12));
         REQUIRE(bbox.max.isApprox(Eigen::Vector3d(10.0, 10.0, 10.0), 1e-12));
 
@@ -83,37 +83,37 @@ TEST_CASE("Loading synthetic cube STL (ASCII and binary) welds 36 soup vertices 
         const auto tempDir = std::filesystem::temp_directory_path();
         const auto uniqueSuffix = std::to_string(
             std::chrono::steady_clock::now().time_since_epoch().count());
-        const auto tempAsciiPath = tempDir / ("ogun_test_cube_ascii_" + uniqueSuffix + ".stl");
+        const auto tempAsciiPath = tempDir / ("mesheal_test_cube_ascii_" + uniqueSuffix + ".stl");
         {
             std::ofstream out(tempAsciiPath, std::ios::binary);
             out << asciiStl;
         }
-        const ogun::Mesh diskMesh = ogun::loadStl(tempAsciiPath, ogun::Unit::Centimeter);
+        const mesheal::Mesh diskMesh = mesheal::loadStl(tempAsciiPath, mesheal::Unit::Centimeter);
         std::filesystem::remove(tempAsciiPath);
 
-        REQUIRE(diskMesh.fileUnit == ogun::Unit::Centimeter);
+        REQUIRE(diskMesh.fileUnit == mesheal::Unit::Centimeter);
         REQUIRE(diskMesh.numVertices() == 8);
         REQUIRE(diskMesh.numFaces() == 12);
     }
 
     SECTION("Binary STL file loading") {
-        const std::vector<std::uint8_t> binaryStl = ogun::SampleMeshes::createCubeBinaryStl(10.0);
+        const std::vector<std::uint8_t> binaryStl = mesheal::SampleMeshes::createCubeBinaryStl(10.0);
         // 80-byte header + 4-byte count + 12 * 50 bytes = 684 bytes
         REQUIRE(binaryStl.size() == 684);
 
         const auto tempDir = std::filesystem::temp_directory_path();
         const auto uniqueSuffix = std::to_string(
             std::chrono::steady_clock::now().time_since_epoch().count());
-        const auto tempBinPath = tempDir / ("ogun_test_cube_bin_" + uniqueSuffix + ".stl");
+        const auto tempBinPath = tempDir / ("mesheal_test_cube_bin_" + uniqueSuffix + ".stl");
         {
             std::ofstream out(tempBinPath, std::ios::binary);
             out.write(reinterpret_cast<const char*>(binaryStl.data()),
                       static_cast<std::streamsize>(binaryStl.size()));
         }
 
-        ogun::Mesh binMesh;
+        mesheal::Mesh binMesh;
         std::string err;
-        const bool ok = ogun::loadStl(tempBinPath, binMesh, ogun::Unit::Millimeter, ogun::ToleranceConfig{}, &err);
+        const bool ok = mesheal::loadStl(tempBinPath, binMesh, mesheal::Unit::Millimeter, mesheal::ToleranceConfig{}, &err);
         std::filesystem::remove(tempBinPath);
 
         REQUIRE(ok);
@@ -126,7 +126,7 @@ TEST_CASE("Loading synthetic cube STL (ASCII and binary) welds 36 soup vertices 
 
 TEST_CASE("Multi-scale local coordinate-relative vertex welding",
           "[io][welding][tolerance]") {
-    const ogun::ToleranceConfig tolConfig{1e-9, 1e-9};
+    const mesheal::ToleranceConfig tolConfig{1e-9, 1e-9};
 
     SECTION("Near the origin in cm: 5e-10 cm separation merges, while 1e-6 cm separation stays distinct") {
         // Two triangles near the origin sharing a corner at (0, 0, 0) vs (5e-10, 0, 0),
@@ -139,7 +139,7 @@ TEST_CASE("Multi-scale local coordinate-relative vertex welding",
                  1.0 + 1e-6, 0.0, 0.0,   // Outside 1e-9 cm floor & rel_tol of (1,0,0) -> MUST NOT merge
                  0.0,       -1.0, 0.0;
 
-        const ogun::Mesh welded = ogun::weldVerticesLocal(soupV, ogun::Unit::Centimeter, tolConfig);
+        const mesheal::Mesh welded = mesheal::weldVerticesLocal(soupV, mesheal::Unit::Centimeter, tolConfig);
 
         REQUIRE(welded.numFaces() == 2);
         // 6 raw vertices -> 1 pair merged -> 5 unique vertices
@@ -161,7 +161,7 @@ TEST_CASE("Multi-scale local coordinate-relative vertex welding",
                  farX + 102.0, 0.0, 0.0,   // Separated by 2.0 cm > ~1.0 cm rel tol -> MUST NOT merge
                  farX,      -100.0, 0.0;
 
-        const ogun::Mesh welded = ogun::weldVerticesLocal(soupV, ogun::Unit::Centimeter, tolConfig);
+        const mesheal::Mesh welded = mesheal::weldVerticesLocal(soupV, mesheal::Unit::Centimeter, tolConfig);
 
         REQUIRE(welded.numFaces() == 2);
         REQUIRE(welded.numVertices() == 5);
@@ -188,7 +188,7 @@ TEST_CASE("Multi-scale local coordinate-relative vertex welding",
         soupV.row(10) = Eigen::Vector3d(farX + 100.0, 0.0, 0.0);
         soupV.row(11) = Eigen::Vector3d(farX,      -100.0, 0.0);
 
-        const ogun::Mesh welded = ogun::weldVerticesLocal(soupV, ogun::Unit::Centimeter, tolConfig);
+        const mesheal::Mesh welded = mesheal::weldVerticesLocal(soupV, mesheal::Unit::Centimeter, tolConfig);
 
         // Micro pair welds into 4 vertices (without collapsing its 1e-6 cm edge!)
         // Macro pair welds into 4 vertices (merging the 0.4 cm gap at 1e9 cm!)
@@ -204,7 +204,7 @@ TEST_CASE("Multi-scale local coordinate-relative vertex welding",
 
 TEST_CASE("Edge-Aware Guard preserves sliver triangles whose own vertices are closer than weld tolerance",
           "[io][welding][edge-aware]") {
-    const ogun::ToleranceConfig tolConfig{1e-9, 1e-9};
+    const mesheal::ToleranceConfig tolConfig{1e-9, 1e-9};
 
     SECTION("Sliver triangle with sub-tolerance edge (5e-10 cm < 1e-9 cm) keeps 3 distinct vertex indices") {
         // Face 0: A sliver triangle whose first two vertices are separated by only 5e-10 cm (< 1e-9 cm floor).
@@ -224,7 +224,7 @@ TEST_CASE("Edge-Aware Guard preserves sliver triangles whose own vertices are cl
         soupV.row(7) = Eigen::Vector3d(1.0,     0.0, 0.0);
         soupV.row(8) = Eigen::Vector3d(0.0,     1.0, 0.0);
 
-        const ogun::Mesh welded = ogun::weldVerticesLocal(soupV, ogun::Unit::Centimeter, tolConfig);
+        const mesheal::Mesh welded = mesheal::weldVerticesLocal(soupV, mesheal::Unit::Centimeter, tolConfig);
 
         REQUIRE(welded.numFaces() == 3);
         // All 3 vertex indices of the sliver triangle (Face 0) MUST remain distinct!
@@ -246,7 +246,7 @@ TEST_CASE("Edge-Aware Guard preserves sliver triangles whose own vertices are cl
         soupV.row(1) = Eigen::Vector3d(1.0, 2.0, 3.0); // Exact duplicate within same triangle
         soupV.row(2) = Eigen::Vector3d(4.0, 5.0, 6.0);
 
-        const ogun::Mesh welded = ogun::weldVerticesLocal(soupV, ogun::Unit::Millimeter, tolConfig);
+        const mesheal::Mesh welded = mesheal::weldVerticesLocal(soupV, mesheal::Unit::Millimeter, tolConfig);
 
         REQUIRE(welded.numFaces() == 1);
         REQUIRE(welded.numVertices() == 3);
@@ -258,11 +258,11 @@ TEST_CASE("Edge-Aware Guard preserves sliver triangles whose own vertices are cl
 
 TEST_CASE("SampleMeshes::createSampleDefectiveMesh generates a clean cube with known zero-area, microscopic, and sliver triangles",
           "[io][sample]") {
-    const ogun::Mesh mesh = ogun::SampleMeshes::createSampleDefectiveMesh(ogun::Unit::Millimeter);
+    const mesheal::Mesh mesh = mesheal::SampleMeshes::createSampleDefectiveMesh(mesheal::Unit::Millimeter);
 
-    REQUIRE(mesh.fileUnit == ogun::Unit::Millimeter);
-    REQUIRE(mesh.numFaces() == ogun::SampleMeshes::kDefectiveSampleFaceCount);
-    REQUIRE(mesh.numVertices() > ogun::SampleMeshes::kCleanCubeVertexCount);
+    REQUIRE(mesh.fileUnit == mesheal::Unit::Millimeter);
+    REQUIRE(mesh.numFaces() == mesheal::SampleMeshes::kDefectiveSampleFaceCount);
+    REQUIRE(mesh.numVertices() > mesheal::SampleMeshes::kCleanCubeVertexCount);
     REQUIRE(mesh.N.rows() == mesh.numFaces());
 
     // Every triangle in the sample mesh must have 3 distinct valid vertex indices
@@ -282,42 +282,42 @@ TEST_CASE("SampleMeshes::createSampleDefectiveMesh generates a clean cube with k
     }
 
     // First 12 faces are the regular 10x10x10 mm cube faces (each area = 50 mm^2, h_min = 5*sqrt(2) ~= 7.071 mm)
-    for (Eigen::Index f = 0; f < ogun::SampleMeshes::kCleanCubeFaceCount; ++f) {
+    for (Eigen::Index f = 0; f < mesheal::SampleMeshes::kCleanCubeFaceCount; ++f) {
         REQUIRE(computeTriangleArea(mesh, f) == Catch::Approx(50.0).epsilon(1e-9));
         REQUIRE(computeTriangleMinAltitude(mesh, f) == Catch::Approx(50.0 / std::sqrt(200.0) * 2.0).epsilon(1e-9));
     }
 
     // 1. Collinear zero-area triangle (Face 12)
-    const double zeroArea = computeTriangleArea(mesh, ogun::SampleMeshes::kZeroAreaFaceIndex);
-    const double zeroAlt = computeTriangleMinAltitude(mesh, ogun::SampleMeshes::kZeroAreaFaceIndex);
+    const double zeroArea = computeTriangleArea(mesh, mesheal::SampleMeshes::kZeroAreaFaceIndex);
+    const double zeroAlt = computeTriangleMinAltitude(mesh, mesheal::SampleMeshes::kZeroAreaFaceIndex);
     REQUIRE(zeroArea == Catch::Approx(0.0).margin(1e-15));
     REQUIRE(zeroAlt == Catch::Approx(0.0).margin(1e-15));
 
     // 2. Microscopic-area triangle (Face 13)
-    const double microArea = computeTriangleArea(mesh, ogun::SampleMeshes::kMicroscopicFaceIndex);
-    const double microAlt = computeTriangleMinAltitude(mesh, ogun::SampleMeshes::kMicroscopicFaceIndex);
+    const double microArea = computeTriangleArea(mesh, mesheal::SampleMeshes::kMicroscopicFaceIndex);
+    const double microAlt = computeTriangleMinAltitude(mesh, mesheal::SampleMeshes::kMicroscopicFaceIndex);
     REQUIRE(microArea > 0.0);
     REQUIRE(microArea < 1e-6);
     REQUIRE(microAlt > 0.0);
     REQUIRE(microAlt < 1e-3);
 
     // 3. Needle / sliver triangle (Face 14)
-    const double sliverArea = computeTriangleArea(mesh, ogun::SampleMeshes::kNeedleSliverFaceIndex);
-    const double sliverAlt = computeTriangleMinAltitude(mesh, ogun::SampleMeshes::kNeedleSliverFaceIndex);
+    const double sliverArea = computeTriangleArea(mesh, mesheal::SampleMeshes::kNeedleSliverFaceIndex);
+    const double sliverAlt = computeTriangleMinAltitude(mesh, mesheal::SampleMeshes::kNeedleSliverFaceIndex);
     REQUIRE(sliverArea == Catch::Approx(1e-3).epsilon(1e-9));
     REQUIRE(sliverAlt == Catch::Approx(2e-4).epsilon(1e-9));
 }
 
 TEST_CASE("Binary STL export round-trips through loadStl within float32 precision", "[io][stlwriter]") {
-    const ogun::Mesh original = ogun::SampleMeshes::createSampleDefectiveMesh();
-    const auto path = std::filesystem::temp_directory_path() / "ogun_writer_binary.stl";
+    const mesheal::Mesh original = mesheal::SampleMeshes::createSampleDefectiveMesh();
+    const auto path = std::filesystem::temp_directory_path() / "mesheal_writer_binary.stl";
 
     std::string error;
-    REQUIRE(ogun::saveStl(path, original, ogun::StlFormat::Binary, &error));
+    REQUIRE(mesheal::saveStl(path, original, mesheal::StlFormat::Binary, &error));
     REQUIRE(error.empty());
     CHECK(std::filesystem::file_size(path) == 84 + 50 * static_cast<std::uintmax_t>(original.numFaces()));
 
-    const ogun::Mesh loaded = ogun::loadStl(path);
+    const mesheal::Mesh loaded = mesheal::loadStl(path);
     std::filesystem::remove(path);
 
     CHECK(loaded.numFaces() == original.numFaces());
@@ -329,13 +329,13 @@ TEST_CASE("Binary STL export round-trips through loadStl within float32 precisio
 }
 
 TEST_CASE("ASCII STL export round-trips with double precision", "[io][stlwriter]") {
-    ogun::Mesh original = ogun::SampleMeshes::createSampleDefectiveMesh();
+    mesheal::Mesh original = mesheal::SampleMeshes::createSampleDefectiveMesh();
     original.V(0, 0) += 0.123456789012345;
     original.recomputeNormals();
-    const auto path = std::filesystem::temp_directory_path() / "ogun_writer_ascii.stl";
+    const auto path = std::filesystem::temp_directory_path() / "mesheal_writer_ascii.stl";
 
-    REQUIRE(ogun::saveStl(path, original, ogun::StlFormat::Ascii));
-    const ogun::Mesh loaded = ogun::loadStl(path);
+    REQUIRE(mesheal::saveStl(path, original, mesheal::StlFormat::Ascii));
+    const mesheal::Mesh loaded = mesheal::loadStl(path);
     std::filesystem::remove(path);
 
     REQUIRE(loaded.numFaces() == original.numFaces());
@@ -348,25 +348,25 @@ TEST_CASE("ASCII STL export round-trips with double precision", "[io][stlwriter]
 
 TEST_CASE("saveStl reports errors for empty meshes and invalid paths", "[io][stlwriter]") {
     std::string error;
-    const ogun::Mesh empty;
-    CHECK_FALSE(ogun::saveStl(std::filesystem::temp_directory_path() / "ogun_empty.stl", empty,
-                              ogun::StlFormat::Binary, &error));
+    const mesheal::Mesh empty;
+    CHECK_FALSE(mesheal::saveStl(std::filesystem::temp_directory_path() / "mesheal_empty.stl", empty,
+                              mesheal::StlFormat::Binary, &error));
     CHECK_FALSE(error.empty());
 
     error.clear();
-    const ogun::Mesh mesh = ogun::SampleMeshes::createSampleDefectiveMesh();
-    CHECK_FALSE(ogun::saveStl("/nonexistent_ogun_dir/x/out.stl", mesh, ogun::StlFormat::Ascii, &error));
+    const mesheal::Mesh mesh = mesheal::SampleMeshes::createSampleDefectiveMesh();
+    CHECK_FALSE(mesheal::saveStl("/nonexistent_mesheal_dir/x/out.stl", mesh, mesheal::StlFormat::Ascii, &error));
     CHECK_FALSE(error.empty());
 }
 
 namespace {
 
-std::size_t defectCount(ogun::DefectCategory category, const ogun::Mesh& mesh) {
-    return ogun::runCategoryCheck(category, mesh, ogun::CheckParams{}).size();
+std::size_t defectCount(mesheal::DefectCategory category, const mesheal::Mesh& mesh) {
+    return mesheal::runCategoryCheck(category, mesh, mesheal::CheckParams{}).size();
 }
 
 /// Each face's corners sit at the same positions in both meshes (same face order).
-bool sameCornerPositions(const ogun::Mesh& a, const ogun::Mesh& b) {
+bool sameCornerPositions(const mesheal::Mesh& a, const mesheal::Mesh& b) {
     if (a.numFaces() != b.numFaces()) {
         return false;
     }
@@ -381,49 +381,49 @@ bool sameCornerPositions(const ogun::Mesh& a, const ogun::Mesh& b) {
     return true;
 }
 
-ogun::Mesh loadFromAsciiStl(const ogun::Mesh& mesh) {
+mesheal::Mesh loadFromAsciiStl(const mesheal::Mesh& mesh) {
     std::stringstream stl;
-    ogun::writeStlAscii(stl, mesh);
-    return ogun::loadStl(stl);
+    mesheal::writeStlAscii(stl, mesh);
+    return mesheal::loadStl(stl);
 }
 
 } // namespace
 
 TEST_CASE("Loading an STL keeps solids that only touch apart", "[io][stl][non-manifold]") {
     // Two cubes touching along an edge, one touching at a corner, and a fin
-    const ogun::Mesh welded = ogun::SampleMeshes::createTouchingCubesMesh();
-    REQUIRE(defectCount(ogun::DefectCategory::NonManifoldEdges, welded) == 3);
-    REQUIRE(defectCount(ogun::DefectCategory::NonManifoldVertices, welded) == 1);
+    const mesheal::Mesh welded = mesheal::SampleMeshes::createTouchingCubesMesh();
+    REQUIRE(defectCount(mesheal::DefectCategory::NonManifoldEdges, welded) == 3);
+    REQUIRE(defectCount(mesheal::DefectCategory::NonManifoldVertices, welded) == 1);
 
-    const ogun::Mesh loaded = loadFromAsciiStl(welded);
+    const mesheal::Mesh loaded = loadFromAsciiStl(welded);
     REQUIRE(sameCornerPositions(welded, loaded));
     REQUIRE(loaded.numVertices() == welded.numVertices() + 4); // three seam vertices and the corner
-    REQUIRE(defectCount(ogun::DefectCategory::NonManifoldVertices, loaded) == 0);
-    const ogun::CategoryResult edges = ogun::checkNonManifoldEdges(loaded);
+    REQUIRE(defectCount(mesheal::DefectCategory::NonManifoldVertices, loaded) == 0);
+    const mesheal::CategoryResult edges = mesheal::checkNonManifoldEdges(loaded);
     REQUIRE(edges.size() == 1); // the fin is a real defect and stays
     REQUIRE(edges.elements[0].subtype == 1);
-    REQUIRE(ogun::checkOpenEdges(loaded).infoCount == 2);
-    REQUIRE(ogun::checkShells(loaded).infoCount == 3);
+    REQUIRE(mesheal::checkOpenEdges(loaded).infoCount == 2);
+    REQUIRE(mesheal::checkShells(loaded).infoCount == 3);
 
     SECTION("a saved and reopened STL comes back the same") {
         std::stringstream binary;
-        ogun::writeStlBinary(binary, loaded);
-        const ogun::Mesh reloaded = ogun::loadStl(binary);
+        mesheal::writeStlBinary(binary, loaded);
+        const mesheal::Mesh reloaded = mesheal::loadStl(binary);
         REQUIRE(reloaded.F == loaded.F);
         REQUIRE(reloaded.numVertices() == loaded.numVertices());
-        REQUIRE(defectCount(ogun::DefectCategory::NonManifoldVertices, reloaded) == 0);
-        REQUIRE(defectCount(ogun::DefectCategory::NonManifoldEdges, reloaded) == 1);
+        REQUIRE(defectCount(mesheal::DefectCategory::NonManifoldVertices, reloaded) == 0);
+        REQUIRE(defectCount(mesheal::DefectCategory::NonManifoldEdges, reloaded) == 1);
     }
 }
 
 TEST_CASE("Separating touching contacts leaves a clean mesh unchanged", "[io][stl][non-manifold]") {
-    const ogun::Mesh cube = ogun::SampleMeshes::createGridCubeMesh(4, 4.0);
-    const ogun::Mesh separated = ogun::separateTouchingContacts(cube);
+    const mesheal::Mesh cube = mesheal::SampleMeshes::createGridCubeMesh(4, 4.0);
+    const mesheal::Mesh separated = mesheal::separateTouchingContacts(cube);
     REQUIRE(separated.V == cube.V);
     REQUIRE(separated.F == cube.F);
 
-    const ogun::Mesh sample = ogun::SampleMeshes::createSampleDefectiveMesh();
-    REQUIRE(ogun::separateTouchingContacts(sample).F == sample.F);
+    const mesheal::Mesh sample = mesheal::SampleMeshes::createSampleDefectiveMesh();
+    REQUIRE(mesheal::separateTouchingContacts(sample).F == sample.F);
 }
 
 TEST_CASE("The Turkey example loads with no non-manifold edges or vertices", "[io][stl][non-manifold][turkey]") {
@@ -431,9 +431,9 @@ TEST_CASE("The Turkey example loads with no non-manifold edges or vertices", "[i
         std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / "Turkey.stl";
     REQUIRE(std::filesystem::exists(turkey));
     // Welded by position alone it has a 4-edge seam where the surface touches itself and 13 bow-ties
-    const ogun::Mesh mesh = ogun::loadStl(turkey);
-    REQUIRE(defectCount(ogun::DefectCategory::NonManifoldEdges, mesh) == 0);
-    REQUIRE(defectCount(ogun::DefectCategory::NonManifoldVertices, mesh) == 0);
-    REQUIRE(defectCount(ogun::DefectCategory::OpenEdges, mesh) == 0);
-    REQUIRE(ogun::checkShells(mesh).infoCount == 28);
+    const mesheal::Mesh mesh = mesheal::loadStl(turkey);
+    REQUIRE(defectCount(mesheal::DefectCategory::NonManifoldEdges, mesh) == 0);
+    REQUIRE(defectCount(mesheal::DefectCategory::NonManifoldVertices, mesh) == 0);
+    REQUIRE(defectCount(mesheal::DefectCategory::OpenEdges, mesh) == 0);
+    REQUIRE(mesheal::checkShells(mesh).infoCount == 28);
 }

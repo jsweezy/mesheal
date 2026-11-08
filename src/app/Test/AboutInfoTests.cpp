@@ -1,16 +1,16 @@
 #include "app/AboutInfo.hpp"
 
-#include "ogun/Version.hpp"
+#include "mesheal/Version.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <string>
 
-using namespace ogun;
+using namespace mesheal;
 
 TEST_CASE("copyright notice has the exact GPL header", "[about]") {
     const std::string text(copyrightNotice());
-    CHECK(text.starts_with("Ogun -- A STL/Triangle mesh repair utility for engineering applications.\n"
+    CHECK(text.starts_with("Mesheal -- A STL/Triangle mesh repair utility for engineering applications.\n"
                            "Copyright (C) 2026 by Jeremy Sweezy\n\n"));
     CHECK(text.find("This program is free software: you can redistribute it and/or modify\n") != std::string::npos);
     CHECK(text.find("MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n") != std::string::npos);

@@ -17,7 +17,7 @@
 #include <utility>
 #include <vector>
 
-namespace ogun::mockup {
+namespace mesheal::mockup {
 
 /// Lifecycle of one Mesh Health row (see UI_DESIGN.md, "Mesh Health panel").
 enum class HealthStatus {
@@ -300,4 +300,4 @@ private:
     std::chrono::steady_clock::time_point statusMessageTime_;
 };
 
-} // namespace ogun::mockup
+} // namespace mesheal::mockup

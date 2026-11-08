@@ -16,39 +16,39 @@
 
 namespace {
 
-using ogun::SampleMeshes;
-using ogun::ShellRole;
+using mesheal::SampleMeshes;
+using mesheal::ShellRole;
 
 std::filesystem::path examplePath(const char* name) {
     return std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / name;
 }
 
-ogun::Mesh box(Eigen::Vector3d min, Eigen::Vector3d max, bool inward = false) {
+mesheal::Mesh box(Eigen::Vector3d min, Eigen::Vector3d max, bool inward = false) {
     return SampleMeshes::createBox(min, max, inward);
 }
 
 /// Roles from every pair of shells, loaded the way the app loads a file.
-ogun::ShellRoles rolesOf(const ogun::Mesh& input) {
-    const ogun::Mesh mesh = ogun::separateTouchingContacts(input);
-    return ogun::classifyShellRoles(mesh, ogun::computeShellRelations(mesh));
+mesheal::ShellRoles rolesOf(const mesheal::Mesh& input) {
+    const mesheal::Mesh mesh = mesheal::separateTouchingContacts(input);
+    return mesheal::classifyShellRoles(mesh, mesheal::computeShellRelations(mesh));
 }
 
-std::vector<ShellRole> roleList(const ogun::ShellRoles& roles) {
+std::vector<ShellRole> roleList(const mesheal::ShellRoles& roles) {
     std::vector<ShellRole> list;
-    for (const ogun::ShellRoleInfo& info : roles.shells) {
+    for (const mesheal::ShellRoleInfo& info : roles.shells) {
         list.push_back(info.role);
     }
     return list;
 }
 
-ogun::CategoryResult invertedShells(const ogun::Mesh& mesh) {
-    return ogun::runCategoryCheck(ogun::DefectCategory::InvertedShells, ogun::separateTouchingContacts(mesh),
-                                  ogun::CheckParams{});
+mesheal::CategoryResult invertedShells(const mesheal::Mesh& mesh) {
+    return mesheal::runCategoryCheck(mesheal::DefectCategory::InvertedShells, mesheal::separateTouchingContacts(mesh),
+                                  mesheal::CheckParams{});
 }
 
 /// Builds a mesh from vertex rows and face rows.
-ogun::Mesh meshOf(const std::vector<Eigen::Vector3d>& vertices, const std::vector<std::array<int, 3>>& faces) {
-    ogun::Mesh mesh;
+mesheal::Mesh meshOf(const std::vector<Eigen::Vector3d>& vertices, const std::vector<std::array<int, 3>>& faces) {
+    mesheal::Mesh mesh;
     mesh.V.resize(static_cast<Eigen::Index>(vertices.size()), 3);
     for (std::size_t v = 0; v < vertices.size(); ++v) {
         mesh.V.row(static_cast<Eigen::Index>(v)) = vertices[v].transpose();
@@ -62,7 +62,7 @@ ogun::Mesh meshOf(const std::vector<Eigen::Vector3d>& vertices, const std::vecto
 }
 
 /// Closed octahedron around `c` with half-sizes `r`, wound inward (negative volume).
-ogun::Mesh inwardOctahedron(const Eigen::Vector3d& c, const Eigen::Vector3d& r) {
+mesheal::Mesh inwardOctahedron(const Eigen::Vector3d& c, const Eigen::Vector3d& r) {
     const std::vector<Eigen::Vector3d> v = {c + Eigen::Vector3d(r.x(), 0, 0), c - Eigen::Vector3d(r.x(), 0, 0),
                                             c + Eigen::Vector3d(0, r.y(), 0), c - Eigen::Vector3d(0, r.y(), 0),
                                             c + Eigen::Vector3d(0, 0, r.z()), c - Eigen::Vector3d(0, 0, r.z())};
@@ -71,14 +71,14 @@ ogun::Mesh inwardOctahedron(const Eigen::Vector3d& c, const Eigen::Vector3d& r) 
 }
 
 /// Square pyramid wound inward: base [x0, x1] x [y0, y1] at height z0, apex `apex`.
-ogun::Mesh inwardPyramid(double x0, double x1, double y0, double y1, double z0, const Eigen::Vector3d& apex) {
+mesheal::Mesh inwardPyramid(double x0, double x1, double y0, double y1, double z0, const Eigen::Vector3d& apex) {
     const std::vector<Eigen::Vector3d> v = {{x0, y0, z0}, {x1, y0, z0}, {x1, y1, z0}, {x0, y1, z0}, apex};
     // Outward: base 0,2,1 / 0,3,2 (facing -z), sides 0,1,4 / 1,2,4 / 2,3,4 / 3,0,4; reversed here
     return meshOf(v, {{0, 1, 2}, {0, 2, 3}, {0, 4, 1}, {1, 4, 2}, {2, 4, 3}, {3, 4, 0}});
 }
 
 /// Open Mobius strip around the z axis (radius 3, half-width 1), `segments` quads.
-ogun::Mesh mobiusStrip(int segments) {
+mesheal::Mesh mobiusStrip(int segments) {
     std::vector<Eigen::Vector3d> v;
     for (int i = 0; i < segments; ++i) {
         const double t = 2.0 * std::numbers::pi * i / segments;
@@ -103,14 +103,14 @@ ogun::Mesh mobiusStrip(int segments) {
 } // namespace
 
 TEST_CASE("Rule O: a cavity is kept, a free-standing inward box is inside out", "[diagnostics][shell-roles]") {
-    const ogun::ShellRoles cavity = rolesOf(SampleMeshes::createCavityBoxMesh());
+    const mesheal::ShellRoles cavity = rolesOf(SampleMeshes::createCavityBoxMesh());
     REQUIRE(roleList(cavity) == std::vector{ShellRole::Solid, ShellRole::Cavity});
     REQUIRE(cavity.shells[0].winding == 0);
     REQUIRE(cavity.shells[1].winding == 1);
     REQUIRE(cavity.shells[1].related == std::vector<int>{0});
     REQUIRE(cavity.stoppedGroups.empty());
 
-    const ogun::ShellRoles insideOut = rolesOf(box({0, 0, 0}, {2, 2, 2}, true));
+    const mesheal::ShellRoles insideOut = rolesOf(box({0, 0, 0}, {2, 2, 2}, true));
     REQUIRE(roleList(insideOut) == std::vector{ShellRole::InsideOut});
     REQUIRE(insideOut.count(ShellRole::InsideOut) == 1);
 }
@@ -122,7 +122,7 @@ TEST_CASE("Rule O: an outward box inside a box is a nested solid, not a cavity",
     REQUIRE(roleList(rolesOf(SampleMeshes::createNestedSolidAndCavityMesh())) ==
             std::vector{ShellRole::Solid, ShellRole::Cavity, ShellRole::NestedSolid});
     // Body, six feathers crossing it, the inner box, a separate box
-    const ogun::ShellRoles turkeyLike = rolesOf(SampleMeshes::createTurkeyLikeMesh());
+    const mesheal::ShellRoles turkeyLike = rolesOf(SampleMeshes::createTurkeyLikeMesh());
     REQUIRE(turkeyLike.count(ShellRole::Solid) == 8);
     REQUIRE(turkeyLike.shells[7].role == ShellRole::NestedSolid);
     REQUIRE(turkeyLike.shells[7].related == std::vector<int>{0});
@@ -131,7 +131,7 @@ TEST_CASE("Rule O: an outward box inside a box is a nested solid, not a cavity",
 }
 
 TEST_CASE("Rule O stops at a body written inside out with a shell inside it", "[diagnostics][shell-roles]") {
-    const ogun::ShellRoles roles = rolesOf(SampleMeshes::createCavityBoxMesh(true));
+    const mesheal::ShellRoles roles = rolesOf(SampleMeshes::createCavityBoxMesh(true));
     REQUIRE(roleList(roles) == std::vector{ShellRole::InsideOutWithInner, ShellRole::InsideOutWithInner});
     REQUIRE(roles.stoppedGroups == std::vector<std::vector<int>>{{0, 1}});
     REQUIRE(roles.shells[0].related == std::vector<int>{1});
@@ -140,7 +140,7 @@ TEST_CASE("Rule O stops at a body written inside out with a shell inside it", "[
 
 TEST_CASE("Rule O does not guess for an inward shell that touches its container", "[diagnostics][shell-roles]") {
     // An inward octahedron whose corner (0, 1, 2.5) rests on the box's wall x = 0
-    const ogun::ShellRoles roles = rolesOf(SampleMeshes::combineMeshes(
+    const mesheal::ShellRoles roles = rolesOf(SampleMeshes::combineMeshes(
         {box({0, 0, 0}, {4, 4, 4}), inwardOctahedron({1.5, 1.0, 2.5}, {1.5, 0.8, 0.8})}));
     REQUIRE(roleList(roles) == std::vector{ShellRole::Solid, ShellRole::Unclassified});
     REQUIRE(roles.shells[1].related == std::vector<int>{0});
@@ -148,25 +148,25 @@ TEST_CASE("Rule O does not guess for an inward shell that touches its container"
 }
 
 TEST_CASE("Rule O: islands in a cavity, upright and inside out", "[diagnostics][shell-roles]") {
-    const ogun::ShellRoles island = rolesOf(SampleMeshes::createIslandInCavityMesh());
+    const mesheal::ShellRoles island = rolesOf(SampleMeshes::createIslandInCavityMesh());
     REQUIRE(roleList(island) == std::vector{ShellRole::Solid, ShellRole::Cavity, ShellRole::Island});
     REQUIRE(island.shells[2].winding == 0);
     REQUIRE(island.shells[2].related == std::vector<int>{1});
 
-    const ogun::ShellRoles flipped = rolesOf(SampleMeshes::createIslandInCavityMesh(true));
+    const mesheal::ShellRoles flipped = rolesOf(SampleMeshes::createIslandInCavityMesh(true));
     REQUIRE(roleList(flipped) == std::vector{ShellRole::Solid, ShellRole::Cavity, ShellRole::InsideOut});
 }
 
 TEST_CASE("Rule O: an inward shell that crosses others is inside out only when mostly outside them",
           "[diagnostics][shell-roles]") {
     // Seven of the inward box's eight corners lie outside the solid
-    const ogun::ShellRoles outside =
+    const mesheal::ShellRoles outside =
         rolesOf(SampleMeshes::combineMeshes({box({0, 0, 0}, {4, 4, 4}), box({3, 3, 3}, {7, 7, 7}, true)}));
     REQUIRE(roleList(outside) == std::vector{ShellRole::Solid, ShellRole::InsideOut});
     REQUIRE(outside.shells[1].related == std::vector<int>{0});
 
     // An inward pyramid with its base inside the solid and its apex through the top wall
-    const ogun::ShellRoles inside = rolesOf(
+    const mesheal::ShellRoles inside = rolesOf(
         SampleMeshes::combineMeshes({box({0, 0, 0}, {4, 4, 4}), inwardPyramid(1, 3, 1, 3, 1, {2, 2, 5})}));
     REQUIRE(roleList(inside) == std::vector{ShellRole::Solid, ShellRole::Unclassified});
     REQUIRE(inside.shells[1].reason.find("crosses") != std::string::npos);
@@ -178,15 +178,15 @@ TEST_CASE("Rule O: an inward shell that crosses others is inside out only when m
 
 TEST_CASE("Rule O: open, mis-wound and self-crossing shells are not closed and never containers",
           "[diagnostics][shell-roles]") {
-    ogun::Mesh open = box({0, 0, 0}, {4, 4, 4});
+    mesheal::Mesh open = box({0, 0, 0}, {4, 4, 4});
     open.F.conservativeResize(11, 3);
     REQUIRE(roleList(rolesOf(open)) == std::vector{ShellRole::NotClosed});
 
     // A cavity inside an open box: cavity or inside out cannot be told yet
-    ogun::Mesh openWithCavity = SampleMeshes::combineMeshes({box({0, 0, 0}, {4, 4, 4}), box({1, 1, 1}, {3, 3, 3}, true)});
+    mesheal::Mesh openWithCavity = SampleMeshes::combineMeshes({box({0, 0, 0}, {4, 4, 4}), box({1, 1, 1}, {3, 3, 3}, true)});
     openWithCavity.F.row(0) = openWithCavity.F.row(23); // the outer box loses a face; the cavity loses nothing
     openWithCavity.F.conservativeResize(23, 3);
-    const ogun::ShellRoles openRoles = rolesOf(openWithCavity); // the cavity has more faces now: #1
+    const mesheal::ShellRoles openRoles = rolesOf(openWithCavity); // the cavity has more faces now: #1
     REQUIRE(roleList(openRoles) == std::vector{ShellRole::Unclassified, ShellRole::NotClosed});
     REQUIRE(openRoles.shells[0].related == std::vector<int>{1});
     REQUIRE(openRoles.shells[0].reason.find("not closed") != std::string::npos);
@@ -195,28 +195,28 @@ TEST_CASE("Rule O: open, mis-wound and self-crossing shells are not closed and n
     REQUIRE(roleList(rolesOf(SampleMeshes::createCavityHoleSliversIntersectionsMesh())) ==
             std::vector{ShellRole::NotClosed, ShellRole::Unclassified, ShellRole::Solid});
 
-    ogun::Mesh misWound = box({0, 0, 0}, {2, 2, 2}, true);
+    mesheal::Mesh misWound = box({0, 0, 0}, {2, 2, 2}, true);
     misWound.F.row(0) = misWound.F.row(0).reverse().eval();
-    const ogun::ShellRoles misWoundRoles = rolesOf(misWound);
+    const mesheal::ShellRoles misWoundRoles = rolesOf(misWound);
     REQUIRE(roleList(misWoundRoles) == std::vector{ShellRole::NotClosed});
     REQUIRE(misWoundRoles.shells[0].reason.find("wound against") != std::string::npos);
 
     // A Mobius strip is open (one boundary loop) and is never a container
-    const ogun::Mesh mobius = mobiusStrip(24);
+    const mesheal::Mesh mobius = mobiusStrip(24);
     REQUIRE(roleList(rolesOf(mobius)) == std::vector{ShellRole::NotClosed});
     REQUIRE(roleList(rolesOf(SampleMeshes::combineMeshes({mobius, box({-0.5, -0.5, -0.3}, {0.5, 0.5, 0.3}, true)}))) ==
             std::vector{ShellRole::NotClosed, ShellRole::Unclassified});
 
     // A shell the caller knows to cross itself
-    const ogun::Mesh cavityBox = SampleMeshes::createCavityBoxMesh();
+    const mesheal::Mesh cavityBox = SampleMeshes::createCavityBoxMesh();
     const std::vector<std::uint8_t> selfCrossing = {1, 0};
-    const ogun::ShellRoles selfRoles =
-        ogun::classifyShellRoles(cavityBox, ogun::computeShellRelations(cavityBox), selfCrossing);
+    const mesheal::ShellRoles selfRoles =
+        mesheal::classifyShellRoles(cavityBox, mesheal::computeShellRelations(cavityBox), selfCrossing);
     REQUIRE(roleList(selfRoles) == std::vector{ShellRole::NotClosed, ShellRole::Unclassified});
 }
 
 TEST_CASE("Rule O leaves an inward shell inside two layers of material unclassified", "[diagnostics][shell-roles]") {
-    const ogun::ShellRoles roles = rolesOf(SampleMeshes::combineMeshes(
+    const mesheal::ShellRoles roles = rolesOf(SampleMeshes::combineMeshes(
         {box({0, 0, 0}, {6, 6, 6}), box({1, 1, 1}, {5, 5, 5}), box({2, 2, 2}, {4, 4, 4}, true)}));
     REQUIRE(roleList(roles) == std::vector{ShellRole::Solid, ShellRole::NestedSolid, ShellRole::Unclassified});
     REQUIRE(roles.shells[2].winding == 2);
@@ -225,33 +225,33 @@ TEST_CASE("Rule O leaves an inward shell inside two layers of material unclassif
 TEST_CASE("Rule O on stopped relations judges nothing", "[diagnostics][shell-roles]") {
     std::stop_source source;
     source.request_stop();
-    const ogun::Mesh mesh = SampleMeshes::createCavityBoxMesh();
-    const ogun::ShellRelations relations = ogun::computeShellRelations(mesh, ogun::ShellRelationParams{}, source.get_token());
+    const mesheal::Mesh mesh = SampleMeshes::createCavityBoxMesh();
+    const mesheal::ShellRelations relations = mesheal::computeShellRelations(mesh, mesheal::ShellRelationParams{}, source.get_token());
     REQUIRE_FALSE(relations.complete);
-    const ogun::ShellRoles roles = ogun::classifyShellRoles(mesh, relations);
+    const mesheal::ShellRoles roles = mesheal::classifyShellRoles(mesh, relations);
     REQUIRE_FALSE(roles.complete);
     REQUIRE(roleList(roles) == std::vector{ShellRole::Unclassified, ShellRole::Unclassified});
 }
 
 TEST_CASE("Rule O needs relations only around inward shells", "[diagnostics][shell-roles]") {
-    const auto needs = [](const ogun::Mesh& mesh) {
-        return ogun::shellsRuleONeeds(ogun::describeShells(mesh, ogun::shellsLargestFirst(mesh)));
+    const auto needs = [](const mesheal::Mesh& mesh) {
+        return mesheal::shellsRuleONeeds(mesheal::describeShells(mesh, mesheal::shellsLargestFirst(mesh)));
     };
     REQUIRE(needs(SampleMeshes::createTurkeyLikeMesh()).empty());
     REQUIRE(needs(SampleMeshes::createCavityBoxMesh()) == std::vector<int>{0, 1});
-    REQUIRE(needs(SampleMeshes::createCavityReachedMesh(ogun::SampleMeshes::CavityReachedVariant::WithSeparatePair)) ==
+    REQUIRE(needs(SampleMeshes::createCavityReachedMesh(mesheal::SampleMeshes::CavityReachedVariant::WithSeparatePair)) ==
             std::vector<int>{0, 2});
 
     // Inward shells get the same role from those relations as from every pair
-    for (const ogun::Mesh& mesh : {SampleMeshes::createCavityBoxMesh(true), SampleMeshes::createIslandInCavityMesh(true),
+    for (const mesheal::Mesh& mesh : {SampleMeshes::createCavityBoxMesh(true), SampleMeshes::createIslandInCavityMesh(true),
                                    SampleMeshes::createNestedSolidAndCavityMesh(true),
-                                   SampleMeshes::createCavityReachedMesh(ogun::SampleMeshes::CavityReachedVariant::WithSeparatePair),
+                                   SampleMeshes::createCavityReachedMesh(mesheal::SampleMeshes::CavityReachedVariant::WithSeparatePair),
                                    SampleMeshes::combineMeshes({box({0, 0, 0}, {4, 4, 4}), box({3, 3, 3}, {7, 7, 7}, true)})}) {
-        const ogun::ShellRoles all = ogun::classifyShellRoles(mesh, ogun::computeShellRelations(mesh));
-        ogun::ShellRelationParams params;
+        const mesheal::ShellRoles all = mesheal::classifyShellRoles(mesh, mesheal::computeShellRelations(mesh));
+        mesheal::ShellRelationParams params;
         params.involving = needs(mesh);
-        const ogun::ShellRelations partial = ogun::computeShellRelations(mesh, params);
-        const ogun::ShellRoles some = ogun::classifyShellRoles(mesh, partial);
+        const mesheal::ShellRelations partial = mesheal::computeShellRelations(mesh, params);
+        const mesheal::ShellRoles some = mesheal::classifyShellRoles(mesh, partial);
         for (std::size_t s = 0; s < all.shells.size(); ++s) {
             if (partial.shells[s].signedVolume < 0.0) {
                 REQUIRE(some.shells[s].role == all.shells[s].role);
@@ -261,17 +261,17 @@ TEST_CASE("Rule O needs relations only around inward shells", "[diagnostics][she
 }
 
 TEST_CASE("Rule O reasons name the shells they refer to", "[diagnostics][shell-roles]") {
-    ogun::ShellRoleInfo info;
+    mesheal::ShellRoleInfo info;
     info.reason = "is wound inward and crosses {list}, near {0}.";
     info.related = {0, 2, 4};
     const auto label = [](int s) { return "#" + std::to_string(s + 1); };
-    REQUIRE(ogun::formatShellRoleReason(info, label) == "is wound inward and crosses #1, #3 and #5, near #1.");
-    REQUIRE(std::string(ogun::shellRoleLabel(ShellRole::InsideOutWithInner)) == "Inside out with inner shells");
+    REQUIRE(mesheal::formatShellRoleReason(info, label) == "is wound inward and crosses #1, #3 and #5, near #1.");
+    REQUIRE(std::string(mesheal::shellRoleLabel(ShellRole::InsideOutWithInner)) == "Inside out with inner shells");
 }
 
 TEST_CASE("The Inverted shells check counts inside-out shells and warns about the rest", "[diagnostics][shell-roles]") {
-    const ogun::CategoryResult insideOut = invertedShells(box({0, 0, 0}, {2, 2, 2}, true));
-    REQUIRE(insideOut.category == ogun::DefectCategory::InvertedShells);
+    const mesheal::CategoryResult insideOut = invertedShells(box({0, 0, 0}, {2, 2, 2}, true));
+    REQUIRE(insideOut.category == mesheal::DefectCategory::InvertedShells);
     REQUIRE(insideOut.size() == 1);
     REQUIRE(insideOut.elements[0].index == 0);
     REQUIRE(insideOut.facesOf(0).size() == 12);
@@ -280,31 +280,31 @@ TEST_CASE("The Inverted shells check counts inside-out shells and warns about th
     REQUIRE(insideOut.warnings.empty());
 
     // A cavity is correct: nothing counted, nothing to warn about
-    const ogun::CategoryResult cavity = invertedShells(SampleMeshes::createCavityBoxMesh());
+    const mesheal::CategoryResult cavity = invertedShells(SampleMeshes::createCavityBoxMesh());
     REQUIRE(cavity.empty());
     REQUIRE(cavity.warnings.empty());
 
-    const ogun::CategoryResult stopped = invertedShells(SampleMeshes::createCavityBoxMesh(true));
+    const mesheal::CategoryResult stopped = invertedShells(SampleMeshes::createCavityBoxMesh(true));
     REQUIRE(stopped.empty());
     REQUIRE(stopped.warnings.size() == 1);
     REQUIRE(stopped.warnings[0].shells == std::vector<int>{0, 1});
     REQUIRE(stopped.warnings[0].text == "#1 and its inner shell #2 look inside out together. Flip them by hand.");
-    REQUIRE(stopped.warnings[0].kind == ogun::WarningKind::StoppedGroup); // Flip all / Flip outer only
+    REQUIRE(stopped.warnings[0].kind == mesheal::WarningKind::StoppedGroup); // Flip all / Flip outer only
 
-    const ogun::CategoryResult touching = invertedShells(SampleMeshes::combineMeshes(
+    const mesheal::CategoryResult touching = invertedShells(SampleMeshes::combineMeshes(
         {box({0, 0, 0}, {4, 4, 4}), inwardOctahedron({1.5, 1.0, 2.5}, {1.5, 0.8, 0.8})}));
     REQUIRE(touching.empty());
     REQUIRE(touching.warnings.size() == 1);
     REQUIRE(touching.warnings[0].shells == std::vector<int>{1});
     REQUIRE(touching.warnings[0].text ==
             "#2 is wound inward and touches #1: cavity or inside out? Left as it is.");
-    REQUIRE(touching.warnings[0].kind == ogun::WarningKind::Unclassified); // Flip it
+    REQUIRE(touching.warnings[0].kind == mesheal::WarningKind::Unclassified); // Flip it
 
-    const ogun::CategoryResult island = invertedShells(SampleMeshes::createIslandInCavityMesh(true));
+    const mesheal::CategoryResult island = invertedShells(SampleMeshes::createIslandInCavityMesh(true));
     REQUIRE(island.size() == 1);
     REQUIRE(island.elements[0].index == 2);
 
-    const ogun::CategoryResult sample = invertedShells(SampleMeshes::createCavityHoleSliversIntersectionsMesh());
+    const mesheal::CategoryResult sample = invertedShells(SampleMeshes::createCavityHoleSliversIntersectionsMesh());
     REQUIRE(sample.empty());
     REQUIRE(sample.warnings.size() == 1);
     REQUIRE(sample.warnings[0].shells == std::vector<int>{1});
@@ -315,8 +315,8 @@ TEST_CASE("The Inverted shells check counts inside-out shells and warns about th
 }
 
 TEST_CASE("Turkey shell roles", "[diagnostics][shell-roles][.slow]") {
-    const ogun::Mesh turkey = ogun::loadStl(examplePath("Turkey.stl"));
-    const ogun::ShellRoles roles = ogun::classifyShellRoles(turkey, ogun::computeShellRelations(turkey));
+    const mesheal::Mesh turkey = mesheal::loadStl(examplePath("Turkey.stl"));
+    const mesheal::ShellRoles roles = mesheal::classifyShellRoles(turkey, mesheal::computeShellRelations(turkey));
     REQUIRE(roles.shells.size() == 28);
     REQUIRE(roles.count(ShellRole::InsideOut) == 0);
     REQUIRE(roles.count(ShellRole::Solid) == 27);
@@ -326,7 +326,7 @@ TEST_CASE("Turkey shell roles", "[diagnostics][shell-roles][.slow]") {
     REQUIRE(roles.shells[27].winding == 1);
 
     const auto start = std::chrono::steady_clock::now();
-    const ogun::CategoryResult row = ogun::runCategoryCheck(ogun::DefectCategory::InvertedShells, turkey, ogun::CheckParams{});
+    const mesheal::CategoryResult row = mesheal::runCategoryCheck(mesheal::DefectCategory::InvertedShells, turkey, mesheal::CheckParams{});
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     WARN("Turkey Inverted shells check: " << ms << " ms");
     REQUIRE(row.empty());

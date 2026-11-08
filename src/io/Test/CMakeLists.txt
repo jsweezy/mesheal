@@ -1,14 +1,14 @@
-add_executable(ogun_io_tests
+add_executable(mesheal_io_tests
     ConfigDirectoryTests.cpp
     StlReaderTests.cpp
     StlWriterTests.cpp
 )
 
-target_link_libraries(ogun_io_tests
+target_link_libraries(mesheal_io_tests
     PRIVATE
-        ogun::io
+        mesheal::io
         Catch2::Catch2WithMain
-        ogun::warnings
+        mesheal::warnings
 )
 
-catch_discover_tests(ogun_io_tests)
+catch_discover_tests(mesheal_io_tests)

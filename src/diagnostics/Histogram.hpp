@@ -6,7 +6,7 @@
 #include <span>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// Binned distribution of a defect metric, laid out worst first (bin 0 is the worst end).
 /// Zero, negative (log scale) and non-finite values always fall into the worst bin.
@@ -42,4 +42,4 @@ struct MetricHistogram {
     bool logScale = false,
     bool lowIsWorst = true);
 
-} // namespace ogun
+} // namespace mesheal

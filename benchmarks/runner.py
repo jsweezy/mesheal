@@ -1,4 +1,4 @@
-"""Subprocess wrapper and Python interface for the Ogun STL repair binary."""
+"""Subprocess wrapper and Python interface for the Mesheal STL repair binary."""
 
 from __future__ import annotations
 
@@ -94,9 +94,9 @@ class RepairResult:
         return self.status == "success" and self.exit_code == 0
 
 
-def find_ogun_binary() -> Path:
-    """Finds the Ogun binary path in repository build trees or system PATH."""
-    env_bin = os.getenv("OGUN_BIN")
+def find_mesheal_binary() -> Path:
+    """Finds the Mesheal binary path in repository build trees or system PATH."""
+    env_bin = os.getenv("MESHEAL_BIN")
     if env_bin:
         p = Path(env_bin)
         if p.is_file() and os.access(p, os.X_OK):
@@ -104,34 +104,34 @@ def find_ogun_binary() -> Path:
 
     repo_root = Path(__file__).resolve().parent.parent
     candidates = [
-        repo_root / "build_release" / "src" / "app" / "ogun",
-        repo_root / "build_release" / "ogun",
-        repo_root / "build" / "src" / "app" / "ogun",
-        repo_root / "build" / "ogun",
-        repo_root / "build_release" / "Ogun.app" / "Contents" / "MacOS" / "Ogun",
-        repo_root / "build" / "Ogun.app" / "Contents" / "MacOS" / "Ogun",
+        repo_root / "build_release" / "src" / "app" / "mesheal",
+        repo_root / "build_release" / "mesheal",
+        repo_root / "build" / "src" / "app" / "mesheal",
+        repo_root / "build" / "mesheal",
+        repo_root / "build_release" / "Mesheal.app" / "Contents" / "MacOS" / "Mesheal",
+        repo_root / "build" / "Mesheal.app" / "Contents" / "MacOS" / "Mesheal",
     ]
 
     for candidate in candidates:
         if candidate.is_file() and os.access(candidate, os.X_OK):
             return candidate
 
-    system_bin = shutil.which("ogun")
+    system_bin = shutil.which("mesheal")
     if system_bin:
         return Path(system_bin)
 
     raise FileNotFoundError(
-        "Could not locate the ogun binary. Please compile with 'cmake --build build_release -j 2' "
-        "or set the OGUN_BIN environment variable."
+        "Could not locate the mesheal binary. Please compile with 'cmake --build build_release -j 2' "
+        "or set the MESHEAL_BIN environment variable."
     )
 
 
 def diagnostics(
     input_file: Union[str, Path],
-    ogun_bin: Optional[Union[str, Path]] = None,
+    mesheal_bin: Optional[Union[str, Path]] = None,
 ) -> RepairResult:
     """Runs headless mesh health inspection on an STL file."""
-    bin_path = Path(ogun_bin) if ogun_bin else find_ogun_binary()
+    bin_path = Path(mesheal_bin) if mesheal_bin else find_mesheal_binary()
     input_path = Path(input_file).resolve()
 
     cmd = [str(bin_path), str(input_path), "--diagnostics", "--json"]
@@ -161,7 +161,7 @@ def diagnostics(
             status="error",
             action="diagnostics",
             input_file=str(input_path),
-            error=proc.stderr.strip() or proc.stdout.strip() or "Invalid JSON output from ogun",
+            error=proc.stderr.strip() or proc.stdout.strip() or "Invalid JSON output from mesheal",
             exit_code=proc.returncode,
         )
 
@@ -178,10 +178,10 @@ def repair(
     alpha: Optional[float] = None,
     offset: Optional[float] = None,
     resolution: int = 128,
-    ogun_bin: Optional[Union[str, Path]] = None,
+    mesheal_bin: Optional[Union[str, Path]] = None,
 ) -> RepairResult:
-    """Repairs an STL file using Ogun and returns detailed before/after volume metrics."""
-    bin_path = Path(ogun_bin) if ogun_bin else find_ogun_binary()
+    """Repairs an STL file using Mesheal and returns detailed before/after volume metrics."""
+    bin_path = Path(mesheal_bin) if mesheal_bin else find_mesheal_binary()
     input_path = Path(input_file).resolve()
 
     method_flag_map = {
@@ -249,6 +249,6 @@ def repair(
             status="error",
             action=method,
             input_file=str(input_path),
-            error=proc.stderr.strip() or proc.stdout.strip() or "Invalid JSON output from ogun",
+            error=proc.stderr.strip() or proc.stdout.strip() or "Invalid JSON output from mesheal",
             exit_code=proc.returncode,
         )

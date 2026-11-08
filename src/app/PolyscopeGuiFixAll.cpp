@@ -12,7 +12,7 @@
 #include <string>
 #include <string_view>
 
-namespace ogun {
+namespace mesheal {
 
 using gui::tooltip;
 using gui::withThousands;
@@ -1149,4 +1149,4 @@ void PolyscopeGui::drawFixAllReportFooter() {
     }
 }
 
-} // namespace ogun
+} // namespace mesheal

@@ -1,4 +1,4 @@
-add_executable(ogun_diagnostics_tests
+add_executable(mesheal_diagnostics_tests
     ThinFaceCheckerTests.cpp
     MeshChecksTests.cpp
     TriTriIntersectTests.cpp
@@ -10,12 +10,12 @@ add_executable(ogun_diagnostics_tests
     ShellRolesTests.cpp
 )
 
-target_link_libraries(ogun_diagnostics_tests
+target_link_libraries(mesheal_diagnostics_tests
     PRIVATE
-        ogun::io
-        ogun::diagnostics
+        mesheal::io
+        mesheal::diagnostics
         Catch2::Catch2WithMain
-        ogun::warnings
+        mesheal::warnings
 )
 
-catch_discover_tests(ogun_diagnostics_tests)
+catch_discover_tests(mesheal_diagnostics_tests)

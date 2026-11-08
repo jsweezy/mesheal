@@ -10,7 +10,7 @@
 #include <stop_token>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// Before / after numbers shown next to every repair candidate, so the user can judge a coarse
 /// global fix against a surgical one (VISION.md "options plus information").
@@ -96,4 +96,4 @@ struct FaceGeometryKeyHash {
     const CheckParams& params,
     std::stop_token stopToken = {});
 
-} // namespace ogun
+} // namespace mesheal

@@ -12,16 +12,16 @@
 
 namespace {
 
-using ogun::DefectCategory;
-using ogun::HealthStatus;
+using mesheal::DefectCategory;
+using mesheal::HealthStatus;
 
-HealthStatus status(const ogun::AppController& c, DefectCategory category) {
+HealthStatus status(const mesheal::AppController& c, DefectCategory category) {
     return c.categoryHealth(category).status;
 }
 
 /// Subdivided-grid "terrain" mesh with many triangles so a background job takes measurable time.
-ogun::Mesh makeGrid(int n) {
-    ogun::Mesh mesh;
+mesheal::Mesh makeGrid(int n) {
+    mesheal::Mesh mesh;
     mesh.V.resize((n + 1) * (n + 1), 3);
     for (int y = 0; y <= n; ++y) {
         for (int x = 0; x <= n; ++x) {
@@ -44,13 +44,13 @@ ogun::Mesh makeGrid(int n) {
 } // namespace
 
 TEST_CASE("Check Mesh fills every row and the watertight badge", "[app][health]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     controller.setCheckMeshAfterLoad(false);
     controller.loadSampleDefectiveMesh();
-    for (const DefectCategory category : ogun::kAllDefectCategories) {
+    for (const DefectCategory category : mesheal::kAllDefectCategories) {
         REQUIRE(status(controller, category) == HealthStatus::NotRun);
     }
-    REQUIRE(controller.watertightState() == ogun::WatertightState::Unknown);
+    REQUIRE(controller.watertightState() == mesheal::WatertightState::Unknown);
 
     controller.checkMesh();
     REQUIRE(status(controller, DefectCategory::ThinFaces) == HealthStatus::Defects);
@@ -58,12 +58,12 @@ TEST_CASE("Check Mesh fills every row and the watertight badge", "[app][health]"
     REQUIRE(status(controller, DefectCategory::Degenerate) == HealthStatus::Defects);
     REQUIRE(controller.totalProblemCount() > 0);
     // The sample's extra triangles are loose, so the mesh is not watertight
-    REQUIRE(controller.watertightState() == ogun::WatertightState::NotWatertight);
+    REQUIRE(controller.watertightState() == mesheal::WatertightState::NotWatertight);
     REQUIRE_FALSE(controller.checksRunning());
 }
 
 TEST_CASE("Edits re-run Auto rows and mark Auto-off rows Stale; Re-check clears Stale", "[app][health]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     controller.loadSampleDefectiveMesh();
     controller.setAutoCheck(DefectCategory::Degenerate, false);
     REQUIRE(status(controller, DefectCategory::Degenerate) == HealthStatus::Defects);
@@ -91,18 +91,18 @@ TEST_CASE("Edits re-run Auto rows and mark Auto-off rows Stale; Re-check clears 
 }
 
 TEST_CASE("Threshold changes re-run the thin row; File Units re-interpret thresholds", "[app][health]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     controller.loadSampleDefectiveMesh();
     // Zero-area and needle; the well-shaped microscopic face is not stretched
     REQUIRE(controller.categoryHealth(DefectCategory::ThinFaces).result->size() == 2);
 
     // An advanced height floor also flags it
-    ogun::ThinFaceThresholds floors = controller.thresholds();
+    mesheal::ThinFaceThresholds floors = controller.thresholds();
     floors.minAltitude = 1.0e-4;
     controller.setThresholds(floors);
     REQUIRE(controller.categoryHealth(DefectCategory::ThinFaces).result->size() == 3);
 
-    ogun::ThinFaceThresholds loose = controller.thresholds();
+    mesheal::ThinFaceThresholds loose = controller.thresholds();
     loose.minAltitude = 0.0;
     loose.minArea = 0.0;
     loose.maxAspectRatio = 1.0e9;
@@ -110,19 +110,19 @@ TEST_CASE("Threshold changes re-run the thin row; File Units re-interpret thresh
     REQUIRE(controller.categoryHealth(DefectCategory::ThinFaces).result->size() == 1); // only zero-area
 
     controller.setAutoCheck(DefectCategory::ThinFaces, false);
-    controller.setThresholds(ogun::ThinFaceThresholds::defaultsForUnit(ogun::Unit::Millimeter));
+    controller.setThresholds(mesheal::ThinFaceThresholds::defaultsForUnit(mesheal::Unit::Millimeter));
     REQUIRE(status(controller, DefectCategory::ThinFaces) == HealthStatus::Stale);
 }
 
 TEST_CASE("Fix Selected repairs only the selected thin faces and is undoable", "[app][health][repair]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     controller.loadSampleDefectiveMesh();
     REQUIRE_FALSE(controller.fixSelectedThinFaces()); // nothing selected
 
     controller.selectCategory(DefectCategory::ThinFaces);
     controller.focusDefect(1); // the needle face (second worst)
     REQUIRE(controller.browser().selectedCount() == 1);
-    const ogun::Mesh before = controller.mesh();
+    const mesheal::Mesh before = controller.mesh();
     REQUIRE(controller.fixSelectedThinFaces());
     REQUIRE(controller.categoryHealth(DefectCategory::ThinFaces).result->size() == 1);
     REQUIRE(controller.lastUndoActionLabel() == "Fix Selected Thin Faces (1)");
@@ -133,7 +133,7 @@ TEST_CASE("Fix Selected repairs only the selected thin faces and is undoable", "
 }
 
 TEST_CASE("Histogram bins select their defects and Next/Prev focus within them", "[app][health][selection]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     controller.loadSampleDefectiveMesh();
     controller.selectCategory(DefectCategory::ThinFaces);
     REQUIRE_FALSE(controller.browser().histogram().empty());
@@ -151,30 +151,30 @@ TEST_CASE("Histogram bins select their defects and Next/Prev focus within them",
     REQUIRE(controller.focusedFaceIndex() == first);
 
     // Changing the sub-type filter drops a focus that is no longer visible (FB-13)
-    controller.setSubtypeFilter(static_cast<int>(ogun::ThinFaceSubtype::Needle));
+    controller.setSubtypeFilter(static_cast<int>(mesheal::ThinFaceSubtype::Needle));
     REQUIRE_FALSE(controller.inspectorActive());
 }
 
 TEST_CASE("The overlay cap limits tubes to the selected defects", "[app][health][highlight]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     controller.loadSampleDefectiveMesh();
     controller.selectCategory(DefectCategory::ThinFaces);
     controller.setOverlayCap(1);
     REQUIRE_FALSE(controller.buildHighlightOverlay().hasSelectionOverlay()); // 2 visible > cap: tint only
 
     controller.focusDefect(0);
-    const ogun::HighlightOverlayGeometry overlay = controller.buildHighlightOverlay();
+    const mesheal::HighlightOverlayGeometry overlay = controller.buildHighlightOverlay();
     REQUIRE(overlay.overlayFaces.size() == 1);
     REQUIRE(overlay.overlayEdges.size() == 3);
 }
 
 TEST_CASE("Highlighting 20k faces builds its overlay quickly", "[app][health][perf]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     controller.setCheckMeshAfterLoad(false);
     controller.setMesh(makeGrid(100), "Grid"); // 20,000 faces
 
     // Every face becomes a thin defect, then all are selected (the old O(E^2) path)
-    ogun::ThinFaceThresholds everything = controller.thresholds();
+    mesheal::ThinFaceThresholds everything = controller.thresholds();
     everything.minArea = 10.0;
     controller.setThresholds(everything);
     controller.checkMesh();
@@ -183,7 +183,7 @@ TEST_CASE("Highlighting 20k faces builds its overlay quickly", "[app][health][pe
     controller.selectAllVisibleDefects();
 
     const auto start = std::chrono::steady_clock::now();
-    const ogun::HighlightOverlayGeometry overlay = controller.buildHighlightOverlay();
+    const mesheal::HighlightOverlayGeometry overlay = controller.buildHighlightOverlay();
     const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     REQUIRE(overlay.overlayFaces.size() == 20000);
     REQUIRE(overlay.overlayEdges.size() == 3 * 100 * 100 + 2 * 100);
@@ -192,7 +192,7 @@ TEST_CASE("Highlighting 20k faces builds its overlay quickly", "[app][health][pe
 
 TEST_CASE("Background checks arrive through polling, can be cancelled, and drop stale generations",
           "[app][health][background]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     controller.setCheckMeshAfterLoad(false);
     controller.setBackgroundChecks(true);
     controller.setMesh(makeGrid(150), "Grid");
@@ -202,7 +202,7 @@ TEST_CASE("Background checks arrive through polling, can be cancelled, and drop 
     controller.waitForChecks();
     REQUIRE_FALSE(controller.checksRunning());
     REQUIRE(status(controller, DefectCategory::OpenEdges) == HealthStatus::Defects); // a grid has a rim
-    REQUIRE(controller.watertightState() == ogun::WatertightState::NotWatertight);
+    REQUIRE(controller.watertightState() == mesheal::WatertightState::NotWatertight);
 
     controller.checkMesh();
     controller.cancelChecks();
@@ -212,14 +212,14 @@ TEST_CASE("Background checks arrive through polling, can be cancelled, and drop 
     REQUIRE(status(controller, DefectCategory::OpenEdges) == HealthStatus::Stale);
 
     // Results computed for an older mesh generation are ignored
-    ogun::HealthCheckRunner runner;
-    runner.start(ogun::CheckRequest{
+    mesheal::HealthCheckRunner runner;
+    runner.start(mesheal::CheckRequest{
         controller.meshGeneration() - 1,
-        std::make_shared<const ogun::Mesh>(controller.mesh()),
+        std::make_shared<const mesheal::Mesh>(controller.mesh()),
         {DefectCategory::Shells},
-        ogun::CheckParams{}});
+        mesheal::CheckParams{}});
     runner.waitIdle();
-    const std::vector<ogun::CategoryResult> finished = runner.takeFinished();
+    const std::vector<mesheal::CategoryResult> finished = runner.takeFinished();
     REQUIRE(finished.size() == 1);
     REQUIRE(finished.front().meshGeneration == controller.meshGeneration() - 1);
     REQUIRE_FALSE(runner.busy());
@@ -228,7 +228,7 @@ TEST_CASE("Background checks arrive through polling, can be cancelled, and drop 
 
 TEST_CASE("With background checks on before loading, Check Mesh after load does not block",
           "[app][health][background]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     controller.setBackgroundChecks(true); // main() does this before the window opens
     controller.setMesh(makeGrid(150), "Grid");
     REQUIRE(controller.checksRunning());
@@ -237,31 +237,31 @@ TEST_CASE("With background checks on before loading, Check Mesh after load does 
     controller.setBackgroundChecks(true); // PolyscopeGui::run() repeats it: must not restart the job
     REQUIRE(controller.checksRunning());
     controller.waitForChecks();
-    for (const DefectCategory category : ogun::kAllDefectCategories) {
-        INFO(ogun::categoryInfo(category).name);
+    for (const DefectCategory category : mesheal::kAllDefectCategories) {
+        INFO(mesheal::categoryInfo(category).name);
         REQUIRE(status(controller, category) != HealthStatus::Running);
     }
     REQUIRE(status(controller, DefectCategory::Intersections) == HealthStatus::Ok);
 }
 
 TEST_CASE("Undo never leaves the Tool slot open without a selected row", "[app][health][undo]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     controller.loadSampleDefectiveMesh();
     REQUIRE(controller.fixAllThinFaces()); // snapshot taken with no row selected
     controller.selectCategory(DefectCategory::Degenerate);
     REQUIRE(controller.undoLastModification());
     REQUIRE_FALSE(controller.selectedCategory());
-    REQUIRE(controller.activeTool() == ogun::ToolSlot::None);
+    REQUIRE(controller.activeTool() == mesheal::ToolSlot::None);
 }
 
 TEST_CASE("Intersecting faces: Auto off, Check Mesh runs it, edits and tolerance mark it Stale",
           "[app][health][intersections]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     REQUIRE_FALSE(controller.categoryHealth(DefectCategory::Intersections).autoCheck);
-    controller.setMesh(ogun::SampleMeshes::createSelfIntersectingBoxMesh(), "box");
+    controller.setMesh(mesheal::SampleMeshes::createSelfIntersectingBoxMesh(), "box");
     REQUIRE(status(controller, DefectCategory::Intersections) == HealthStatus::Defects);
 
-    controller.scaleMeshCoordinatesToUnit(ogun::Unit::Centimeter);
+    controller.scaleMeshCoordinatesToUnit(mesheal::Unit::Centimeter);
     REQUIRE(status(controller, DefectCategory::Intersections) == HealthStatus::Stale);
     controller.checkMesh();
     REQUIRE(status(controller, DefectCategory::Intersections) == HealthStatus::Defects);
@@ -273,8 +273,8 @@ TEST_CASE("Intersecting faces: Auto off, Check Mesh runs it, edits and tolerance
 }
 
 TEST_CASE("Intersection partners are highlighted and can be focused", "[app][health][intersections]") {
-    ogun::AppController controller;
-    controller.setMesh(ogun::SampleMeshes::createSelfIntersectingBoxMesh(), "box");
+    mesheal::AppController controller;
+    controller.setMesh(mesheal::SampleMeshes::createSelfIntersectingBoxMesh(), "box");
     controller.selectCategory(DefectCategory::Intersections);
     controller.focusDefect(0);
     const Eigen::Index focused = controller.focusedFaceIndex();
@@ -297,64 +297,64 @@ TEST_CASE("Intersection partners are highlighted and can be focused", "[app][hea
 
 TEST_CASE("The self-intersecting box example is watertight and only intersects itself",
           "[app][health][intersections]") {
-    ogun::AppController controller;
-    REQUIRE_FALSE(ogun::AppController::resolveExamplePath("self_intersecting_box.stl").empty());
+    mesheal::AppController controller;
+    REQUIRE_FALSE(mesheal::AppController::resolveExamplePath("self_intersecting_box.stl").empty());
     REQUIRE(controller.loadSampleFile("self_intersecting_box.stl"));
     REQUIRE(controller.currentFilePath().empty()); // samples are never overwritten by Save
-    REQUIRE(controller.watertightState() == ogun::WatertightState::Watertight);
+    REQUIRE(controller.watertightState() == mesheal::WatertightState::Watertight);
     for (const DefectCategory category : {DefectCategory::OpenEdges, DefectCategory::NonManifoldEdges,
                                           DefectCategory::NonManifoldVertices, DefectCategory::FlippedNormals,
                                           DefectCategory::ThinFaces, DefectCategory::Degenerate,
                                           DefectCategory::Duplicates}) {
-        INFO(ogun::categoryInfo(category).name);
+        INFO(mesheal::categoryInfo(category).name);
         REQUIRE(status(controller, category) == HealthStatus::Ok);
     }
     const auto& intersections = controller.categoryHealth(DefectCategory::Intersections).result;
     REQUIRE(intersections.has_value());
-    const ogun::CategoryResult expected = ogun::runCategoryCheck(
-        DefectCategory::Intersections, ogun::SampleMeshes::createSelfIntersectingBoxMesh(), ogun::CheckParams{});
+    const mesheal::CategoryResult expected = mesheal::runCategoryCheck(
+        DefectCategory::Intersections, mesheal::SampleMeshes::createSelfIntersectingBoxMesh(), mesheal::CheckParams{});
     REQUIRE(intersections->size() == expected.size());
     REQUIRE_FALSE(controller.loadSampleFile("no_such_example.stl"));
 }
 
 TEST_CASE("Ten Mesh Health rows, each listed once; Inverted shells follows Flipped normals",
           "[app][health][inverted-shells]") {
-    STATIC_REQUIRE(ogun::kDefectCategoryCount == 10);
-    std::array<bool, ogun::kDefectCategoryCount> seen{};
+    STATIC_REQUIRE(mesheal::kDefectCategoryCount == 10);
+    std::array<bool, mesheal::kDefectCategoryCount> seen{};
     std::size_t flippedAt = 0;
     std::size_t invertedAt = 0;
-    for (std::size_t i = 0; i < ogun::kAllDefectCategories.size(); ++i) {
-        const DefectCategory category = ogun::kAllDefectCategories[i];
-        REQUIRE_FALSE(seen[ogun::categoryIndex(category)]);
-        seen[ogun::categoryIndex(category)] = true;
+    for (std::size_t i = 0; i < mesheal::kAllDefectCategories.size(); ++i) {
+        const DefectCategory category = mesheal::kAllDefectCategories[i];
+        REQUIRE_FALSE(seen[mesheal::categoryIndex(category)]);
+        seen[mesheal::categoryIndex(category)] = true;
         flippedAt = category == DefectCategory::FlippedNormals ? i : flippedAt;
         invertedAt = category == DefectCategory::InvertedShells ? i : invertedAt;
     }
     REQUIRE(invertedAt == flippedAt + 1);
-    const ogun::CategoryInfo& info = ogun::categoryInfo(DefectCategory::InvertedShells);
-    REQUIRE(info.kind == ogun::ElementKind::Shell);
-    REQUIRE(info.group == ogun::CategoryGroup::Topology);
+    const mesheal::CategoryInfo& info = mesheal::categoryInfo(DefectCategory::InvertedShells);
+    REQUIRE(info.kind == mesheal::ElementKind::Shell);
+    REQUIRE(info.group == mesheal::CategoryGroup::Topology);
     REQUIRE_FALSE(info.infoOnly);
     REQUIRE(info.hasFixAll); // rule O reverses inside-out shells only
     REQUIRE(info.autoDefault);     // about 0.27 s on the Turkey in Release
-    REQUIRE(ogun::builtInAutoCheckDefaults()[ogun::categoryIndex(DefectCategory::InvertedShells)]);
-    REQUIRE(ogun::AppController{}.categoryHealth(DefectCategory::InvertedShells).autoCheck);
+    REQUIRE(mesheal::builtInAutoCheckDefaults()[mesheal::categoryIndex(DefectCategory::InvertedShells)]);
+    REQUIRE(mesheal::AppController{}.categoryHealth(DefectCategory::InvertedShells).autoCheck);
 }
 
 TEST_CASE("The Inverted shells row counts inside-out shells only; Show selects the shells of a warning",
           "[app][health][inverted-shells]") {
-    ogun::AppController controller;
+    mesheal::AppController controller;
     const auto row = [&] { return controller.categoryHealth(DefectCategory::InvertedShells); };
 
     // A cavity is correct
-    controller.setMesh(ogun::SampleMeshes::createCavityBoxMesh(), "Box with cavity");
+    controller.setMesh(mesheal::SampleMeshes::createCavityBoxMesh(), "Box with cavity");
     REQUIRE(status(controller, DefectCategory::InvertedShells) == HealthStatus::Ok);
     REQUIRE(controller.rowCount(DefectCategory::InvertedShells) == 0);
     REQUIRE(row().result->warnings.empty());
     REQUIRE(controller.totalProblemCount() == 0);
 
     // Written inside out: not counted, one warning naming both shells
-    controller.setMesh(ogun::SampleMeshes::createCavityBoxMesh(true), "Box with cavity, inside out");
+    controller.setMesh(mesheal::SampleMeshes::createCavityBoxMesh(true), "Box with cavity, inside out");
     REQUIRE(status(controller, DefectCategory::InvertedShells) == HealthStatus::Ok);
     REQUIRE(controller.rowCount(DefectCategory::InvertedShells) == 0);
     REQUIRE(controller.totalProblemCount() == 0);
@@ -366,7 +366,7 @@ TEST_CASE("The Inverted shells row counts inside-out shells only; Show selects t
     REQUIRE(controller.browser().selectedCount() == 0);
 
     // A lone inward box is inside out: counted, listed as a shell, its faces highlighted
-    controller.setMesh(ogun::SampleMeshes::createBox({0, 0, 0}, {2, 2, 2}, true), "inside-out box");
+    controller.setMesh(mesheal::SampleMeshes::createBox({0, 0, 0}, {2, 2, 2}, true), "inside-out box");
     REQUIRE(status(controller, DefectCategory::InvertedShells) == HealthStatus::Defects);
     REQUIRE(controller.rowCount(DefectCategory::InvertedShells) == 1);
     REQUIRE(controller.totalProblemCount() == 1);

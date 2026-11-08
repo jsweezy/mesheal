@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 using gui::tooltip;
 using gui::withThousands;
@@ -527,4 +527,4 @@ void PolyscopeGui::saveSelectedShellsDialog(bool eachOwnFile) {
     controller_.saveSelectedShells(outPath, saveFormat_);
 }
 
-} // namespace ogun
+} // namespace mesheal

@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// Fix All: a headless engine that repairs a mesh in passes. One pass is the whole sequence: phase 1
 /// (repair each shell), phase 2 (merge the shells), phase 3 (clean up the merge). The run repeats
@@ -521,4 +521,4 @@ struct FixAllTestHooks {
                                      std::stop_token stopToken = {}, FixAllProgress* progress = nullptr,
                                      const FixAllTestHooks* hooks = nullptr);
 
-} // namespace ogun
+} // namespace mesheal

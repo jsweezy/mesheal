@@ -1,4 +1,4 @@
-add_executable(ogun_repair_tests
+add_executable(mesheal_repair_tests
     FixAllMergeTests.cpp
     FixAllScopeTests.cpp
     FixAllTests.cpp
@@ -14,12 +14,12 @@ add_executable(ogun_repair_tests
     TopologyCleanupTests.cpp
 )
 
-target_link_libraries(ogun_repair_tests
+target_link_libraries(mesheal_repair_tests
     PRIVATE
-        ogun::repair
-        ogun::io
+        mesheal::repair
+        mesheal::io
         Catch2::Catch2WithMain
-        ogun::warnings
+        mesheal::warnings
 )
 
-catch_discover_tests(ogun_repair_tests)
+catch_discover_tests(mesheal_repair_tests)

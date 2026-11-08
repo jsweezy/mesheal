@@ -10,7 +10,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -48,7 +48,7 @@ void writeStlBinary(std::ostream& output, const Mesh& mesh) {
     requireNonEmpty(mesh);
 
     std::array<char, 80> header{};
-    constexpr std::string_view kTag = "Ogun binary STL";
+    constexpr std::string_view kTag = "Mesheal binary STL";
     std::copy(kTag.begin(), kTag.end(), header.begin());
     output.write(header.data(), static_cast<std::streamsize>(header.size()));
 
@@ -167,5 +167,5 @@ std::filesystem::path resolveAvailableOutputPath(
     }
 }
 
-} // namespace ogun
+} // namespace mesheal
 

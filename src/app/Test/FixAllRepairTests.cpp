@@ -17,14 +17,14 @@
 #include <thread>
 #include <vector>
 
-using ogun::AppController;
-using ogun::DefectCategory;
-using ogun::FixAllPanelState;
-using ogun::FixAllScopeKind;
-using ogun::FixAllStageId;
-using ogun::HealthStatus;
-using ogun::Mesh;
-using ogun::SampleMeshes;
+using mesheal::AppController;
+using mesheal::DefectCategory;
+using mesheal::FixAllPanelState;
+using mesheal::FixAllScopeKind;
+using mesheal::FixAllStageId;
+using mesheal::HealthStatus;
+using mesheal::Mesh;
+using mesheal::SampleMeshes;
 using Eigen::Vector3d;
 
 namespace {
@@ -45,7 +45,7 @@ Mesh openBox(const Vector3d& min, const Vector3d& max) {
     for (std::size_t f = 0; f < keep.size(); ++f) {
         keep[f] = static_cast<Eigen::Index>(f);
     }
-    return ogun::extractFaces(closed, keep);
+    return mesheal::extractFaces(closed, keep);
 }
 
 /// Two open boxes far apart (the second one is the smaller one, #2).
@@ -55,14 +55,14 @@ Mesh twoOpenBoxes() {
 
 /// Every face of `before` that is in `faces` is still in `after`, corners and all.
 bool facesKept(const Mesh& before, const std::vector<Eigen::Index>& faces, const Mesh& after) {
-    const ogun::FaceDiff diff = ogun::faceDiff(before, after);
+    const mesheal::FaceDiff diff = mesheal::faceDiff(before, after);
     return std::none_of(faces.begin(), faces.end(), [&](Eigen::Index f) {
         return std::find(diff.removed.begin(), diff.removed.end(), f) != diff.removed.end();
     });
 }
 
 std::size_t openEdges(const Mesh& mesh) {
-    return ogun::checkOpenEdges(mesh).infoCount;
+    return mesheal::checkOpenEdges(mesh).infoCount;
 }
 
 /// The shell (Shells-panel index) whose box lies at x >= `x`.
@@ -89,15 +89,15 @@ struct HoldInStage {
     std::atomic<bool> release{false};
 };
 
-std::shared_ptr<const ogun::FixAllTestHooks> holdHooks(const std::shared_ptr<HoldInStage>& hold, FixAllStageId id) {
-    auto hooks = std::make_shared<ogun::FixAllTestHooks>();
-    hooks->adjustStages = [hold, id](int, ogun::FixAllPhase, std::vector<ogun::FixAllStage>& stages) {
-        for (ogun::FixAllStage& stage : stages) {
+std::shared_ptr<const mesheal::FixAllTestHooks> holdHooks(const std::shared_ptr<HoldInStage>& hold, FixAllStageId id) {
+    auto hooks = std::make_shared<mesheal::FixAllTestHooks>();
+    hooks->adjustStages = [hold, id](int, mesheal::FixAllPhase, std::vector<mesheal::FixAllStage>& stages) {
+        for (mesheal::FixAllStage& stage : stages) {
             if (stage.id != id) {
                 continue;
             }
             auto inner = stage.run;
-            stage.run = [hold, inner](const Mesh& mesh, const ogun::FixAllStageContext& context) {
+            stage.run = [hold, inner](const Mesh& mesh, const mesheal::FixAllStageContext& context) {
                 hold->entered = true;
                 while (!hold->release.load()) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -110,23 +110,23 @@ std::shared_ptr<const ogun::FixAllTestHooks> holdHooks(const std::shared_ptr<Hol
 }
 
 /// Test hooks whose phase 1 is a single step that removes one duplicate face per run.
-std::shared_ptr<const ogun::FixAllTestHooks> oneDuplicatePerPass() {
-    auto hooks = std::make_shared<ogun::FixAllTestHooks>();
-    hooks->adjustStages = [](int, ogun::FixAllPhase phase, std::vector<ogun::FixAllStage>& stages) {
-        if (phase != ogun::FixAllPhase::Repair) {
+std::shared_ptr<const mesheal::FixAllTestHooks> oneDuplicatePerPass() {
+    auto hooks = std::make_shared<mesheal::FixAllTestHooks>();
+    hooks->adjustStages = [](int, mesheal::FixAllPhase phase, std::vector<mesheal::FixAllStage>& stages) {
+        if (phase != mesheal::FixAllPhase::Repair) {
             return;
         }
-        ogun::FixAllStage stage;
+        mesheal::FixAllStage stage;
         stage.label = "Remove one duplicate";
         stage.activity = "removing a duplicate";
-        stage.run = [](const Mesh& mesh, const ogun::FixAllStageContext&) {
-            ogun::FixAllStageOutcome out;
-            const auto duplicates = ogun::checkDuplicateFaces(mesh).size();
+        stage.run = [](const Mesh& mesh, const mesheal::FixAllStageContext&) {
+            mesheal::FixAllStageOutcome out;
+            const auto duplicates = mesheal::checkDuplicateFaces(mesh).size();
             out.targetBefore = duplicates;
             out.targetAfter = duplicates;
             for (Eigen::Index f = mesh.numFaces() - 1; f >= 0 && !out.changed; --f) {
                 for (Eigen::Index g = 0; g < f; ++g) {
-                    if (ogun::faceGeometryKey(mesh, f) == ogun::faceGeometryKey(mesh, g)) {
+                    if (mesheal::faceGeometryKey(mesh, f) == mesheal::faceGeometryKey(mesh, g)) {
                         std::vector<Eigen::Index> keep;
                         out.faceMap.assign(static_cast<std::size_t>(mesh.numFaces()), -1);
                         for (Eigen::Index k = 0; k < mesh.numFaces(); ++k) {
@@ -141,7 +141,7 @@ std::shared_ptr<const ogun::FixAllTestHooks> oneDuplicatePerPass() {
                             out.mesh.F.row(static_cast<Eigen::Index>(r)) = mesh.F.row(keep[r]);
                         }
                         out.changed = true;
-                        out.targetAfter = ogun::checkDuplicateFaces(out.mesh).size();
+                        out.targetAfter = mesheal::checkDuplicateFaces(out.mesh).size();
                         out.detail = "Removed 1 duplicate face";
                         break;
                     }
@@ -158,15 +158,15 @@ std::shared_ptr<const ogun::FixAllTestHooks> oneDuplicatePerPass() {
 
 TEST_CASE("renumberShellText rewrites shell numbers in order", "[app][fixall]") {
     const std::vector<int> numbers = {3, 1};
-    CHECK(ogun::renumberShellText("#1 and its inner shell #2 look inside out together", numbers) ==
+    CHECK(mesheal::renumberShellText("#1 and its inner shell #2 look inside out together", numbers) ==
           "#3 and its inner shell #1 look inside out together");
     const std::vector<int> keepFirst = {0, 7};
-    CHECK(ogun::renumberShellText("Deleted nested solid #8 (wholly inside #1, touching nothing)", keepFirst) ==
+    CHECK(mesheal::renumberShellText("Deleted nested solid #8 (wholly inside #1, touching nothing)", keepFirst) ==
           "Deleted nested solid #8 (wholly inside #7, touching nothing)");
     const std::vector<int> one = {5};
-    CHECK(ogun::renumberShellText("#6 and #9 reach into cavity #28 of #12", one) == "#6 and #9 reach into cavity #28 of #12");
-    CHECK(ogun::renumberShellText("No shells overlap: nothing to merge.", {}) == "No shells overlap: nothing to merge.");
-    CHECK(ogun::renumberShellText("Kept cavity #12", one) == "Kept cavity #5");
+    CHECK(mesheal::renumberShellText("#6 and #9 reach into cavity #28 of #12", one) == "#6 and #9 reach into cavity #28 of #12");
+    CHECK(mesheal::renumberShellText("No shells overlap: nothing to merge.", {}) == "No shells overlap: nothing to merge.");
+    CHECK(mesheal::renumberShellText("Kept cavity #12", one) == "Kept cavity #5");
 }
 
 TEST_CASE("Fix All: plan, preview without a change, Apply as one undo step, undo restores everything",
@@ -177,15 +177,15 @@ TEST_CASE("Fix All: plan, preview without a change, Apply as one undo step, undo
     controller.setAutoCheck(DefectCategory::Intersections, false);
     REQUIRE(controller.shells().size() == 9);
     const Mesh before = controller.mesh();
-    const ogun::MeshHealthReport healthBefore = controller.healthReport();
+    const mesheal::MeshHealthReport healthBefore = controller.healthReport();
     const std::size_t undoBefore = controller.canUndo() ? 1 : 0;
     REQUIRE(undoBefore == 0);
 
     controller.openFixAll(3);
     REQUIRE(controller.fixAllOpen());
-    REQUIRE(controller.activeTool() == ogun::ToolSlot::FixAll);
+    REQUIRE(controller.activeTool() == mesheal::ToolSlot::FixAll);
     REQUIRE(controller.repairAllOpen());
-    REQUIRE(controller.globalRepairMethods().size() == ogun::kFixAllMethods.size());
+    REQUIRE(controller.globalRepairMethods().size() == mesheal::kFixAllMethods.size());
     CHECK(controller.fixAllState() == FixAllPanelState::Plan);
     CHECK(controller.fixAllParams().passes == 3);
     CHECK(controller.fixAllScope().kind == FixAllScopeKind::Whole);
@@ -200,7 +200,7 @@ TEST_CASE("Fix All: plan, preview without a change, Apply as one undo step, undo
 
     controller.previewFixAll();
     REQUIRE(controller.fixAllState() == FixAllPanelState::Result);
-    const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+    const mesheal::RepairCandidate* candidate = controller.fixAllCandidate();
     REQUIRE(candidate != nullptr);
     REQUIRE(candidate->success);
     REQUIRE(candidate->fixAll != nullptr);
@@ -220,7 +220,7 @@ TEST_CASE("Fix All: plan, preview without a change, Apply as one undo step, undo
     CHECK_FALSE(controller.canUndo());
 
     // Shell numbers before Apply name the result's shells; Show maps them to the current mesh by geometry
-    const ogun::FixAllFinalReport& report = candidate->fixAll->result.report;
+    const mesheal::FixAllFinalReport& report = candidate->fixAll->result.report;
     REQUIRE(report.shells.size() == 2);
     const std::vector<int> separate = {1}; // the separate box, unchanged
     const std::vector<int> mapped = controller.fixAllShellsInCurrentMesh(separate);
@@ -238,19 +238,19 @@ TEST_CASE("Fix All: plan, preview without a change, Apply as one undo step, undo
     REQUIRE(controller.shells().size() == 2);
     CHECK(controller.rowCount(DefectCategory::Intersections) == 0);
     // The run's final check is installed: no row is stale, running or unchecked (Intersections included)
-    for (const DefectCategory category : ogun::kAllDefectCategories) {
-        INFO(ogun::categoryInfo(category).name);
+    for (const DefectCategory category : mesheal::kAllDefectCategories) {
+        INFO(mesheal::categoryInfo(category).name);
         const HealthStatus status = controller.healthReport()[category].status;
         CHECK((status == HealthStatus::Ok || status == HealthStatus::Defects));
     }
     // The merged shell is selected, and the report's shell numbers are the Shells panel's
     CHECK(controller.shells().selectedCount() == 1);
-    const ogun::FixAllCandidate* shown = controller.fixAllShown();
+    const mesheal::FixAllCandidate* shown = controller.fixAllShown();
     REQUIRE(shown != nullptr);
     for (std::size_t k = 0; k < shown->result.report.shells.size(); ++k) {
         CHECK(controller.shells().shellOfFace(shown->result.report.shells[k].front()) == static_cast<int>(k));
     }
-    for (const ogun::FixAllReportLine& line : shown->result.report.lines) {
+    for (const mesheal::FixAllReportLine& line : shown->result.report.lines) {
         if (line.text.find('#') == std::string::npos) {
             continue;
         }
@@ -259,7 +259,7 @@ TEST_CASE("Fix All: plan, preview without a change, Apply as one undo step, undo
         }
     }
     // Step notes are renumbered to the result: the merge note names the union, now #1
-    for (const ogun::FixAllStepReport& step : shown->result.steps) {
+    for (const mesheal::FixAllStepReport& step : shown->result.steps) {
         if (step.stage == FixAllStageId::MergeShells && step.accepted()) {
             REQUIRE_FALSE(step.notes.empty());
             CHECK(controller.fixAllNoteShellNumbers(step, step.notes.front()) == std::vector<int>{1});
@@ -274,8 +274,8 @@ TEST_CASE("Fix All: plan, preview without a change, Apply as one undo step, undo
     CHECK(controller.mesh().V == before.V);
     CHECK(controller.shells().size() == 9);
     CHECK(controller.shells().selectedCount() == 0);
-    for (const DefectCategory category : ogun::kAllDefectCategories) {
-        INFO(ogun::categoryInfo(category).name);
+    for (const DefectCategory category : mesheal::kAllDefectCategories) {
+        INFO(mesheal::categoryInfo(category).name);
         CHECK(controller.healthReport()[category].status == healthBefore[category].status);
         CHECK(controller.healthReport()[category].displayCount(category) == healthBefore[category].displayCount(category));
     }
@@ -300,7 +300,7 @@ TEST_CASE("Fix All: a one-pass run is one undo step, three of them three", "[app
     for (int i = 0; i < 3; ++i) {
         INFO("pass " << i + 1);
         controller.runFixAllOneMorePass();
-        const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+        const mesheal::RepairCandidate* candidate = controller.fixAllCandidate();
         REQUIRE(candidate != nullptr);
         REQUIRE(candidate->success);
         CHECK(candidate->fixAll->onePassRequested);
@@ -309,7 +309,7 @@ TEST_CASE("Fix All: a one-pass run is one undo step, three of them three", "[app
         CHECK(controller.lastUndoActionLabel() == "Fix All (one pass)");
         CHECK(controller.mesh().numFaces() == before.numFaces() - 1 - i);
     }
-    CHECK(ogun::checkDuplicateFaces(controller.mesh()).empty());
+    CHECK(mesheal::checkDuplicateFaces(controller.mesh()).empty());
     for (int i = 0; i < 3; ++i) {
         CHECK(controller.lastUndoActionLabel() == "Fix All (one pass)");
         REQUIRE(controller.undoLastModification());
@@ -324,7 +324,7 @@ TEST_CASE("Fix All: a one-pass run is one undo step, three of them three", "[app
         CHECK(controller.candidateIsCurrent(*controller.fixAllCandidate()));
         controller.setFixAllPasses(5);
         CHECK(controller.candidateIsCurrent(*controller.fixAllCandidate()));
-        ogun::FixAllParams params = controller.fixAllParams();
+        mesheal::FixAllParams params = controller.fixAllParams();
         params.removeFins = false;
         controller.setFixAllParams(params);
         CHECK_FALSE(controller.candidateIsCurrent(*controller.fixAllCandidate()));
@@ -404,7 +404,7 @@ TEST_CASE("Fix All follows the selection: faces, shells, nothing; hidden shells 
     SECTION("Selected faces: only they change, and Apply selects the scope faces again") {
         controller.selectFaces(leftFaces, true);
         controller.openFixAll();
-        const ogun::FixAllScopeInfo scope = controller.fixAllScope();
+        const mesheal::FixAllScopeInfo scope = controller.fixAllScope();
         CHECK(scope.kind == FixAllScopeKind::Faces);
         CHECK(scope.faces == leftFaces.size());
         CHECK(scope.text == "11 selected faces (in 1 shell)");
@@ -412,7 +412,7 @@ TEST_CASE("Fix All follows the selection: faces, shells, nothing; hidden shells 
         CHECK(controller.fixAllMergePlan()->needsWholeShells);
         CHECK_FALSE(controller.fixAllParams().mergeShells);
         controller.previewFixAll();
-        const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+        const mesheal::RepairCandidate* candidate = controller.fixAllCandidate();
         REQUIRE(candidate != nullptr);
         REQUIRE(candidate->success);
         CHECK(candidate->fixAll->scopeKind == FixAllScopeKind::Faces);
@@ -436,7 +436,7 @@ TEST_CASE("Fix All follows the selection: faces, shells, nothing; hidden shells 
         CHECK(controller.fixAllScope().kind == FixAllScopeKind::Shells);
         CHECK(controller.fixAllScope().text == "1 of 2 shells (selected)");
         controller.previewFixAll();
-        const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+        const mesheal::RepairCandidate* candidate = controller.fixAllCandidate();
         REQUIRE(candidate != nullptr);
         CHECK(openEdges(candidate->mesh) == 3);
         CHECK(facesKept(before, leftFaces, candidate->mesh));
@@ -447,7 +447,7 @@ TEST_CASE("Fix All follows the selection: faces, shells, nothing; hidden shells 
     SECTION("A hidden shell is never changed, even when selected") {
         controller.setShellVisible(right, false);
         controller.openFixAll();
-        ogun::FixAllScopeInfo scope = controller.fixAllScope();
+        mesheal::FixAllScopeInfo scope = controller.fixAllScope();
         CHECK(scope.kind == FixAllScopeKind::Shells);
         CHECK(scope.hiddenShells == 1);
         CHECK(scope.text == "1 of 2 shells (the visible ones); 1 hidden shell is left as it is");
@@ -645,7 +645,7 @@ TEST_CASE("Fix All on the cavity box inside out: Flip all from the report is one
     controller.setMesh(SampleMeshes::createCavityBoxMesh(true), "inside-out cavity box");
     controller.openFixAll();
     controller.previewFixAll();
-    const ogun::FixAllCandidate* shown = controller.fixAllShown();
+    const mesheal::FixAllCandidate* shown = controller.fixAllShown();
     REQUIRE(shown != nullptr);
     REQUIRE(shown->result.report.groupsNotMerged.size() == 1);
     const std::vector<int>& named = shown->result.report.groupsNotMerged.front().shells;
@@ -654,14 +654,14 @@ TEST_CASE("Fix All on the cavity box inside out: Flip all from the report is one
     REQUIRE(controller.fixAllFlipShells(named));
     CHECK(controller.lastUndoActionLabel() == "Flip Shells #1 and #2");
     CHECK(controller.fixAllCandidate() == nullptr); // the edit dropped the preview
-    CHECK(ogun::signedVolume(controller.mesh()) == Catch::Approx(64.0 - 8.0));
+    CHECK(mesheal::signedVolume(controller.mesh()) == Catch::Approx(64.0 - 8.0));
 }
 
 TEST_CASE("Fix All on the Turkey through the app: plan, preview, Apply and undo (timings)", "[app][fixall][.slow]") {
     using Clock = std::chrono::steady_clock;
     const auto seconds = [](Clock::time_point start) { return std::chrono::duration<double>(Clock::now() - start).count(); };
     AppController controller;
-    controller.setMesh(ogun::loadStl(std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() /
+    controller.setMesh(mesheal::loadStl(std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() /
                                      "examples" / "Turkey.stl"),
                        "Turkey.stl");
     REQUIRE(controller.shells().size() == 28);
@@ -678,7 +678,7 @@ TEST_CASE("Fix All on the Turkey through the app: plan, preview, Apply and undo 
     start = Clock::now();
     controller.previewFixAll();
     const double previewSeconds = seconds(start);
-    const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+    const mesheal::RepairCandidate* candidate = controller.fixAllCandidate();
     REQUIRE(candidate != nullptr);
     REQUIRE(candidate->success);
     CHECK(candidate->metrics.shellsAfter == 28);
@@ -688,7 +688,7 @@ TEST_CASE("Fix All on the Turkey through the app: plan, preview, Apply and undo 
     REQUIRE(controller.applyFixAll());
     const double applySeconds = seconds(start);
     CHECK(controller.lastUndoActionLabel() == "Fix All");
-    for (const DefectCategory category : ogun::kAllDefectCategories) {
+    for (const DefectCategory category : mesheal::kAllDefectCategories) {
         const HealthStatus status = controller.healthReport()[category].status;
         CHECK((status == HealthStatus::Ok || status == HealthStatus::Defects));
     }
@@ -708,17 +708,17 @@ namespace {
 /// are hooked off): the open box is left for *Rebuild shell #2...*. Coarse rebuild settings.
 void openFixAllOnOpenBox(AppController& controller) {
     controller.setMesh(SampleMeshes::createOpenShellAmongCubesMesh(), "Overlapping boxes, one open");
-    auto hooks = std::make_shared<ogun::FixAllTestHooks>();
-    hooks->adjustStages = [](int, ogun::FixAllPhase, std::vector<ogun::FixAllStage>& stages) {
-        std::erase_if(stages, [](const ogun::FixAllStage& s) {
+    auto hooks = std::make_shared<mesheal::FixAllTestHooks>();
+    hooks->adjustStages = [](int, mesheal::FixAllPhase, std::vector<mesheal::FixAllStage>& stages) {
+        std::erase_if(stages, [](const mesheal::FixAllStage& s) {
             return s.id == FixAllStageId::FillHoles || s.id == FixAllStageId::CloseCracks;
         });
     };
     controller.setFixAllTestHooks(hooks);
     controller.openFixAll(3);
-    ogun::GlobalRepairParams params = controller.globalRepairParams();
-    params.alphaWrapDetail = ogun::settings::kMinAlphaWrapDetail;
-    params.windingResolution = ogun::settings::kMinWindingGridResolution;
+    mesheal::GlobalRepairParams params = controller.globalRepairParams();
+    params.alphaWrapDetail = mesheal::settings::kMinAlphaWrapDetail;
+    params.windingResolution = mesheal::settings::kMinWindingGridResolution;
     controller.setGlobalRepairParams(params);
 }
 
@@ -734,13 +734,13 @@ TEST_CASE("Fix All + Rebuild: rows only when asked, Apply is one undo step, undo
 
     controller.previewFixAll();
     REQUIRE(controller.fixAllState() == FixAllPanelState::Result);
-    const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+    const mesheal::RepairCandidate* candidate = controller.fixAllCandidate();
     REQUIRE(candidate != nullptr);
     REQUIRE(candidate->success);
-    const ogun::FixAllFinalReport& report = candidate->fixAll->result.report;
+    const mesheal::FixAllFinalReport& report = candidate->fixAll->result.report;
     REQUIRE(report.shells.size() == 2);
     const auto open = std::find_if(report.residue.begin(), report.residue.end(),
-                                   [](const ogun::FixAllShellResidue& r) { return r.suggestion == ogun::FixAllSuggestion::AlphaWrap; });
+                                   [](const mesheal::FixAllShellResidue& r) { return r.suggestion == mesheal::FixAllSuggestion::AlphaWrap; });
     REQUIRE(open != report.residue.end());
     CHECK(open->shell == 1);
     // Nothing is rebuilt unless asked
@@ -749,21 +749,21 @@ TEST_CASE("Fix All + Rebuild: rows only when asked, Apply is one undo step, undo
 
     controller.rebuildFixAllShell(1);
     CHECK(controller.fixAllRebuildShell() == 1);
-    const std::vector<ogun::RepairCandidate>& rows = controller.fixAllRebuilds();
-    REQUIRE(rows.size() == ogun::kShellRebuildMethods.size());
-    const ogun::RepairCandidate& wrap = rows.front();
-    REQUIRE(wrap.method == ogun::GlobalRepairMethod::AlphaWrap);
+    const std::vector<mesheal::RepairCandidate>& rows = controller.fixAllRebuilds();
+    REQUIRE(rows.size() == mesheal::kShellRebuildMethods.size());
+    const mesheal::RepairCandidate& wrap = rows.front();
+    REQUIRE(wrap.method == mesheal::GlobalRepairMethod::AlphaWrap);
     REQUIRE(wrap.success);
     CHECK(wrap.fixAll->rebuild->suggested);
     CHECK(wrap.fixAll->rebuild->note == "wrapped, then merged");
     CHECK(AppController::fixAllRebuildUndoLabel(wrap) == "Fix All + Rebuild #2");
     CHECK(controller.fixAllCandidate() == candidate); // the Fix All row stays
     // Showing a rebuild row draws it; the mesh is untouched until Apply
-    controller.showFixAllRebuild(ogun::GlobalRepairMethod::AlphaWrap);
+    controller.showFixAllRebuild(mesheal::GlobalRepairMethod::AlphaWrap);
     CHECK(controller.shownGlobalCandidate() == &wrap);
-    controller.showGlobalCandidate(ogun::GlobalRepairMethod::FixAll);
+    controller.showGlobalCandidate(mesheal::GlobalRepairMethod::FixAll);
     CHECK(controller.shownGlobalCandidate() == candidate);
-    controller.showFixAllRebuild(ogun::GlobalRepairMethod::AlphaWrap);
+    controller.showFixAllRebuild(mesheal::GlobalRepairMethod::AlphaWrap);
     CHECK(controller.mesh().F == before.F);
     CHECK(controller.mesh().V == before.V);
     CHECK_FALSE(controller.canUndo());
@@ -778,8 +778,8 @@ TEST_CASE("Fix All + Rebuild: rows only when asked, Apply is one undo step, undo
     REQUIRE(controller.fixAllShown() != nullptr);
     CHECK(controller.fixAllShown()->rebuild.has_value());
     CHECK(controller.statusMessage().starts_with("Applied Fix All + Rebuild #2: Passes: "));
-    for (const DefectCategory category : ogun::kAllDefectCategories) {
-        INFO(ogun::categoryInfo(category).name);
+    for (const DefectCategory category : mesheal::kAllDefectCategories) {
+        INFO(mesheal::categoryInfo(category).name);
         const HealthStatus status = controller.healthReport()[category].status;
         CHECK((status == HealthStatus::Ok || status == HealthStatus::Defects));
     }
@@ -799,10 +799,10 @@ TEST_CASE("Fix All + Rebuild: going back to the plan or a new run drops the rebu
     REQUIRE(controller.fixAllCandidate() != nullptr);
     // A cavity or a shell that is not there gives a row that says why
     controller.rebuildFixAllShell(5);
-    REQUIRE(controller.fixAllRebuilds().size() == ogun::kShellRebuildMethods.size());
+    REQUIRE(controller.fixAllRebuilds().size() == mesheal::kShellRebuildMethods.size());
     CHECK_FALSE(controller.fixAllRebuilds().front().success);
     CHECK(controller.fixAllRebuilds().front().statusMessage == "There is no shell #6 in Fix All's result.");
-    CHECK_FALSE(controller.applyFixAllRebuild(ogun::GlobalRepairMethod::AlphaWrap));
+    CHECK_FALSE(controller.applyFixAllRebuild(mesheal::GlobalRepairMethod::AlphaWrap));
     CHECK_FALSE(controller.canUndo());
 
     controller.rebuildFixAllShell(1);
@@ -828,7 +828,7 @@ TEST_CASE("Fix All + Rebuild in the background: Cancel stops the alpha wrap mid-
     controller.setBackgroundChecks(true);
     // A wrap fine enough to take minutes in Debug; the stop is seen at the wrap's next step once CGAL's
     // set-up (splitting the input to about 3 alpha, about 2 s here in Debug) is done
-    ogun::GlobalRepairParams params = controller.globalRepairParams();
+    mesheal::GlobalRepairParams params = controller.globalRepairParams();
     params.alphaWrapDetail = 300.0;
     controller.setGlobalRepairParams(params);
 
@@ -839,7 +839,7 @@ TEST_CASE("Fix All + Rebuild in the background: Cancel stops the alpha wrap mid-
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(200)); // inside the wrap
-    CHECK(controller.globalRepairCurrentMethod() == ogun::GlobalRepairMethod::AlphaWrap);
+    CHECK(controller.globalRepairCurrentMethod() == mesheal::GlobalRepairMethod::AlphaWrap);
     CHECK(controller.fixAllRebuildStatusText().starts_with("Rebuilding #2: shrink-Wrap (Outer Envelope) (1 of 3)... "));
 
     const auto start = std::chrono::steady_clock::now();
@@ -860,7 +860,7 @@ TEST_CASE("Fix All: undo Fix All survives a full undo history", "[app][fixall][u
     controller.openFixAll();
     // Fill the undo history to its cap (an even number of flips leaves the mesh as it was)
     const std::vector<int> second = {1};
-    for (std::size_t i = 0; i < ogun::settings::kMaxUndoHistoryDepth; ++i) {
+    for (std::size_t i = 0; i < mesheal::settings::kMaxUndoHistoryDepth; ++i) {
         REQUIRE(controller.flipShells(second));
     }
     controller.previewFixAll();
@@ -886,22 +886,22 @@ TEST_CASE("Fix All + Rebuild: the report's step notes keep the numbering of the 
     controller.rebuildFixAllShell(1);
     REQUIRE_FALSE(controller.fixAllRebuilds().empty());
     REQUIRE(controller.fixAllRebuilds().front().success);
-    controller.showFixAllRebuild(ogun::GlobalRepairMethod::AlphaWrap);
+    controller.showFixAllRebuild(mesheal::GlobalRepairMethod::AlphaWrap);
     REQUIRE(controller.applyGlobalRepair());
     REQUIRE(controller.fixAllState() == FixAllPanelState::Report);
 
     // The Report draws the steps of the Fix All run the rebuild builds on: their notes name shells of
     // that run's result, so they are numbered with it, not with the rebuilt mesh
-    const ogun::FixAllCandidate* run = controller.fixAllShown();
+    const mesheal::FixAllCandidate* run = controller.fixAllShown();
     REQUIRE(run != nullptr);
     REQUIRE(run->rebuild.has_value());
-    const ogun::FixAllCandidate& base = *run->rebuild->base;
+    const mesheal::FixAllCandidate& base = *run->rebuild->base;
     std::size_t checked = 0;
-    for (const ogun::FixAllStepReport& step : base.result.steps) {
+    for (const mesheal::FixAllStepReport& step : base.result.steps) {
         if (!step.notesInResult) {
             continue;
         }
-        for (const ogun::FixAllShellNote& note : step.notes) {
+        for (const mesheal::FixAllShellNote& note : step.notes) {
             if (note.faceSet) {
                 continue;
             }
@@ -937,7 +937,7 @@ TEST_CASE("Fix All: the weld row follows the weld tolerance set in the panel", "
     REQUIRE(controller.fixAllWeldPlan() != nullptr);
     CHECK(controller.fixAllWeldPlan()->collapsingEdges == 0);
 
-    ogun::FixAllParams params = controller.fixAllParams();
+    mesheal::FixAllParams params = controller.fixAllParams();
     params.weldTolerance.absFloor = 1.0e-4; // now the 5e-5 edge is within the weld's reach
     controller.setFixAllParams(params);
     controller.waitForFixAllPlan();
@@ -951,7 +951,7 @@ TEST_CASE("Fix All on the Turkey as the GUI drives it: background plan check, pr
     using Clock = std::chrono::steady_clock;
     const auto seconds = [](Clock::time_point start) { return std::chrono::duration<double>(Clock::now() - start).count(); };
     AppController controller;
-    controller.setMesh(ogun::loadStl(std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() /
+    controller.setMesh(mesheal::loadStl(std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() /
                                      "examples" / "Turkey.stl"),
                        "Turkey.stl");
     controller.setBackgroundChecks(true); // as PolyscopeGui::run does
@@ -964,7 +964,7 @@ TEST_CASE("Fix All on the Turkey as the GUI drives it: background plan check, pr
         const auto start = Clock::now();
         static_cast<void>(controller.pollBackgroundChecks());
         if (controller.fixAllState() == FixAllPanelState::Plan) {
-            static_cast<void>(ogun::fixAllPlanRows(controller));
+            static_cast<void>(mesheal::fixAllPlanRows(controller));
         }
         static_cast<void>(controller.fixAllScope());
         static_cast<void>(controller.fixAllStatusText());
@@ -998,7 +998,7 @@ TEST_CASE("Fix All on the Turkey as the GUI drives it: background plan check, pr
     }
     frame(); // collects the finished candidate
     const double previewSeconds = seconds(start);
-    const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+    const mesheal::RepairCandidate* candidate = controller.fixAllCandidate();
     REQUIRE(candidate != nullptr);
     REQUIRE(candidate->success);
     CHECK(candidate->metrics.shellsAfter == 28);
@@ -1006,8 +1006,8 @@ TEST_CASE("Fix All on the Turkey as the GUI drives it: background plan check, pr
 
     // The Result panel's text, built every frame
     start = Clock::now();
-    static_cast<void>(ogun::fixAllPassLines(controller, candidate->fixAll->result));
-    static_cast<void>(ogun::fixAllResultLines(candidate->fixAll->result, true));
+    static_cast<void>(mesheal::fixAllPassLines(controller, candidate->fixAll->result));
+    static_cast<void>(mesheal::fixAllResultLines(candidate->fixAll->result, true));
     const double resultTextSeconds = seconds(start);
     controller.setBackgroundChecks(false);
     WARN("Turkey Fix All as in the GUI: plan check " << planSeconds << " s, preview " << previewSeconds << " s (run " << runSeconds
@@ -1037,11 +1037,11 @@ TEST_CASE("Cancel drops a result that arrives after the click: rebuild preview, 
         const Mesh before = controller.mesh();
         controller.openFixAll(3);
         controller.waitForFixAllPlan();
-        ogun::GlobalRepairParams params = controller.globalRepairParams();
-        params.alphaWrapDetail = ogun::settings::kMinAlphaWrapDetail;
+        mesheal::GlobalRepairParams params = controller.globalRepairParams();
+        params.alphaWrapDetail = mesheal::settings::kMinAlphaWrapDetail;
         controller.setGlobalRepairParams(params);
         controller.setBackgroundChecks(true);
-        controller.setGlobalRepairMethod(ogun::GlobalRepairMethod::AlphaWrap);
+        controller.setGlobalRepairMethod(mesheal::GlobalRepairMethod::AlphaWrap);
         controller.previewGlobalRepair();
         REQUIRE(waitForWorkerEnd(controller));
         CHECK(controller.globalRepairRunning()); // still drawn as running: the Cancel button is there
@@ -1103,7 +1103,7 @@ TEST_CASE("Cancel drops a result that arrives after the click: rebuild preview, 
         CHECK(controller.fixAllRebuilds().empty());
         CHECK(controller.fixAllState() == FixAllPanelState::Result); // the Fix All preview stays
         REQUIRE(controller.shownGlobalCandidate() != nullptr);
-        CHECK(controller.shownGlobalCandidate()->method == ogun::GlobalRepairMethod::FixAll);
+        CHECK(controller.shownGlobalCandidate()->method == mesheal::GlobalRepairMethod::FixAll);
         CHECK(controller.mesh().F == before.F);
     }
     SECTION("Compare: a row collected by the poll of the frame in which Cancel is clicked is dropped too") {
@@ -1111,9 +1111,9 @@ TEST_CASE("Cancel drops a result that arrives after the click: rebuild preview, 
         const Mesh before = controller.mesh();
         controller.openFixAll(3);
         controller.waitForFixAllPlan();
-        ogun::GlobalRepairParams params = controller.globalRepairParams();
+        mesheal::GlobalRepairParams params = controller.globalRepairParams();
         params.alphaWrapDetail = 300.0; // the last row, slow: still computing when Fix All's row arrives
-        params.windingResolution = ogun::settings::kMinWindingGridResolution;
+        params.windingResolution = mesheal::settings::kMinWindingGridResolution;
         controller.setGlobalRepairParams(params);
         controller.setBackgroundChecks(true);
         controller.compareAllGlobalRepairs();
@@ -1130,7 +1130,7 @@ TEST_CASE("Cancel drops a result that arrives after the click: rebuild preview, 
         CHECK_FALSE(controller.globalRepairRunning());
         CHECK(controller.fixAllCandidate() == nullptr);
         CHECK(std::none_of(controller.globalCandidates().begin(), controller.globalCandidates().end(),
-                           [](const ogun::RepairCandidate& c) { return c.method == ogun::GlobalRepairMethod::AlphaWrap; }));
+                           [](const mesheal::RepairCandidate& c) { return c.method == mesheal::GlobalRepairMethod::AlphaWrap; }));
         CHECK(controller.fixAllState() == FixAllPanelState::Plan);
         CHECK(controller.mesh().F == before.F);
     }
@@ -1143,8 +1143,8 @@ TEST_CASE("Fix All on Turkey without shell 28 runs multiple passes to heal all t
     if (!std::filesystem::exists(turkeyStl)) {
         return;
     }
-    ogun::AppController controller;
-    controller.setMesh(ogun::loadStl(turkeyStl), "Turkey.stl");
+    mesheal::AppController controller;
+    controller.setMesh(mesheal::loadStl(turkeyStl), "Turkey.stl");
     REQUIRE(controller.shells().size() == 28);
 
     // 1. Remove shell #28 (index 27 in 0-based indexing)
@@ -1159,7 +1159,7 @@ TEST_CASE("Fix All on Turkey without shell 28 runs multiple passes to heal all t
     controller.previewFixAll(false);
     controller.waitForFixAll();
 
-    const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+    const mesheal::RepairCandidate* candidate = controller.fixAllCandidate();
     REQUIRE(candidate != nullptr);
     REQUIRE(candidate->success);
     REQUIRE(candidate->fixAll != nullptr);
@@ -1167,16 +1167,16 @@ TEST_CASE("Fix All on Turkey without shell 28 runs multiple passes to heal all t
     // Verify the run healed all thin faces and stopped clean. It once needed 3 passes; flips with the thin faces'
     // neighbours and healing the faces a repair leaves thin within the same step now finish it in one.
     CHECK(candidate->fixAll->result.passesRun >= 1);
-    CHECK(candidate->fixAll->result.stopReason == ogun::FixAllStopReason::Clean);
+    CHECK(candidate->fixAll->result.stopReason == mesheal::FixAllStopReason::Clean);
     CHECK(candidate->fixAll->result.countsAfter.thinFaces == 0);
 
     // Apply Fix All and verify no defect remains on the mesh
     REQUIRE(controller.applyFixAll());
-    REQUIRE(controller.rowCount(ogun::DefectCategory::ThinFaces) == 0);
-    REQUIRE(controller.rowCount(ogun::DefectCategory::OpenEdges) == 0);
-    REQUIRE(controller.rowCount(ogun::DefectCategory::NonManifoldEdges) == 0);
-    REQUIRE(controller.rowCount(ogun::DefectCategory::Intersections) == 0);
-    REQUIRE(controller.rowCount(ogun::DefectCategory::Degenerate) == 0);
+    REQUIRE(controller.rowCount(mesheal::DefectCategory::ThinFaces) == 0);
+    REQUIRE(controller.rowCount(mesheal::DefectCategory::OpenEdges) == 0);
+    REQUIRE(controller.rowCount(mesheal::DefectCategory::NonManifoldEdges) == 0);
+    REQUIRE(controller.rowCount(mesheal::DefectCategory::Intersections) == 0);
+    REQUIRE(controller.rowCount(mesheal::DefectCategory::Degenerate) == 0);
 }
 
 TEST_CASE("Fix All on cupcakemakerplunger heals all defects in multiple passes", "[app][repair][cupcake]") {
@@ -1184,9 +1184,9 @@ TEST_CASE("Fix All on cupcakemakerplunger heals all defects in multiple passes",
         std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / "cupcakemakerplunger.stl";
     REQUIRE(std::filesystem::exists(cupcakePath));
 
-    ogun::AppController controller;
+    mesheal::AppController controller;
     REQUIRE(controller.loadStlFile(cupcakePath));
-    const std::size_t initialThin = controller.rowCount(ogun::DefectCategory::ThinFaces);
+    const std::size_t initialThin = controller.rowCount(mesheal::DefectCategory::ThinFaces);
     WARN("Initial thin faces on cupcake: " << initialThin);
 
     controller.openFixAll(4);
@@ -1194,29 +1194,29 @@ TEST_CASE("Fix All on cupcakemakerplunger heals all defects in multiple passes",
     controller.previewFixAll(false);
     controller.waitForFixAll();
 
-    const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+    const mesheal::RepairCandidate* candidate = controller.fixAllCandidate();
     REQUIRE(candidate != nullptr);
     REQUIRE(candidate->success);
     REQUIRE(candidate->fixAll != nullptr);
 
     CHECK(candidate->fixAll->result.passesRun <= 4);
-    CHECK(candidate->fixAll->result.stopReason == ogun::FixAllStopReason::Clean);
+    CHECK(candidate->fixAll->result.stopReason == mesheal::FixAllStopReason::Clean);
     CHECK(candidate->fixAll->result.countsAfter.thinFaces == 0);
     CHECK(candidate->fixAll->result.countsAfter.openEdges == 0);
 
     REQUIRE(controller.applyFixAll());
-    const auto hits = ogun::findFacePairs(controller.mesh(), 1e-6, {});
+    const auto hits = mesheal::findFacePairs(controller.mesh(), 1e-6, {});
     if (hits) {
         WARN("Total intersection hits after Fix All: " << hits->size());
         for (const auto& hit : *hits) {
             WARN("Hit: (" << hit.a << ", " << hit.b << ") hit=" << hit.hit << " coplanar=" << hit.coplanar << " touching=" << hit.touching);
         }
     }
-    CHECK(controller.rowCount(ogun::DefectCategory::ThinFaces) == 0);
-    CHECK(controller.rowCount(ogun::DefectCategory::OpenEdges) == 0);
-    CHECK(controller.rowCount(ogun::DefectCategory::Intersections) == 0);
-    CHECK(controller.rowCount(ogun::DefectCategory::NonManifoldEdges) == 0);
-    CHECK(controller.rowCount(ogun::DefectCategory::Degenerate) == 0);
+    CHECK(controller.rowCount(mesheal::DefectCategory::ThinFaces) == 0);
+    CHECK(controller.rowCount(mesheal::DefectCategory::OpenEdges) == 0);
+    CHECK(controller.rowCount(mesheal::DefectCategory::Intersections) == 0);
+    CHECK(controller.rowCount(mesheal::DefectCategory::NonManifoldEdges) == 0);
+    CHECK(controller.rowCount(mesheal::DefectCategory::Degenerate) == 0);
 }
 
 namespace {
@@ -1239,24 +1239,24 @@ TEST_CASE("Fix All on a CAD shuttle keeps its walls", "[app][repair][fixall][tom
     // The island step once cut out whole walls (faces 1802, 1805, 2253 among them) to undo 6 small crossings:
     // +2.3 % volume, surface lost by 6 mm
     REQUIRE(std::filesystem::exists(tomShuttlePath()));
-    ogun::AppController controller;
+    mesheal::AppController controller;
     REQUIRE(controller.loadStlFile(tomShuttlePath()));
-    const ogun::Mesh before = controller.mesh();
+    const mesheal::Mesh before = controller.mesh();
 
     controller.openFixAll(3);
     controller.waitForFixAllPlan();
     controller.previewFixAll(false);
     controller.waitForFixAll();
-    const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+    const mesheal::RepairCandidate* candidate = controller.fixAllCandidate();
     REQUIRE(candidate != nullptr);
     REQUIRE(candidate->success);
     REQUIRE(candidate->fixAll != nullptr);
-    CHECK(candidate->fixAll->result.stopReason == ogun::FixAllStopReason::Clean);
+    CHECK(candidate->fixAll->result.stopReason == mesheal::FixAllStopReason::Clean);
 
     REQUIRE(controller.applyFixAll());
-    CHECK(controller.rowCount(ogun::DefectCategory::Intersections) == 0);
-    CHECK(controller.rowCount(ogun::DefectCategory::ThinFaces) == 0);
-    const ogun::RepairMetrics shape = ogun::computeRepairGeometryMetrics(before, controller.mesh());
+    CHECK(controller.rowCount(mesheal::DefectCategory::Intersections) == 0);
+    CHECK(controller.rowCount(mesheal::DefectCategory::ThinFaces) == 0);
+    const mesheal::RepairMetrics shape = mesheal::computeRepairGeometryMetrics(before, controller.mesh());
     CHECK(std::abs(shape.volumeChangePercent()) < 0.5);
     CHECK(shape.maxDeviation < 1.0);
     CHECK(shape.maxLost < 1.0); // mm; the part is 68 x 84 x 35 mm
@@ -1266,16 +1266,16 @@ TEST_CASE("Repair All Thin / Sliver Faces on a CAD corner keeps its shape", "[ap
     // The healer once cut this part's volume by 9.4 % (a snap dragged a corner 18 mm and turned a wall into a
     // ramp), moved the surface by 5.7 mm and made 44 faces cross
     REQUIRE(std::filesystem::exists(tomCornerPath()));
-    ogun::AppController controller;
+    mesheal::AppController controller;
     REQUIRE(controller.loadStlFile(tomCornerPath()));
     REQUIRE(controller.mesh().numFaces() == 6272);
-    REQUIRE(controller.rowCount(ogun::DefectCategory::ThinFaces) == 927);
+    REQUIRE(controller.rowCount(mesheal::DefectCategory::ThinFaces) == 927);
 
     controller.openRepairAllThinFaces();
-    const ogun::RepairCandidate* shown = controller.shownGlobalCandidate();
+    const mesheal::RepairCandidate* shown = controller.shownGlobalCandidate();
     REQUIRE(shown != nullptr);
     REQUIRE(shown->success);
-    const ogun::RepairMetrics& m = shown->metrics;
+    const mesheal::RepairMetrics& m = shown->metrics;
     CHECK(m.thinFacesBefore == 927);
     CHECK(m.thinFacesAfter == 0);
     CHECK(std::abs(m.volumeChangePercent()) < 0.5);
@@ -1284,36 +1284,36 @@ TEST_CASE("Repair All Thin / Sliver Faces on a CAD corner keeps its shape", "[ap
     CHECK(m.intersectingFacesAfter == 0);
 
     REQUIRE(controller.applyGlobalRepair());
-    CHECK(controller.rowCount(ogun::DefectCategory::ThinFaces) == 0);
-    CHECK(controller.rowCount(ogun::DefectCategory::Intersections) == 0);
+    CHECK(controller.rowCount(mesheal::DefectCategory::ThinFaces) == 0);
+    CHECK(controller.rowCount(mesheal::DefectCategory::Intersections) == 0);
 }
 
 TEST_CASE("Fix All on a CAD corner heals every thin face", "[app][repair][fixall][tom-corner]") {
     // Fix All once stopped on a repeated state with 2 needles: a flip passed one on to an unlisted neighbour,
     // and the other was collapsed into a new needle 10 times instead of flipped
     REQUIRE(std::filesystem::exists(tomCornerPath()));
-    ogun::AppController controller;
+    mesheal::AppController controller;
     REQUIRE(controller.loadStlFile(tomCornerPath()));
-    const ogun::Mesh before = controller.mesh();
+    const mesheal::Mesh before = controller.mesh();
 
     controller.openFixAll(3);
     controller.waitForFixAllPlan();
     controller.previewFixAll(false);
     controller.waitForFixAll();
-    const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+    const mesheal::RepairCandidate* candidate = controller.fixAllCandidate();
     REQUIRE(candidate != nullptr);
     REQUIRE(candidate->success);
     REQUIRE(candidate->fixAll != nullptr);
-    CHECK(candidate->fixAll->result.stopReason == ogun::FixAllStopReason::Clean);
+    CHECK(candidate->fixAll->result.stopReason == mesheal::FixAllStopReason::Clean);
     CHECK(candidate->fixAll->result.countsAfter.thinFaces == 0);
 
     REQUIRE(controller.applyFixAll());
-    CHECK(controller.rowCount(ogun::DefectCategory::ThinFaces) == 0);
-    CHECK(controller.rowCount(ogun::DefectCategory::OpenEdges) == 0);
-    CHECK(controller.rowCount(ogun::DefectCategory::NonManifoldEdges) == 0);
-    CHECK(controller.rowCount(ogun::DefectCategory::Intersections) == 0);
+    CHECK(controller.rowCount(mesheal::DefectCategory::ThinFaces) == 0);
+    CHECK(controller.rowCount(mesheal::DefectCategory::OpenEdges) == 0);
+    CHECK(controller.rowCount(mesheal::DefectCategory::NonManifoldEdges) == 0);
+    CHECK(controller.rowCount(mesheal::DefectCategory::Intersections) == 0);
     // It also fills the holes, so the volume moves a little (+0.16 %, 0.30 mm when this test was written)
-    const ogun::RepairMetrics shape = ogun::computeRepairGeometryMetrics(before, controller.mesh());
+    const mesheal::RepairMetrics shape = mesheal::computeRepairGeometryMetrics(before, controller.mesh());
     CHECK(std::abs(shape.volumeChangePercent()) < 0.5);
     CHECK(shape.maxDeviation < 1.0);
     CHECK(shape.maxLost < 1.0);
@@ -1324,7 +1324,7 @@ TEST_CASE("Fix All on cuboctahedron_faces heals all defects", "[app][repair][cub
         std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / "cuboctahedron_faces.stl";
     REQUIRE(std::filesystem::exists(cubPath));
 
-    ogun::AppController controller;
+    mesheal::AppController controller;
     REQUIRE(controller.loadStlFile(cubPath));
 
     controller.openFixAll(4);
@@ -1332,7 +1332,7 @@ TEST_CASE("Fix All on cuboctahedron_faces heals all defects", "[app][repair][cub
     controller.previewFixAll(false);
     controller.waitForFixAll();
 
-    const ogun::RepairCandidate* candidate = controller.fixAllCandidate();
+    const mesheal::RepairCandidate* candidate = controller.fixAllCandidate();
     REQUIRE(candidate != nullptr);
     REQUIRE(candidate->success);
     REQUIRE(candidate->fixAll != nullptr);
@@ -1343,10 +1343,10 @@ TEST_CASE("Fix All on cuboctahedron_faces heals all defects", "[app][repair][cub
     CHECK(candidate->fixAll->result.countsAfter.duplicateFaces == 0);
 
     REQUIRE(controller.applyFixAll());
-    CHECK(controller.rowCount(ogun::DefectCategory::ThinFaces) == 0);
-    CHECK(controller.rowCount(ogun::DefectCategory::OpenEdges) == 0);
-    CHECK(controller.rowCount(ogun::DefectCategory::NonManifoldEdges) == 0);
-    CHECK(controller.rowCount(ogun::DefectCategory::Degenerate) == 0);
-    CHECK(controller.rowCount(ogun::DefectCategory::Duplicates) == 0);
-    CHECK(controller.rowCount(ogun::DefectCategory::Intersections) == 0);
+    CHECK(controller.rowCount(mesheal::DefectCategory::ThinFaces) == 0);
+    CHECK(controller.rowCount(mesheal::DefectCategory::OpenEdges) == 0);
+    CHECK(controller.rowCount(mesheal::DefectCategory::NonManifoldEdges) == 0);
+    CHECK(controller.rowCount(mesheal::DefectCategory::Degenerate) == 0);
+    CHECK(controller.rowCount(mesheal::DefectCategory::Duplicates) == 0);
+    CHECK(controller.rowCount(mesheal::DefectCategory::Intersections) == 0);
 }

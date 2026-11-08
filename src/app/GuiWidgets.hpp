@@ -10,7 +10,7 @@
 #include <cstddef>
 #include <string>
 
-namespace ogun::gui {
+namespace mesheal::gui {
 
 #ifdef __APPLE__
 inline constexpr const char* kModKey = "Cmd";
@@ -67,4 +67,4 @@ bool unitCombo(const char* id, Unit& unit, float width);
 /// first, the absolute floors under a collapsed "Advanced" node. A value applies on Enter; returns true then.
 bool thinFaceThresholdFields(ThinFaceThresholds& thresholds, Unit unit, float width);
 
-} // namespace ogun::gui
+} // namespace mesheal::gui

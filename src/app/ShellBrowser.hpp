@@ -12,7 +12,7 @@
 #include <span>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// One edge-connected piece of the mesh with its view state (UI_DESIGN.md §16).
 struct ShellInfo {
@@ -126,4 +126,4 @@ private:
     std::uint64_t revision_ = nextRevision();
 };
 
-} // namespace ogun
+} // namespace mesheal

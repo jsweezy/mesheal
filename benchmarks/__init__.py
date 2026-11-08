@@ -1,4 +1,4 @@
-"""Ogun Benchmarking Suite & Python CLI Driver."""
+"""Mesheal Benchmarking Suite & Python CLI Driver."""
 
 from .runner import diagnostics, repair, RepairResult, MeshMetrics
 from .cache import ModelCache

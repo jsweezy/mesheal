@@ -12,10 +12,10 @@
 
 namespace {
 
-/// Fresh directory under the system temp dir (never the real ~/.config/ogun).
+/// Fresh directory under the system temp dir (never the real ~/.config/mesheal).
 std::filesystem::path uniqueTempDir(const char* tag) {
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-    return std::filesystem::temp_directory_path() / (std::string("ogun_prefs_") + tag + "_" + std::to_string(stamp));
+    return std::filesystem::temp_directory_path() / (std::string("mesheal_prefs_") + tag + "_" + std::to_string(stamp));
 }
 
 /// key -> value of every `key = value` line.
@@ -35,9 +35,9 @@ std::map<std::string, std::string> keyValues(const std::string& text) {
 }
 
 /// Every saved field set to a valid value different from its built-in default.
-ogun::UserPreferences customPreferences() {
-    ogun::UserPreferences p;
-    const auto styled = [](ogun::SurfaceStyle& s, double shade) {
+mesheal::UserPreferences customPreferences() {
+    mesheal::UserPreferences p;
+    const auto styled = [](mesheal::SurfaceStyle& s, double shade) {
         s.color = Eigen::Vector3d(shade, 0.25, 0.75);
         s.edgeColor = Eigen::Vector3d(0.125, shade, 0.5);
         s.edgeWidthPx = 2.5 + shade;
@@ -46,7 +46,7 @@ ogun::UserPreferences customPreferences() {
     styled(p.appearance.baseMesh, 0.1);
     styled(p.appearance.selectedFaces, 0.2);
     styled(p.appearance.previewPatch, 0.3);
-    p.appearance.backFaceMode = ogun::BackFaceMode::Custom;
+    p.appearance.backFaceMode = mesheal::BackFaceMode::Custom;
     p.appearance.backFaceColor = Eigen::Vector3d(0.11, 0.22, 0.33);
     p.appearance.smoothShade = !p.appearance.smoothShade;
     p.appearance.categoryTintColor = Eigen::Vector3d(0.44, 0.55, 0.66);
@@ -58,10 +58,10 @@ ogun::UserPreferences customPreferences() {
     p.appearance.pointRadiusPx = 7.5;
     p.ghostOpacity = 0.6;
     p.repairPreviewVisible = !p.repairPreviewVisible;
-    p.previewDisplayMode = ogun::PreviewDisplayMode::TranslucentPatch;
+    p.previewDisplayMode = mesheal::PreviewDisplayMode::TranslucentPatch;
     p.previewBaseOpacity = 0.7;
     p.previewPatchOpacity = 0.8;
-    p.wholeMeshPreview.original = ogun::WholeMeshOriginalStyle::Wireframe;
+    p.wholeMeshPreview.original = mesheal::WholeMeshOriginalStyle::Wireframe;
     p.wholeMeshPreview.resultOpacity = 0.45;
     p.wholeMeshPreview.originalOpacity = 0.25;
     p.wholeMeshPreview.changedFacesOnly = true;
@@ -89,24 +89,24 @@ ogun::UserPreferences customPreferences() {
     p.uiScale = 1.35f;
     p.backgroundColor = {0.1f, 0.2f, 0.3f, 1.0f};
     p.showCompass = !p.showCompass;
-    p.theme = ogun::UiTheme::Dark;
+    p.theme = mesheal::UiTheme::Dark;
     // A custom mouse scheme that changes every action's bindings
-    using ogun::MouseAction;
-    using ogun::MouseInput;
-    p.mouse.preset = ogun::MousePreset::Custom;
+    using mesheal::MouseAction;
+    using mesheal::MouseInput;
+    p.mouse.preset = mesheal::MousePreset::Custom;
     p.mouse.invertWheelZoom = true;
     p.mouse.zoomSpeed = 1.5f;
-    const auto set = [&p](MouseAction action, ogun::MouseActionBindings bindings) {
+    const auto set = [&p](MouseAction action, mesheal::MouseActionBindings bindings) {
         p.mouse.bindings[static_cast<std::size_t>(action)] = bindings;
     };
     set(MouseAction::Orbit, {{{MouseInput::Middle, 0}}});
-    set(MouseAction::Pan, {{{MouseInput::Middle, ogun::kMouseModShift}, {MouseInput::Right, ogun::kMouseModAlt}}});
-    set(MouseAction::Zoom, {{{MouseInput::Middle, ogun::kMouseModCtrl}}});
-    set(MouseAction::WheelZoom, {{{MouseInput::Wheel, ogun::kMouseModCtrl}}});
-    set(MouseAction::NearClip, {{{MouseInput::Wheel, ogun::kMouseModAlt}}});
+    set(MouseAction::Pan, {{{MouseInput::Middle, mesheal::kMouseModShift}, {MouseInput::Right, mesheal::kMouseModAlt}}});
+    set(MouseAction::Zoom, {{{MouseInput::Middle, mesheal::kMouseModCtrl}}});
+    set(MouseAction::WheelZoom, {{{MouseInput::Wheel, mesheal::kMouseModCtrl}}});
+    set(MouseAction::NearClip, {{{MouseInput::Wheel, mesheal::kMouseModAlt}}});
     set(MouseAction::Select, {{{MouseInput::Right, 0}}});
-    set(MouseAction::ToggleFace, {{{MouseInput::Right, ogun::kMouseModCtrl}}});
-    set(MouseAction::SelectShell, {{{MouseInput::Right, ogun::kMouseModAlt}}});
+    set(MouseAction::ToggleFace, {{{MouseInput::Right, mesheal::kMouseModCtrl}}});
+    set(MouseAction::SelectShell, {{{MouseInput::Right, mesheal::kMouseModAlt}}});
     set(MouseAction::ClearPick, {});
     return p;
 }
@@ -114,13 +114,13 @@ ogun::UserPreferences customPreferences() {
 } // namespace
 
 TEST_CASE("User preferences round trip every field through the config file", "[app][preferences]") {
-    const ogun::UserPreferences custom = customPreferences();
-    const ogun::UserPreferences defaults;
+    const mesheal::UserPreferences custom = customPreferences();
+    const mesheal::UserPreferences defaults;
 
     // Every key of the file is changed by customPreferences(), so the round trip covers every field
-    const auto customValues = keyValues(ogun::formatUserPreferences(custom));
-    const auto defaultValues = keyValues(ogun::formatUserPreferences(defaults));
-    const std::vector<std::string> keys = ogun::userPreferenceKeys();
+    const auto customValues = keyValues(mesheal::formatUserPreferences(custom));
+    const auto defaultValues = keyValues(mesheal::formatUserPreferences(defaults));
+    const std::vector<std::string> keys = mesheal::userPreferenceKeys();
     REQUIRE(customValues.size() == keys.size());
     REQUIRE(defaultValues.size() == keys.size());
     for (const std::string& key : keys) {
@@ -128,18 +128,18 @@ TEST_CASE("User preferences round trip every field through the config file", "[a
         REQUIRE(customValues.count(key) == 1);
         CHECK(customValues.at(key) != defaultValues.at(key));
     }
-    CHECK_FALSE(ogun::sameUserPreferences(custom, defaults));
+    CHECK_FALSE(mesheal::sameUserPreferences(custom, defaults));
 
     const std::filesystem::path dir = uniqueTempDir("roundtrip");
-    const std::filesystem::path file = ogun::preferencesFilePath(dir / "ogun");
-    CHECK(file.filename() == ogun::kPreferencesFileName);
+    const std::filesystem::path file = mesheal::preferencesFilePath(dir / "mesheal");
+    CHECK(file.filename() == mesheal::kPreferencesFileName);
     std::string error;
-    REQUIRE(ogun::saveUserPreferences(custom, file, &error)); // creates the directory
+    REQUIRE(mesheal::saveUserPreferences(custom, file, &error)); // creates the directory
     REQUIRE(std::filesystem::exists(file));
 
-    const ogun::UserPreferences loaded = ogun::loadUserPreferences(file);
-    CHECK(ogun::sameUserPreferences(loaded, custom));
-    CHECK(ogun::formatUserPreferences(loaded) == ogun::formatUserPreferences(custom));
+    const mesheal::UserPreferences loaded = mesheal::loadUserPreferences(file);
+    CHECK(mesheal::sameUserPreferences(loaded, custom));
+    CHECK(mesheal::formatUserPreferences(loaded) == mesheal::formatUserPreferences(custom));
     CHECK(loaded.appearance.baseMesh.color.isApprox(custom.appearance.baseMesh.color));
     CHECK(loaded.defaults.thinFace.minAltitude == custom.defaults.thinFace.minAltitude);
     CHECK(loaded.uiScale == custom.uiScale);
@@ -149,23 +149,23 @@ TEST_CASE("User preferences round trip every field through the config file", "[a
     CHECK(loaded.theme == custom.theme);
 
     // Saving again overwrites in place
-    REQUIRE(ogun::saveUserPreferences(defaults, file, &error));
-    CHECK(ogun::sameUserPreferences(ogun::loadUserPreferences(file), defaults));
+    REQUIRE(mesheal::saveUserPreferences(defaults, file, &error));
+    CHECK(mesheal::sameUserPreferences(mesheal::loadUserPreferences(file), defaults));
     std::filesystem::remove_all(dir);
 }
 
 TEST_CASE("A missing preferences file gives the built-in defaults", "[app][preferences]") {
     const std::filesystem::path dir = uniqueTempDir("missing");
-    const ogun::UserPreferences loaded = ogun::loadUserPreferences(ogun::preferencesFilePath(dir));
-    CHECK(ogun::sameUserPreferences(loaded, ogun::UserPreferences{}));
-    CHECK(ogun::sameUserPreferences(ogun::loadUserPreferences({}), ogun::UserPreferences{}));
-    CHECK(ogun::preferencesFilePath({}).empty());
+    const mesheal::UserPreferences loaded = mesheal::loadUserPreferences(mesheal::preferencesFilePath(dir));
+    CHECK(mesheal::sameUserPreferences(loaded, mesheal::UserPreferences{}));
+    CHECK(mesheal::sameUserPreferences(mesheal::loadUserPreferences({}), mesheal::UserPreferences{}));
+    CHECK(mesheal::preferencesFilePath({}).empty());
     CHECK_FALSE(std::filesystem::exists(dir));
 }
 
 TEST_CASE("Malformed or partial preference files fall back per key", "[app][preferences]") {
-    const ogun::UserPreferences defaults;
-    const ogun::UserPreferences prefs = ogun::parseUserPreferences(
+    const mesheal::UserPreferences defaults;
+    const mesheal::UserPreferences prefs = mesheal::parseUserPreferences(
         "# comment\n"
         "weld_floor = 2e-6\n"                      // valid
         "relative_tolerance = abc\n"               // malformed: default
@@ -191,9 +191,9 @@ TEST_CASE("Malformed or partial preference files fall back per key", "[app][pref
     CHECK(prefs.checkMeshAfterLoad == defaults.checkMeshAfterLoad);
     CHECK(prefs.appearance.baseMesh.color.isApprox(defaults.appearance.baseMesh.color));
     CHECK(prefs.appearance.categoryTintColor.isApprox(Eigen::Vector3d(0.2, 0.4, 1.0)));
-    CHECK(prefs.appearance.pointRadiusPx == ogun::settings::kMaxHighlightPointRadiusPx);
+    CHECK(prefs.appearance.pointRadiusPx == mesheal::settings::kMaxHighlightPointRadiusPx);
     CHECK(prefs.previewDisplayMode == defaults.previewDisplayMode);
-    CHECK(prefs.appearance.backFaceMode == ogun::BackFaceMode::Cull);
+    CHECK(prefs.appearance.backFaceMode == mesheal::BackFaceMode::Cull);
     CHECK(prefs.listCap == defaults.listCap);
     CHECK(prefs.overlayCap == 77);
     CHECK(prefs.uiScale == defaults.uiScale);
@@ -203,23 +203,23 @@ TEST_CASE("Malformed or partial preference files fall back per key", "[app][pref
     CHECK_FALSE(prefs.showCompass);
 
     // A truncated / binary file does not crash and gives defaults for what it cannot read
-    const ogun::UserPreferences garbage = ogun::parseUserPreferences(std::string("\0\xff=\n= =\nweld_floor", 16));
-    CHECK(ogun::sameUserPreferences(garbage, defaults));
+    const mesheal::UserPreferences garbage = mesheal::parseUserPreferences(std::string("\0\xff=\n= =\nweld_floor", 16));
+    CHECK(mesheal::sameUserPreferences(garbage, defaults));
 }
 
 TEST_CASE("Old thin-face defaults migrate to 100 : 1 with floors off", "[app][preferences]") {
     // A file saved before thin faces were judged by aspect ratio, at the old built-in defaults
-    const ogun::UserPreferences prefs = ogun::parseUserPreferences(
+    const mesheal::UserPreferences prefs = mesheal::parseUserPreferences(
         "default_min_altitude = 0.0001\n"
         "default_min_area = 1e-08\n"
         "default_max_aspect_ratio = 1000\n");
-    CHECK(prefs.defaults.thinFace.maxAspectRatio == ogun::settings::kDefaultThinFaceMaxAspectRatio);
+    CHECK(prefs.defaults.thinFace.maxAspectRatio == mesheal::settings::kDefaultThinFaceMaxAspectRatio);
     CHECK(prefs.defaults.thinFace.minAltitude == 0.0);
     CHECK(prefs.defaults.thinFace.minArea == 0.0);
-    CHECK(ogun::sameUserPreferences(prefs, ogun::UserPreferences{}));
+    CHECK(mesheal::sameUserPreferences(prefs, mesheal::UserPreferences{}));
 
     // Saving writes only the new keys, so the migration happens once
-    const std::string text = ogun::formatUserPreferences(prefs);
+    const std::string text = mesheal::formatUserPreferences(prefs);
     CHECK(text.find("default_max_aspect_ratio") == std::string::npos);
     CHECK(text.find("thin_max_aspect_ratio = 100\n") != std::string::npos);
     CHECK(text.find("thin_min_height_floor = 0\n") != std::string::npos);
@@ -227,7 +227,7 @@ TEST_CASE("Old thin-face defaults migrate to 100 : 1 with floors off", "[app][pr
 
 TEST_CASE("Customised thin values are kept", "[app][preferences]") {
     // Old keys with values the user changed keep them
-    const ogun::UserPreferences custom = ogun::parseUserPreferences(
+    const mesheal::UserPreferences custom = mesheal::parseUserPreferences(
         "default_min_altitude = 0.02\n"
         "default_min_area = 4e-05\n"
         "default_max_aspect_ratio = 250\n");
@@ -236,7 +236,7 @@ TEST_CASE("Customised thin values are kept", "[app][preferences]") {
     CHECK(custom.defaults.thinFace.maxAspectRatio == 250.0);
 
     // Each value migrates on its own: a changed aspect stays, untouched floors turn off
-    const ogun::UserPreferences mixed = ogun::parseUserPreferences(
+    const mesheal::UserPreferences mixed = mesheal::parseUserPreferences(
         "default_min_altitude = 0.0001\n"
         "default_min_area = 1e-08\n"
         "default_max_aspect_ratio = 500\n");
@@ -245,15 +245,15 @@ TEST_CASE("Customised thin values are kept", "[app][preferences]") {
     CHECK(mixed.defaults.thinFace.minArea == 0.0);
 
     // A 1000 : 1 limit chosen after the migration is saved under the new key and kept
-    ogun::UserPreferences chosen;
+    mesheal::UserPreferences chosen;
     chosen.defaults.thinFace.maxAspectRatio = 1000.0;
     chosen.defaults.thinFace.minAltitude = 1.0e-4;
-    const ogun::UserPreferences reloaded = ogun::parseUserPreferences(ogun::formatUserPreferences(chosen));
+    const mesheal::UserPreferences reloaded = mesheal::parseUserPreferences(mesheal::formatUserPreferences(chosen));
     CHECK(reloaded.defaults.thinFace.maxAspectRatio == 1000.0);
     CHECK(reloaded.defaults.thinFace.minAltitude == 1.0e-4);
 
     // The new key wins over an old one in the same file, in either order
-    const ogun::UserPreferences both = ogun::parseUserPreferences(
+    const mesheal::UserPreferences both = mesheal::parseUserPreferences(
         "default_max_aspect_ratio = 300\n"
         "thin_max_aspect_ratio = 1000\n"
         "thin_min_height_floor = 0.5\n"
@@ -263,88 +263,88 @@ TEST_CASE("Customised thin values are kept", "[app][preferences]") {
 }
 
 TEST_CASE("Unknown preference keys are ignored", "[app][preferences]") {
-    const ogun::UserPreferences prefs = ogun::parseUserPreferences(
+    const mesheal::UserPreferences prefs = mesheal::parseUserPreferences(
         "future.setting = 12\n"
         "weld_floor = 4e-8\n"
         "base.colour = 0 0 0\n");
-    ogun::UserPreferences expected;
+    mesheal::UserPreferences expected;
     expected.tolerance.absFloor = 4.0e-8;
-    CHECK(ogun::sameUserPreferences(prefs, expected));
+    CHECK(mesheal::sameUserPreferences(prefs, expected));
 }
 
 TEST_CASE("Startup applies the saved preferences, live thin-face thresholds included", "[app][preferences]") {
     const std::filesystem::path dir = uniqueTempDir("startup");
-    const std::filesystem::path file = ogun::preferencesFilePath(dir);
-    const ogun::UserPreferences custom = customPreferences();
-    REQUIRE(ogun::saveUserPreferences(custom, file));
+    const std::filesystem::path file = mesheal::preferencesFilePath(dir);
+    const mesheal::UserPreferences custom = customPreferences();
+    REQUIRE(mesheal::saveUserPreferences(custom, file));
 
-    ogun::AppController controller;
-    const ogun::UserPreferences loaded = ogun::loadAndApplyUserPreferences(controller, file);
+    mesheal::AppController controller;
+    const mesheal::UserPreferences loaded = mesheal::loadAndApplyUserPreferences(controller, file);
     CHECK(loaded.uiScale == custom.uiScale); // GUI-only fields are handed back
 
-    const ogun::ThinFaceThresholds& live = controller.thresholds();
+    const mesheal::ThinFaceThresholds& live = controller.thresholds();
     CHECK(live.minAltitude == custom.defaults.thinFace.minAltitude);
     CHECK(live.minArea == custom.defaults.thinFace.minArea);
     CHECK(live.maxAspectRatio == custom.defaults.thinFace.maxAspectRatio);
     CHECK(controller.toleranceConfig().absFloor == custom.tolerance.absFloor);
     CHECK(controller.toleranceConfig().relTol == custom.tolerance.relTol);
     CHECK(controller.checkMeshAfterLoad() == custom.checkMeshAfterLoad);
-    CHECK(controller.autoCheckDefault(ogun::DefectCategory::ThinFaces) ==
-          custom.autoCheckDefaults[ogun::categoryIndex(ogun::DefectCategory::ThinFaces)]);
+    CHECK(controller.autoCheckDefault(mesheal::DefectCategory::ThinFaces) ==
+          custom.autoCheckDefaults[mesheal::categoryIndex(mesheal::DefectCategory::ThinFaces)]);
     CHECK(controller.previewDisplayMode() == custom.previewDisplayMode);
     CHECK(controller.overlayAppearance().pointRadiusPx == custom.appearance.pointRadiusPx);
 
     // The controller hands back the same values to save (GUI-only fields aside)
-    ogun::UserPreferences captured = controller.userPreferences();
+    mesheal::UserPreferences captured = controller.userPreferences();
     captured.uiScale = custom.uiScale;
     captured.backgroundColor = custom.backgroundColor;
     captured.showCompass = custom.showCompass;
     captured.mouse = custom.mouse;
     captured.theme = custom.theme;
-    CHECK(ogun::sameUserPreferences(captured, custom));
+    CHECK(mesheal::sameUserPreferences(captured, custom));
 
     // A new mesh's Mesh Health rows take the saved Auto defaults
     controller.loadSampleDefectiveMesh();
-    CHECK(controller.categoryHealth(ogun::DefectCategory::Degenerate).autoCheck ==
-          custom.autoCheckDefaults[ogun::categoryIndex(ogun::DefectCategory::Degenerate)]);
+    CHECK(controller.categoryHealth(mesheal::DefectCategory::Degenerate).autoCheck ==
+          custom.autoCheckDefaults[mesheal::categoryIndex(mesheal::DefectCategory::Degenerate)]);
 
     // Reset to defaults restores the built-in values, live thresholds included
-    controller.applyUserPreferences(ogun::UserPreferences{});
-    CHECK(controller.thresholds().minAltitude == ogun::settings::kDefaultThinFaceMinAltitude);
-    CHECK(ogun::sameUserPreferences(controller.userPreferences(), ogun::UserPreferences{}));
+    controller.applyUserPreferences(mesheal::UserPreferences{});
+    CHECK(controller.thresholds().minAltitude == mesheal::settings::kDefaultThinFaceMinAltitude);
+    CHECK(mesheal::sameUserPreferences(controller.userPreferences(), mesheal::UserPreferences{}));
     std::filesystem::remove_all(dir);
 }
 
-TEST_CASE("Mouse preferences: presets apply as built, unknown or invalid values fall back to Ogun's", "[app][preferences][mouse]") {
-    using ogun::MouseAction;
-    using ogun::MouseInput;
-    const ogun::MouseMapping ogunDefault;
+TEST_CASE("Mouse preferences: presets apply as built, unknown or invalid values fall back to Mesheal's", "[app][preferences][mouse]") {
+    using mesheal::MouseAction;
+    using mesheal::MouseInput;
+    const mesheal::MouseMapping meshealDefault;
 
-    // A file from before Preferences > Mouse existed gives the Ogun scheme
-    CHECK(ogun::parseUserPreferences("weld_floor = 1e-6\n").mouse == ogunDefault);
+    // A file from before Preferences > Mouse existed gives the Mesheal scheme
+    CHECK(mesheal::parseUserPreferences("weld_floor = 1e-6\n").mouse == meshealDefault);
 
     // A built-in preset uses its own bindings, whatever the file stores
-    const ogun::UserPreferences blender = ogun::parseUserPreferences(
+    const mesheal::UserPreferences blender = mesheal::parseUserPreferences(
         "mouse.preset = blender\n"
         "mouse.orbit = right\n"
         "mouse.zoom_speed = 2\n"
         "mouse.invert_wheel_zoom = true\n");
-    CHECK(blender.mouse.preset == ogun::MousePreset::Blender);
-    CHECK(blender.mouse.bindings == ogun::mousePresetBindings(ogun::MousePreset::Blender));
+    CHECK(blender.mouse.preset == mesheal::MousePreset::Blender);
+    CHECK(blender.mouse.bindings == mesheal::mousePresetBindings(mesheal::MousePreset::Blender));
     CHECK(blender.mouse.zoomSpeed == 2.0f);
     CHECK(blender.mouse.invertWheelZoom);
 
-    // Unknown preset (e.g. from a newer Ogun): the Ogun scheme
-    const ogun::UserPreferences future = ogun::parseUserPreferences(
+    // Unknown preset (e.g. from a newer Mesheal): the Mesheal scheme
+    const mesheal::UserPreferences future = mesheal::parseUserPreferences(
         "mouse.preset = cura\n"
         "mouse.orbit = right\n"
         "mouse.zoom_speed = 1000\n");
-    CHECK(future.mouse.preset == ogun::MousePreset::Ogun);
-    CHECK(future.mouse.bindings == ogunDefault.bindings);
-    CHECK(future.mouse.zoomSpeed == ogun::settings::kMaxMouseZoomSpeed);
+    CHECK(future.mouse.preset == mesheal::MousePreset::Mesheal);
+    CHECK(future.mouse.bindings == meshealDefault.bindings);
+    CHECK(future.mouse.zoomSpeed == mesheal::settings::kMaxMouseZoomSpeed);
 
-    // Custom: valid bindings are kept, invalid ones keep Ogun's binding for that action
-    const ogun::UserPreferences custom = ogun::parseUserPreferences(
+    // Custom: valid bindings are kept, invalid ones keep Mesheal's binding for that action
+    const mesheal::UserPreferences custom = mesheal::parseUserPreferences(
         "mouse.preset = custom\n"
         "mouse.orbit = middle\n"
         "mouse.pan = banana\n"
@@ -352,21 +352,21 @@ TEST_CASE("Mouse preferences: presets apply as built, unknown or invalid values 
         "mouse.select = wheel\n"        // the wheel for a click action
         "mouse.clear_pick = none\n"
         "mouse.future_action = left\n"); // unknown key
-    CHECK(custom.mouse.preset == ogun::MousePreset::Custom);
-    CHECK(custom.mouse.of(MouseAction::Orbit) == ogun::MouseActionBindings{{{MouseInput::Middle, 0}}});
-    CHECK(custom.mouse.of(MouseAction::Pan) == ogunDefault.of(MouseAction::Pan));
-    CHECK(custom.mouse.of(MouseAction::WheelZoom) == ogunDefault.of(MouseAction::WheelZoom));
-    CHECK(custom.mouse.of(MouseAction::Select) == ogunDefault.of(MouseAction::Select));
+    CHECK(custom.mouse.preset == mesheal::MousePreset::Custom);
+    CHECK(custom.mouse.of(MouseAction::Orbit) == mesheal::MouseActionBindings{{{MouseInput::Middle, 0}}});
+    CHECK(custom.mouse.of(MouseAction::Pan) == meshealDefault.of(MouseAction::Pan));
+    CHECK(custom.mouse.of(MouseAction::WheelZoom) == meshealDefault.of(MouseAction::WheelZoom));
+    CHECK(custom.mouse.of(MouseAction::Select) == meshealDefault.of(MouseAction::Select));
     CHECK_FALSE(custom.mouse.of(MouseAction::ClearPick)[0].bound());
 
-    // The default file writes the Ogun scheme, readable as text
-    const std::string text = ogun::formatUserPreferences(ogun::UserPreferences{});
-    CHECK(text.find("mouse.preset = ogun\n") != std::string::npos);
+    // The default file writes the Mesheal scheme, readable as text
+    const std::string text = mesheal::formatUserPreferences(mesheal::UserPreferences{});
+    CHECK(text.find("mouse.preset = mesheal\n") != std::string::npos);
     CHECK(text.find("mouse.pan = shift+left, right, middle\n") != std::string::npos);
 }
 
 TEST_CASE("Fix All preferences: defaults, limits, refused zero, malformed values and the load weld", "[app][preferences][fixall]") {
-    using namespace ogun;
+    using namespace mesheal;
     const UserPreferences defaults;
     CHECK(defaults.defaults.fixAll.passes == 3);
     CHECK(defaults.defaults.fixAll.weld);
@@ -416,7 +416,7 @@ TEST_CASE("Fix All preferences: defaults, limits, refused zero, malformed values
 }
 
 TEST_CASE("Fix All preferences reach the controller without touching the merge box or the load weld", "[app][preferences][fixall]") {
-    using namespace ogun;
+    using namespace mesheal;
     AppController controller;
     UserPreferences prefs;
     prefs.defaults.fixAll.passes = 6;
@@ -462,8 +462,8 @@ TEST_CASE("Fix All preferences reach the controller without touching the merge b
 }
 
 TEST_CASE("Theme preference: saved by key, unknown values fall back to Custom Light", "[app][preferences][theme]") {
-    CHECK(ogun::parseUserPreferences("").theme == ogun::UiTheme::CustomLight);
-    CHECK(ogun::parseUserPreferences("theme = dark\n").theme == ogun::UiTheme::Dark);
-    CHECK(ogun::parseUserPreferences("theme = polyscope_default\n").theme == ogun::UiTheme::PolyscopeDefault);
-    CHECK(ogun::parseUserPreferences("theme = solarized\n").theme == ogun::UiTheme::CustomLight);
+    CHECK(mesheal::parseUserPreferences("").theme == mesheal::UiTheme::CustomLight);
+    CHECK(mesheal::parseUserPreferences("theme = dark\n").theme == mesheal::UiTheme::Dark);
+    CHECK(mesheal::parseUserPreferences("theme = polyscope_default\n").theme == mesheal::UiTheme::PolyscopeDefault);
+    CHECK(mesheal::parseUserPreferences("theme = solarized\n").theme == mesheal::UiTheme::CustomLight);
 }

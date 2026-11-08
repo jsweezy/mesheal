@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// True if the ray `origin + t * dir` (t > 0) hits triangle (a, b, c) (Moller-Trumbore).
 [[nodiscard]] bool rayHitsTriangle(
@@ -42,4 +42,4 @@ enum class NestingProbe {
     const std::set<std::pair<int, int>>& crossingPairs,
     NestingProbe probe);
 
-} // namespace ogun
+} // namespace mesheal

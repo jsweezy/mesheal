@@ -12,7 +12,7 @@
 #include <optional>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// Inclusive range of histogram display bins used as a filter.
 struct BinRange {
@@ -172,4 +172,4 @@ private:
     std::uint64_t revision_ = nextRevision();
 };
 
-} // namespace ogun
+} // namespace mesheal

@@ -14,7 +14,7 @@
 #include <thread>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// One background job: compute a "Repair All" candidate for each method on a mesh snapshot.
 struct RepairRequest {
@@ -96,4 +96,4 @@ private:
     std::shared_ptr<FixAllProgress> fixAllProgress_; ///< The current job's (guarded by `mutex_`)
 };
 
-} // namespace ogun
+} // namespace mesheal

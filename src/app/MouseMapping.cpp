@@ -5,7 +5,7 @@
 #include <cctype>
 #include <cmath>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -177,7 +177,7 @@ MouseBindingTable mousePresetBindings(MousePreset preset) {
         pan = one(bind(Middle, kMouseModCtrl));
         zoom = one(bind(Middle, kMouseModShift));
         break;
-    case MousePreset::Ogun:
+    case MousePreset::Mesheal:
     case MousePreset::Custom:
         orbit = one(bind(Left));
         pan = {bind(Left, kMouseModShift), bind(Right), bind(Middle)};
@@ -237,7 +237,7 @@ const char* mouseActionKey(MouseAction action) noexcept {
 
 const char* mousePresetName(MousePreset preset) noexcept {
     switch (preset) {
-    case MousePreset::Ogun: return "Ogun (default)";
+    case MousePreset::Mesheal: return "Mesheal (default)";
     case MousePreset::Blender: return "Blender";
     case MousePreset::OpenScad: return "OpenSCAD";
     case MousePreset::Maya: return "Maya";
@@ -250,7 +250,7 @@ const char* mousePresetName(MousePreset preset) noexcept {
 
 const char* mousePresetKey(MousePreset preset) noexcept {
     switch (preset) {
-    case MousePreset::Ogun: return "ogun";
+    case MousePreset::Mesheal: return "mesheal";
     case MousePreset::Blender: return "blender";
     case MousePreset::OpenScad: return "openscad";
     case MousePreset::Maya: return "maya";
@@ -258,12 +258,12 @@ const char* mousePresetKey(MousePreset preset) noexcept {
     case MousePreset::SolidWorks: return "solidworks";
     case MousePreset::Custom: return "custom";
     }
-    return "ogun";
+    return "mesheal";
 }
 
 const char* mousePresetDescription(MousePreset preset) noexcept {
     switch (preset) {
-    case MousePreset::Ogun:
+    case MousePreset::Mesheal:
         return "Left drag orbits; Shift + Left, Right or Middle drag pans; the wheel or Ctrl + Shift + Left drag zooms.";
     case MousePreset::Blender:
         return "Blender (left-click select): Middle drag orbits, Shift + Middle pans, Ctrl + Middle or the wheel zooms. "
@@ -512,4 +512,4 @@ std::optional<MouseActionBindings> parseMouseBindingList(std::string_view text, 
     return bindings;
 }
 
-} // namespace ogun
+} // namespace mesheal

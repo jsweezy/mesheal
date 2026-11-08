@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// File in `configDirectory()` holding the recent STL list.
 inline constexpr const char* kRecentFilesFileName = "recent_files.txt";
@@ -18,7 +18,7 @@ inline constexpr std::size_t kMaxRecentFiles = 10;
 [[nodiscard]] std::filesystem::path recentFilesPath(const std::filesystem::path& configDirectory);
 
 /// The last STL files opened (File > Open Recent), most recent first, stored as absolute normalized
-/// paths so a file is found again whatever directory Ogun is launched from. The backing file is plain
+/// paths so a file is found again whatever directory Mesheal is launched from. The backing file is plain
 /// text, one path per line; an empty file path keeps the list in memory only.
 class RecentFiles {
 public:
@@ -44,4 +44,4 @@ private:
     std::vector<std::filesystem::path> entries_;
 };
 
-} // namespace ogun
+} // namespace mesheal

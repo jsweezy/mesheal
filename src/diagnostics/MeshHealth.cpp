@@ -5,7 +5,7 @@
 
 #include <chrono>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -155,4 +155,4 @@ CategoryResult runCategoryCheck(
     return result;
 }
 
-} // namespace ogun
+} // namespace mesheal

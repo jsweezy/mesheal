@@ -23,7 +23,7 @@
 #include <unordered_set>
 #include <utility>
 
-namespace ogun {
+namespace mesheal {
 
 namespace {
 
@@ -1098,7 +1098,7 @@ private:
 } // namespace
 
 std::size_t fixall_detail::countInScope(const CategoryResult& result, const FixAllScope& scope) {
-    return ogun::countInScope(result, scope, scope.everyFace());
+    return mesheal::countInScope(result, scope, scope.everyFace());
 }
 
 bool fixall_detail::outsideScopeKept(const Mesh& before, const Mesh& after, std::span<const Eigen::Index> map,
@@ -1429,4 +1429,4 @@ FixAllResult runFixAll(const Mesh& mesh, const FixAllScope& scope, const FixAllP
     return run.run(scope);
 }
 
-} // namespace ogun
+} // namespace mesheal

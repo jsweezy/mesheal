@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// One row of the Mesh Health panel (UI_DESIGN.md §5.1).
 enum class DefectCategory : std::uint8_t {
@@ -178,4 +178,4 @@ struct CheckParams {
     std::stop_token stopToken = {},
     std::atomic<float>* progress = nullptr);
 
-} // namespace ogun
+} // namespace mesheal

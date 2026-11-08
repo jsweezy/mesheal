@@ -10,7 +10,7 @@
 #include <stop_token>
 #include <vector>
 
-namespace ogun {
+namespace mesheal {
 
 /// Faces that pass through other faces of the same mesh, found the way Blender's 3D-Print Toolbox
 /// does: a self-overlap traversal of an AABB tree, then Möller's triangle test on each candidate pair.
@@ -55,4 +55,4 @@ struct FacePairHit {
     std::atomic<float>* progress = nullptr,
     unsigned maxThreads = settings::kIntersectionMaxThreads);
 
-} // namespace ogun
+} // namespace mesheal
