@@ -139,6 +139,19 @@ For detailed algorithmic descriptions of all repairs and diagnostics, see **[doc
 
 ---
 
+## Python Module (Blender)
+
+`src/python/` builds `_mesheal`, a nanobind module that exposes the checks and repairs to Python
+(numpy in, numpy out, with cancellable background jobs). It powers the Blender extension in
+`blender/`. Dev build on macOS against Blender's bundled Python:
+
+```bash
+scripts/build-blender-module.sh                       # builds build_python/, copies the .so into blender/mesheal_tools/
+ctest --test-dir build_python -R "python|blender" --output-on-failure --timeout 300
+```
+
+See `blender/README.md` for the extension and its limitations.
+
 ## Documentation
 
 - **[docs/CLI.md](docs/CLI.md)**: Headless CLI commands, collision-free auto-naming, and JSON metrics streaming.
