@@ -1102,6 +1102,7 @@ void PolyscopeGui::applyBaseMeshStyleToPolyscope() {
 
 void PolyscopeGui::syncDefectOverlaysToPolyscope(const HighlightOverlayGeometry& overlay) {
     selectedFaceIndices_ = overlay.selectedFaceIndices;
+    selectedFacePoints_ = overlay.selectedFacePoints;
     if (overlay.selectedFaceTriangles.empty()) {
         removeSurfaceMeshIfPresent(kSelectedFacesName);
     } else {
@@ -1111,6 +1112,7 @@ void PolyscopeGui::syncDefectOverlaysToPolyscope(const HighlightOverlayGeometry&
         psSelected->setBackFacePolicy(polyscope::BackFacePolicy::Identical);
         psSelected->setSurfaceColor(toGlm(controller_.overlayAppearance().faceSelectionColor));
         psSelected->setEdgeWidth(0.0);
+        liftSelectedFacesTowardCamera(true);
     }
     defectFaceIndices_ = overlay.overlayFaceIndices;
     overlayNodes_ = overlay.overlayPoints;
@@ -1478,6 +1480,46 @@ void PolyscopeGui::applyEffectiveHighlightSizingToPolyscope(bool forceUpdate) {
         polyscope::getPointCloud(kPreviewFocusName)->setPointRadius(pointRadius, false);
     }
     applyPerNodeOverlayRadii(defectEdgeRadius, originalEdgeRadius, pointRadius, forceUpdate);
+    liftSelectedFacesTowardCamera(forceUpdate);
+}
+
+void PolyscopeGui::liftSelectedFacesTowardCamera(bool force) {
+    if (!polyscope::hasSurfaceMesh(kSelectedFacesName) || selectedFacePoints_.empty()) {
+        return;
+    }
+    // The "Selected Faces" surface lies exactly on the base mesh, so the depth test cannot tell them apart.
+    // Each vertex moves toward the camera along its own line of sight, by a fixed fraction of its distance:
+    // the move is invisible on screen from this camera and scales with zoom, so it never looks like it hovers.
+    constexpr double kLiftFractionOfDistance = 1.0e-3;
+    const glm::mat4 view = polyscope::view::getCameraViewMatrix();
+    std::array<float, 16> key{};
+    for (int c = 0; c < 4; ++c) {
+        for (int r = 0; r < 4; ++r) {
+            key[static_cast<std::size_t>(4 * c + r)] = view[c][r];
+        }
+    }
+    if (!force && key == lastSelectedLiftKey_) {
+        return;
+    }
+    lastSelectedLiftKey_ = key;
+
+    const Eigen::Vector3d cam = currentCameraWorldPosition();
+    glm::vec3 look(0.0f, 0.0f, -1.0f);
+    glm::vec3 up(0.0f, 1.0f, 0.0f);
+    glm::vec3 right(1.0f, 0.0f, 0.0f);
+    polyscope::view::getCameraFrame(look, up, right);
+    const Eigen::Vector3d lookDir(static_cast<double>(look.x), static_cast<double>(look.y), static_cast<double>(look.z));
+    const bool perspective = polyscope::view::projectionMode == polyscope::ProjectionMode::Perspective;
+
+    std::vector<glm::vec3> lifted;
+    lifted.reserve(selectedFacePoints_.size());
+    for (const Eigen::Vector3d& p : selectedFacePoints_) {
+        const Eigen::Vector3d toCam = cam - p;
+        const double distance = perspective ? toCam.norm() : std::max(0.0, (p - cam).dot(lookDir));
+        const Eigen::Vector3d dir = perspective ? Eigen::Vector3d(toCam / std::max(distance, 1.0e-12)) : Eigen::Vector3d(-lookDir);
+        lifted.push_back(toGlm(p + dir * (kLiftFractionOfDistance * distance)));
+    }
+    polyscope::getSurfaceMesh(kSelectedFacesName)->updateVertexPositions(lifted);
 }
 
 void PolyscopeGui::applyPerNodeOverlayRadii(

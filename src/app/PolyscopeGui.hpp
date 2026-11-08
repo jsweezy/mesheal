@@ -353,6 +353,9 @@ private:
     polyscope::TransparencyMode savedTransparencyMode_ = polyscope::TransparencyMode::Pretty;
     bool baseIsCut_ = false;
     std::vector<Eigen::Index> baseFaceIndices_;   ///< Mesh face of each drawn base face (when `baseIsCut_`).
+    std::vector<Eigen::Vector3d> selectedFacePoints_; ///< Un-nudged "Selected Faces" vertices; the lift is recomputed per camera.
+    std::array<float, 16> lastSelectedLiftKey_{};     ///< View matrix the "Selected Faces" lift was computed for.
+    void liftSelectedFacesTowardCamera(bool force);
     std::vector<Eigen::Index> selectedFaceIndices_; ///< Mesh face of each "Selected Faces" face (Custom back faces).
     std::vector<Eigen::Index> defectFaceIndices_; ///< Mesh face of each "Selected Defect Faces" face.
     double lastAppliedDefectEdgeRadius_ = -1.0;
