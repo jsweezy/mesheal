@@ -4,12 +4,12 @@ cmake_minimum_required(VERSION 3.20)
 # (see RELEASE_PROCESS.md). Versions are simple integers: 1, 2, 3, ...
 project(
     Ogun
-    VERSION 1
+    VERSION 2
     DESCRIPTION "Ogun — STL Repair Tool for Simulation Meshes"
     LANGUAGES CXX C
 )
 
-set(OGUN_VERSION_DATE "2026-10-28")  # ISO release date (YYYY-MM-DD)
+set(OGUN_VERSION_DATE "2026-11-07")  # ISO release date (YYYY-MM-DD)
 
 # ------------------------------------------------------------------------------
 # Language Standard & Global Settings

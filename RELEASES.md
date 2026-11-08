@@ -2,6 +2,16 @@
 
 Release notes, newest first. Versions are simple integers (v1, v2, ...) tagged in git as `v#`. See [RELEASE_PROCESS.md](RELEASE_PROCESS.md) for how to cut a release.
 
+## v2 — 2026-11-07
+
+Final release under the name Ogun; the project continues as Mesheal.
+
+- Grow and shrink the hole rim selection with `+` and `-` before Delete.
+- Box and circle selection no longer pick faces behind or partly behind the repair patch.
+- Darker and Custom back faces stay visible when faces are selected.
+- Selected hole-rim faces use the selected faces color.
+- UI theme with shared widget styling and saved preferences.
+
 ## v1 — 2026-10-28
 
 First release.
