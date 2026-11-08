@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Regenerates assets/icons/mesheal.{png,jpeg,icns} from a square source PNG (2048x2048 recommended).
-# Usage: scripts/make-icons.sh path/to/mesheal_logo.png
+# Regenerates assets/icons/mesheal.{png,jpeg,icns} from the master logo, assets/icons/mesheal_source.png
+# (2048x2048), or from another square PNG given as the first argument.
+# Usage: scripts/make-icons.sh [path/to/logo.png]
 set -euo pipefail
-src="${1:?usage: make-icons.sh SOURCE.png}"
 out="$(cd "$(dirname "$0")/.." && pwd)/assets/icons"
+src="${1:-$out/mesheal_source.png}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 iconset="$work/mesheal.iconset"
