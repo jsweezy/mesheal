@@ -9,14 +9,31 @@ class Item(NamedTuple):
     count: int
     icon: str
     info_only: bool = False
-    indices: Sequence[int] = ()  # face indices for "select"
+    indices: Sequence[int] = ()  # polygon indices for "select"
 
+
+# native Category name -> (label, icon), in panel order
+CATEGORIES = {
+    "SHELLS": ("Shells", "MESH_ICOSPHERE"),
+    "OPEN_EDGES": ("Holes", "MOD_SOLIDIFY"),
+    "NON_MANIFOLD_EDGES": ("Non-manifold Edges", "EDGESEL"),
+    "NON_MANIFOLD_VERTICES": ("Non-manifold Vertices", "VERTEXSEL"),
+    "FLIPPED_NORMALS": ("Flipped Normals", "NORMALS_FACE"),
+    "INVERTED_SHELLS": ("Inverted Shells", "ORIENTATION_NORMAL"),
+    "INTERSECTIONS": ("Self-intersections", "SELECT_INTERSECT"),
+    "THIN_FACES": ("Thin Faces", "MOD_SIMPLIFY"),
+    "DEGENERATE": ("Degenerate Faces", "FACESEL"),
+    "DUPLICATES": ("Duplicate Faces", "DUPLICATE"),
+}
 
 _data: list[Item] = []
+_source = {"object": None, "polygons": -1}
 
 
-def update(items):
+def update(items, obj=None, polygons=-1):
     _data[:] = items
+    _source["object"] = obj.name if obj is not None else None
+    _source["polygons"] = polygons
 
 
 def get():
@@ -25,19 +42,10 @@ def get():
 
 def clear():
     _data.clear()
+    _source["object"] = None
+    _source["polygons"] = -1
 
 
-def placeholder_results():
-    """Fake results so the panel layout can be designed before mesheal is hooked up."""
-    return (
-        Item("Shells", 3, "MESH_ICOSPHERE", info_only=True),
-        Item("Holes", 2, "MOD_SOLIDIFY", indices=(0, 1)),
-        Item("Non-manifold Edges", 4, "EDGESEL", indices=(2,)),
-        Item("Non-manifold Vertices", 0, "VERTEXSEL"),
-        Item("Flipped Normals", 12, "NORMALS_FACE", indices=(3, 4)),
-        Item("Inverted Shells", 0, "ORIENTATION_NORMAL"),
-        Item("Self-intersections", 37, "SELECT_INTERSECT", indices=(5,)),
-        Item("Thin Faces", 8, "MOD_SIMPLIFY", indices=(0,)),
-        Item("Degenerate Faces", 0, "FACESEL"),
-        Item("Duplicate Faces", 1, "DUPLICATE", indices=(1,)),
-    )
+def stale(obj, polygons):
+    """True if the results were not made from `obj` with `polygons` faces."""
+    return obj is None or obj.name != _source["object"] or polygons != _source["polygons"]

@@ -1,15 +1,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Mesheal tools for Blender: mesh checks and repairs (UI prototype, operators are stubs)."""
+"""Mesheal tools for Blender: mesh checks and repairs (native mesheal module)."""
 
 if "bpy" in locals():
     import importlib
 
     importlib.reload(props)  # noqa: F821
+    importlib.reload(bridge)  # noqa: F821
     importlib.reload(report)  # noqa: F821
     importlib.reload(operators)  # noqa: F821
     importlib.reload(ui)  # noqa: F821
 else:
-    from . import props, report, operators, ui
+    from . import props, bridge, report, operators, ui
 
 import bpy
 from bpy.props import PointerProperty

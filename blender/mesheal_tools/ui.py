@@ -3,7 +3,7 @@
 
 from bpy.types import Menu, Panel
 
-from . import report
+from . import bridge, report
 
 
 class _Sidebar:
@@ -29,6 +29,8 @@ class VIEW3D_PT_mesheal_check(_Sidebar, Panel):
         layout = self.layout
         props = context.scene.mesheal
 
+        if not bridge.available():
+            layout.label(text=bridge.BUILD_HINT, icon="ERROR")
         _big_button(layout, "mesh.mesheal_check", "VIEWZOOM")
 
         items = report.get()
@@ -111,9 +113,11 @@ class VIEW3D_PT_mesheal_remesh(_Sidebar, Panel):
         col = layout.column()
         if props.remesh_method in {"VOXEL", "ISO"}:
             col.prop(props, "remesh_target_size", text="Edge Length")
-            col.prop(props, "remesh_smoothing", text="Smoothing")
             if props.remesh_method == "ISO":
+                col.prop(props, "iso_smoothing", text="Smoothing")
                 col.prop(props, "iso_chord_ratio")
+            else:
+                col.prop(props, "remesh_smoothing", text="Smoothing")
         else:
             col.prop(props, "alpha_detail")
             col.prop(props, "alpha_offset_ratio")

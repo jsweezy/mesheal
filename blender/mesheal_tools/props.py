@@ -124,6 +124,13 @@ class MeshealSceneProps(PropertyGroup):
         min=0,
         max=10,
     )
+    iso_smoothing: IntProperty(
+        name="Smoothing Passes",
+        description="Tangential relaxation passes on the isosurface",
+        default=1,
+        min=0,
+        max=10,
+    )
     iso_chord_ratio: FloatProperty(
         name="Curve Fidelity",
         description="Chord tolerance as a fraction of the target edge length (smaller follows curves closer)",
