@@ -24,6 +24,13 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # ------------------------------------------------------------------------------
 option(MESHEAL_BUILD_TESTS "Build Mesheal Catch2 unit tests" ON)
 option(MESHEAL_BUILD_GUI   "Build Mesheal Polyscope/ImGui desktop application" ON)
+option(MESHEAL_BUILD_PYTHON "Build the _mesheal Python module (Blender extension)" OFF)
+option(MESHEAL_USE_TBB     "Use oneTBB through CGAL when found" ON)
+
+# A Python extension module is a shared library: every static library linked into it needs PIC.
+if(MESHEAL_BUILD_PYTHON)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
 
 # ------------------------------------------------------------------------------
 # Project-Wide Compiler Warnings (applied only to Mesheal targets)
@@ -70,4 +77,8 @@ add_subdirectory(src/app)
 
 if(MESHEAL_BUILD_GUI)
     add_subdirectory(src/mockup)
+endif()
+
+if(MESHEAL_BUILD_PYTHON)
+    add_subdirectory(src/python)
 endif()

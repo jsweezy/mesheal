@@ -39,3 +39,7 @@ benchmarks/results/
 cache/
 *_fixed_*.stl
 
+
+# Python module build
+build_python/
+blender/mesheal_tools/_mesheal*.so

@@ -119,8 +119,11 @@ if(NOT CGAL_FOUND)
 endif()
 mesheal_mark_target_includes_system(CGAL::CGAL)
 mesheal_record_dependency("CGAL" "${CGAL_VERSION}")
-find_package(TBB CONFIG QUIET HINTS /opt/homebrew/opt/tbb /usr/local/opt/tbb)
-if(TBB_FOUND)
+# The Python module turns TBB off: Blender ships its own libtbb and two copies in one process are risky.
+if(MESHEAL_USE_TBB)
+    find_package(TBB CONFIG QUIET HINTS /opt/homebrew/opt/tbb /usr/local/opt/tbb)
+endif()
+if(MESHEAL_USE_TBB AND TBB_FOUND)
     include(CGAL_TBB_support)
     mesheal_mark_target_includes_system(TBB::tbb)
     mesheal_mark_target_includes_system(TBB::tbbmalloc)
@@ -180,4 +183,19 @@ if(MESHEAL_BUILD_GUI)
         )
     endif()
     mesheal_record_dependency("portable-file-dialogs" "main (unpinned)")
+endif()
+
+# ------------------------------------------------------------------------------
+# 5. nanobind — Python bindings (only for the _mesheal module)
+# ------------------------------------------------------------------------------
+if(MESHEAL_BUILD_PYTHON)
+    find_package(Python 3.10 COMPONENTS Interpreter Development.Module REQUIRED)
+    FetchContent_Declare(
+        nanobind
+        GIT_REPOSITORY https://github.com/wjakob/nanobind.git
+        GIT_TAG        v2.4.0
+        GIT_SHALLOW    TRUE
+    )
+    FetchContent_MakeAvailable(nanobind)
+    mesheal_record_dependency("nanobind" "2.4.0")
 endif()
