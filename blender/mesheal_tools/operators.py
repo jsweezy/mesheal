@@ -136,7 +136,6 @@ class _JobOperator:
         self._task = task
         wm = context.window_manager
         self._timer = wm.event_timer_add(0.1, window=context.window)
-        wm.progress_begin(0, 100)
         wm.modal_handler_add(self)
         _active = self
         return {"RUNNING_MODAL"}
@@ -147,7 +146,6 @@ class _JobOperator:
         if getattr(self, "_timer", None) is not None:
             wm.event_timer_remove(self._timer)
             self._timer = None
-        wm.progress_end()
         try:
             context.workspace.status_text_set(None)
         except AttributeError:
@@ -162,7 +160,6 @@ class _JobOperator:
 
         if event.type == "TIMER" and not job.done:
             pct = int(job.progress * 100)
-            context.window_manager.progress_update(pct)
             context.workspace.status_text_set(f"Mesheal: {job.status_text} {pct}%  (Esc to cancel)")
             return {"RUNNING_MODAL"}
 
