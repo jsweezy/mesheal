@@ -139,6 +139,18 @@ jobs:
               [ -f "$lic" ] && cp "$lic" "$APP/Contents/Resources/licenses/$f-$(basename "$lic")"
             done
           done
+          # dylibbundler can leave the same LC_RPATH twice, which dyld refuses to load; keep one copy
+          # of the bundle's Frameworks path and drop paths into Homebrew or the build folder
+          BIN="$APP/Contents/MacOS/Mesheal"
+          rpaths() { otool -l "$BIN" | awk '/cmd LC_RPATH/ {getline; getline; print $2}'; }
+          rpaths | sort | uniq -c | while read -r count path; do
+            keep=1
+            case "$path" in @executable_path/*|@loader_path/*) ;; *) keep=0 ;; esac
+            remove=$((count - keep))
+            for _ in $(seq 1 "$remove"); do install_name_tool -delete_rpath "$path" "$BIN"; done
+          done
+          echo "Remaining LC_RPATH entries:"; rpaths
+          if [ -n "$(rpaths | sort | uniq -d)" ]; then echo "::error::Duplicate LC_RPATH left"; exit 1; fi
           # Modified binaries must be re-signed (ad hoc: no Apple Developer ID)
           codesign --force --deep --sign - "$APP"
           if otool -L "$APP/Contents/MacOS/Mesheal" "$APP"/Contents/Frameworks/*.dylib | grep -E '/opt/homebrew|/usr/local/'; then
