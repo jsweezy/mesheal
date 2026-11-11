@@ -127,7 +127,7 @@ Full Python API and dataset instructions are documented in **[docs/BENCHMARKS.md
 
 | Capability | Description |
 |---|---|
-| **Edge-Aware Vertex Welding** | Welds unindexed triangle soup using coordinate-relative tolerances ($10^{-9}$ relative, $10^{-9}\text{ cm}$ atomic floor) while protecting zero-area and sliver faces from premature collapse. |
+| **Edge-Aware Vertex Welding** | Welds unindexed triangle soup using coordinate-relative tolerances ($10^{-9}$ relative, $10^{-9}$ absolute floor) while protecting zero-area and sliver faces from premature collapse. |
 | **Units Verification** | Change File Units (`mm`, `cm`, `m`, `in`, `ft`) without mutating vertex coordinates; separate explicit scaling action avoids scaling mistakes. |
 | **Mesh Health Diagnostics** | Real-time background checking for open holes, non-manifold edges/vertices, flipped normals, inverted shells, self-intersections, thin/sliver faces, degenerate faces, and duplicates. |
 | **Automated "Fix All"** | Multi-pass engine that closes cracks, heals slivers, splits non-manifold contacts, repairs normal orientation, and merges overlapping shells while preserving cavities. |
@@ -150,20 +150,22 @@ scripts/build-blender-module.sh                       # builds build_python/, co
 ctest --test-dir build_python -R "python|blender" --output-on-failure --timeout 300
 ```
 
-See `blender/README.md` for the extension and its limitations.
+See [docs/blender.md](docs/blender.md) for the extension and its limitations.
 
 ## Documentation
 
-- **[docs/CLI.md](docs/CLI.md)**: Headless CLI commands, collision-free auto-naming, and JSON metrics streaming.
-- **[docs/BENCHMARKS.md](docs/BENCHMARKS.md)**: Python benchmarking framework, FixSTL dataset integration, and local STL caching.
-- **[docs/FEATURES.md](docs/FEATURES.md)**: Exhaustive reference for welding tolerances, diagnostic checks, and repair algorithms.
-- **[docs/NAVIGATION.md](docs/NAVIGATION.md)**: 3D viewport navigation, mouse schemes, selection tools, and keyboard shortcuts.
-- **[docs/DESKTOP_INTEGRATION.md](docs/DESKTOP_INTEGRATION.md)**: Native desktop integration for macOS (`Mesheal.app`) and Linux desktop environments.
-- **[VISION.md](VISION.md)**: Physical simulation motivation, multi-scale tolerance philosophy, and design principles.
-- **[UI_DESIGN.md](UI_DESIGN.md)**: Specification and layout for GUI panels and inspection workflows.
-- **[PLAN.md](PLAN.md)**: Incremental development roadmap and Catch2 TDD testing guidelines.
-- **[TODO.md](TODO.md)**: Task punch list tracking completed and upcoming features.
-- **[RELEASE_PROCESS.md](RELEASE_PROCESS.md)**: Instructions for releasing new version tags.
+**Full documentation: <https://jsweezy.github.io/mesheal/>** (built from [`docs/`](docs/)).
+
+- **[Getting started](docs/getting-started.md)**: a five-step walk-through of the desktop app.
+- **[Why Mesheal](docs/why.md)**: the simulation problem, multi-scale welding, and design principles.
+- **Desktop app**: [window tour](docs/gui/overview.md), [Mesh Health](docs/gui/mesh-health.md), [repairing](docs/gui/repairs.md), [shells](docs/gui/shells.md), [units & preferences](docs/gui/units-and-preferences.md), [navigation & shortcuts](docs/NAVIGATION.md), [desktop integration](docs/DESKTOP_INTEGRATION.md).
+- **[Command line](docs/CLI.md)**: headless actions, options, safe output naming, JSON output and exit codes.
+- **[Python module](docs/python.md)**, **[Blender extension](docs/blender.md)** and **[benchmarks](docs/BENCHMARKS.md)**.
+- **[Feature reference](docs/FEATURES.md)**: welding tolerances, checks, and repair algorithms.
+- **[Contributing](CONTRIBUTING.md)** and **[release process](RELEASE_PROCESS.md)**.
+
+In the app, see **Help > Getting Started**, **Help > Navigation & Shortcuts** (`F1`), and
+**Help > Online Documentation**. On the command line, run `mesheal --help`.
 
 ---
 

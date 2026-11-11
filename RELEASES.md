@@ -1,6 +1,6 @@
 # Mesheal Releases
 
-Release notes, newest first. Versions are simple integers (v1, v2, ...) tagged in git as `v#`. See [RELEASE_PROCESS.md](RELEASE_PROCESS.md) for how to cut a release.
+Release notes, newest first. Versions are simple integers (v1, v2, ...) tagged in git as `v#`. See [the release process](https://github.com/jsweezy/mesheal/blob/main/RELEASE_PROCESS.md) for how to cut a release.
 
 ## v3 — 2026-11-07
 

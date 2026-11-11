@@ -8,7 +8,7 @@ This document provides detailed algorithmic explanations for Mesheal's mesh diag
 
 Raw STL files are unindexed soups of detached triangle facets ($3|F|$ coordinates). On file loading, Mesheal welds duplicate vertex coordinates into a shared-vertex indexed mesh using local coordinate-relative tolerances:
 - **Relative Tolerance**: $10^{-9}$ of the local coordinate magnitude.
-- **Absolute Floor**: $10^{-9}\text{ cm}$ atomic coordinate floor to prevent collapse near the origin.
+- **Absolute Floor**: $10^{-9}$ in file coordinates (the file unit never rescales it), to prevent collapse near the origin.
 - **Edge-Aware Guard**: Two corners belonging to the same triangle are never merged into the same vertex index, strictly preserving zero-area and thin sliver faces for user inspection.
 - **Topology-Aware Contact Separation**: Solids that only touch along an edge or at a vertex (which geometric position welding cannot distinguish from a structural connection) are separated by allocating distinct vertex indices, avoiding false non-manifold edge or vertex diagnostics.
 

@@ -8,7 +8,7 @@ Mesheal uses **Blender-inspired, selection-centric 3D camera navigation** tailor
 
 ### Mouse Controls (3D Viewport)
 
-These are the bindings of the default **Mesheal** mouse scheme. *Edit > Preferences > Mouse* switches to a Blender, OpenSCAD, Maya, Fusion 360 or SolidWorks scheme, or rebinds any action (see [Mouse Schemes](#mouse-schemes-edit--preferences--mouse) below). The in-app **3D Viewport Navigation & Shortcuts** window always lists the active bindings.
+These are the bindings of the default **Mesheal** mouse scheme. *Edit > Preferences > Mouse* switches to a Blender, OpenSCAD, Maya, Fusion 360 or SolidWorks scheme, or rebinds any action (see [Mouse Schemes](#mouse-schemes-edit-preferences-mouse) below). The in-app **3D Viewport Navigation & Shortcuts** window always lists the active bindings.
 
 | Action | Input | Behavior |
 | :--- | :--- | :--- |
