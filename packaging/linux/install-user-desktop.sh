@@ -21,7 +21,7 @@ fi
 
 # Copy icon
 echo "Installing application icon to ${ICON_DIR}/mesheal.png..."
-cp "${REPO_DIR}/assets/icons/mesheal.png" "${ICON_DIR}/mesheal.png"
+cp "${REPO_DIR}/assets/icons/mesheal_512.png" "${ICON_DIR}/mesheal.png"
 
 # Copy MIME file
 echo "Installing MIME type to ${MIME_DIR}/mesheal.xml..."

@@ -134,8 +134,9 @@ if(MESHEAL_BUILD_GUI)
             DESTINATION share/mime/packages
             RENAME mesheal.xml
         )
-        install(FILES "${CMAKE_SOURCE_DIR}/assets/icons/mesheal.png"
+        install(FILES "${CMAKE_SOURCE_DIR}/assets/icons/mesheal_512.png"
             DESTINATION share/icons/hicolor/512x512/apps
+            RENAME mesheal.png
         )
     endif()
 

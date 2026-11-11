@@ -74,10 +74,12 @@ jobs:
             if [ -f /usr/share/doc/$lib/copyright ]; then cp /usr/share/doc/$lib/copyright AppDir/usr/share/doc/mesheal/$lib-copyright; fi
           done
           install -D -m 644 packaging/linux/mesheal-mime.xml AppDir/usr/share/mime/packages/mesheal.xml
+          # The icon's file name must match Icon=mesheal in the desktop entry; at most 512x512
+          mkdir -p icon && cp assets/icons/mesheal_512.png icon/mesheal.png
           ./linuxdeploy-x86_64.AppImage --appdir AppDir \
             --executable build/src/app/mesheal \
             --desktop-file packaging/linux/mesheal.desktop \
-            --icon-file assets/icons/mesheal.png \
+            --icon-file icon/mesheal.png \
             --output appimage
           ls -la Mesheal-linux-x86_64.AppImage
 

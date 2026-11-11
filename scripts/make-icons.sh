@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Regenerates assets/icons/mesheal.{png,jpeg,icns} from the master logo, assets/icons/mesheal_source.png
-# (2048x2048), or from another square PNG given as the first argument.
+# (2048x2048), or from another square PNG given as the first argument. Also writes mesheal_512.png.
 # Usage: scripts/make-icons.sh [path/to/logo.png]
 set -euo pipefail
 out="$(cd "$(dirname "$0")/.." && pwd)/assets/icons"
@@ -15,4 +15,6 @@ for s in 16 32 128 256 512; do
 done
 iconutil -c icns "$iconset" -o "$out/mesheal.icns"
 sips -z 1024 1024 "$src" --out "$out/mesheal.png" >/dev/null
+# Linux desktop icon (freedesktop icon themes and AppImage accept at most 512x512)
+sips -z 512 512 "$src" --out "$out/mesheal_512.png" >/dev/null
 sips -s format jpeg "$src" --out "$out/mesheal.jpeg" >/dev/null
