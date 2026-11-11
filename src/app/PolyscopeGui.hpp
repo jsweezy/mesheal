@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace polyscope {
@@ -26,7 +27,7 @@ class TextureBuffer;
 namespace mesheal {
 
 /// Thin Polyscope + Dear ImGui visual presentation layer bound to `mesheal::AppController`.
-/// Layout (UI_DESIGN.md §3): menu bar, left column (Display / Navigate / Shells / Structures), right
+/// Layout (.docs/UI_DESIGN.md §3): menu bar, left column (Display / Navigate / Shells / Structures), right
 /// column (Mesh Health + Tool slot) and a status bar, all docked by code every frame.
 /// Implementation is split across PolyscopeGui.cpp (Polyscope sync, mouse, keys),
 /// PolyscopeGuiShell.cpp (layout, menus, status bar, windows), PolyscopeGuiPanels.cpp
@@ -83,6 +84,9 @@ private:
     void savePreferencesIfChanged(bool force = false);
     void drawNavigationHelpWindow();
     void drawAboutWindow();
+    void drawGettingStartedWindow();
+    /// Opens a URL in the browser and reports the result in the status bar.
+    void openWebPage(std::string_view url);
     void drawModalPopups();
     void resetLayout();
     void openFileDialog();
@@ -291,6 +295,7 @@ private:
     } fixAllCavityCache_;
     bool showNavigationHelpWindow_ = false;
     bool showAboutWindow_ = false;
+    bool showGettingStartedWindow_ = false;
     bool requestSaveConfirm_ = false;
     bool requestDeleteConfirm_ = false;                      ///< Open the X-key "Delete N selected faces?" popup
     bool requestSetOrigin_ = false;                          ///< Open the Set Origin to Selection confirmation

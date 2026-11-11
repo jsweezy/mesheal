@@ -885,13 +885,80 @@ void PolyscopeGui::drawHelpMenu() {
     if (!ImGui::BeginMenu("Help")) {
         return;
     }
+    if (ImGui::MenuItem("Getting Started", nullptr, showGettingStartedWindow_)) {
+        showGettingStartedWindow_ = !showGettingStartedWindow_;
+    }
+    tooltip("The basic workflow in five steps: open, check, repair, compare, save.");
     if (ImGui::MenuItem("Navigation & Shortcuts", "F1 / ?", showNavigationHelpWindow_)) {
         showNavigationHelpWindow_ = !showNavigationHelpWindow_;
     }
+    ImGui::Separator();
+    if (ImGui::MenuItem("Online Documentation")) {
+        openWebPage(kDocumentationUrl);
+    }
+    tooltip(std::string(kDocumentationUrl).c_str());
+    if (ImGui::MenuItem("Report an Issue")) {
+        openWebPage(kIssuesUrl);
+    }
+    tooltip(std::string(kIssuesUrl).c_str());
+    ImGui::Separator();
     if (ImGui::MenuItem("About Mesheal")) {
         showAboutWindow_ = true;
     }
     ImGui::EndMenu();
+}
+
+void PolyscopeGui::openWebPage(std::string_view url) {
+    if (std::string error; !openUrlInBrowser(url, &error)) {
+        controller_.postStatusMessage(error + " Open " + std::string(url) + " in your browser.", true);
+        return;
+    }
+    controller_.postStatusMessage("Opened " + std::string(url) + " in your browser.");
+}
+
+void PolyscopeGui::drawGettingStartedWindow() {
+    const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(520.0f, 0.0f), ImGuiCond_Appearing);
+    if (!ImGui::Begin("Getting Started", &showGettingStartedWindow_, ImGuiWindowFlags_NoCollapse)) {
+        ImGui::End();
+        return;
+    }
+    constexpr std::array<std::pair<const char*, const char*>, 6> kSteps = {{
+        {"1. Open a mesh",
+         "File > Open (Cmd/Ctrl+O), drag an STL into the window, or try File > Load Sample. Set the file's "
+         "units in Mesh > Units & Scale: this only labels the numbers, it never moves the geometry."},
+        {"2. Check it",
+         "Mesh Health (right) checks the mesh after loading (Preferences > Diagnostics can turn this off). "
+         "Check Mesh (F5) runs every row, including Intersecting faces, whose Auto box is off by default "
+         "because it is the slowest check."},
+        {"3. Look at a problem",
+         "Click a Mesh Health row to tint its defects and open its tool. N / Shift+N step through them, "
+         "\".\" frames the focused one, G ghosts the mesh so you can see inside."},
+        {"4. Repair",
+         "Fix All... (Shift+F5) repairs everything in a safe order and previews the result. Or fix one "
+         "kind at a time from its row, or one defect at a time from the Inspector."},
+        {"5. Compare and decide",
+         "Every repair shows volume, area and how far the surface moved, before and after. Nothing changes "
+         "until you Apply, and every Apply is one undo step (Cmd/Ctrl+Z)."},
+        {"6. Save",
+         "File > Save As writes a new binary or ASCII STL. File > Save writes over the file you opened, and asks "
+         "the first time."},
+    }};
+    for (const auto& [title, body] : kSteps) {
+        ImGui::SeparatorText(title);
+        ImGui::TextWrapped("%s", body);
+    }
+    ImGui::Spacing();
+    ImGui::Separator();
+    if (ImGui::Button("Navigation & Shortcuts")) {
+        showNavigationHelpWindow_ = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Online Documentation")) {
+        openWebPage(kDocumentationUrl);
+    }
+    ImGui::End();
 }
 
 // -----------------------------------------------------------------------------
@@ -1540,6 +1607,15 @@ void PolyscopeGui::drawAboutWindow() {
             centredText("By Jeremy Sweezy");
             ImGui::Spacing();
             centredText("Licensed under the GNU General Public License v3.0 (GPLv3)");
+            ImGui::Spacing();
+            const std::string docsLabel = std::string(kDocumentationUrl);
+            const float docsIndent = (ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(docsLabel.c_str()).x -
+                                      2.0f * ImGui::GetStyle().FramePadding.x) * 0.5f;
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, docsIndent));
+            if (ImGui::Button(docsLabel.c_str())) {
+                openWebPage(kDocumentationUrl);
+            }
+            tooltip("Open the online documentation in your browser.");
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Credits")) {

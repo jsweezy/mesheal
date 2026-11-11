@@ -426,6 +426,9 @@ void PolyscopeGui::drawUiFrame() {
     if (showAboutWindow_) {
         drawAboutWindow();
     }
+    if (showGettingStartedWindow_) {
+        drawGettingStartedWindow();
+    }
     drawPolyscopeWindows(top, bottom, rightLeft);
     drawCompass(settings::kLeftColumnWidthPx + 2.0f * settings::kPanelMarginPx, bottom);
     drawNoMeshHint(settings::kLeftColumnWidthPx + 2.0f * settings::kPanelMarginPx, top, bottom);

@@ -6,6 +6,7 @@
 #include "mesh/Mesh.hpp"
 #include "repair/GlobalRepair.hpp"
 #include "repair/RepairMetrics.hpp"
+#include "mesheal/Version.hpp"
 
 #include <chrono>
 #include <exception>
@@ -55,35 +56,57 @@ std::string actionName(CliAction action) {
     return "unknown";
 }
 
+} // namespace
+
+std::string usageText(std::string_view prog) {
+    std::ostringstream os;
+    os << "Mesheal " << kVersionString << " - inspect and repair STL meshes for simulation\n\n"
+       << "Usage:\n"
+       << "  " << prog << " [<input.stl>]\n"
+       << "      Open the 3D desktop app, optionally with a file.\n"
+       << "  " << prog << " <action> [options] <input.stl>\n"
+       << "      Run headless (no window): check or repair the file, write the result and exit.\n\n"
+       << "Actions (pick one):\n"
+       << "  --diagnostics, --inspect Report mesh health; never changes or writes the mesh\n"
+       << "  --fix-all                Multi-pass Fix All: weld cracks, remove collapsed and duplicate\n"
+       << "                           faces, heal slivers, split non-manifold contacts, fix normals,\n"
+       << "                           fill holes and repair intersections\n"
+       << "  --remesh-voxel           Voxel Heal & Remesh (fast; Taubin smoothed, keeps cavities)\n"
+       << "  --remesh-iso             Precision Isosurface remesh (FEA grade, Delaunay refinement)\n"
+       << "  --rebuild-alpha          Shrink-Wrap outer envelope (CGAL 3D Alpha Wrap; fills cavities)\n"
+       << "  --rebuild-union          Self-union outer surface (CGAL autorefinement)\n"
+       << "  --rebuild-winding        Generalized winding number marching cubes rebuild\n\n"
+       << "Repair options:\n"
+       << "  --passes <N>             Maximum Fix All passes (default: 3)\n"
+       << "  --time-budget <sec>      Stop Fix All after this many seconds (default: 0 = no limit)\n"
+       << "  --edge-length <len>      Target edge length for remeshing, in file units (default: auto)\n"
+       << "  --smoothing <N>          Smoothing passes for --remesh-voxel (default: 3)\n"
+       << "  --chord-ratio <ratio>    Surface approximation for --remesh-iso (default: 0.10)\n"
+       << "  --alpha <val>            Alpha (probe size) for --rebuild-alpha (default: auto)\n"
+       << "  --offset <val>           Offset distance for --rebuild-alpha (default: auto)\n"
+       << "  --resolution <N>         Grid resolution for --rebuild-winding (default: 128, min 16)\n\n"
+       << "Output options:\n"
+       << "  -o, --output <file>      Where to write the repaired STL. Never overwrites the input:\n"
+       << "                           without -o, writes <stem>_fixed_1.stl (_2, _3, ... if taken)\n"
+       << "  --json                   Print one JSON object with before/after metrics to stdout\n"
+       << "  --quiet                  Suppress informational output (errors still print)\n\n"
+       << "Other:\n"
+       << "  -v, --version            Print version and build information\n"
+       << "  -h, --help               Print this help\n\n"
+       << "Examples:\n"
+       << "  " << prog << " part.stl --diagnostics\n"
+       << "  " << prog << " part.stl --fix-all -o part_clean.stl\n"
+       << "  " << prog << " part.stl --fix-all --json > metrics.json\n"
+       << "  " << prog << " scan.stl --remesh-voxel --edge-length 0.5\n\n"
+       << "Exit status: 0 on success, 1 on error (bad input, failed repair, failed write).\n"
+       << "Documentation: " << kDocumentationUrl << "\n";
+    return os.str();
+}
+
+namespace {
+
 void printUsage(const char* prog) {
-    std::cout
-        << "Mesheal STL Repair Tool — Headless CLI & 3D Viewer\n\n"
-        << "Usage:\n"
-        << "  " << prog << " [options] <input.stl>\n\n"
-        << "Repair & Rebuild Actions:\n"
-        << "  --fix-all                Execute multi-pass automated Fix All repair pipeline\n"
-        << "  --remesh-voxel           Pipeline A: Voxel Heal & Remesh (Fast, Taubin smoothed)\n"
-        << "  --remesh-iso             Pipeline B: Precision Isosurface Remesh (FEA grade)\n"
-        << "  --rebuild-alpha          Surface rebuild via CGAL 3D Alpha Wrap\n"
-        << "  --rebuild-union          Self-union outer hull (CGAL autorefinement)\n"
-        << "  --rebuild-winding        Generalized winding number marching cubes\n"
-        << "  --diagnostics, --inspect Inspect mesh health without modifying geometry\n\n"
-        << "Repair Tuning Options:\n"
-        << "  --passes <N>             Maximum passes for Fix All (default: 3)\n"
-        << "  --time-budget <sec>      Time budget in seconds for Fix All (default: 0 = none)\n"
-        << "  --edge-length <len>      Target edge length for remeshing (default: auto)\n"
-        << "  --smoothing <N>          Smoothing passes for remeshing (default: 3)\n"
-        << "  --chord-ratio <ratio>    Chord ratio for precision remeshing (default: 0.10)\n"
-        << "  --alpha <val>            Alpha parameter for alpha wrap (default: auto)\n"
-        << "  --offset <val>           Offset parameter for alpha wrap (default: auto)\n"
-        << "  --resolution <N>         Grid resolution for winding rebuild (default: 128)\n\n"
-        << "Output Options:\n"
-        << "  -o, --output <file>      Explicit output path (never overwrites input)\n"
-        << "                           If omitted, auto-names to <stem>_fixed_1.stl, _2.stl, etc.\n"
-        << "  --json                   Stream machine-readable JSON metrics to stdout\n"
-        << "  --quiet                  Suppress non-JSON informational stdout\n"
-        << "  -v, --version            Display version information\n"
-        << "  -h, --help               Display this help text\n";
+    std::cout << usageText(prog);
 }
 
 } // namespace

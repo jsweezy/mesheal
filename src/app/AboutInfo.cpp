@@ -2,6 +2,14 @@
 
 #include "mesheal/Version.hpp"
 
+#include <cerrno>
+#include <cstring>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <thread>
+
+extern char** environ;
+
 namespace mesheal {
 
 std::string_view copyrightNotice() {
@@ -53,6 +61,38 @@ std::string buildInfoText() {
     line("Linker flags", kLinkerFlags);
     line("Libraries", librariesText());
     return out;
+}
+
+bool openUrlInBrowser(std::string_view url, std::string* error) {
+    if (!url.starts_with("https://") && !url.starts_with("http://")) {
+        if (error != nullptr) {
+            *error = "Not a web address: " + std::string(url);
+        }
+        return false;
+    }
+#ifdef __APPLE__
+    const char* launcher = "open";
+#else
+    const char* launcher = "xdg-open";
+#endif
+    std::string urlCopy(url);
+    std::string launcherCopy(launcher);
+    char* argv[] = {launcherCopy.data(), urlCopy.data(), nullptr};
+    pid_t pid = 0;
+    const int rc = posix_spawnp(&pid, launcher, nullptr, nullptr, argv, environ);
+    if (rc != 0) {
+        if (error != nullptr) {
+            *error = std::string("Could not start ") + launcher + ": " + std::strerror(rc);
+        }
+        return false;
+    }
+    // Reap the launcher off the UI thread (xdg-open can wait for a new browser) so no zombie is left
+    std::thread([pid] {
+        int status = 0;
+        while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+        }
+    }).detach();
+    return true;
 }
 
 } // namespace mesheal

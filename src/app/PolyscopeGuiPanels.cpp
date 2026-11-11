@@ -87,7 +87,7 @@ glm::vec3 toGlmVec(const Eigen::Vector3d& v) {
 } // namespace
 
 // -----------------------------------------------------------------------------
-// Display panel (UI_DESIGN.md §9.1)
+// Display panel (.docs/UI_DESIGN.md §9.1)
 // -----------------------------------------------------------------------------
 
 void PolyscopeGui::toggleGhost() {
@@ -295,7 +295,7 @@ void PolyscopeGui::drawDisplayPanel() {
 }
 
 // -----------------------------------------------------------------------------
-// Navigate panel (UI_DESIGN.md §9.2)
+// Navigate panel (.docs/UI_DESIGN.md §9.2)
 // -----------------------------------------------------------------------------
 
 void PolyscopeGui::drawWholeMeshPreviewControls(bool inTool) {
@@ -449,7 +449,7 @@ void PolyscopeGui::drawNavigatePanel() {
 }
 
 // -----------------------------------------------------------------------------
-// Structures (advanced) panel (UI_DESIGN.md §9.3)
+// Structures (advanced) panel (.docs/UI_DESIGN.md §9.3)
 // -----------------------------------------------------------------------------
 
 void PolyscopeGui::drawStructuresPanel() {
@@ -583,7 +583,7 @@ void PolyscopeGui::drawNoMeshHint(float left, float top, float bottom) {
     const float rightLeft = ImGui::GetIO().DisplaySize.x - rightColumnWidth_ - margin;
     const LayoutRect free = freeViewArea(left - 2.0f * margin, rightLeft, top, bottom, margin);
     const std::vector<std::string> lines =
-        wrapText("No mesh loaded. Open an STL (File > Open) or load a sample (File > Load Sample).",
+        wrapText("No mesh loaded. Open an STL (File > Open) or load a sample (File > Load Sample). New here? See Help > Getting Started.",
                  std::max(free.width - 2.0f * margin, 1.0f),
                  [](const std::string& s) { return ImGui::CalcTextSize(s.c_str()).x; });
     const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
@@ -600,7 +600,7 @@ void PolyscopeGui::drawNoMeshHint(float left, float top, float bottom) {
     const auto covers = [&textRect](const ImVec2& pos, const ImVec2& size) {
         return textRect.Overlaps(ImRect(pos, ImVec2(pos.x + size.x, pos.y + size.y)));
     };
-    for (const char* name : {"Preferences", "About Mesheal", "Polyscope: Slice Planes", "Polyscope: Appearance",
+    for (const char* name : {"Preferences", "About Mesheal", "Getting Started", "Polyscope: Slice Planes", "Polyscope: Appearance",
                              "Polyscope: Camera & Clipping", "Polyscope: Render & Debug"}) {
         const ImGuiWindow* window = ImGui::FindWindowByName(name);
         if (window != nullptr && window->Active && !window->Hidden && covers(window->Pos, window->Size)) {

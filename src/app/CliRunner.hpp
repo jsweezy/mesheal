@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace mesheal {
@@ -43,6 +44,10 @@ struct CliOptions {
     bool quiet = false;
     bool noRelaunch = false;
 };
+
+/// The --help text. Every public flag `parseCliArguments` accepts is listed here (`--no-relaunch` is
+/// internal: the macOS app passes it to the extra instances it opens).
+[[nodiscard]] std::string usageText(std::string_view prog);
 
 /// Parses command-line arguments into CliOptions.
 [[nodiscard]] CliOptions parseCliArguments(int argc, char const* const* argv);

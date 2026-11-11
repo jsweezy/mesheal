@@ -60,6 +60,26 @@ TEST_CASE("CliRunner argument parsing", "[app][cli]") {
     }
 }
 
+TEST_CASE("CliRunner help lists every accepted flag", "[app][cli]") {
+    const std::string help = usageText("mesheal");
+    // Keep in step with parseCliArguments: a public flag the parser accepts must be documented
+    // (--no-relaunch is internal to the macOS app and left out on purpose)
+    for (const char* flag : {"--diagnostics", "--inspect", "--fix-all", "--remesh-voxel", "--remesh-iso",
+                             "--rebuild-alpha", "--rebuild-union", "--rebuild-winding", "--passes", "--time-budget",
+                             "--edge-length", "--smoothing", "--chord-ratio", "--alpha", "--offset", "--resolution",
+                             "-o, --output", "--json", "--quiet", "-v, --version", "-h, --help"}) {
+        INFO(flag);
+        CHECK(help.find(flag) != std::string::npos);
+    }
+    CHECK(help.find("https://") != std::string::npos);
+    CHECK(help.find("Examples:") != std::string::npos);
+
+    char const* argv[] = {"mesheal", "--help"};
+    const CliOptions opt = parseCliArguments(2, argv);
+    CHECK(opt.action == CliAction::Help);
+    CHECK(isHeadlessCommand(opt));
+}
+
 TEST_CASE("CliRunner command execution", "[app][cli]") {
     SECTION("Help returns 0") {
         CliOptions opt;
