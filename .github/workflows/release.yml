@@ -71,7 +71,7 @@ jobs:
           mkdir -p AppDir/usr/share/doc/mesheal
           cp LICENSE.md AppDir/usr/share/doc/mesheal/
           for lib in libgmp10 libmpfr6 libtbb12; do
-            [ -f /usr/share/doc/$lib/copyright ] && cp /usr/share/doc/$lib/copyright AppDir/usr/share/doc/mesheal/$lib-copyright || true
+            if [ -f /usr/share/doc/$lib/copyright ]; then cp /usr/share/doc/$lib/copyright AppDir/usr/share/doc/mesheal/$lib-copyright; fi
           done
           install -D -m 644 packaging/linux/mesheal-mime.xml AppDir/usr/share/mime/packages/mesheal.xml
           ./linuxdeploy-x86_64.AppImage --appdir AppDir \
@@ -113,7 +113,7 @@ jobs:
           clang++ --version | head -1
 
       - name: Install libraries
-        run: brew install ninja cgal boost tbb dylibbundler
+        run: brew install ninja cgal boost tbb
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
@@ -127,35 +127,16 @@ jobs:
       - name: Package app
         run: |
           APP=build/src/app/Mesheal.app
-          dylibbundler --overwrite-dir --bundle-deps --create-dir \
-            --fix-file "$APP/Contents/MacOS/Mesheal" \
-            --dest-dir "$APP/Contents/Frameworks" \
-            --install-path @executable_path/../Frameworks/
           mkdir -p "$APP/Contents/Resources/licenses"
           cp LICENSE.md "$APP/Contents/Resources/licenses/"
           for f in gmp mpfr tbb; do
             prefix=$(brew --prefix $f)
             for lic in "$prefix"/COPYING* "$prefix"/LICENSE*; do
-              [ -f "$lic" ] && cp "$lic" "$APP/Contents/Resources/licenses/$f-$(basename "$lic")"
+              if [ -f "$lic" ]; then cp "$lic" "$APP/Contents/Resources/licenses/$f-$(basename "$lic")"; fi
             done
           done
-          # dylibbundler can leave the same LC_RPATH twice, which dyld refuses to load; keep one copy
-          # of the bundle's Frameworks path and drop paths into Homebrew or the build folder
-          BIN="$APP/Contents/MacOS/Mesheal"
-          rpaths() { otool -l "$BIN" | awk '/cmd LC_RPATH/ {getline; getline; print $2}'; }
-          rpaths | sort | uniq -c | while read -r count path; do
-            keep=1
-            case "$path" in @executable_path/*|@loader_path/*) ;; *) keep=0 ;; esac
-            remove=$((count - keep))
-            for _ in $(seq 1 "$remove"); do install_name_tool -delete_rpath "$path" "$BIN"; done
-          done
-          echo "Remaining LC_RPATH entries:"; rpaths
-          if [ -n "$(rpaths | sort | uniq -d)" ]; then echo "::error::Duplicate LC_RPATH left"; exit 1; fi
-          # Modified binaries must be re-signed (ad hoc: no Apple Developer ID)
-          codesign --force --deep --sign - "$APP"
-          if otool -L "$APP/Contents/MacOS/Mesheal" "$APP"/Contents/Frameworks/*.dylib | grep -E '/opt/homebrew|/usr/local/'; then
-            echo "::error::The app still links libraries outside the bundle"; exit 1
-          fi
+          # Copies the Homebrew libraries into the app, fixes references and re-signs (ad hoc)
+          python3 packaging/macos/bundle-libs.py "$APP"
           ditto -c -k --keepParent "$APP" Mesheal-macos-arm64.zip
 
       - name: Smoke test
