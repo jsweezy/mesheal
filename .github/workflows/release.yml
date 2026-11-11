@@ -23,7 +23,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -95,7 +95,7 @@ jobs:
   # ----------------------------------------------------------------------------
   macos:
     if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && contains(inputs.platforms, 'macos')) || (github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-macos]'))
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -106,7 +106,7 @@ jobs:
         run: brew install ninja cgal boost tbb dylibbundler
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
 
       - name: Build
         run: cmake --build build -j 3

@@ -9,7 +9,7 @@ use the [Docker image](DOCKER.md).
 | System | Download |
 |--------|----------|
 | Windows 10 / 11 (64-bit) | [Mesheal-windows-x64.zip](https://github.com/jsweezy/mesheal/releases/latest/download/Mesheal-windows-x64.zip) |
-| macOS 14 or newer (Apple Silicon: M1 and later) | [Mesheal-macos-arm64.zip](https://github.com/jsweezy/mesheal/releases/latest/download/Mesheal-macos-arm64.zip) |
+| macOS 15 or newer (Apple Silicon: M1 and later) | [Mesheal-macos-arm64.zip](https://github.com/jsweezy/mesheal/releases/latest/download/Mesheal-macos-arm64.zip) |
 | Linux (x86-64) | [Mesheal-linux-x86_64.AppImage](https://github.com/jsweezy/mesheal/releases/latest/download/Mesheal-linux-x86_64.AppImage) |
 
 Older versions and checksums are on the [releases page](https://github.com/jsweezy/mesheal/releases).
