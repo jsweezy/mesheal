@@ -35,7 +35,7 @@ void rowDot(const ImVec4& color) {
 } // namespace
 
 // -----------------------------------------------------------------------------
-// Shells panel (UI_DESIGN.md §16): pick which shells Mesh Health works on
+// Shells panel (.docs/UI_DESIGN.md §16): pick which shells Mesh Health works on
 // -----------------------------------------------------------------------------
 
 void PolyscopeGui::drawShellsPanel() {
@@ -302,7 +302,7 @@ void PolyscopeGui::drawShellActionItems() {
 }
 
 // -----------------------------------------------------------------------------
-// Operation: Merge Shells (UI_DESIGN.md §16.3)
+// Operation: Merge Shells (.docs/UI_DESIGN.md §16.3)
 // -----------------------------------------------------------------------------
 
 void PolyscopeGui::drawMergeShellsOperator() {

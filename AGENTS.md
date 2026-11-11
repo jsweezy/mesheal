@@ -6,9 +6,13 @@
 
 ## Commits
 
-- ALWAYS make commits as jsweezy (`Jeremy Sweezy <19966001+jsweezy@users.noreply.github.com>`). NEVER as Claude.
+- If the private `.docs/` submodule is checked out, follow `.docs/COMMIT_RULES.md` for the commit identity.
 - Never add `Co-Authored-By: Claude ...` (or any Claude / AI attribution) trailers to commit messages or pull request descriptions.
-- Before committing, confirm `git config user.email` is the noreply address above.
+
+## Documentation
+
+- User documentation lives in `docs/` and is published with MkDocs Material (`mkdocs.yml`). Run `mkdocs build --strict` after editing it.
+- Internal design notes (vision, roadmap, UI spec, punch list) live in the private `.docs/` submodule. Update them when you have it; never copy them into the public tree.
 
 ## Building & Testing
 

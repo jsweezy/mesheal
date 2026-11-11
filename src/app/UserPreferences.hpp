@@ -22,7 +22,7 @@ inline constexpr const char* kPreferencesFileName = "preferences.conf";
 /// Default Auto state of every Mesh Health row (`CategoryInfo::autoDefault`).
 [[nodiscard]] std::array<bool, kDefectCategoryCount> builtInAutoCheckDefaults() noexcept;
 
-/// Display and tolerance preferences saved across sessions (UI_DESIGN.md §9.5): everything in the
+/// Display and tolerance preferences saved across sessions (.docs/UI_DESIGN.md §9.5): everything in the
 /// Preferences window plus the Display panel styles. Default-constructed = built-in defaults.
 struct UserPreferences {
     // ---- AppController state (`AppController::userPreferences` / `applyUserPreferences`) ----

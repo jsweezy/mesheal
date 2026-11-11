@@ -19,7 +19,7 @@
 
 namespace mesheal::mockup {
 
-/// Lifecycle of one Mesh Health row (see UI_DESIGN.md, "Mesh Health panel").
+/// Lifecycle of one Mesh Health row (see .docs/UI_DESIGN.md, "Mesh Health panel").
 enum class HealthStatus {
     NotRun,
     Running,
@@ -95,7 +95,7 @@ enum class ToolSlot {
     MergeShells,
 };
 
-/// Throwaway clickable prototype of the layout proposed in UI_DESIGN.md.
+/// Throwaway clickable prototype of the layout proposed in .docs/UI_DESIGN.md.
 /// Shells and (unless `fakeDefects`) defects come from the real checks; fixes, deletes and merges
 /// are simulated. Save As of shells writes real STL files.
 class UiMockup {

@@ -44,7 +44,7 @@
 
 namespace mesheal {
 
-/// Lifecycle of one Mesh Health row (UI_DESIGN.md §5.2).
+/// Lifecycle of one Mesh Health row (.docs/UI_DESIGN.md §5.2).
 enum class HealthStatus {
     NotRun,  ///< Never checked on this mesh
     Running, ///< Queued or being checked
@@ -141,7 +141,7 @@ enum class ToolSlot {
     FixAll ///< Operation: Fix All (the Repair All panel with Fix All and the rebuilds)
 };
 
-/// One line of the Merge Shells checklist (UI_DESIGN.md §16.3), built from Mesh Health.
+/// One line of the Merge Shells checklist (.docs/UI_DESIGN.md §16.3), built from Mesh Health.
 struct MergeCheck {
     const char* label = "";
     bool blocking = true;                ///< Manifold rejects such shells (false: a warning only)
@@ -568,7 +568,7 @@ public:
     /// Defects across all non-information rows that are checked and not stale (in the shell scope).
     [[nodiscard]] std::size_t totalProblemCount() const noexcept;
 
-    /// Count shown in a Mesh Health row: in-scope elements (UI_DESIGN.md §16), or the information count.
+    /// Count shown in a Mesh Health row: in-scope elements (.docs/UI_DESIGN.md §16), or the information count.
     [[nodiscard]] std::size_t rowCount(DefectCategory category) const noexcept;
 
     /// Row status with the shell scope applied: a Defects row with nothing in scope reads Ok.
@@ -682,7 +682,7 @@ public:
     [[nodiscard]] HighlightOverlayGeometry buildHighlightOverlay() const;
 
     // -------------------------------------------------------------------------
-    // Shells (UI_DESIGN.md §16): view state, scope and shell edits
+    // Shells (.docs/UI_DESIGN.md §16): view state, scope and shell edits
     // -------------------------------------------------------------------------
 
     /// Shells of the current mesh with their visibility and selection (read-only; use the methods below).

@@ -9,8 +9,8 @@
 
 Whenever you add, modify, or remove features, workflows, UI controls, diagnostics, or viewport interactions, you **must** update all relevant documentation and in-app help before completing your task:
 
-1. **Task Tracking (`TODO.md` & `PLAN.md`)**
-   - Update `TODO.md` (marking completed punch-list items with `[x]` or adding newly identified `[ ]` items) and `PLAN.md` as work is finished so both accurately reflect the current state of the project.
+1. **Task Tracking (private `.docs/TODO.md` & `.docs/PLAN.md`)**
+   - If the private `.docs/` submodule is checked out, update `.docs/TODO.md` (marking completed punch-list items with `[x]` or adding newly identified `[ ]` items) and `.docs/PLAN.md` as work is finished. Never copy their contents into the public tree.
 
 2. **Navigation & Shortcuts Documentation (`docs/NAVIGATION.md`)**
    - Keep `docs/NAVIGATION.md` synchronized with any changes to 3D viewport mouse controls, keyboard shortcuts, camera framing behavior, orbit pivot mechanics, clipping plane behavior, or highlight sizing behavior.
@@ -19,8 +19,8 @@ Whenever you add, modify, or remove features, workflows, UI controls, diagnostic
    - Keep the in-app help window in `src/app/PolyscopeGuiShell.cpp` (`PolyscopeGui::drawNavigationHelpWindow()`, titled `"3D Viewport Navigation & Shortcuts"`) and the key tooltips in the Navigate panel (`PolyscopeGui::drawNavigatePanel()`, `src/app/PolyscopeGuiPanels.cpp`) synchronized with `docs/NAVIGATION.md` and the actual implementation in `PolyscopeGui` / `AppController`.
    - Any new or modified mouse interaction, keyboard shortcut, or selection/camera behavior must appear accurately in both `docs/NAVIGATION.md` and the `"3D Viewport Navigation & Shortcuts"` ImGui window.
 
-4. **Project & Architecture Documentation (`README.md`, `VISION.md`, and `docs/*`)**
-   - Update `README.md`, `VISION.md`, and any files under `docs/` whenever project status, build instructions, architectural decisions, diagnostics/repair capabilities, or user-facing workflows change.
+4. **Project & User Documentation (`README.md` and `docs/*`)**
+   - Update `README.md` and any files under `docs/` (the public MkDocs site; check with `mkdocs build --strict`) whenever project status, build instructions, architectural decisions, diagnostics/repair capabilities, or user-facing workflows change.
 
 ## 2. All Mesh Modification Operations Must Support Undo (`Ctrl+Z` / `Cmd+Z`)
 
@@ -30,7 +30,7 @@ Whenever you add, modify, or remove features, workflows, UI controls, diagnostic
 
 ## 3. Ask for User Review & Present a 1-Click "Accept & Commit" Button in Chat
 
-- At the conclusion of every completed task (after all unit tests pass and documentation/`TODO.md`/`PLAN.md` updates are in place), **do not** stage or commit changes to `git` automatically.
+- At the conclusion of every completed task (after all unit tests pass and documentation (and `.docs/` punch list) updates are in place), **do not** stage or commit changes to `git` automatically.
 - Leave all modified and newly created files uncommitted in the working tree so the user can easily inspect the diffs in VS Code's **Source Control** view.
 - Summarize the completed work and call the `ask_question` tool to display a clickable 1-click button in chat:
   - **`(Recommended) Accept & Commit to git`**

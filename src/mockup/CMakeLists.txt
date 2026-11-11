@@ -1,4 +1,4 @@
-# Throwaway clickable prototype of the GUI layout in UI_DESIGN.md (fake defect data).
+# Throwaway clickable prototype of the GUI layout in .docs/UI_DESIGN.md (fake defect data).
 add_executable(mesheal_ui_mockup
     main.cpp
     UiMockup.cpp

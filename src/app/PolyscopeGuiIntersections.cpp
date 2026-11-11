@@ -316,7 +316,7 @@ void PolyscopeGui::drawIntersectionRepairSettings() {
 }
 
 // -----------------------------------------------------------------------------
-// Operation: Repair All Intersections (UI_DESIGN.md §7.2)
+// Operation: Repair All Intersections (.docs/UI_DESIGN.md §7.2)
 // -----------------------------------------------------------------------------
 
 void PolyscopeGui::drawRepairAllOperator() {

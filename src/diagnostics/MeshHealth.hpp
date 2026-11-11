@@ -17,7 +17,7 @@
 
 namespace mesheal {
 
-/// One row of the Mesh Health panel (UI_DESIGN.md §5.1).
+/// One row of the Mesh Health panel (.docs/UI_DESIGN.md §5.1).
 enum class DefectCategory : std::uint8_t {
     OpenEdges,
     NonManifoldEdges,

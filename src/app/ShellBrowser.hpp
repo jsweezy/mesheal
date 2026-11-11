@@ -14,7 +14,7 @@
 
 namespace mesheal {
 
-/// One edge-connected piece of the mesh with its view state (UI_DESIGN.md §16).
+/// One edge-connected piece of the mesh with its view state (.docs/UI_DESIGN.md §16).
 struct ShellInfo {
     std::vector<Eigen::Index> faces;
     BoundingBox bbox;

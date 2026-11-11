@@ -13,7 +13,7 @@
 namespace mesheal {
 
 /// Before / after numbers shown next to every repair candidate, so the user can judge a coarse
-/// global fix against a surgical one (VISION.md "options plus information").
+/// global fix against a surgical one (docs/why.md, "Options plus information").
 struct RepairMetrics {
     Eigen::Index facesBefore = 0;
     Eigen::Index facesAfter = 0;

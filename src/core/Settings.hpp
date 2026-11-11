@@ -189,7 +189,7 @@ inline constexpr float kMaxUiScale             = 2.5f;            // Maximum Pre
 inline constexpr std::array<float, 4> kDefaultBackgroundColor = {1.0f, 1.0f, 1.0f, 0.0f}; // RGBA 3D-view background (Polyscope default; Display > Appearance)
 
 // -----------------------------------------------------------------------------
-// Shells panel (UI_DESIGN.md §16)
+// Shells panel (.docs/UI_DESIGN.md §16)
 // -----------------------------------------------------------------------------
 inline constexpr bool   kDefaultColorByShell     = true;          // Shells panel "Color by shell" starts on for multi-shell meshes
 inline constexpr std::array<double, 3> kDefaultShellSelectedColor = {0.40, 0.70, 1.00}; // RGB tint of selected shells (not a defect color)

@@ -25,7 +25,7 @@ struct BinRange {
 };
 
 /// Headless browsing state of the selected Mesh Health row: filters, visible rows, multi-selection,
-/// focus and the list-cap decision (UI_DESIGN.md §6, §8). Rows are element indices into a
+/// focus and the list-cap decision (.docs/UI_DESIGN.md §6, §8). Rows are element indices into a
 /// `CategoryResult`; "visible position" is a position in `visibleRows()`.
 class DefectBrowser {
 public:
@@ -40,7 +40,7 @@ public:
 
     // ---- Filters (changing one drops hidden rows from the selection and focus: FB-13) ----
 
-    /// Shell scope (UI_DESIGN.md §16): element i is listed only when `mask[i]` is non-zero. An empty
+    /// Shell scope (.docs/UI_DESIGN.md §16): element i is listed only when `mask[i]` is non-zero. An empty
     /// mask lists every element. Clears the bin filter, since the histogram changes.
     void setScopeMask(std::vector<std::uint8_t> mask);
 

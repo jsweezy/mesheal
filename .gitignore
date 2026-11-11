@@ -43,3 +43,6 @@ cache/
 # Python module build
 build_python/
 blender/mesheal_tools/_mesheal*.so
+
+# MkDocs output
+site/

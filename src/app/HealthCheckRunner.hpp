@@ -22,7 +22,7 @@ struct CheckRequest {
     CheckParams params{};
 };
 
-/// Runs Mesh Health checks on a `std::jthread` (UI_DESIGN.md §11.2). Finished results are collected
+/// Runs Mesh Health checks on a `std::jthread` (.docs/UI_DESIGN.md §11.2). Finished results are collected
 /// under a mutex and handed to the main thread by `takeFinished()`; cancel uses the stop token.
 class HealthCheckRunner {
 public:

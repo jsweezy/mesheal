@@ -143,7 +143,7 @@ void PolyscopeGui::fixAll(DefectCategory category) {
 }
 
 // -----------------------------------------------------------------------------
-// Mesh Health panel (UI_DESIGN.md §5)
+// Mesh Health panel (.docs/UI_DESIGN.md §5)
 // -----------------------------------------------------------------------------
 
 void PolyscopeGui::drawHealthPanel() {
@@ -163,7 +163,7 @@ void PolyscopeGui::drawHealthPanel() {
     for (const CategoryHealth& row : controller_.healthReport().rows) {
         anyRun = anyRun || row.status != HealthStatus::NotRun;
     }
-    // Only while part of the mesh is out of scope (UI_DESIGN.md §16)
+    // Only while part of the mesh is out of scope (.docs/UI_DESIGN.md §16)
     const ShellBrowser& shells = controller_.shells();
     if (shells.scoped()) {
         ImGui::AlignTextToFramePadding();
@@ -386,7 +386,7 @@ void PolyscopeGui::drawMeshStatsTable() {
 }
 
 // -----------------------------------------------------------------------------
-// Tool panel template (UI_DESIGN.md §6)
+// Tool panel template (.docs/UI_DESIGN.md §6)
 // -----------------------------------------------------------------------------
 
 void PolyscopeGui::drawToolPanel() {
@@ -1093,7 +1093,7 @@ void PolyscopeGui::drawThinFaceInspector() {
 }
 
 // -----------------------------------------------------------------------------
-// Operation: Units & Scale (UI_DESIGN.md §7.1)
+// Operation: Units & Scale (.docs/UI_DESIGN.md §7.1)
 // -----------------------------------------------------------------------------
 
 void PolyscopeGui::drawUnitsAndScaleOperator() {

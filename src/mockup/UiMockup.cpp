@@ -474,7 +474,7 @@ void UiMockup::drawFrame() {
     }
     if (ImGui::BeginPopupModal("About Mesheal", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextUnformatted("Mesheal - STL Mesh Inspection & Repair Tool");
-        ImGui::TextDisabled("UI mockup build. See UI_DESIGN.md.");
+        ImGui::TextDisabled("UI mockup build. See .docs/UI_DESIGN.md.");
         if (ImGui::Button("Close")) {
             ImGui::CloseCurrentPopup();
         }
