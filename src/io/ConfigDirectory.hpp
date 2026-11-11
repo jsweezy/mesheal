@@ -7,8 +7,8 @@
 namespace mesheal {
 
 /// Mesheal's per-user config directory (preferences, recent files): `$XDG_CONFIG_HOME/mesheal` when
-/// XDG_CONFIG_HOME is set and non-empty, else `~/.config/mesheal`, on macOS and Linux alike.
-/// Empty when no home directory is known. Does not create the directory.
+/// XDG_CONFIG_HOME is set and non-empty, else `~/.config/mesheal` on macOS and Linux, and
+/// `%APPDATA%\mesheal` on Windows. Empty when no home directory is known. Does not create the directory.
 [[nodiscard]] std::filesystem::path configDirectory();
 
 /// `configDirectory()` for the given environment values (null or empty means unset).

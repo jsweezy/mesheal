@@ -40,6 +40,10 @@ add_library(mesheal::warnings ALIAS mesheal_warnings)
 
 if(MSVC)
     target_compile_options(mesheal_warnings INTERFACE /W4 /permissive-)
+    # All targets, dependencies included: CGAL objects exceed MSVC's default section limit,
+    # sources are UTF-8 (e.g. "mm³"), and windows.h must not define min/max macros.
+    add_compile_options(/bigobj /utf-8)
+    add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN _USE_MATH_DEFINES _CRT_SECURE_NO_WARNINGS)
 else()
     target_compile_options(mesheal_warnings INTERFACE
         -Wall

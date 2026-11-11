@@ -1,11 +1,63 @@
 # Install
 
-Mesheal is built from source with CMake. It runs on macOS and Linux.
+Mesheal runs on Windows, macOS and Linux. Download a ready-to-run version below, or
+[build it from source](#build-from-source). To run only the command-line tool in a container,
+use the [Docker image](DOCKER.md).
 
-To run the command-line tool without installing a compiler (including on Windows), use the
-[Docker image](DOCKER.md) instead.
+## Download
 
-## 1. Prerequisites
+| System | Download |
+|--------|----------|
+| Windows 10 / 11 (64-bit) | [Mesheal-windows-x64.zip](https://github.com/jsweezy/mesheal/releases/latest/download/Mesheal-windows-x64.zip) |
+| macOS 14 or newer (Apple Silicon: M1 and later) | [Mesheal-macos-arm64.zip](https://github.com/jsweezy/mesheal/releases/latest/download/Mesheal-macos-arm64.zip) |
+| Linux (x86-64) | [Mesheal-linux-x86_64.AppImage](https://github.com/jsweezy/mesheal/releases/latest/download/Mesheal-linux-x86_64.AppImage) |
+
+Older versions and checksums are on the [releases page](https://github.com/jsweezy/mesheal/releases).
+
+These builds are not code-signed, so the first time you open Mesheal your system warns that it
+does not recognise the developer. This is expected; the one-time steps to open it are below.
+
+=== "Windows"
+
+    1. Unzip the whole `Mesheal` folder somewhere permanent (for example `Documents`). Keep the
+       `.dll` files next to `mesheal.exe`.
+    2. Double-click `mesheal.exe`. If Windows shows **Windows protected your PC**, click
+       **More info**, then **Run anyway**.
+
+    For the [command line](CLI.md), open PowerShell in that folder and run, for example,
+    `.\mesheal.exe part.stl --fix-all`.
+
+=== "macOS"
+
+    1. Unzip the download and drag `Mesheal.app` into **Applications**.
+    2. Open it. When macOS says it cannot verify the app, click **Done**, then open
+       **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to
+       the Mesheal message.
+
+    Or, in Terminal: `xattr -dr com.apple.quarantine /Applications/Mesheal.app`
+
+    The command-line tool is inside the app:
+    `/Applications/Mesheal.app/Contents/MacOS/Mesheal part.stl --fix-all`. To type just
+    `mesheal`, link it into your path:
+    `ln -s /Applications/Mesheal.app/Contents/MacOS/Mesheal ~/.local/bin/mesheal`.
+
+=== "Linux"
+
+    ```bash
+    chmod +x Mesheal-linux-x86_64.AppImage
+    ./Mesheal-linux-x86_64.AppImage                    # desktop app
+    ./Mesheal-linux-x86_64.AppImage part.stl --fix-all  # command line
+    ```
+
+    AppImages need FUSE 2. If it does not start, install it (Ubuntu 24.04:
+    `sudo apt install libfuse2t64`; Ubuntu 22.04: `sudo apt install libfuse2`), or run it with
+    `--appimage-extract-and-run` as the first argument.
+
+## Build from source
+
+Mesheal builds with CMake on macOS and Linux.
+
+### 1. Prerequisites
 
 === "macOS (Homebrew)"
 
@@ -30,7 +82,7 @@ The other dependencies (Eigen, libigl, Manifold, Polyscope, Dear ImGui, Catch2 a
 downloaded and built automatically by CMake on the first configure. You need a C++20 compiler and
 CMake 3.20 or newer.
 
-## 2. Build
+### 2. Build
 
 ```bash
 git clone https://github.com/jsweezy/mesheal.git
@@ -50,7 +102,7 @@ The executable is `build_release/src/app/mesheal`. On macOS the build also produ
 `build_release/src/app/Mesheal.app`. The build also produces `mesheal-cli`, a command-line-only
 version of the same program that needs no graphics libraries.
 
-### Command-line-only build
+#### Command-line-only build
 
 For servers and other machines without a display, build without the desktop app:
 
@@ -63,13 +115,13 @@ This produces `build_release/src/app/mesheal` with every [command-line](CLI.md) 
 window. It does not need Polyscope or the OpenGL / X11 packages, so on Ubuntu you can leave out
 `libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev`.
 
-## 3. Check the build (optional)
+### 3. Check the build (optional)
 
 ```bash
 ctest --test-dir build_release -j 4
 ```
 
-## 4. Install the desktop app (optional)
+### 4. Install the desktop app (optional)
 
 === "macOS"
 
@@ -95,5 +147,6 @@ details and for making Mesheal the default app for STL files.
 
 ## Where Mesheal keeps its settings
 
-Preferences and the recent-files list are saved in `~/.config/mesheal/` (or
-`$XDG_CONFIG_HOME/mesheal/`). Delete that folder to start from the defaults.
+Preferences and the recent-files list are saved in `~/.config/mesheal/` on macOS and Linux, and
+in `%APPDATA%\mesheal\` on Windows (or `$XDG_CONFIG_HOME/mesheal/` when that variable is set).
+Delete that folder to start from the defaults.

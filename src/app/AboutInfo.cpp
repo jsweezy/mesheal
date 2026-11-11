@@ -4,11 +4,23 @@
 
 #include <cerrno>
 #include <cstring>
-#include <spawn.h>
-#include <sys/wait.h>
 #include <thread>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <shellapi.h>
+#else
+#include <spawn.h>
+#include <sys/wait.h>
+
 extern char** environ;
+#endif
 
 namespace mesheal {
 
@@ -70,6 +82,19 @@ bool openUrlInBrowser(std::string_view url, std::string* error) {
         }
         return false;
     }
+#ifdef _WIN32
+    // ShellExecute returns a value greater than 32 on success
+    const std::string urlCopy(url);
+    const auto rc = reinterpret_cast<INT_PTR>(
+        ShellExecuteA(nullptr, "open", urlCopy.c_str(), nullptr, nullptr, SW_SHOWNORMAL));
+    if (rc <= 32) {
+        if (error != nullptr) {
+            *error = "Could not open " + urlCopy + " (ShellExecute error " + std::to_string(rc) + ")";
+        }
+        return false;
+    }
+    return true;
+#else
 #ifdef __APPLE__
     const char* launcher = "open";
 #else
@@ -93,6 +118,7 @@ bool openUrlInBrowser(std::string_view url, std::string* error) {
         }
     }).detach();
     return true;
+#endif
 }
 
 } // namespace mesheal

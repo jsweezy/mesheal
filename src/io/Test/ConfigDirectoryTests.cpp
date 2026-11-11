@@ -30,11 +30,16 @@ public:
 
 private:
     void set(const char* value) {
+#ifdef _WIN32
+        // An empty value removes the variable on Windows
+        ::_putenv_s(name_, value != nullptr ? value : "");
+#else
         if (value != nullptr) {
             ::setenv(name_, value, 1);
         } else {
             ::unsetenv(name_);
         }
+#endif
     }
     const char* name_;
     std::optional<std::string> old_;
@@ -69,8 +74,13 @@ TEST_CASE("configDirectory honours the XDG_CONFIG_HOME environment variable", "[
     }
     {
         const ScopedEnv xdg("XDG_CONFIG_HOME", "");
+#ifdef _WIN32
+        const ScopedEnv appData("APPDATA", "C:\\Users\\someone\\AppData\\Roaming");
+        CHECK(mesheal::configDirectory() == std::filesystem::path("C:\\Users\\someone\\AppData\\Roaming\\mesheal"));
+#else
         const ScopedEnv home("HOME", "/home/someone");
         CHECK(mesheal::configDirectory() == std::filesystem::path("/home/someone/.config/mesheal"));
+#endif
     }
     CHECK_FALSE(std::filesystem::exists(dir)); // resolving never creates the directory
 }

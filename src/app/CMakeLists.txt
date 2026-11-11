@@ -54,6 +54,10 @@ target_link_libraries(mesheal_app_controller
     PRIVATE
         mesheal::warnings
 )
+if(WIN32)
+    # ShellExecuteA (openUrlInBrowser)
+    target_link_libraries(mesheal_app_controller PRIVATE shell32)
+endif()
 
 # Command-line-only executable: no GUI dependencies. It is `mesheal` in a CLI-only build
 # (MESHEAL_BUILD_GUI=OFF) and `mesheal-cli` next to the desktop app otherwise (the Docker image uses it).

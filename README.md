@@ -12,6 +12,10 @@ Unlike 3D printing tools that silently degrade mesh fidelity or complex 3D model
 
 ## Quickstart
 
+**Download:** ready-to-run versions for Windows, macOS (Apple Silicon) and Linux are on the
+[releases page](https://github.com/jsweezy/mesheal/releases/latest). See the
+[install guide](docs/install.md#download) for the one-time step to open them (they are not code-signed).
+
 ### 1. Build from Source
 
 Install prerequisites:

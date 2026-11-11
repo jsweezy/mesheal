@@ -22,15 +22,25 @@ std::filesystem::path configDirectoryFor(const char* xdgConfigHome, const char* 
 }
 
 std::filesystem::path configDirectory() {
+    const char* xdgConfigHome = std::getenv("XDG_CONFIG_HOME");
+#ifdef _WIN32
+    // Windows: %APPDATA%\mesheal (the roaming application data folder), unless XDG_CONFIG_HOME is set
+    if (xdgConfigHome == nullptr || *xdgConfigHome == '\0') {
+        if (const char* appData = std::getenv("APPDATA"); appData != nullptr && *appData != '\0') {
+            return std::filesystem::path(appData) / "mesheal";
+        }
+        return {};
+    }
+    return configDirectoryFor(xdgConfigHome, nullptr);
+#else
     const char* home = std::getenv("HOME");
-#ifndef _WIN32
     if (home == nullptr || *home == '\0') {
         if (const passwd* pw = getpwuid(getuid()); pw != nullptr) {
             home = pw->pw_dir;
         }
     }
+    return configDirectoryFor(xdgConfigHome, home);
 #endif
-    return configDirectoryFor(std::getenv("XDG_CONFIG_HOME"), home);
 }
 
 bool migrateLegacyConfigDirectory(const std::filesystem::path& configDir) {
