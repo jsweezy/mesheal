@@ -1,0 +1,92 @@
+site_name: Mesheal
+site_description: Inspect and repair STL meshes for simulation
+site_url: https://jsweezy.github.io/mesheal/
+repo_url: https://github.com/jsweezy/mesheal
+repo_name: jsweezy/mesheal
+edit_uri: edit/main/docs/
+copyright: Mesheal is free software under the GPL-3.0-or-later.
+
+docs_dir: docs
+exclude_docs: |
+  requirements.txt
+
+theme:
+  name: material
+  logo: assets/mesheal-icon.png
+  favicon: assets/mesheal-icon.png
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: deep orange
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: deep orange
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js
+
+nav:
+  - Home: index.md
+  - Why Mesheal: why.md
+  - Install: install.md
+  - Getting started: getting-started.md
+  - Desktop app:
+      - Tour of the window: gui/overview.md
+      - Mesh Health: gui/mesh-health.md
+      - Repairing: gui/repairs.md
+      - Shells: gui/shells.md
+      - Units & Preferences: gui/units-and-preferences.md
+      - Navigation & Shortcuts: NAVIGATION.md
+      - Desktop integration: DESKTOP_INTEGRATION.md
+  - Command line: CLI.md
+  - Python & Blender:
+      - Python module: python.md
+      - Blender extension: blender.md
+      - Benchmarks: BENCHMARKS.md
+  - Feature reference: FEATURES.md
+  - Project:
+      - Release notes: releases.md
+      - Contributing: contributing.md
