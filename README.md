@@ -16,7 +16,8 @@ Unlike 3D printing tools that silently degrade mesh fidelity or complex 3D model
 
 Install prerequisites:
 - **macOS** (Homebrew): `brew install cmake cgal boost`
-- **Ubuntu / Debian**: `sudo apt-get update && sudo apt-get install -y cmake build-essential libcgal-dev libboost-all-dev`
+- **Ubuntu 24.04 / Debian**: `sudo apt-get update && sudo apt-get install -y cmake build-essential git libboost-dev libgmp-dev libmpfr-dev libtbb-dev libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev`
+  (CMake downloads CGAL 6.2 automatically; the distro's `libcgal-dev` is too old.)
 
 Build the optimized release binary (with parallel compilation `-j 2`):
 ```bash
@@ -38,6 +39,8 @@ Install desktop app (optional):
   ```bash
   ./packaging/linux/install-user-desktop.sh
   ```
+
+Or build and run the command-line tool in Docker on any OS (including Windows): see [docs/DOCKER.md](docs/DOCKER.md).
 
 ---
 
@@ -174,7 +177,7 @@ In the app, see **Help > Getting Started**, **Help > Navigation & Shortcuts** (`
 - **Language Standard**: C++20 (`namespace mesheal`) & Python 3.10+
 - **Build & Test**: CMake (3.20+), CTest, Catch2 v3, and Python `unittest`
 - **Visualization & UI**: Polyscope, Dear ImGui, and portable-file-dialogs
-- **Geometry & Mesh Kernels**: CGAL (v5.6+ / v6.x), Eigen3, libigl, and Manifold
+- **Geometry & Mesh Kernels**: CGAL (6.2+), Eigen3, libigl, and Manifold
 
 ---
 

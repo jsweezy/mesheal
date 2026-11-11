@@ -108,11 +108,15 @@ mesheal_record_dependency("Manifold" "3.0.1")
 # 3b. CGAL — Halfedge Mesh Repair (system install preferred, FetchContent fallback)
 # ------------------------------------------------------------------------------
 set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE TRUE)
-find_package(CGAL CONFIG QUIET)
+# Mesheal needs CGAL 6.2+ (autorefinement with snap rounding, optional-returning property maps).
+# Older system installs (e.g. Ubuntu 24.04 ships 5.6) are skipped and CGAL 6.2.1 is downloaded.
+find_package(CGAL 6.2 CONFIG QUIET)
 if(NOT CGAL_FOUND)
     FetchContent_Declare(
         cgal
-        URL https://github.com/CGAL/cgal/releases/download/v6.0.1/CGAL-6.0.1.tar.xz
+        URL https://github.com/CGAL/cgal/releases/download/v6.2.1/CGAL-6.2.1.tar.xz
+        # Header-only: just unpack it and use its CGALConfig.cmake; don't add CGAL's own project
+        SOURCE_SUBDIR cmake_ignore_subdir
     )
     FetchContent_MakeAvailable(cgal)
     find_package(CGAL CONFIG REQUIRED PATHS "${cgal_SOURCE_DIR}" NO_DEFAULT_PATH)

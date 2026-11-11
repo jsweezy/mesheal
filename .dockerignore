@@ -1,0 +1,23 @@
+# Keep the Docker build context small: only sources, CMake files, assets and examples are needed.
+.git/
+.docs/
+.cache/
+.vscode/
+.idea/
+.agents/
+build/
+build_release/
+build_python/
+build-*/
+cmake-build-*/
+out/
+site/
+benchmarks/cache/
+benchmarks/results/
+**/__pycache__/
+**/.DS_Store
+**/*_fixed_*.stl
+imgui.ini
+.polyscope.ini
+Dockerfile
+.dockerignore

@@ -55,6 +55,21 @@ target_link_libraries(mesheal_app_controller
         mesheal::warnings
 )
 
+# Command-line-only executable: no GUI dependencies. It is `mesheal` in a CLI-only build
+# (MESHEAL_BUILD_GUI=OFF) and `mesheal-cli` next to the desktop app otherwise (the Docker image uses it).
+add_executable(mesheal_cli CliMain.cpp)
+target_link_libraries(mesheal_cli
+    PRIVATE
+        mesheal::app_controller
+        mesheal::warnings
+)
+if(MESHEAL_BUILD_GUI)
+    set_target_properties(mesheal_cli PROPERTIES OUTPUT_NAME "mesheal-cli")
+else()
+    set_target_properties(mesheal_cli PROPERTIES OUTPUT_NAME "mesheal")
+    install(TARGETS mesheal_cli RUNTIME DESTINATION bin)
+endif()
+
 if(MESHEAL_BUILD_GUI)
     add_executable(mesheal
         main.cpp

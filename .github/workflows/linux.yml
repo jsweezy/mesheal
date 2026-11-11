@@ -1,0 +1,64 @@
+name: Linux build
+
+# Builds Mesheal from a clean Ubuntu 24.04 image (see Dockerfile) and runs the full test suite.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "**/*.md"
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "**/*.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      # The .docs submodule is private: never check it out here
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: docker/setup-buildx-action@v3
+
+      # The "build" stage compiles Mesheal and runs ctest; a failing test fails this step.
+      - name: Build and test (Ubuntu 24.04)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: build
+          push: false
+          build-args: |
+            JOBS=4
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Check the user-facing image starts and runs the CLI on a bundled example.
+      - name: Build CLI image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: mesheal:ci
+          build-args: |
+            JOBS=4
+          cache-from: type=gha
+
+      - name: Smoke-test the CLI image
+        run: |
+          docker run --rm mesheal:ci --help
+          docker run --rm -v "$PWD/examples:/data:ro" mesheal:ci self_intersecting_box.stl --diagnostics

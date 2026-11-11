@@ -82,6 +82,7 @@ nav:
       - Navigation & Shortcuts: NAVIGATION.md
       - Desktop integration: DESKTOP_INTEGRATION.md
   - Command line: CLI.md
+  - Docker: DOCKER.md
   - Python & Blender:
       - Python module: python.md
       - Blender extension: blender.md
