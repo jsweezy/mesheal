@@ -102,6 +102,16 @@ jobs:
         with:
           submodules: false
 
+      # std::stop_token needs Xcode 26's libc++ (Xcode 16 still treats it as experimental).
+      # The app still runs on macOS 15: the minimum version is set by CMAKE_OSX_DEPLOYMENT_TARGET.
+      - name: Select the newest Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          newest=$(ls -d /Applications/Xcode_*.app | grep -v -i beta | sort -V | tail -1)
+          sudo xcode-select -s "$newest"
+          xcodebuild -version
+          clang++ --version | head -1
+
       - name: Install libraries
         run: brew install ninja cgal boost tbb dylibbundler
 
