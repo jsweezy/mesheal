@@ -44,6 +44,11 @@ if(MSVC)
     # sources are UTF-8 (e.g. "mm³"), and windows.h must not define min/max macros.
     add_compile_options(/bigobj /utf-8)
     add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN _USE_MATH_DEFINES _CRT_SECURE_NO_WARNINGS)
+    if(MESHEAL_BUILD_PYTHON)
+        # The module runs on the C++ runtime Blender ships, which can be older than this compiler's;
+        # std::mutex built by a newer compiler crashes on an older runtime unless this is defined.
+        add_compile_definitions(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
+    endif()
 else()
     target_compile_options(mesheal_warnings INTERFACE
         -Wall

@@ -150,7 +150,8 @@ For detailed algorithmic descriptions of all repairs and diagnostics, see **[doc
 
 `src/python/` builds `_mesheal`, a nanobind module that exposes the checks and repairs to Python
 (numpy in, numpy out, with cancellable background jobs). It powers the Blender extension in
-`blender/`. Dev build on macOS against Blender's bundled Python:
+`blender/`. Ready-made extension zips for Windows, macOS and Linux are on the
+[releases page](https://github.com/jsweezy/mesheal/releases/latest). Dev build on macOS against Blender's bundled Python:
 
 ```bash
 scripts/build-blender-module.sh                       # builds build_python/, copies the .so into blender/mesheal_tools/

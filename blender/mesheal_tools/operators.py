@@ -72,7 +72,7 @@ class _JobOperator:
     # -- shared -------------------------------------------------------------
     def prepare(self, context):
         if not bridge.available():
-            self.report({"ERROR"}, bridge.BUILD_HINT)
+            self.report({"ERROR"}, bridge.unavailable_reason())
             return None
         obj = context.active_object
         props = context.scene.mesheal

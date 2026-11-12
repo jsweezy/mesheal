@@ -2,6 +2,7 @@ name: Release binaries
 
 # Builds and tests Mesheal on Linux, macOS and Windows and packages a download for each:
 #   Mesheal-linux-x86_64.AppImage, Mesheal-macos-arm64.zip, Mesheal-windows-x64.zip
+# and the Blender extension for each platform (Mesheal-blender-<platform>.zip), tested in Blender.
 # Pushing a v<N> tag also publishes them as a GitHub Release (see RELEASE_PROCESS.md).
 # Run it by hand (Actions > Release binaries > Run workflow) to test the builds without releasing;
 # the packages are then attached to the run as artifacts.
@@ -9,18 +10,23 @@ on:
   push:
     tags: ["v*"]
     # TEMPORARY while the release builds are brought up: every push to this branch runs them.
-    # Put [skip-linux], [skip-macos] or [skip-windows] in the commit message to skip a platform.
+    # Put [skip-linux], [skip-macos], [skip-windows] or [skip-blender] in the commit message to skip
+    # a platform (or all the Blender extension jobs).
     # Remove this branch trigger (and the skip checks below) before merging to main.
     branches: [release-builds]
   workflow_dispatch:
     inputs:
       platforms:
-        description: "Platforms to build (comma-separated: linux, macos, windows)"
-        default: "linux,macos,windows"
+        description: "What to build (comma-separated: linux, macos, windows, blender)"
+        default: "linux,macos,windows,blender"
         required: true
 
 permissions:
   contents: read
+
+env:
+  # vcpkg version for the Blender module on Linux and macOS (Windows uses the runner's vcpkg)
+  VCPKG_COMMIT: 177e8175121536d414f405ed8b3099b325a42638
 
 concurrency:
   group: release-${{ github.ref }}-${{ github.sha }}
@@ -170,7 +176,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: vcpkg-cache
-          key: vcpkg-x64-windows-static-md-release-${{ hashFiles('packaging/windows/vcpkg.json', 'packaging/windows/triplets/*.cmake') }}
+          key: vcpkg-x64-windows-static-md-release-${{ hashFiles('packaging/vcpkg/vcpkg.json', 'packaging/vcpkg/triplets/x64-windows-static-md-release.cmake') }}
+          # vcpkg only rebuilds what changed, so an older cache still saves most of the work
+          restore-keys: vcpkg-x64-windows-static-md-release-
 
       - uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -185,8 +193,8 @@ jobs:
           New-Item -ItemType Directory -Force vcpkg-cache | Out-Null
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
-            -DVCPKG_MANIFEST_DIR="${{ github.workspace }}/packaging/windows" `
-            -DVCPKG_OVERLAY_TRIPLETS="${{ github.workspace }}/packaging/windows/triplets" `
+            -DVCPKG_MANIFEST_DIR="${{ github.workspace }}/packaging/vcpkg" `
+            -DVCPKG_OVERLAY_TRIPLETS="${{ github.workspace }}/packaging/vcpkg/triplets" `
             -DVCPKG_TARGET_TRIPLET=x64-windows-static-md-release `
             -DVCPKG_HOST_TRIPLET=x64-windows-static-md-release `
             -DMESHEAL_USE_TBB=OFF
@@ -197,7 +205,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: vcpkg-cache
-          key: vcpkg-x64-windows-static-md-release-${{ hashFiles('packaging/windows/vcpkg.json', 'packaging/windows/triplets/*.cmake') }}
+          key: vcpkg-x64-windows-static-md-release-${{ hashFiles('packaging/vcpkg/vcpkg.json', 'packaging/vcpkg/triplets/x64-windows-static-md-release.cmake') }}
         continue-on-error: true
 
       # -k 0: keep going after a failed file, so one run lists every compile error
@@ -249,11 +257,338 @@ jobs:
           if-no-files-found: error
 
   # ----------------------------------------------------------------------------
+  # Blender extension: the _mesheal module for Python 3.11 (Blender 4.2-5.0) and 3.13 (5.1+), with
+  # GMP and MPFR from vcpkg linked in statically, packaged by packaging/blender/build-extension.py
+  # ----------------------------------------------------------------------------
+  # Built on AlmaLinux 8 (manylinux_2_28, glibc 2.28) so the module loads wherever Blender runs
+  blender-linux:
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && contains(inputs.platforms, 'blender')) || (github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-blender]'))
+    runs-on: ubuntu-latest
+    container: quay.io/pypa/manylinux_2_28_x86_64
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Install build tools and vcpkg
+        run: |
+          dnf install -y zip
+          /opt/python/cp313-cp313/bin/python -m pip install -q ninja
+          ln -sf /opt/python/cp313-cp313/bin/ninja /usr/local/bin/ninja
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg "$HOME/vcpkg"
+          git -C "$HOME/vcpkg" checkout -q $VCPKG_COMMIT
+          "$HOME/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$HOME/vcpkg" >> "$GITHUB_ENV"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$GITHUB_WORKSPACE/vcpkg-cache" >> "$GITHUB_ENV"
+          mkdir -p vcpkg-cache
+
+      - name: Restore vcpkg cache
+        uses: actions/cache/restore@v4
+        with:
+          path: vcpkg-cache
+          key: vcpkg-x64-linux-static-release-${{ env.VCPKG_COMMIT }}-${{ hashFiles('packaging/vcpkg/vcpkg.json', 'packaging/vcpkg/triplets/x64-linux-static-release.cmake') }}
+          restore-keys: vcpkg-x64-linux-static-release-
+
+      - name: Configure
+        timeout-minutes: 90
+        run: |
+          for py in 311 313; do
+            cmake -S . -B build-py$py -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+              -DVCPKG_MANIFEST_DIR="$GITHUB_WORKSPACE/packaging/vcpkg" \
+              -DVCPKG_OVERLAY_TRIPLETS="$GITHUB_WORKSPACE/packaging/vcpkg/triplets" \
+              -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+              -DVCPKG_TARGET_TRIPLET=x64-linux-static-release \
+              -DVCPKG_HOST_TRIPLET=x64-linux-static-release \
+              -DMESHEAL_BUILD_GUI=OFF -DMESHEAL_BUILD_PYTHON=ON -DMESHEAL_USE_TBB=OFF -DMESHEAL_BUILD_TESTS=OFF \
+              -DPython_EXECUTABLE=/opt/python/cp$py-cp$py/bin/python
+          done
+
+      - name: Save vcpkg cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: vcpkg-cache
+          key: vcpkg-x64-linux-static-release-${{ env.VCPKG_COMMIT }}-${{ hashFiles('packaging/vcpkg/vcpkg.json', 'packaging/vcpkg/triplets/x64-linux-static-release.cmake') }}
+        continue-on-error: true
+
+      - name: Build
+        run: for py in 311 313; do cmake --build build-py$py -j 4 --target _mesheal; done
+
+      - name: Test the modules in plain Python
+        run: |
+          for py in 311 313; do
+            PY=/opt/python/cp$py-cp$py/bin/python
+            $PY -m pip install -q numpy
+            (cd src/python/Test && PYTHONPATH="$GITHUB_WORKSPACE/build-py$py/src/python" $PY -m unittest test_mesheal)
+          done
+
+      - name: Package
+        run: |
+          /opt/python/cp313-cp313/bin/python packaging/blender/build-extension.py --platform linux-x64 \
+            --licenses vcpkg_installed/x64-linux-static-release/share \
+            --out Mesheal-blender-linux-x64.zip build-py*/src/python/_mesheal.*.so
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mesheal-blender-linux-x64
+          path: Mesheal-blender-linux-x64.zip
+          if-no-files-found: error
+
+  blender-macos:
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && contains(inputs.platforms, 'blender')) || (github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-blender]'))
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Select the newest Xcode
+        run: |
+          newest=$(ls -d /Applications/Xcode_*.app | grep -v -i beta | sort -V | tail -1)
+          sudo xcode-select -s "$newest"
+          xcodebuild -version
+
+      - uses: actions/setup-python@v5
+        id: py311
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-python@v5
+        id: py313
+        with:
+          python-version: "3.13"
+
+      - name: Install build tools and vcpkg
+        run: |
+          brew install ninja autoconf autoconf-archive automake libtool
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg "$HOME/vcpkg"
+          git -C "$HOME/vcpkg" checkout -q $VCPKG_COMMIT
+          "$HOME/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$HOME/vcpkg" >> "$GITHUB_ENV"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$GITHUB_WORKSPACE/vcpkg-cache" >> "$GITHUB_ENV"
+          mkdir -p vcpkg-cache
+
+      - name: Restore vcpkg cache
+        uses: actions/cache/restore@v4
+        with:
+          path: vcpkg-cache
+          key: vcpkg-arm64-osx-static-release-${{ env.VCPKG_COMMIT }}-${{ hashFiles('packaging/vcpkg/vcpkg.json', 'packaging/vcpkg/triplets/arm64-osx-static-release.cmake') }}
+          restore-keys: vcpkg-arm64-osx-static-release-
+
+      - name: Configure
+        timeout-minutes: 90
+        run: |
+          for py in 311 313; do
+            if [ $py = 311 ]; then PY="${{ steps.py311.outputs.python-path }}"; else PY="${{ steps.py313.outputs.python-path }}"; fi
+            cmake -S . -B build-py$py -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_OSX_DEPLOYMENT_TARGET=11.2 -DCMAKE_OSX_ARCHITECTURES=arm64 \
+              -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+              -DVCPKG_MANIFEST_DIR="$GITHUB_WORKSPACE/packaging/vcpkg" \
+              -DVCPKG_OVERLAY_TRIPLETS="$GITHUB_WORKSPACE/packaging/vcpkg/triplets" \
+              -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
+              -DVCPKG_TARGET_TRIPLET=arm64-osx-static-release \
+              -DVCPKG_HOST_TRIPLET=arm64-osx-static-release \
+              -DMESHEAL_BUILD_GUI=OFF -DMESHEAL_BUILD_PYTHON=ON -DMESHEAL_USE_TBB=OFF -DMESHEAL_BUILD_TESTS=OFF \
+              -DPython_EXECUTABLE="$PY"
+          done
+
+      - name: Save vcpkg cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: vcpkg-cache
+          key: vcpkg-arm64-osx-static-release-${{ env.VCPKG_COMMIT }}-${{ hashFiles('packaging/vcpkg/vcpkg.json', 'packaging/vcpkg/triplets/arm64-osx-static-release.cmake') }}
+        continue-on-error: true
+
+      - name: Build
+        run: for py in 311 313; do cmake --build build-py$py -j 3 --target _mesheal; done
+
+      - name: Test the modules in plain Python
+        run: |
+          for py in 311 313; do
+            if [ $py = 311 ]; then PY="${{ steps.py311.outputs.python-path }}"; else PY="${{ steps.py313.outputs.python-path }}"; fi
+            "$PY" -m pip install -q numpy
+            (cd src/python/Test && PYTHONPATH="$GITHUB_WORKSPACE/build-py$py/src/python" "$PY" -m unittest test_mesheal)
+          done
+
+      - name: Package
+        run: |
+          python3 packaging/blender/build-extension.py --platform macos-arm64 \
+            --licenses vcpkg_installed/arm64-osx-static-release/share \
+            --out Mesheal-blender-macos-arm64.zip build-py*/src/python/_mesheal.*.so
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mesheal-blender-macos-arm64
+          path: Mesheal-blender-macos-arm64.zip
+          if-no-files-found: error
+
+  blender-windows:
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && contains(inputs.platforms, 'blender')) || (github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-blender]'))
+    runs-on: windows-latest
+    timeout-minutes: 180
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg-cache
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      # Same libraries as the Windows app job, so the two share one cache
+      - name: Restore vcpkg cache
+        uses: actions/cache/restore@v4
+        with:
+          path: vcpkg-cache
+          key: vcpkg-x64-windows-static-md-release-${{ hashFiles('packaging/vcpkg/vcpkg.json', 'packaging/vcpkg/triplets/x64-windows-static-md-release.cmake') }}
+          restore-keys: vcpkg-x64-windows-static-md-release-
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - uses: actions/setup-python@v5
+        id: py311
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-python@v5
+        id: py313
+        with:
+          python-version: "3.13"
+
+      - name: Configure
+        timeout-minutes: 90
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force vcpkg-cache | Out-Null
+          $pythons = @{ "311" = "${{ steps.py311.outputs.python-path }}"; "313" = "${{ steps.py313.outputs.python-path }}" }
+          foreach ($py in "311", "313") {
+            cmake -S . -B build-py$py -G Ninja -DCMAKE_BUILD_TYPE=Release `
+              -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+              -DVCPKG_MANIFEST_DIR="${{ github.workspace }}/packaging/vcpkg" `
+              -DVCPKG_OVERLAY_TRIPLETS="${{ github.workspace }}/packaging/vcpkg/triplets" `
+              -DVCPKG_INSTALLED_DIR="${{ github.workspace }}/vcpkg_installed" `
+              -DVCPKG_TARGET_TRIPLET=x64-windows-static-md-release `
+              -DVCPKG_HOST_TRIPLET=x64-windows-static-md-release `
+              -DMESHEAL_BUILD_GUI=OFF -DMESHEAL_BUILD_PYTHON=ON -DMESHEAL_USE_TBB=OFF -DMESHEAL_BUILD_TESTS=OFF `
+              -DPython_EXECUTABLE="$($pythons[$py])"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Save vcpkg cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: vcpkg-cache
+          key: vcpkg-x64-windows-static-md-release-${{ hashFiles('packaging/vcpkg/vcpkg.json', 'packaging/vcpkg/triplets/x64-windows-static-md-release.cmake') }}
+        continue-on-error: true
+
+      - name: Build
+        shell: pwsh
+        run: |
+          foreach ($py in "311", "313") {
+            cmake --build build-py$py -j 4 --target _mesheal
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Test the modules in plain Python
+        shell: pwsh
+        run: |
+          $pythons = @{ "311" = "${{ steps.py311.outputs.python-path }}"; "313" = "${{ steps.py313.outputs.python-path }}" }
+          foreach ($py in "311", "313") {
+            & $pythons[$py] -m pip install -q numpy
+            $env:PYTHONPATH = "${{ github.workspace }}/build-py$py/src/python"
+            Push-Location src/python/Test
+            & $pythons[$py] -m unittest test_mesheal
+            $code = $LASTEXITCODE
+            Pop-Location
+            if ($code -ne 0) { exit $code }
+          }
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $modules = (Get-ChildItem build-py*/src/python/_mesheal.*.pyd).FullName
+          python packaging/blender/build-extension.py --platform windows-x64 `
+            --licenses vcpkg_installed/x64-windows-static-md-release/share `
+            --out Mesheal-blender-windows-x64.zip @modules
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mesheal-blender-windows-x64
+          path: Mesheal-blender-windows-x64.zip
+          if-no-files-found: error
+
+  # Installs each zip into a real Blender (oldest supported 4.2 LTS and the newest; on Linux also
+  # 5.0, the last with Python 3.11, and 5.1, the first with 3.13) and runs the smoke test
+  blender-test:
+    if: ${{ !cancelled() && (github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && contains(inputs.platforms, 'blender')) || (github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-blender]'))) }}
+    needs: [blender-linux, blender-macos, blender-windows]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, platform: linux-x64, blender: 4.2.23 }
+          - { os: ubuntu-latest, platform: linux-x64, blender: 5.0.1 }
+          - { os: ubuntu-latest, platform: linux-x64, blender: 5.1.2 }
+          - { os: ubuntu-latest, platform: linux-x64, blender: 5.2.4 }
+          - { os: macos-15, platform: macos-arm64, blender: 4.2.23 }
+          - { os: macos-15, platform: macos-arm64, blender: 5.2.4 }
+          - { os: windows-latest, platform: windows-x64, blender: 4.2.23 }
+          - { os: windows-latest, platform: windows-x64, blender: 5.2.4 }
+    name: blender-test (${{ matrix.platform }}, Blender ${{ matrix.blender }})
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: Mesheal-blender-${{ matrix.platform }}
+          path: dist
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Download Blender ${{ matrix.blender }}
+        shell: bash
+        env:
+          VERSION: ${{ matrix.blender }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          base="https://download.blender.org/release/Blender${VERSION%.*}/blender-$VERSION"
+          case "$PLATFORM" in
+            linux-x64)
+              sudo apt-get update -qq
+              sudo apt-get install -y -qq libx11-6 libxext6 libxi6 libxxf86vm1 libxfixes3 libxrender1 \
+                libxkbcommon0 libsm6 libice6 libgl1 libegl1 libwayland-client0 libwayland-cursor0 libwayland-egl1
+              curl -fsSL "$base-linux-x64.tar.xz" | tar -xJ
+              echo "BLENDER=$PWD/blender-$VERSION-linux-x64/blender" >> "$GITHUB_ENV" ;;
+            macos-arm64)
+              curl -fsSLo blender.dmg "$base-macos-arm64.dmg"
+              hdiutil attach -nobrowse -readonly -mountpoint /Volumes/Blender blender.dmg > /dev/null
+              echo "BLENDER=/Volumes/Blender/Blender.app/Contents/MacOS/Blender" >> "$GITHUB_ENV" ;;
+            windows-x64)
+              curl -fsSLo blender.zip "$base-windows-x64.zip"
+              7z x -bd blender.zip > /dev/null
+              echo "BLENDER=$(cygpath -w "$PWD/blender-$VERSION-windows-x64/blender.exe")" >> "$GITHUB_ENV" ;;
+          esac
+
+      - name: Install the extension and run the smoke test
+        shell: bash
+        run: python packaging/blender/test-extension.py "$BLENDER" dist/Mesheal-blender-${{ matrix.platform }}.zip
+
+  # ----------------------------------------------------------------------------
   # Publish: only for v<N> tags, after every platform built and passed its tests
   # ----------------------------------------------------------------------------
   release:
     if: github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
-    needs: [linux, macos, windows]
+    needs: [linux, macos, windows, blender-linux, blender-macos, blender-windows, blender-test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -281,6 +616,7 @@ jobs:
           - **Windows (64-bit):** `Mesheal-windows-x64.zip`
           - **macOS (Apple Silicon):** `Mesheal-macos-arm64.zip`
           - **Linux (x86-64):** `Mesheal-linux-x86_64.AppImage`
+          - **Blender extension (Blender 4.2 or later):** `Mesheal-blender-windows-x64.zip`, `Mesheal-blender-macos-arm64.zip` or `Mesheal-blender-linux-x64.zip`. In Blender: Edit > Preferences > Get Extensions > Install from Disk.
 
           These builds are not code-signed. See the [install guide](https://jsweezy.github.io/mesheal/install/) for the one-time step to open them.
           EOF

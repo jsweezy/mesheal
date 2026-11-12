@@ -13,6 +13,7 @@ use the [Docker image](DOCKER.md).
 | Linux (x86-64) | [Mesheal-linux-x86_64.AppImage](https://github.com/jsweezy/mesheal/releases/latest/download/Mesheal-linux-x86_64.AppImage) |
 
 Older versions and checksums are on the [releases page](https://github.com/jsweezy/mesheal/releases).
+For the Blender add-on, see [Blender extension](blender.md#install).
 
 These builds are not code-signed, so the first time you open Mesheal your system warns that it
 does not recognise the developer. This is expected; the one-time steps to open it are below.

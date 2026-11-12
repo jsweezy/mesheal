@@ -3,6 +3,9 @@
 
 import numpy as np
 
+import os
+import sys
+
 BUILD_HINT = "mesheal native module not built: run scripts/build-blender-module.sh"
 
 _native = None
@@ -26,6 +29,16 @@ def native():
 
 def available():
     return native() is not None
+
+
+def unavailable_reason():
+    """Why the native module could not be loaded, as a one-line message for the UI."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    if not any(name.startswith("_mesheal.") for name in os.listdir(here)):
+        return BUILD_HINT
+    # A downloaded extension ships modules for specific Python versions (Blender 4.2-5.0: 3.11, 5.1+: 3.13)
+    version = "%d.%d" % sys.version_info[:2]
+    return f"Mesheal has no native module for this Blender (Python {version}): get a newer Mesheal"
 
 
 def polygon_count(obj):

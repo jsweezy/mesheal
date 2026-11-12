@@ -1,8 +1,0 @@
-{
-  "name": "mesheal",
-  "version-string": "3",
-  "description": "Windows build dependencies for Mesheal (used by .github/workflows/release.yml). CGAL brings Boost, GMP and MPFR; if vcpkg's CGAL is older than 6.2, CMake downloads CGAL 6.2.1 and still uses these libraries.",
-  "dependencies": [
-    "cgal"
-  ]
-}

@@ -3,6 +3,9 @@
 
 Run: blender --background --factory-startup --python blender/tests/smoke_test.py
 Needs the native module: run scripts/build-blender-module.sh first.
+
+To test an installed extension instead of the source tree, set MESHEAL_EXTENSION_DIR to the folder
+that contains mesheal_tools (packaging/blender/test-extension.py does this).
 """
 
 import os
@@ -12,7 +15,8 @@ import traceback
 import bmesh
 import bpy
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+sys.path.insert(0, os.environ.get("MESHEAL_EXTENSION_DIR")
+                or os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import mesheal_tools  # noqa: E402
 from mesheal_tools import bridge, report  # noqa: E402
@@ -38,7 +42,8 @@ def make_open_cube():
 
 
 def main():
-    assert bridge.available(), bridge.BUILD_HINT
+    assert bridge.available(), bridge.unavailable_reason()
+    print(f"Python {sys.version.split()[0]}, module {bridge.native().__file__}")
     mesheal_tools.register()
     obj = make_open_cube()
     assert len(obj.data.polygons) == 11, len(obj.data.polygons)

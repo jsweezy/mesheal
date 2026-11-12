@@ -11,11 +11,30 @@ Object and Edit Mesh menus. It uses the [Python module](python.md).
 - Repairs run on a background thread: progress shows in the status bar, **Esc** cancels, and Blender
   stays responsive. Each repair is one undo step, and the mesh is checked again afterwards.
 
-!!! warning "Development build only"
-    There is no packaged release yet. The extension runs on macOS from a source build and needs
-    Homebrew GMP and MPFR at runtime.
+## Install
+
+Download the zip for your system. It works in Blender 4.2 and newer:
+
+| System | Download |
+|--------|----------|
+| Windows (64-bit) | [Mesheal-blender-windows-x64.zip](https://github.com/jsweezy/mesheal/releases/latest/download/Mesheal-blender-windows-x64.zip) |
+| macOS (Apple Silicon) | [Mesheal-blender-macos-arm64.zip](https://github.com/jsweezy/mesheal/releases/latest/download/Mesheal-blender-macos-arm64.zip) |
+| Linux (x86-64) | [Mesheal-blender-linux-x64.zip](https://github.com/jsweezy/mesheal/releases/latest/download/Mesheal-blender-linux-x64.zip) |
+
+1. In Blender, open **Edit > Preferences > Get Extensions**.
+2. Open the menu at the top right (**v**) and choose **Install from Disk...**, then pick the zip
+   (don't unzip it). You can also drag the zip into Blender's window.
+3. Mesheal is enabled straight away: press **N** in the 3D Viewport and open the **Mesheal** tab.
+
+To update, install the newer zip the same way. To remove it, find Mesheal in **Preferences >
+Add-ons** and choose **Uninstall** from its menu.
+
+If the Check panel says "Mesheal has no native module for this Blender", your Blender is newer than
+this Mesheal download: get the latest one.
 
 ## Install from source
+
+For development on macOS: the add-on runs straight from the source tree.
 
 1. Build the native module against Blender's Python:
 

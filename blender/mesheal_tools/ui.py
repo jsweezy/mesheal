@@ -30,7 +30,7 @@ class VIEW3D_PT_mesheal_check(_Sidebar, Panel):
         props = context.scene.mesheal
 
         if not bridge.available():
-            layout.label(text=bridge.BUILD_HINT, icon="ERROR")
+            layout.label(text=bridge.unavailable_reason(), icon="ERROR")
         _big_button(layout, "mesh.mesheal_check", "VIEWZOOM")
 
         items = report.get()

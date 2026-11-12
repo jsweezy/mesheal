@@ -28,8 +28,8 @@ Without the module the panels still show, and the Check panel says:
 
 ## Limitations
 
-- macOS development build only. No portable zip or wheel yet.
-- Needs Homebrew GMP and MPFR at runtime (the module links them by absolute path).
+- The development build (above) links Homebrew's GMP and MPFR. The release zips don't: they link
+  them in statically (see "Release zips" below).
 - Works in the object's local coordinates and ignores modifiers.
 - A repair replaces the mesh with a plain triangle mesh: UVs, materials and custom attributes are lost.
 - Check results are kept in memory (not saved in the .blend) and go stale when the face count changes.
@@ -59,12 +59,19 @@ ctest --test-dir build_python -R "python|blender" --output-on-failure --timeout 
 /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --python blender/tests/smoke_test.py
 ```
 
-## Build a zip
+## Release zips
 
-```sh
-blender --command extension validate blender/mesheal_tools
-blender --command extension build --source-dir blender/mesheal_tools --output-dir <out>
-```
+`.github/workflows/release.yml` builds one zip per platform (`Mesheal-blender-<platform>.zip`). Each
+holds two modules, `_mesheal.*311*` for Blender 4.2-5.0 (Python 3.11) and `_mesheal.*313*` for
+Blender 5.1 and later (Python 3.13); Python loads the one matching its version. The libraries come
+from vcpkg (`packaging/vcpkg/`) and are linked in statically, so the module depends only on the
+operating system; GMP and MPFR licenses go in `licenses/`. TBB is off for now.
+
+- `packaging/blender/build-extension.py` assembles a zip from built modules (and refuses modules that
+  still need other libraries).
+- `packaging/blender/test-extension.py <blender> <zip>` installs a zip into a throwaway Blender
+  profile, as "Install from Disk" does, and runs `tests/smoke_test.py` against it. CI runs it in
+  Blender 4.2, 5.0, 5.1 and the newest release.
 
 ## Layout
 

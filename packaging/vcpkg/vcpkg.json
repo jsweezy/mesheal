@@ -1,0 +1,8 @@
+{
+  "name": "mesheal",
+  "version-string": "3",
+  "description": "Libraries for the Windows app and the Blender module on every platform (used by .github/workflows/release.yml). CGAL brings Boost, GMP and MPFR; if vcpkg's CGAL is older than 6.2, CMake downloads CGAL 6.2.1 and still uses these libraries.",
+  "dependencies": [
+    "cgal"
+  ]
+}
