@@ -9,8 +9,8 @@
 
 One module per Python version goes next to the add-on's Python files; Python picks the one whose
 name matches its own version (Blender 4.2-5.0 use Python 3.11, 5.1 and later 3.13). Each module
-must depend only on the operating system: GMP and MPFR are linked in statically, so their licenses
-are added under licenses/. The manifest gets the platform, and the zip has the manifest at its
+must depend only on the operating system and, for Python 3.13, Blender's own oneTBB: GMP and MPFR
+are linked in statically, so their licenses are added under licenses/. The manifest gets the platform, and the zip has the manifest at its
 root, as `blender --command extension build` makes it. Used by .github/workflows/release.yml.
 """
 
@@ -25,6 +25,13 @@ import zipfile
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SOURCE = os.path.join(ROOT, "blender", "mesheal_tools")
 PLATFORMS = ("windows-x64", "macos-arm64", "linux-x64")
+# The Blender 5.1+ module uses the oneTBB that Blender ships and has already loaded; only these
+# names may refer to it (macOS: found through @executable_path/../Resources/lib, i.e. Blender.app)
+BLENDER_TBB = {
+    "linux-x64": ("libtbb.so.12", "libtbbmalloc.so.2"),
+    "macos-arm64": ("@rpath/libtbb.dylib", "@rpath/libtbbmalloc.dylib"),
+    "windows-x64": ("tbb12.dll", "tbbmalloc.dll"),
+}
 STATIC_LIBRARIES = ("gmp", "mpfr")
 
 LICENSE_README = """\
@@ -76,7 +83,8 @@ def main() -> None:
         if not os.path.basename(module).startswith("_mesheal."):
             problems.append(f"{module}: not a _mesheal module")
             continue
-        problems += [f"{module}: needs {dep}" for dep in dependencies(args.platform, module)]
+        problems += [f"{module}: needs {dep}" for dep in dependencies(args.platform, module)
+                     if dep.lower() not in [n.lower() for n in BLENDER_TBB[args.platform]]]
     if problems:
         sys.exit("error: the modules are not self-contained:\n  " + "\n  ".join(problems))
 

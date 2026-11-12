@@ -58,6 +58,12 @@ RepairOutput syncRepair(const VertexArray& vertices, const FaceArray& faces, Met
 NB_MODULE(_mesheal, m) {
     m.doc() = "Mesheal mesh checks and repairs";
     m.def("version", [] { return std::string(mesheal::kVersionString); });
+    // True when CGAL's parallel algorithms run on oneTBB (the Blender 5.1+ build uses Blender's TBB)
+#ifdef CGAL_LINKED_WITH_TBB
+    m.attr("tbb") = true;
+#else
+    m.attr("tbb") = false;
+#endif
 
     nb::enum_<DefectCategory>(m, "Category")
         .value("SHELLS", DefectCategory::Shells)

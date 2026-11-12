@@ -28,6 +28,12 @@ permissions:
 env:
   # vcpkg version for the Blender module on Linux and macOS (Windows uses the runner's vcpkg)
   VCPKG_COMMIT: 177e8175121536d414f405ed8b3099b325a42638
+  # The Blender 5.1+ module (Python 3.13) uses the oneTBB Blender ships. It is built against the TBB
+  # of the oldest such Blender (5.1: oneTBB 2022.3, libtbb 12.17); newer Blenders ship newer,
+  # backward-compatible TBB. Headers (and Linux/Windows link libraries) from that oneTBB release;
+  # on macOS the libraries are taken from Blender itself (oneTBB's macOS package is Intel-only).
+  ONETBB_VERSION: 2022.3.0
+  BLENDER_FOR_TBB: 5.1.2
 
 concurrency:
   group: release-${{ github.ref }}-${{ github.sha }}
@@ -258,8 +264,9 @@ jobs:
           if-no-files-found: error
 
   # ----------------------------------------------------------------------------
-  # Blender extension: the _mesheal module for Python 3.11 (Blender 4.2-5.0) and 3.13 (5.1+), with
-  # GMP and MPFR from vcpkg linked in statically, packaged by packaging/blender/build-extension.py
+  # Blender extension: the _mesheal module for Python 3.11 (Blender 4.2-5.0, no TBB) and 3.13
+  # (5.1+, Blender's own oneTBB), with GMP and MPFR from vcpkg linked in statically, packaged by
+  # packaging/blender/build-extension.py
   # ----------------------------------------------------------------------------
   # Built on AlmaLinux 8 (manylinux_2_28, glibc 2.28) so the module loads wherever Blender runs
   blender-linux:
@@ -286,6 +293,11 @@ jobs:
           echo "VCPKG_DEFAULT_BINARY_CACHE=$GITHUB_WORKSPACE/vcpkg-cache" >> "$GITHUB_ENV"
           mkdir -p vcpkg-cache
 
+      - name: Get oneTBB
+        run: |
+          curl -fsSL "https://github.com/uxlfoundation/oneTBB/releases/download/v$ONETBB_VERSION/oneapi-tbb-$ONETBB_VERSION-lin.tgz" | tar -xz
+          echo "ONETBB=$GITHUB_WORKSPACE/oneapi-tbb-$ONETBB_VERSION" >> "$GITHUB_ENV"
+
       - name: Restore vcpkg cache
         uses: actions/cache/restore@v4
         with:
@@ -297,14 +309,21 @@ jobs:
         timeout-minutes: 90
         run: |
           for py in 311 313; do
-            cmake -S . -B build-py$py -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            if [ $py = 313 ]; then
+              tbb="-DMESHEAL_USE_TBB=ON -DMESHEAL_BLENDER_TBB_INCLUDE_DIR=$ONETBB/include
+                -DMESHEAL_BLENDER_TBB_LIBRARY=$ONETBB/lib/intel64/gcc4.8/libtbb.so.12
+                -DMESHEAL_BLENDER_TBBMALLOC_LIBRARY=$ONETBB/lib/intel64/gcc4.8/libtbbmalloc.so.2"
+            else
+              tbb="-DMESHEAL_USE_TBB=OFF"
+            fi
+            cmake -S . -B build-py$py -G Ninja -DCMAKE_BUILD_TYPE=Release $tbb \
               -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
               -DVCPKG_MANIFEST_DIR="$GITHUB_WORKSPACE/packaging/vcpkg" \
               -DVCPKG_OVERLAY_TRIPLETS="$GITHUB_WORKSPACE/packaging/vcpkg/triplets" \
               -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
               -DVCPKG_TARGET_TRIPLET=x64-linux-static-release \
               -DVCPKG_HOST_TRIPLET=x64-linux-static-release \
-              -DMESHEAL_BUILD_GUI=OFF -DMESHEAL_BUILD_PYTHON=ON -DMESHEAL_USE_TBB=OFF -DMESHEAL_BUILD_TESTS=OFF \
+              -DMESHEAL_BUILD_GUI=OFF -DMESHEAL_BUILD_PYTHON=ON -DMESHEAL_BUILD_TESTS=OFF \
               -DPython_EXECUTABLE=/opt/python/cp$py-cp$py/bin/python
           done
 
@@ -324,7 +343,9 @@ jobs:
           for py in 311 313; do
             PY=/opt/python/cp$py-cp$py/bin/python
             $PY -m pip install -q numpy
-            (cd src/python/Test && PYTHONPATH="$GITHUB_WORKSPACE/build-py$py/src/python" $PY -m unittest test_mesheal)
+            # In Blender the module finds Blender's TBB; here, the oneTBB it was built against
+            (cd src/python/Test && LD_LIBRARY_PATH="$ONETBB/lib/intel64/gcc4.8" \
+              PYTHONPATH="$GITHUB_WORKSPACE/build-py$py/src/python" $PY -m unittest test_mesheal)
           done
 
       - name: Package
@@ -373,6 +394,20 @@ jobs:
           echo "VCPKG_DEFAULT_BINARY_CACHE=$GITHUB_WORKSPACE/vcpkg-cache" >> "$GITHUB_ENV"
           mkdir -p vcpkg-cache
 
+      - name: Get oneTBB headers and Blender's TBB libraries
+        run: |
+          curl -fsSL "https://github.com/uxlfoundation/oneTBB/releases/download/v$ONETBB_VERSION/oneapi-tbb-$ONETBB_VERSION-mac.tgz" | tar -xz
+          curl -fsSLo blender.dmg "https://download.blender.org/release/Blender${BLENDER_FOR_TBB%.*}/blender-$BLENDER_FOR_TBB-macos-arm64.dmg"
+          hdiutil attach -nobrowse -readonly -mountpoint /Volumes/Blender blender.dmg > /dev/null
+          mkdir blender-tbb
+          cp -L /Volumes/Blender/Blender.app/Contents/Resources/lib/libtbb.dylib \
+                /Volumes/Blender/Blender.app/Contents/Resources/lib/libtbbmalloc.dylib blender-tbb/
+          hdiutil detach /Volumes/Blender > /dev/null
+          rm blender.dmg
+          otool -L blender-tbb/libtbb.dylib | head -2
+          echo "ONETBB=$GITHUB_WORKSPACE/oneapi-tbb-$ONETBB_VERSION" >> "$GITHUB_ENV"
+          echo "BLENDER_TBB=$GITHUB_WORKSPACE/blender-tbb" >> "$GITHUB_ENV"
+
       - name: Restore vcpkg cache
         uses: actions/cache/restore@v4
         with:
@@ -385,7 +420,14 @@ jobs:
         run: |
           for py in 311 313; do
             if [ $py = 311 ]; then PY="${{ steps.py311.outputs.python-path }}"; else PY="${{ steps.py313.outputs.python-path }}"; fi
-            cmake -S . -B build-py$py -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            if [ $py = 313 ]; then
+              tbb="-DMESHEAL_USE_TBB=ON -DMESHEAL_BLENDER_TBB_INCLUDE_DIR=$ONETBB/include
+                -DMESHEAL_BLENDER_TBB_LIBRARY=$BLENDER_TBB/libtbb.dylib
+                -DMESHEAL_BLENDER_TBBMALLOC_LIBRARY=$BLENDER_TBB/libtbbmalloc.dylib"
+            else
+              tbb="-DMESHEAL_USE_TBB=OFF"
+            fi
+            cmake -S . -B build-py$py -G Ninja -DCMAKE_BUILD_TYPE=Release $tbb \
               -DCMAKE_OSX_DEPLOYMENT_TARGET=11.2 -DCMAKE_OSX_ARCHITECTURES=arm64 \
               -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
               -DVCPKG_MANIFEST_DIR="$GITHUB_WORKSPACE/packaging/vcpkg" \
@@ -393,7 +435,7 @@ jobs:
               -DVCPKG_INSTALLED_DIR="$GITHUB_WORKSPACE/vcpkg_installed" \
               -DVCPKG_TARGET_TRIPLET=arm64-osx-static-release \
               -DVCPKG_HOST_TRIPLET=arm64-osx-static-release \
-              -DMESHEAL_BUILD_GUI=OFF -DMESHEAL_BUILD_PYTHON=ON -DMESHEAL_USE_TBB=OFF -DMESHEAL_BUILD_TESTS=OFF \
+              -DMESHEAL_BUILD_GUI=OFF -DMESHEAL_BUILD_PYTHON=ON -DMESHEAL_BUILD_TESTS=OFF \
               -DPython_EXECUTABLE="$PY"
           done
 
@@ -413,7 +455,9 @@ jobs:
           for py in 311 313; do
             if [ $py = 311 ]; then PY="${{ steps.py311.outputs.python-path }}"; else PY="${{ steps.py313.outputs.python-path }}"; fi
             "$PY" -m pip install -q numpy
-            (cd src/python/Test && PYTHONPATH="$GITHUB_WORKSPACE/build-py$py/src/python" "$PY" -m unittest test_mesheal)
+            # In Blender the module finds Blender's TBB; here, the copy taken from Blender
+            (cd src/python/Test && DYLD_LIBRARY_PATH="$BLENDER_TBB" \
+              PYTHONPATH="$GITHUB_WORKSPACE/build-py$py/src/python" "$PY" -m unittest test_mesheal)
           done
 
       - name: Package
@@ -460,21 +504,36 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Get oneTBB
+        shell: pwsh
+        run: |
+          curl.exe -fsSLo onetbb.zip "https://github.com/uxlfoundation/oneTBB/releases/download/v$env:ONETBB_VERSION/oneapi-tbb-$env:ONETBB_VERSION-win.zip"
+          7z x -bd onetbb.zip | Out-Null
+          "ONETBB=$((Get-Location).Path -replace '\\', '/')/oneapi-tbb-$env:ONETBB_VERSION" >> $env:GITHUB_ENV
+
       - name: Configure
         timeout-minutes: 90
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force vcpkg-cache | Out-Null
           $pythons = @{ "311" = "${{ steps.py311.outputs.python-path }}"; "313" = "${{ steps.py313.outputs.python-path }}" }
+          # Import libraries for Blender's tbb12.dll and tbbmalloc.dll (same names as oneTBB's)
+          $tbb = @{
+            "311" = @("-DMESHEAL_USE_TBB=OFF")
+            "313" = @("-DMESHEAL_USE_TBB=ON", "-DMESHEAL_BLENDER_TBB_INCLUDE_DIR=$env:ONETBB/include",
+                      "-DMESHEAL_BLENDER_TBB_LIBRARY=$env:ONETBB/lib/intel64/vc14/tbb12.lib",
+                      "-DMESHEAL_BLENDER_TBBMALLOC_LIBRARY=$env:ONETBB/lib/intel64/vc14/tbbmalloc.lib")
+          }
           foreach ($py in "311", "313") {
-            cmake -S . -B build-py$py -G Ninja -DCMAKE_BUILD_TYPE=Release `
+            $tbbArgs = $tbb[$py]
+            cmake -S . -B build-py$py -G Ninja -DCMAKE_BUILD_TYPE=Release @tbbArgs `
               -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
               -DVCPKG_MANIFEST_DIR="${{ github.workspace }}/packaging/vcpkg" `
               -DVCPKG_OVERLAY_TRIPLETS="${{ github.workspace }}/packaging/vcpkg/triplets" `
               -DVCPKG_INSTALLED_DIR="${{ github.workspace }}/vcpkg_installed" `
               -DVCPKG_TARGET_TRIPLET=x64-windows-static-md-release `
               -DVCPKG_HOST_TRIPLET=x64-windows-static-md-release `
-              -DMESHEAL_BUILD_GUI=OFF -DMESHEAL_BUILD_PYTHON=ON -DMESHEAL_USE_TBB=OFF -DMESHEAL_BUILD_TESTS=OFF `
+              -DMESHEAL_BUILD_GUI=OFF -DMESHEAL_BUILD_PYTHON=ON -DMESHEAL_BUILD_TESTS=OFF `
               -DPython_EXECUTABLE="$($pythons[$py])"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
@@ -499,6 +558,8 @@ jobs:
         shell: pwsh
         run: |
           $pythons = @{ "311" = "${{ steps.py311.outputs.python-path }}"; "313" = "${{ steps.py313.outputs.python-path }}" }
+          # In Blender the module uses Blender's TBB DLLs; here, oneTBB's, next to the module
+          Copy-Item "$env:ONETBB/redist/intel64/vc14/tbb12.dll", "$env:ONETBB/redist/intel64/vc14/tbbmalloc.dll" build-py313/src/python/
           foreach ($py in "311", "313") {
             & $pythons[$py] -m pip install -q numpy
             $env:PYTHONPATH = "${{ github.workspace }}/build-py$py/src/python"

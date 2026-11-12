@@ -30,6 +30,7 @@ def main() -> None:
         if len(manifests) != 1:
             sys.exit(f"error: expected one installed mesheal_tools under {profile}, found {manifests}")
         env["MESHEAL_EXTENSION_DIR"] = os.path.dirname(os.path.dirname(manifests[0]))
+        env["MESHEAL_RELEASE_ZIP"] = "1"  # the smoke test then also requires TBB in the 5.1+ module
         result = subprocess.run([blender, "--background", "--factory-startup",
                                  "--python", os.path.join(ROOT, "blender", "tests", "smoke_test.py")],
                                 env=env, capture_output=True, text=True)

@@ -123,8 +123,40 @@ if(NOT CGAL_FOUND)
 endif()
 mesheal_mark_target_includes_system(CGAL::CGAL)
 mesheal_record_dependency("CGAL" "${CGAL_VERSION}")
-# The Python module turns TBB off: Blender ships its own libtbb and two copies in one process are risky.
-if(MESHEAL_USE_TBB)
+# The Python module either turns TBB off or uses the oneTBB that Blender ships (Blender 5.1+): two
+# TBB copies in one process are risky. For the latter, MESHEAL_BLENDER_TBB_LIBRARY and
+# MESHEAL_BLENDER_TBBMALLOC_LIBRARY name Blender's own libtbb/libtbbmalloc (on Windows, import
+# libraries for Blender's tbb12.dll/tbbmalloc.dll) and MESHEAL_BLENDER_TBB_INCLUDE_DIR the headers of
+# the same oneTBB release. The module then loads whatever copy Blender has already loaded.
+set(MESHEAL_BLENDER_TBB_INCLUDE_DIR "" CACHE PATH "Python module: oneTBB headers matching Blender's TBB")
+set(MESHEAL_BLENDER_TBB_LIBRARY "" CACHE FILEPATH "Python module: Blender's libtbb (Windows: tbb12.lib)")
+set(MESHEAL_BLENDER_TBBMALLOC_LIBRARY "" CACHE FILEPATH "Python module: Blender's libtbbmalloc (Windows: tbbmalloc.lib)")
+if(MESHEAL_BLENDER_TBB_LIBRARY)
+    if(NOT MESHEAL_BUILD_PYTHON OR MESHEAL_BUILD_GUI OR NOT MESHEAL_USE_TBB)
+        message(FATAL_ERROR "MESHEAL_BLENDER_TBB_LIBRARY is only for the Python module: "
+                            "-DMESHEAL_BUILD_PYTHON=ON -DMESHEAL_BUILD_GUI=OFF -DMESHEAL_USE_TBB=ON")
+    endif()
+    foreach(_mesheal_tbb_part TBB_INCLUDE_DIR TBB_LIBRARY TBBMALLOC_LIBRARY)
+        if(NOT EXISTS "${MESHEAL_BLENDER_${_mesheal_tbb_part}}")
+            message(FATAL_ERROR "MESHEAL_BLENDER_${_mesheal_tbb_part} not found: '${MESHEAL_BLENDER_${_mesheal_tbb_part}}'")
+        endif()
+    endforeach()
+    add_library(TBB::tbb UNKNOWN IMPORTED)
+    set_target_properties(TBB::tbb PROPERTIES
+        IMPORTED_LOCATION "${MESHEAL_BLENDER_TBB_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${MESHEAL_BLENDER_TBB_INCLUDE_DIR}")
+    add_library(TBB::tbbmalloc UNKNOWN IMPORTED)
+    set_target_properties(TBB::tbbmalloc PROPERTIES
+        IMPORTED_LOCATION "${MESHEAL_BLENDER_TBBMALLOC_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${MESHEAL_BLENDER_TBB_INCLUDE_DIR}")
+    set(TBB_FOUND TRUE)
+    set(TBB_INCLUDE_DIRS "${MESHEAL_BLENDER_TBB_INCLUDE_DIR}")
+    file(STRINGS "${MESHEAL_BLENDER_TBB_INCLUDE_DIR}/oneapi/tbb/version.h" _mesheal_tbb_lines
+         REGEX "^#define TBB_VERSION_(MAJOR|MINOR) [0-9]+")
+    string(REGEX MATCHALL "[0-9]+" _mesheal_tbb_parts "${_mesheal_tbb_lines}")
+    list(JOIN _mesheal_tbb_parts "." TBB_VERSION)
+    message(STATUS "Using Blender's oneTBB ${TBB_VERSION}: ${MESHEAL_BLENDER_TBB_LIBRARY}")
+elseif(MESHEAL_USE_TBB)
     find_package(TBB CONFIG QUIET HINTS /opt/homebrew/opt/tbb /usr/local/opt/tbb)
 endif()
 if(MESHEAL_USE_TBB AND TBB_FOUND)

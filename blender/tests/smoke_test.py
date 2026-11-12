@@ -22,6 +22,54 @@ import mesheal_tools  # noqa: E402
 from mesheal_tools import bridge, report  # noqa: E402
 
 
+def loaded_tbb_libraries():
+    """Paths of the TBB libraries (libtbb, tbb12.dll, ... not tbbmalloc) loaded in this process."""
+    paths = []
+    if sys.platform.startswith("linux"):
+        with open("/proc/self/maps") as maps:
+            paths = [line.split()[-1] for line in maps if "/" in line]
+    elif sys.platform == "darwin":
+        import ctypes
+
+        dyld = ctypes.CDLL(None)
+        dyld._dyld_get_image_name.restype = ctypes.c_char_p
+        paths = [dyld._dyld_get_image_name(i).decode() for i in range(dyld._dyld_image_count())]
+    elif sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        psapi, kernel32 = ctypes.WinDLL("psapi"), ctypes.WinDLL("kernel32")
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        process = kernel32.GetCurrentProcess()
+        modules, needed = (wintypes.HMODULE * 1024)(), wintypes.DWORD()
+        psapi.EnumProcessModules(process, modules, ctypes.sizeof(modules), ctypes.byref(needed))
+        name = ctypes.create_unicode_buffer(1024)
+        for module in modules[: needed.value // ctypes.sizeof(wintypes.HMODULE)]:
+            psapi.GetModuleFileNameExW(process, wintypes.HMODULE(module), name, 1024)
+            paths.append(name.value)
+    names = [p for p in paths if os.path.basename(p).lower().startswith(("libtbb.", "tbb12"))]
+    return sorted(set(os.path.realpath(p) for p in names))
+
+
+def check_tbb():
+    """The module must use Blender's own TBB: one copy, inside Blender's installation."""
+    import bpy
+
+    native = bridge.native()
+    loaded = loaded_tbb_libraries()
+    print(f"module tbb={native.tbb}; TBB loaded: {loaded}")
+    # Blender.app/Contents (macOS) or the folder with the blender executable
+    blender_dir = os.path.dirname(os.path.realpath(bpy.app.binary_path))
+    if sys.platform == "darwin":
+        blender_dir = os.path.dirname(blender_dir)
+    assert len(loaded) <= 1, f"more than one TBB loaded: {loaded}"
+    assert all(os.path.normcase(p).startswith(os.path.normcase(blender_dir)) for p in loaded), \
+        f"TBB loaded from outside Blender ({blender_dir}): {loaded}"
+    # Release zips: the Blender 5.1+ module (Python 3.13) runs CGAL in parallel on Blender's TBB
+    if os.environ.get("MESHEAL_RELEASE_ZIP") and sys.version_info >= (3, 13):
+        assert native.tbb, "the Python 3.13 module was built without TBB"
+
+
 def counts():
     return {i.name: i.count for i in report.get()}
 
@@ -44,6 +92,7 @@ def make_open_cube():
 def main():
     assert bridge.available(), bridge.unavailable_reason()
     print(f"Python {sys.version.split()[0]}, module {bridge.native().__file__}")
+    check_tbb()
     mesheal_tools.register()
     obj = make_open_cube()
     assert len(obj.data.polygons) == 11, len(obj.data.polygons)
@@ -97,6 +146,16 @@ def main():
 
     # Merge: a no-op-ish run must still finish
     assert bpy.ops.mesh.mesheal_merge() == {"FINISHED"}
+
+    # Precision Isosurface: CGAL's mesher, which runs in parallel when the module has TBB
+    make_open_cube()
+    bpy.context.scene.mesheal.remesh_method = "ISO"
+    bpy.context.scene.mesheal.remesh_target_size = 0.1  # the cube is 2 wide: a few thousand faces
+    assert bpy.ops.mesh.mesheal_remesh() == {"FINISHED"}
+    remeshed = bpy.context.active_object
+    assert len(remeshed.data.polygons) > 12, len(remeshed.data.polygons)
+    print(f"isosurface: 11 -> {len(remeshed.data.polygons)} faces")
+    check_tbb()
 
     mesheal_tools.unregister()
     print("MESHEAL SMOKE TEST PASSED")

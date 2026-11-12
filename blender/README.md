@@ -65,7 +65,15 @@ ctest --test-dir build_python -R "python|blender" --output-on-failure --timeout 
 holds two modules, `_mesheal.*311*` for Blender 4.2-5.0 (Python 3.11) and `_mesheal.*313*` for
 Blender 5.1 and later (Python 3.13); Python loads the one matching its version. The libraries come
 from vcpkg (`packaging/vcpkg/`) and are linked in statically, so the module depends only on the
-operating system; GMP and MPFR licenses go in `licenses/`. TBB is off for now.
+operating system; GMP and MPFR licenses go in `licenses/`.
+
+TBB: the 3.11 module has none (Blender 4.2-4.4 ship an old, incompatible TBB). The 3.13 module
+uses the oneTBB that Blender itself ships and has already loaded, never a copy of its own: it is
+built with `-DMESHEAL_USE_TBB=ON` and `MESHEAL_BLENDER_TBB_INCLUDE_DIR` / `_TBB_LIBRARY` /
+`_TBBMALLOC_LIBRARY` (see `cmake/Dependencies.cmake`) against Blender 5.1's TBB (oneTBB 2022.3),
+the oldest that module supports. On macOS it finds Blender's copy through
+`@executable_path/../Resources/lib`. With TBB, Precision Isosurface runs about twice as fast. The
+smoke test checks that only Blender's TBB is loaded.
 
 - `packaging/blender/build-extension.py` assembles a zip from built modules (and refuses modules that
   still need other libraries).
