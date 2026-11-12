@@ -170,20 +170,25 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: vcpkg-cache
-          key: vcpkg-x64-windows-static-md-${{ hashFiles('packaging/windows/vcpkg.json') }}
+          key: vcpkg-x64-windows-static-md-release-${{ hashFiles('packaging/windows/vcpkg.json', 'packaging/windows/triplets/*.cmake') }}
 
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
 
+      # Configure also builds the vcpkg libraries on a cold cache (about an hour); a hang should fail
+      # well before the job limit, and the cache below is saved either way
       - name: Configure
+        timeout-minutes: 90
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force vcpkg-cache | Out-Null
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_MANIFEST_DIR="${{ github.workspace }}/packaging/windows" `
-            -DVCPKG_TARGET_TRIPLET=x64-windows-static-md `
+            -DVCPKG_OVERLAY_TRIPLETS="${{ github.workspace }}/packaging/windows/triplets" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static-md-release `
+            -DVCPKG_HOST_TRIPLET=x64-windows-static-md-release `
             -DMESHEAL_USE_TBB=OFF
 
       # Save the built libraries even when a later step fails, so the next run skips rebuilding them
@@ -192,7 +197,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: vcpkg-cache
-          key: vcpkg-x64-windows-static-md-${{ hashFiles('packaging/windows/vcpkg.json') }}
+          key: vcpkg-x64-windows-static-md-release-${{ hashFiles('packaging/windows/vcpkg.json', 'packaging/windows/triplets/*.cmake') }}
         continue-on-error: true
 
       - name: Build
