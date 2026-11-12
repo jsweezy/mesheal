@@ -469,8 +469,8 @@ void PolyscopeGui::drawShellSelectPopup() {
     }
     tooltip("Shells lying inside another shell without crossing it (found by Intersecting faces).");
     ImGui::Separator();
-    const std::string small = "Smaller than " + withThousands(static_cast<std::size_t>(smallShellFaces_)) + " faces";
-    if (ImGui::MenuItem(small.c_str())) {
+    const std::string smallLabel = "Smaller than " + withThousands(static_cast<std::size_t>(smallShellFaces_)) + " faces";
+    if (ImGui::MenuItem(smallLabel.c_str())) {
         select([&](std::size_t s) { return shells.shell(s).faces.size() < static_cast<std::size_t>(smallShellFaces_); });
     }
     tooltip("Then press Delete to remove small loose pieces.");

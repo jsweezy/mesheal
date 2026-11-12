@@ -200,8 +200,9 @@ jobs:
           key: vcpkg-x64-windows-static-md-release-${{ hashFiles('packaging/windows/vcpkg.json', 'packaging/windows/triplets/*.cmake') }}
         continue-on-error: true
 
+      # -k 0: keep going after a failed file, so one run lists every compile error
       - name: Build
-        run: cmake --build build -j 4
+        run: cmake --build build -j 4 -- -k 0
 
       - name: Test
         run: ctest --test-dir build -j 4 --output-on-failure --timeout 600

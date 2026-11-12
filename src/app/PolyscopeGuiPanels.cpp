@@ -564,8 +564,8 @@ void PolyscopeGui::drawCompass(float left, float bottom) {
     draw->AddCircleFilled(origin, length + 12.0f * scale, IM_COL32(0, 0, 0, 40), 32);
     for (const Axis& axis : axes) {
         const ImVec2 tip(origin.x + axis.direction.x * length, origin.y - axis.direction.y * length);
-        const bool near = axis.direction.z >= 0.0f;
-        const ImU32 color = near ? axis.color : (axis.color & 0x00FFFFFFu) | (140u << 24);
+        const bool towardViewer = axis.direction.z >= 0.0f;
+        const ImU32 color = towardViewer ? axis.color : (axis.color & 0x00FFFFFFu) | (140u << 24);
         draw->AddLine(origin, tip, color, 2.5f * scale);
         draw->AddCircleFilled(tip, 8.0f * scale, color, 16);
         const ImVec2 textSize = ImGui::CalcTextSize(axis.label);

@@ -272,19 +272,19 @@ void PolyscopeGui::drawMouseBindingEditor() {
                                ImGuiButtonFlags_MouseButtonMiddle);
     const bool hovered = ImGui::IsItemHovered();
     ImDrawList* draw = ImGui::GetWindowDrawList();
-    const ImVec2 far(corner.x + size.x, corner.y + size.y);
-    draw->AddRectFilled(corner, far, ImGui::GetColorU32(hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg), 4.0f);
-    draw->AddRect(corner, far, ImGui::GetColorU32(ImGuiCol_Border), 4.0f);
+    const ImVec2 farCorner(corner.x + size.x, corner.y + size.y);
+    draw->AddRectFilled(corner, farCorner, ImGui::GetColorU32(hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg), 4.0f);
+    draw->AddRect(corner, farCorner, ImGui::GetColorU32(ImGuiCol_Border), 4.0f);
     const char* prompt = kind == MouseActionKind::Wheel ? "Hold the modifier keys and scroll here"
                                                          : "Hold the modifier keys and press a mouse button here";
     const float padding = ImGui::GetStyle().FramePadding.x;
-    ImGui::PushClipRect(corner, far, true);
+    ImGui::PushClipRect(corner, farCorner, true);
     ImGui::SetCursorScreenPos(ImVec2(corner.x + padding, corner.y + padding));
     ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + size.x - 2.0f * padding);
     ImGui::TextDisabled("%s", prompt);
     ImGui::PopTextWrapPos();
     ImGui::PopClipRect();
-    ImGui::SetCursorScreenPos(ImVec2(corner.x, far.y + ImGui::GetStyle().ItemSpacing.y));
+    ImGui::SetCursorScreenPos(ImVec2(corner.x, farCorner.y + ImGui::GetStyle().ItemSpacing.y));
 
     std::optional<MouseBinding> edited;
     if (hovered) {

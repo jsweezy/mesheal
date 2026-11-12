@@ -1105,7 +1105,7 @@ void appendShell(mesheal::Mesh& mesh, mesheal::Mesh part, const Eigen::Vector3d&
 /// Shells: the defective sample (a cube and two loose triangles, 3 thin faces, inside 0..10), a clean
 /// cube crossing it (5..15) and a clean cube far away. Loads them into `controller` and returns the
 /// sample cube's, the crossing cube's and the far cube's shell numbers.
-void loadThreeShells(mesheal::AppController& controller, std::size_t& sample, std::size_t& crossing, std::size_t& far) {
+void loadThreeShells(mesheal::AppController& controller, std::size_t& sample, std::size_t& crossing, std::size_t& farShell) {
     mesheal::Mesh mesh = mesheal::SampleMeshes::createSampleDefectiveMesh();
     appendShell(mesh, mesheal::SampleMeshes::createCubeMesh(10.0, mesheal::Unit::Millimeter), {5.0, 5.0, 5.0});
     appendShell(mesh, mesheal::SampleMeshes::createCubeMesh(2.0, mesheal::Unit::Millimeter), {40.0, 0.0, 0.0});
@@ -1114,7 +1114,7 @@ void loadThreeShells(mesheal::AppController& controller, std::size_t& sample, st
     for (std::size_t s = 0; s < shells.size(); ++s) {
         const mesheal::ShellInfo& shell = shells.shell(s);
         if (shell.bbox.min.x() > 30.0) {
-            far = s;
+            farShell = s;
         } else if (shell.bbox.min.x() == 5.0) {
             crossing = s;
         } else if (shell.faces.size() == 13) {
@@ -1138,9 +1138,9 @@ TEST_CASE("AppController scopes Mesh Health to the selected shells, else the vis
           "[app][controller][shells]") {
     std::size_t sample = 0;
     std::size_t crossing = 0;
-    std::size_t far = 0;
+    std::size_t farShell = 0;
     mesheal::AppController controller;
-    loadThreeShells(controller, sample, crossing, far);
+    loadThreeShells(controller, sample, crossing, farShell);
     REQUIRE(controller.shells().size() == 5);
     using mesheal::DefectCategory;
     const std::size_t allCrossings = count(controller, DefectCategory::Intersections);
@@ -1156,7 +1156,7 @@ TEST_CASE("AppController scopes Mesh Health to the selected shells, else the vis
     REQUIRE(controller.shellHealth()[crossing].between > 0);
 
     // One clean shell: nothing in scope, the rows read OK
-    controller.clickShell(far, false, false, {});
+    controller.clickShell(farShell, false, false, {});
     REQUIRE(count(controller, DefectCategory::ThinFaces) == 0);
     REQUIRE(count(controller, DefectCategory::Intersections) == 0);
     REQUIRE(controller.rowStatus(DefectCategory::ThinFaces) == mesheal::HealthStatus::Ok);
@@ -1190,34 +1190,34 @@ TEST_CASE("AppController hides shells from the base mesh display and Esc clears 
           "[app][controller][shells]") {
     std::size_t sample = 0;
     std::size_t crossing = 0;
-    std::size_t far = 0;
+    std::size_t farShell = 0;
     mesheal::AppController controller;
-    loadThreeShells(controller, sample, crossing, far);
+    loadThreeShells(controller, sample, crossing, farShell);
     REQUIRE_FALSE(controller.buildBaseMeshDisplay().isCut);
 
-    controller.setShellVisible(far, false);
+    controller.setShellVisible(farShell, false);
     const mesheal::BaseMeshDisplay display = controller.buildBaseMeshDisplay();
     REQUIRE(display.isCut);
     REQUIRE(display.faceIndices.size() ==
-            static_cast<std::size_t>(controller.mesh().numFaces()) - controller.shells().shell(far).faces.size());
+            static_cast<std::size_t>(controller.mesh().numFaces()) - controller.shells().shell(farShell).faces.size());
     for (const Eigen::Index f : display.faceIndices) {
-        REQUIRE(controller.shells().shellOfFace(f) != static_cast<int>(far));
+        REQUIRE(controller.shells().shellOfFace(f) != static_cast<int>(farShell));
     }
 
     // Color by shell (on by default) and the selected-shell tint
     REQUIRE(controller.colorByShell());
     controller.showAllShells();
-    REQUIRE(controller.pickShell(controller.shells().shell(far).faces.front(), false));
-    REQUIRE(controller.shells().shell(far).selected);
+    REQUIRE(controller.pickShell(controller.shells().shell(farShell).faces.front(), false));
+    REQUIRE(controller.shells().shell(farShell).selected);
     const mesheal::HighlightOverlayGeometry overlay = controller.buildHighlightOverlay();
-    const Eigen::Index farFace = controller.shells().shell(far).faces.front();
+    const Eigen::Index farFace = controller.shells().shell(farShell).faces.front();
     const Eigen::Index otherFace = controller.shells().shell(crossing).faces.front();
     REQUIRE(overlay.faceColors[static_cast<std::size_t>(otherFace)].isApprox(mesheal::AppController::shellColor(crossing)));
-    REQUIRE_FALSE(overlay.faceColors[static_cast<std::size_t>(farFace)].isApprox(mesheal::AppController::shellColor(far)));
+    REQUIRE_FALSE(overlay.faceColors[static_cast<std::size_t>(farFace)].isApprox(mesheal::AppController::shellColor(farShell)));
 
     // Selected shells are framed when no defect is highlighted
     const mesheal::CameraFocusTarget focus = controller.computeCameraFocusTarget();
-    REQUIRE(focus.selectionBounds.min.isApprox(controller.shells().shell(far).bbox.min));
+    REQUIRE(focus.selectionBounds.min.isApprox(controller.shells().shell(farShell).bbox.min));
 
     REQUIRE(controller.escape());
     REQUIRE(controller.shells().selectedCount() == 0);
@@ -1228,11 +1228,11 @@ TEST_CASE("AppController deletes the selected shells as one undoable step",
           "[app][controller][shells][undo]") {
     std::size_t sample = 0;
     std::size_t crossing = 0;
-    std::size_t far = 0;
+    std::size_t farShell = 0;
     mesheal::AppController controller;
-    loadThreeShells(controller, sample, crossing, far);
+    loadThreeShells(controller, sample, crossing, farShell);
     const mesheal::Mesh before = controller.mesh();
-    const std::size_t farFaces = controller.shells().shell(far).faces.size();
+    const std::size_t farFaces = controller.shells().shell(farShell).faces.size();
 
     REQUIRE_FALSE(controller.deleteSelectedShells()); // nothing selected
     controller.selectShellsWhere([](std::size_t) { return true; });
@@ -1240,7 +1240,7 @@ TEST_CASE("AppController deletes the selected shells as one undoable step",
     REQUIRE_FALSE(controller.canUndo());
 
     controller.setShellVisible(sample, false);
-    controller.clickShell(far, false, false, {});
+    controller.clickShell(farShell, false, false, {});
     REQUIRE(controller.deleteSelectedShells());
     REQUIRE(controller.shells().size() == 4);
     REQUIRE(controller.mesh().numFaces() == before.numFaces() - static_cast<Eigen::Index>(farFaces));
@@ -1258,7 +1258,7 @@ TEST_CASE("AppController deletes the selected shells as one undoable step",
     REQUIRE(controller.mesh().F == before.F);
     REQUIRE(controller.mesh().V == before.V);
     REQUIRE(controller.shells().size() == 5);
-    REQUIRE(controller.shells().shell(far).selected);
+    REQUIRE(controller.shells().shell(farShell).selected);
     REQUIRE_FALSE(controller.shells().shell(sample).visible);
     REQUIRE_FALSE(controller.isModified());
 
@@ -1266,7 +1266,7 @@ TEST_CASE("AppController deletes the selected shells as one undoable step",
     controller.hideAllShells();
     REQUIRE(controller.shells().visibleCount() == 0);
     REQUIRE(controller.buildBaseMeshDisplay().isCut);
-    controller.selectShellsWhere([&](std::size_t s) { return s != far; });
+    controller.selectShellsWhere([&](std::size_t s) { return s != farShell; });
     REQUIRE(controller.deleteSelectedShells());
     REQUIRE(controller.shells().size() == 1);
     REQUIRE_FALSE(controller.shells().multiShell());
@@ -1284,13 +1284,13 @@ TEST_CASE("AppController Fix All heals only the shells in scope and undo restore
           "[app][controller][shells][repair][undo]") {
     std::size_t sample = 0;
     std::size_t crossing = 0;
-    std::size_t far = 0;
+    std::size_t farShell = 0;
     mesheal::AppController controller;
-    loadThreeShells(controller, sample, crossing, far);
+    loadThreeShells(controller, sample, crossing, farShell);
     const mesheal::Mesh before = controller.mesh();
 
-    controller.clickShell(far, false, false, {});
-    REQUIRE_FALSE(controller.fixAllThinFaces()); // the far cube is clean
+    controller.clickShell(farShell, false, false, {});
+    REQUIRE_FALSE(controller.fixAllThinFaces()); // the farShell cube is clean
     REQUIRE_FALSE(controller.canUndo());
 
     controller.selectShellsWhere([&](std::size_t s) { return isSample(controller, s); });
@@ -1318,15 +1318,15 @@ TEST_CASE("AppController saves selected shells to one STL or one file each",
           "[app][controller][shells][io]") {
     std::size_t sample = 0;
     std::size_t crossing = 0;
-    std::size_t far = 0;
+    std::size_t farShell = 0;
     mesheal::AppController controller;
-    loadThreeShells(controller, sample, crossing, far);
+    loadThreeShells(controller, sample, crossing, farShell);
     REQUIRE(controller.shellFileStem() == "three_shells");
     const auto path = makeTempStlPath("shells");
     REQUIRE_FALSE(controller.saveSelectedShells(path)); // nothing selected
 
     controller.clickShell(crossing, false, false, {});
-    controller.clickShell(far, true, false, {});
+    controller.clickShell(farShell, true, false, {});
     REQUIRE(controller.saveSelectedShells(path));
     REQUIRE_FALSE(controller.isModified());
     {
@@ -1340,7 +1340,7 @@ TEST_CASE("AppController saves selected shells to one STL or one file each",
     const std::filesystem::path dir = path.parent_path() / (path.stem().string() + "_each");
     std::filesystem::create_directories(dir);
     REQUIRE(controller.saveEachSelectedShell(dir) == 2);
-    for (const std::size_t s : {crossing, far}) {
+    for (const std::size_t s : {crossing, farShell}) {
         const auto file = dir / ("three_shells_shell_0" + std::to_string(s + 1) + ".stl");
         REQUIRE(std::filesystem::exists(file));
         REQUIRE(std::filesystem::file_size(file) == 84 + 50 * 12);
@@ -2001,9 +2001,9 @@ TEST_CASE("The per-frame selection box cache follows defect selection, filters, 
           "[app][controller][camera][cache]") {
     // The sample's three thin faces plus a second cube far away (two shells)
     mesheal::Mesh mesh = mesheal::SampleMeshes::createSampleDefectiveMesh();
-    mesheal::Mesh far = mesheal::SampleMeshes::createCubeMesh();
-    far.V.col(0).array() += 100.0;
-    mesheal::appendMesh(mesh, far);
+    mesheal::Mesh farShell = mesheal::SampleMeshes::createCubeMesh();
+    farShell.V.col(0).array() += 100.0;
+    mesheal::appendMesh(mesh, farShell);
     mesh.recomputeNormals();
     mesheal::AppController controller;
     controller.setMesh(mesh, "defective + cube");
@@ -2032,7 +2032,7 @@ TEST_CASE("The per-frame selection box cache follows defect selection, filters, 
     step();
     controller.selectCategory(std::nullopt);
     step();
-    REQUIRE(controller.pickFace(mesh.numFaces() - 1) == mesheal::PickOutcome::PickedFace); // on the far cube
+    REQUIRE(controller.pickFace(mesh.numFaces() - 1) == mesheal::PickOutcome::PickedFace); // on the farShell cube
     step();
     controller.selectCategory(mesheal::DefectCategory::ThinFaces);
     step();
