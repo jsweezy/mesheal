@@ -65,7 +65,8 @@ def check_tbb():
 
     native = bridge.native()
     loaded = loaded_tbb_libraries()
-    print(f"module tbb={native.tbb}; TBB loaded: {loaded}")
+    has_tbb = getattr(native, "tbb", False)  # modules built before the attribute existed have no TBB
+    print(f"module tbb={has_tbb}; TBB loaded: {loaded}")
     # Blender.app/Contents (macOS) or the folder with the blender executable
     blender_dir = os.path.dirname(os.path.realpath(bpy.app.binary_path))
     if sys.platform == "darwin":
@@ -75,7 +76,7 @@ def check_tbb():
         f"TBB loaded from outside Blender ({blender_dir}): {loaded}"
     # Release zips: the Blender 5.1+ module (Python 3.13) runs CGAL in parallel on Blender's TBB
     if os.environ.get("MESHEAL_RELEASE_ZIP") and sys.version_info >= (3, 13):
-        assert native.tbb, "the Python 3.13 module was built without TBB"
+        assert has_tbb, "the Python 3.13 module was built without TBB"
 
 
 def counts():
