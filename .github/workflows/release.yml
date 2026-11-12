@@ -214,6 +214,21 @@ jobs:
           New-Item -ItemType Directory -Force $out | Out-Null
           Copy-Item build/src/app/mesheal.exe $out/
           Copy-Item LICENSE.md $out/
+          # GMP and MPFR (LGPL v3) are linked into mesheal.exe here, so their licenses ship with it
+          New-Item -ItemType Directory -Force $out/licenses | Out-Null
+          foreach ($lib in "gmp", "mpfr") {
+            $copyright = "build/vcpkg_installed/x64-windows-static-md-release/share/$lib/copyright"
+            if (-not (Test-Path $copyright)) { throw "missing license file $copyright" }
+            Copy-Item $copyright "$out/licenses/$lib-copyright.txt"
+          }
+          @(
+            "mesheal.exe includes GMP and MPFR, linked statically. Both are licensed under the"
+            "GNU LGPL v3; their license texts are in this folder."
+            ""
+            "Mesheal itself is licensed under the GNU GPL v3 (LICENSE.md). Its complete source code,"
+            "with the build recipe, is at https://github.com/jsweezy/mesheal, so you can rebuild"
+            "mesheal.exe against your own GMP or MPFR."
+          ) | Set-Content "$out/licenses/README.txt"
           # Microsoft C++ runtime, deployed next to the program so no separate install is needed
           $crt = Get-ChildItem "$env:VCToolsRedistDir/x64" -Directory -Filter "Microsoft.VC*.CRT" | Select-Object -First 1
           Copy-Item "$($crt.FullName)/*.dll" $out/
