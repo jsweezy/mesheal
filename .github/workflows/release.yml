@@ -11,7 +11,8 @@ on:
     tags: ["v*"]
     # TEMPORARY while the release builds are brought up: every push to this branch runs them.
     # Put [skip-linux], [skip-macos], [skip-windows] or [skip-blender] in the commit message to skip
-    # a platform (or all the Blender extension jobs).
+    # a platform (or all the Blender extension jobs); [skip-blender-linux|macos|windows] skips one
+    # Blender build.
     # Remove this branch trigger (and the skip checks below) before merging to main.
     branches: [release-builds]
   workflow_dispatch:
@@ -262,7 +263,7 @@ jobs:
   # ----------------------------------------------------------------------------
   # Built on AlmaLinux 8 (manylinux_2_28, glibc 2.28) so the module loads wherever Blender runs
   blender-linux:
-    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && contains(inputs.platforms, 'blender')) || (github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-blender]'))
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && contains(inputs.platforms, 'blender')) || (github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-blender]') && !contains(github.event.head_commit.message, '[skip-blender-linux]'))
     runs-on: ubuntu-latest
     container: quay.io/pypa/manylinux_2_28_x86_64
     timeout-minutes: 150
@@ -273,9 +274,11 @@ jobs:
 
       - name: Install build tools and vcpkg
         run: |
-          dnf install -y zip
+          # GMP's build needs autoconf-archive (from EPEL); the image has the rest of autotools
+          dnf install -y zip autoconf-archive
           /opt/python/cp313-cp313/bin/python -m pip install -q ninja
           ln -sf /opt/python/cp313-cp313/bin/ninja /usr/local/bin/ninja
+          ninja --version && libtoolize --version | head -1
           git clone --filter=blob:none https://github.com/microsoft/vcpkg "$HOME/vcpkg"
           git -C "$HOME/vcpkg" checkout -q $VCPKG_COMMIT
           "$HOME/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
@@ -337,7 +340,7 @@ jobs:
           if-no-files-found: error
 
   blender-macos:
-    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && contains(inputs.platforms, 'blender')) || (github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-blender]'))
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && contains(inputs.platforms, 'blender')) || (github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-blender]') && !contains(github.event.head_commit.message, '[skip-blender-macos]'))
     runs-on: macos-15
     timeout-minutes: 150
     steps:
@@ -426,7 +429,7 @@ jobs:
           if-no-files-found: error
 
   blender-windows:
-    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && contains(inputs.platforms, 'blender')) || (github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-blender]'))
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && contains(inputs.platforms, 'blender')) || (github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-blender]') && !contains(github.event.head_commit.message, '[skip-blender-windows]'))
     runs-on: windows-latest
     timeout-minutes: 180
     env:
