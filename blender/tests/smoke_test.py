@@ -39,14 +39,22 @@ def loaded_tbb_libraries():
         from ctypes import wintypes
 
         psapi, kernel32 = ctypes.WinDLL("psapi"), ctypes.WinDLL("kernel32")
+        # Declare the types: handles are 64-bit and would not fit ctypes' default (int)
         kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        kernel32.GetCurrentProcess.argtypes = []
+        psapi.EnumProcessModules.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.HMODULE),
+                                             wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+        psapi.EnumProcessModules.restype = wintypes.BOOL
+        psapi.GetModuleFileNameExW.argtypes = [wintypes.HANDLE, wintypes.HMODULE, wintypes.LPWSTR, wintypes.DWORD]
+        psapi.GetModuleFileNameExW.restype = wintypes.DWORD
         process = kernel32.GetCurrentProcess()
-        modules, needed = (wintypes.HMODULE * 1024)(), wintypes.DWORD()
-        psapi.EnumProcessModules(process, modules, ctypes.sizeof(modules), ctypes.byref(needed))
+        modules, needed = (wintypes.HMODULE * 2048)(), wintypes.DWORD()
+        if not psapi.EnumProcessModules(process, modules, ctypes.sizeof(modules), ctypes.byref(needed)):
+            raise OSError("EnumProcessModules failed")
         name = ctypes.create_unicode_buffer(1024)
         for module in modules[: needed.value // ctypes.sizeof(wintypes.HMODULE)]:
-            psapi.GetModuleFileNameExW(process, wintypes.HMODULE(module), name, 1024)
-            paths.append(name.value)
+            if psapi.GetModuleFileNameExW(process, module, name, len(name)):
+                paths.append(name.value)
     names = [p for p in paths if os.path.basename(p).lower().startswith(("libtbb.", "tbb12"))]
     return sorted(set(os.path.realpath(p) for p in names))
 
