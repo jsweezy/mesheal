@@ -68,17 +68,13 @@ repair is one undo step. See [Why Mesheal](why.md) for the thinking behind this.
 
 ## Quick start
 
-```bash
-# macOS
-brew install cmake cgal boost
-git clone https://github.com/jsweezy/mesheal.git
-cd mesheal
-cmake -B build_release -DCMAKE_BUILD_TYPE=Release
-cmake --build build_release -j 2
+1. [Download Mesheal](install.md#download) for Windows, macOS or Linux and open it.
+2. Open an STL with **File > Open...**, drag it into the window, or try
+   **File > Load Sample**. The **Mesh Health** panel checks it as soon as it loads.
+3. Click a row to see its problems in 3D, then press **Repair > Fix All...** (`Shift+F5`) to repair
+   everything, or use the row's own tool to repair one kind of problem.
+4. Compare the preview with the original and press **Apply** to keep it, then **File > Save As**.
 
-./build_release/src/app/mesheal                         # desktop app
-./build_release/src/app/mesheal part.stl --diagnostics  # headless check
-./build_release/src/app/mesheal part.stl --fix-all      # writes part_fixed_1.stl
-```
-
-See [Install](install.md) for Linux and for installing the desktop app.
+[Getting started](getting-started.md) walks through these steps on a sample mesh. For scripts and
+pipelines, the same checks and repairs run from the [command line](CLI.md):
+`mesheal part.stl --diagnostics` or `mesheal part.stl --fix-all`.
