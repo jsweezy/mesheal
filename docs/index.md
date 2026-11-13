@@ -5,6 +5,10 @@ ray tracing codes need meshes that are watertight and 2-manifold, with every tri
 way. Mesheal finds what is wrong, offers repairs ranging from one triangle to the whole surface, and
 shows you what each repair changes before you accept it.
 
+![The Mesheal window: the Stanford Bunny with a Precision Isosurface preview](assets/screenshots/window-tour.png)
+
+*Stanford Bunny with Precision Isosurface preview, the changed faces in green over the ghosted original.*
+
 It is free software (GPL-3.0-or-later) and comes in three forms:
 
 <div class="grid cards" markdown>

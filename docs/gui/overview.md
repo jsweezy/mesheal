@@ -1,10 +1,8 @@
 # Tour of the window
 
-![The Mesheal window: Display panel on the left, the Stanford bunny in the 3D view, and the Precision Isosurface tool on the right previewing its rebuilt mesh over the original](../assets/screenshots/window-tour.png)
+![The Mesheal window: the Stanford Bunny with a Precision Isosurface preview](../assets/screenshots/window-tour.png)
 
-*The Stanford bunny with a Precision Isosurface rebuild previewed: the new mesh (changed faces in
-green) is drawn over the ghosted original. Display is open on the left, the tool panel on the
-right, and the status bar at the bottom shows the file, units, counts, size and the Watertight badge.*
+*Stanford Bunny with Precision Isosurface preview, the changed faces in green over the ghosted original.*
 
 | Area | What it is for |
 |---|---|

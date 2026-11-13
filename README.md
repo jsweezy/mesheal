@@ -8,6 +8,10 @@
 
 Unlike 3D printing tools that silently degrade mesh fidelity or complex 3D modeling suites like Blender, Mesheal provides a deterministic, precision-oriented workflow: **multi-scale edge-aware welding, strict units verification, self-intersection resolution, thin/sliver face healing, volume change tracking, and universal multi-step undo.**
 
+![The Mesheal window: the Stanford Bunny with a Precision Isosurface preview](docs/assets/screenshots/window-tour.png)
+
+*Stanford Bunny with Precision Isosurface preview, the changed faces in green over the ghosted original.*
+
 ---
 
 ## Quickstart
