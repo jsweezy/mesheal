@@ -29,9 +29,13 @@ Dependency versions come from `cmake/Dependencies.cmake`; when you change a depe
 6. Tag: `git tag -a v<N> -m "Mesheal v<N>"`.
 7. Push: `git push origin main --tags`.
 8. Pushing the tag starts the **Release binaries** workflow (`.github/workflows/release.yml`). It builds
-   and tests Mesheal on Linux, macOS and Windows, then publishes a GitHub Release with
-   `Mesheal-linux-x86_64.AppImage`, `Mesheal-macos-arm64.zip`, `Mesheal-windows-x64.zip` and
-   `SHA256SUMS.txt`, using this version's section of `RELEASES.md` as the notes. Watch it under
+   and tests Mesheal on Linux, macOS and Windows and the Blender extension for each (installed and
+   tested in Blender 4.2 to 5.2), then publishes a GitHub Release with
+   `Mesheal-linux-x86_64.AppImage`, `Mesheal-macos-arm64.zip`, `Mesheal-windows-x64-setup.exe`,
+   `Mesheal-windows-x64.zip`, `Mesheal-blender-linux-x64.zip`, `Mesheal-blender-macos-arm64.zip`,
+   `Mesheal-blender-windows-x64.zip` and `SHA256SUMS.txt`, using this version's section of
+   `RELEASES.md` as the notes. A full run takes about an hour and a half (longer if the vcpkg
+   library caches have expired). Watch it under
    **Actions**; if a platform fails, nothing is published. Fix the problem, delete the tag
    (`git push origin :refs/tags/v<N>` and `git tag -d v<N>`), and tag again.
 
@@ -39,7 +43,8 @@ The download links in `docs/install.md` point at `releases/latest/download/<file
 newest release automatically as long as the file names stay the same.
 
 To test the release builds without publishing anything, run the workflow by hand
-(**Actions > Release binaries > Run workflow**, or `gh workflow run release.yml -f platforms=windows`);
+(**Actions > Release binaries > Run workflow**, or `gh workflow run release.yml -f platforms=windows`;
+the platforms are `linux`, `macos`, `windows` and `blender`);
 the packages are attached to that run as artifacts.
 
 The builds are not code-signed. Signing can be added to the workflow later (an Apple Developer ID
