@@ -2,24 +2,33 @@
 
 ## The problem
 
-Monte Carlo particle transport codes (MCNP, OpenMC, DAGMC, Serpent, Geant4 and others) and many
-other simulation tools trace paths through surface meshes. A ray that crosses a surface must clearly
-enter or leave a volume. That only works when the mesh is:
+STL is a common language of engineering geometry. It was created for 3D printing, and almost every
+CAD system, scanner and mesh tool can write it; finite element meshers, CFD and thermal solvers, CAM
+software, and ray tracing and particle transport codes can all read it. That makes STL a practical
+exchange format between tools that otherwise share nothing, **as long as the mesh is a clean, closed
+solid**. A 3D-printing slicer can often work around small gaps and overlapping faces. Engineering
+tools are stricter: a volume mesher cannot fill a shape that leaks, and a ray cannot tell whether it
+is inside or outside a surface that crosses itself. In practice exported STLs often fall short.
+Tessellation leaves gaps along seams and slivers in fillets; assemblies arrive with flipped,
+duplicated or overlapping faces; scans and repeated round trips add holes and self-intersections. To
+be usable downstream, an STL must be:
 
 - **Watertight and 2-manifold:** every edge belongs to exactly two triangles, with no holes, fins or
   pinch points.
 - **Consistently oriented:** every triangle faces outward from the solid it bounds, and cavities face
   inward.
 - **Free of degenerate and sliver triangles:** near-zero-area or extremely stretched triangles cause
-  precision failures, lost particles and endless surface-crossing loops.
+  meshing failures, poorly shaped elements, precision errors, and rays or particles that get lost or
+  loop at a surface.
 - **Free of self-intersections:** overlapping faces make it unclear which volume a point is in. How
   much overlap a code can tolerate varies, so Mesheal reports it and leaves the decision to you.
-- **In known units:** STL files carry no units, but simulation codes expect a fixed unit system.
+- **In known units:** STL files carry no units, but meshers, solvers and machine tools all expect
+  a fixed unit system.
 
 Existing tools leave a gap. 3D-printing repair tools aim at slicer tolerance and decide for you: they
 remesh, voxelize or patch silently, without showing how much the shape changed. General 3D suites
-are powerful but bury mesh diagnostics across several modes and have confusing unit scaling for CAD
-and simulation work.
+are powerful but bury mesh diagnostics across several modes and have confusing unit scaling for
+engineering work.
 
 ## Options plus information; you decide
 
