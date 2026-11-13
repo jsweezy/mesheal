@@ -9,9 +9,8 @@ suite, and produces a small image with the `mesheal` command-line tool. Use it t
 
 !!! note "Command line only"
     The Docker image runs headless actions such as `--diagnostics`, `--fix-all` and the remeshers.
-    It does not open the desktop app. On Windows, to use the desktop app, build Mesheal inside
-    WSL2 by following the [Ubuntu instructions](install.md). Windows 11 shows Linux windows
-    through WSLg. Native Windows builds are not supported yet.
+    It does not open the desktop app: for that, [download](install.md#download) Mesheal for
+    Windows, macOS or Linux, or [build it from source](install.md#build-from-source).
 
 ## How it works
 

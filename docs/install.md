@@ -69,7 +69,8 @@ does not recognise the developer. This is expected; the one-time steps to open i
 
 ## Build from source
 
-Mesheal builds with CMake on macOS and Linux.
+Mesheal builds with CMake on macOS, Linux and Windows. To build only the command-line tool without
+installing a compiler, use [Docker](#build-with-docker-command-line-only) on any of them.
 
 ### 1. Prerequisites
 
@@ -92,18 +93,60 @@ Mesheal builds with CMake on macOS and Linux.
     downloads CGAL 6.2.1 automatically on the first configure. CGAL is header-only, so this adds
     no compile time.
 
+=== "Windows"
+
+    - [Visual Studio 2022 or newer](https://visualstudio.microsoft.com/downloads/) (Community is
+      free) with the **Desktop development with C++** workload. It includes the compiler, CMake and
+      Ninja.
+    - [Git for Windows](https://git-scm.com/download/win).
+    - [vcpkg](https://vcpkg.io), which builds CGAL, Boost, GMP and MPFR. In PowerShell:
+
+    ```powershell
+    git clone https://github.com/microsoft/vcpkg C:\vcpkg
+    C:\vcpkg\bootstrap-vcpkg.bat -disableMetrics
+    ```
+
 The other dependencies (Eigen, libigl, Manifold, Polyscope, Dear ImGui, Catch2 and others) are
 downloaded and built automatically by CMake on the first configure. You need a C++20 compiler and
 CMake 3.20 or newer.
 
 ### 2. Build
 
-```bash
-git clone https://github.com/jsweezy/mesheal.git
-cd mesheal
-cmake -B build_release -DCMAKE_BUILD_TYPE=Release
-cmake --build build_release -j 2
-```
+=== "macOS / Linux"
+
+    ```bash
+    git clone https://github.com/jsweezy/mesheal.git
+    cd mesheal
+    cmake -B build_release -DCMAKE_BUILD_TYPE=Release
+    cmake --build build_release -j 2
+    ```
+
+=== "Windows"
+
+    Open **Developer PowerShell for VS** from the Start menu (it sets up the compiler), then:
+
+    ```powershell
+    git clone https://github.com/jsweezy/mesheal.git
+    cd mesheal
+    cmake -B build_release -G Ninja -DCMAKE_BUILD_TYPE=Release `
+      -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake `
+      -DVCPKG_MANIFEST_DIR="$PWD/packaging/vcpkg" `
+      -DVCPKG_OVERLAY_TRIPLETS="$PWD/packaging/vcpkg/triplets" `
+      -DVCPKG_TARGET_TRIPLET=x64-windows-static-md-release `
+      -DVCPKG_HOST_TRIPLET=x64-windows-static-md-release
+    cmake --build build_release -j 2
+    ```
+
+    The first configure builds the vcpkg libraries and takes about an hour; vcpkg keeps them, so
+    later configures are quick. These are the settings the release builds use: the libraries are
+    linked into `mesheal.exe`, so it needs no extra DLLs.
+
+    !!! tip "Faster Precision Isosurface (optional)"
+        Without oneTBB, Precision Isosurface runs on one core. To use every core, download
+        `oneapi-tbb-<version>-win.zip` from the [oneTBB releases](https://github.com/uxlfoundation/oneTBB/releases),
+        unzip it, add `-DTBB_DIR=<oneTBB folder>/lib/cmake/tbb` to the first `cmake` command, and
+        copy `tbb12.dll` and `tbbmalloc.dll` from its `redist\intel64\vc14` folder next to
+        `mesheal.exe` (and the test programs, to run the tests).
 
 !!! note
     Clone without `--recursive`. The repository has one private submodule (`.docs/`, internal
@@ -112,7 +155,7 @@ cmake --build build_release -j 2
 The first build takes a while because it compiles the dependencies. Raise `-j` if you have the cores
 and memory to spare.
 
-The executable is `build_release/src/app/mesheal`. On macOS the build also produces the app bundle
+The executable is `build_release/src/app/mesheal` (`mesheal.exe` on Windows). On macOS the build also produces the app bundle
 `build_release/src/app/Mesheal.app`. The build also produces `mesheal-cli`, a command-line-only
 version of the same program that needs no graphics libraries.
 
@@ -128,6 +171,22 @@ cmake --build build_release -j 2
 This produces `build_release/src/app/mesheal` with every [command-line](CLI.md) action but no
 window. It does not need Polyscope or the OpenGL / X11 packages, so on Ubuntu you can leave out
 `libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev`.
+
+#### Build with Docker (command line only)
+
+The repository's `Dockerfile` builds Mesheal on Ubuntu 24.04, runs the tests, and packages the
+`mesheal` command-line tool in an image. You need only [Docker](https://www.docker.com/products/docker-desktop/),
+on Windows, macOS or Linux:
+
+```bash
+git clone https://github.com/jsweezy/mesheal.git
+cd mesheal
+docker build -t mesheal .
+docker run --rm -v "$PWD:/data" mesheal part.stl --diagnostics
+```
+
+The first build takes 15 to 30 minutes. See [Docker](DOCKER.md) for the Windows PowerShell and
+Command Prompt versions of `docker run`, and for faster rebuilds while developing.
 
 ### 3. Check the build (optional)
 
@@ -156,7 +215,13 @@ ctest --test-dir build_release -j 4
     Installs a desktop entry and the STL file association for your user, and links the `mesheal`
     command into `~/.local/bin`.
 
-Make sure `~/.local/bin` is on your `PATH`. See [Desktop integration](DESKTOP_INTEGRATION.md) for
+=== "Windows"
+
+    Run `build_release\src\app\mesheal.exe` directly, or install a release with the
+    [installer](#download). To make an installer from your own build, see
+    `packaging/windows/mesheal.iss` (Inno Setup) and [Desktop integration](DESKTOP_INTEGRATION.md#windows).
+
+On macOS and Linux, make sure `~/.local/bin` is on your `PATH`. See [Desktop integration](DESKTOP_INTEGRATION.md) for
 details and for making Mesheal the default app for STL files.
 
 ## Where Mesheal keeps its settings
