@@ -13,7 +13,13 @@ BIN_DIR="${HOME}/.local/bin"
 mkdir -p "${APPS_DIR}" "${MIME_DIR}" "${ICON_DIR}" "${BIN_DIR}"
 
 # Link or copy binary
-BINARY_PATH="${1:-${REPO_DIR}/build_release/src/app/mesheal}"
+if [[ -n "${1:-}" ]]; then
+    BINARY_PATH="$1"
+elif [[ -f "${REPO_DIR}/build/src/app/mesheal" ]]; then
+    BINARY_PATH="${REPO_DIR}/build/src/app/mesheal"
+else
+    BINARY_PATH="${REPO_DIR}/build_release/src/app/mesheal"
+fi
 if [[ -f "${BINARY_PATH}" ]]; then
     echo "Installing binary symlink to ${BIN_DIR}/mesheal..."
     ln -sf "${BINARY_PATH}" "${BIN_DIR}/mesheal"

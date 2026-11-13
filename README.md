@@ -27,15 +27,15 @@ Install prerequisites:
 - **Ubuntu 24.04 / Debian**: `sudo apt-get update && sudo apt-get install -y cmake build-essential git libboost-dev libgmp-dev libmpfr-dev libtbb-dev libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev`
   (CMake downloads CGAL 6.2 automatically; the distro's `libcgal-dev` is too old.)
 
-Build the optimized release binary (with parallel compilation `-j 2`):
+Build the optimized release binary:
 ```bash
-cmake -B build_release -DCMAKE_BUILD_TYPE=Release
-cmake --build build_release -j 2
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
 ```
 
 Run test suite:
 ```bash
-ctest --test-dir build_release -j 4
+ctest --test-dir build -j
 ```
 
 Install desktop app (optional):
@@ -57,7 +57,7 @@ Or build and run the command-line tool in Docker on any OS (including Windows): 
 ### 1. Interactive 3D Desktop Viewer
 Launch the interactive viewer with Blender-style navigation, live repair previews, and real-time Mesh Health inspection:
 ```bash
-./build_release/src/app/mesheal [path/to/model.stl]
+./build/src/app/mesheal [path/to/model.stl]
 ```
 - **Blender Camera Controls**: Orbit (`Right Mouse` or `Alt + Left Mouse`), Pan (`Middle Mouse` or `Shift + Right Mouse`), Focus on Selection (`.`), and Toggle Normal View (`..` / `Shift + .`).
 - **Universal Undo**: Every repair, remesh, or geometry edit can be reverted step-by-step with `Ctrl+Z` / `Cmd+Z`.
@@ -70,23 +70,23 @@ Automate batch mesh repairs or diagnostics in pipelines and scripts without laun
 
 ```bash
 # Check mesh health and print volume/defects without modifying geometry
-./build_release/src/app/mesheal model.stl --diagnostics
+./build/src/app/mesheal model.stl --diagnostics
 
 # Automatically repair mesh using multi-pass Fix All
 # (Never overwrites input: writes to model_fixed_1.stl, model_fixed_2.stl, etc.)
-./build_release/src/app/mesheal model.stl --fix-all
+./build/src/app/mesheal model.stl --fix-all
 
 # Explicit output destination
-./build_release/src/app/mesheal model.stl --fix-all -o repaired.stl
+./build/src/app/mesheal model.stl --fix-all -o repaired.stl
 
 # Remesh via Fast Voxel Marching Cubes with Taubin smoothing
-./build_release/src/app/mesheal model.stl --remesh-voxel --edge-length 1.5 -o remeshed.stl
+./build/src/app/mesheal model.stl --remesh-voxel --edge-length 1.5 -o remeshed.stl
 
 # Precision FEA-grade level set remeshing
-./build_release/src/app/mesheal model.stl --remesh-iso --edge-length 1.0 -o fea_mesh.stl
+./build/src/app/mesheal model.stl --remesh-iso --edge-length 1.0 -o fea_mesh.stl
 
 # Stream structured JSON metrics (volume change %, area change %, defects) to stdout
-./build_release/src/app/mesheal model.stl --fix-all --json
+./build/src/app/mesheal model.stl --fix-all --json
 ```
 
 **Safe Auto-Naming Guarantee**: Mesheal strictly prohibits overwriting input STLs. If `-o` is omitted, Mesheal automatically increments available filenames (`desk_fixed_1.stl`, `desk_fixed_2.stl`, ...).

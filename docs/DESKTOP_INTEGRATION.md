@@ -7,7 +7,7 @@ Mesheal is configured as a native desktop application on **macOS**, **Linux** an
 ## macOS
 
 ### 1. App Bundle Details
-- **Bundle Target**: `build_release/src/app/Mesheal.app` (or `build/src/app/Mesheal.app`)
+- **Bundle Target**: `build/src/app/Mesheal.app`
 - **Bundle Identifier**: `io.github.jsweezy.mesheal`
 - **Supported File Types**: `.stl`, `.STL` (`public.standard-tesselated-geometry-format`, `model/stl`, `application/sla`)
 - **Application Icon**: High-resolution `assets/icons/mesheal.icns` embedded directly in `Mesheal.app/Contents/Resources`.
@@ -18,7 +18,7 @@ To install the native `Mesheal.app` bundle into `/Applications` and register the
 ./packaging/macos/install-app.sh
 ```
 This script:
-1. Locates the prebuilt `Mesheal.app` bundle in `build_release/src/app/Mesheal.app` (or runs `cmake --build build_release` to build it if needed).
+1. Locates the prebuilt `Mesheal.app` bundle in `build/src/app/Mesheal.app` (or `build_release/src/app/Mesheal.app`), or builds it if needed.
 2. Copies `Mesheal.app` into `/Applications` using Apple's `ditto`, safely preserving code signatures, resource forks, and icons.
 3. Strips quarantine attributes if present.
 4. Updates macOS `LaunchServices` via `lsregister` so Finder immediately detects the `.stl` file association and high-resolution application icon without needing a reboot.
@@ -34,7 +34,7 @@ Supported options:
 2. Right-click (or `Ctrl+click`) the file and select **Get Info** (or press `Cmd+I`).
 3. In the Info window, expand the **Open with:** section.
 4. Select **Mesheal** from the dropdown menu.
-   - If Mesheal is not in the list, choose **Other...**, navigate to `/Applications/Mesheal.app` (or your build directory `build_release/src/app/Mesheal.app`), and click **Add**.
+   - If Mesheal is not in the list, choose **Other...**, navigate to `/Applications/Mesheal.app` (or your build directory `build/src/app/Mesheal.app`), and click **Add**.
 5. Click the **Change All...** button beneath the dropdown and confirm.
 
 Now, double-clicking any `.stl` file anywhere in Finder will automatically open it in Mesheal!
@@ -57,7 +57,7 @@ open -a /Applications/Mesheal.app path/to/model.stl
 mesheal path/to/model.stl
 
 # Launch from build tree
-./build_release/src/app/mesheal path/to/model.stl
+./build/src/app/mesheal path/to/model.stl
 ```
 
 ---

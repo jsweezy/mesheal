@@ -174,7 +174,7 @@ if [[ -z "${SOURCE_BUNDLE}" ]]; then
         SOURCE_BUNDLE="${REPO_DIR}/build/src/app/Mesheal.app"
     else
         echo "Error: Could not find Mesheal.app in build_release or build directory." >&2
-        echo "Please build Mesheal first with: cmake --build build_release -j 2" >&2
+        echo "Please build Mesheal first: cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j" >&2
         exit 1
     fi
 fi

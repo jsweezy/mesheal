@@ -10,17 +10,17 @@ git clone https://github.com/jsweezy/mesheal.git   # no --recursive: .docs/ is a
 cd mesheal
 
 # Release build: use it to run the app and the full test suite
-cmake -B build_release -DCMAKE_BUILD_TYPE=Release
-cmake --build build_release -j 2
-ctest --test-dir build_release -j 4
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+ctest --test-dir build -j
 
 # Debug build: only for debugging (the full suite takes minutes in Debug)
-cmake -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build -j 2
+cmake -B build-debug -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-debug -j
 ```
 
 Each module has its own Catch2 test binary, for example
-`./build_release/src/app/Test/mesheal_app_tests "[cli]"` runs only the tests tagged `[cli]`.
+`./build/src/app/Test/mesheal_app_tests "[cli]"` runs only the tests tagged `[cli]`.
 
 ## Code layout
 

@@ -117,8 +117,8 @@ CMake 3.20 or newer.
     ```bash
     git clone https://github.com/jsweezy/mesheal.git
     cd mesheal
-    cmake -B build_release -DCMAKE_BUILD_TYPE=Release
-    cmake --build build_release -j 2
+    cmake -B build -DCMAKE_BUILD_TYPE=Release
+    cmake --build build -j
     ```
 
 === "Windows"
@@ -128,13 +128,13 @@ CMake 3.20 or newer.
     ```powershell
     git clone https://github.com/jsweezy/mesheal.git
     cd mesheal
-    cmake -B build_release -G Ninja -DCMAKE_BUILD_TYPE=Release `
+    cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
       -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake `
       -DVCPKG_MANIFEST_DIR="$PWD/packaging/vcpkg" `
       -DVCPKG_OVERLAY_TRIPLETS="$PWD/packaging/vcpkg/triplets" `
       -DVCPKG_TARGET_TRIPLET=x64-windows-static-md-release `
       -DVCPKG_HOST_TRIPLET=x64-windows-static-md-release
-    cmake --build build_release -j 2
+    cmake --build build -j
     ```
 
     The first configure builds the vcpkg libraries and takes about an hour; vcpkg keeps them, so
@@ -152,11 +152,12 @@ CMake 3.20 or newer.
     Clone without `--recursive`. The repository has one private submodule (`.docs/`, internal
     design notes) that the build does not need.
 
-The first build takes a while because it compiles the dependencies. Raise `-j` if you have the cores
-and memory to spare.
+The first build takes a while because it compiles the dependencies. `-j` compiles on every core.
+Some files need over a gigabyte of memory each, so if the build runs out of memory, give it a
+number, for example `-j 4`.
 
-The executable is `build_release/src/app/mesheal` (`mesheal.exe` on Windows). On macOS the build also produces the app bundle
-`build_release/src/app/Mesheal.app`. The build also produces `mesheal-cli`, a command-line-only
+The executable is `build/src/app/mesheal` (`mesheal.exe` on Windows). On macOS the build also produces the app bundle
+`build/src/app/Mesheal.app`. The build also produces `mesheal-cli`, a command-line-only
 version of the same program that needs no graphics libraries.
 
 #### Command-line-only build
@@ -164,11 +165,11 @@ version of the same program that needs no graphics libraries.
 For servers and other machines without a display, build without the desktop app:
 
 ```bash
-cmake -B build_release -DCMAKE_BUILD_TYPE=Release -DMESHEAL_BUILD_GUI=OFF
-cmake --build build_release -j 2
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DMESHEAL_BUILD_GUI=OFF
+cmake --build build -j
 ```
 
-This produces `build_release/src/app/mesheal` with every [command-line](CLI.md) action but no
+This produces `build/src/app/mesheal` with every [command-line](CLI.md) action but no
 window. It does not need Polyscope or the OpenGL / X11 packages, so on Ubuntu you can leave out
 `libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev`.
 
@@ -191,8 +192,10 @@ Command Prompt versions of `docker run`, and for faster rebuilds while developin
 ### 3. Check the build (optional)
 
 ```bash
-ctest --test-dir build_release -j 4
+ctest --test-dir build -j
 ```
+
+CTest older than 3.29 (Ubuntu 24.04 has 3.28) needs a number after `-j`, for example `-j 4`.
 
 ### 4. Install the desktop app (optional)
 
@@ -217,7 +220,7 @@ ctest --test-dir build_release -j 4
 
 === "Windows"
 
-    Run `build_release\src\app\mesheal.exe` directly, or install a release with the
+    Run `build\src\app\mesheal.exe` directly, or install a release with the
     [installer](#download). To make an installer from your own build, see
     `packaging/windows/mesheal.iss` (Inno Setup) and [Desktop integration](DESKTOP_INTEGRATION.md#windows).
 
