@@ -1,22 +1,10 @@
 # Tour of the window
 
-```text
-┌ File  Edit  View  Mesh  Repair  Help ──────────────────────────────────────────┐
-│┌ Display ──────┐                                 ┌ Mesh Health ───────────────┐│
-││ base mesh     │                                 │ [Check Mesh] [Fix All...]  ││
-││ highlight     │                                 │  Holes (open edges)     3  ││
-││ repair preview│                                 │  Non-manifold edges     0  ││
-│└───────────────┘                                 │  ...                       ││
-│┌ Navigate ─────┐                                 │  Thin / sliver faces  312  ││
-││ views, Home,  │             3D view             │ ▸ Mesh Info                ││
-││ Next / Prev   │                                 ├ Tool: Thin / sliver faces ─┤│
-│└───────────────┘                                 │ settings, Fix All, list,   ││
-│┌ Shells ───────┐                                 │ Inspector                  ││
-││ (multi-shell) │                                 │                            ││
-│└───────────────┘                                 └────────────────────────────┘│
-├ part.stl * │ mm │ V 34,834  T 69,451 │ 0.16×0.15×0.12 │ Watertight │ message ───┤
-└────────────────────────────────────────────────────────────────────────────────┘
-```
+![The Mesheal window: Display panel on the left, the Stanford bunny in the 3D view, and the Precision Isosurface tool on the right previewing its rebuilt mesh over the original](../assets/screenshots/window-tour.png)
+
+*The Stanford bunny with a Precision Isosurface rebuild previewed: the new mesh (changed faces in
+green) is drawn over the ghosted original. Display is open on the left, the tool panel on the
+right, and the status bar at the bottom shows the file, units, counts, size and the Watertight badge.*
 
 | Area | What it is for |
 |---|---|
