@@ -219,7 +219,8 @@ jobs:
             -DVCPKG_HOST_TRIPLET=x64-windows-static-md-release `
             -DMESHEAL_USE_TBB=ON -DTBB_DIR="$env:ONETBB/lib/cmake/tbb"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not (Select-String -Quiet "^TBB_DIR:PATH=.*oneapi-tbb" build/CMakeCache.txt)) { throw "oneTBB was not found" }
+          # The smoke test below fails unless mesheal.exe --version lists oneTBB
+          Select-String "^TBB_" build/CMakeCache.txt
 
       # Save the built libraries even when a later step fails, so the next run skips rebuilding them
       - name: Save vcpkg cache
