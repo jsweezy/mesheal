@@ -4,25 +4,50 @@
 that exposes Mesheal's checks and repairs. Meshes go in and come out as NumPy arrays, and long jobs
 can run in the background and be cancelled. It powers the [Blender extension](blender.md).
 
-!!! warning "Development build"
-    The module is currently built from source for macOS against Blender's bundled Python. There is no
-    wheel on PyPI yet.
+!!! note "Ready-made modules"
+    Every [release](https://github.com/jsweezy/mesheal/releases/latest) includes the module for
+    Python 3.11 and 3.13 on Windows, macOS and Linux, inside the Blender extension zips
+    (`Mesheal-blender-<platform>.zip`). There is no `pip install` package yet; for any other Python,
+    build the module as below.
 
 ## Build
+
+The module builds with CMake against any Python 3, on Windows, macOS and Linux, using the same
+[prerequisites](install.md#1-prerequisites) as Mesheal itself. Its tests need NumPy, so start from
+a virtual environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate          # Windows PowerShell: .venv\Scripts\Activate.ps1
+pip install numpy
+
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DMESHEAL_BUILD_GUI=OFF \
+      -DMESHEAL_BUILD_PYTHON=ON -DPython_EXECUTABLE="$(which python)"
+cmake --build build -j --target _mesheal
+ctest --test-dir build -R python --output-on-failure
+```
+
+On Windows, configure with the same vcpkg options as the
+[Windows build](install.md#2-build), plus `-DMESHEAL_BUILD_GUI=OFF -DMESHEAL_BUILD_PYTHON=ON`
+and `-DPython_EXECUTABLE=<path to python.exe>`.
+
+The module is `build/src/python/_mesheal.cpython-<version>-<platform>.so` (`.pyd` on Windows).
+Put its folder on `PYTHONPATH`, or copy it next to your script, and import it:
+
+```bash
+PYTHONPATH=build/src/python python -c "import _mesheal; print(_mesheal.version())"
+```
+
+### For Blender development on macOS
 
 ```bash
 scripts/build-blender-module.sh
 ```
 
-This configures `build_python/` (Release, no GUI), builds the `_mesheal` target and copies
-`_mesheal.cpython-*.so` into `blender/mesheal_tools/`. Set `BLENDER_PYTHON` to build for another
-Python, and `PYTHON_INCLUDE_DIR` if that Python has no `Python.h`.
-
-Run its tests with:
-
-```bash
-ctest --test-dir build_python -R "python|blender" --output-on-failure --timeout 300
-```
+This builds the module against Blender's own Python (it looks in `/Applications/Blender.app`) in
+`build_python/`, and copies it into `blender/mesheal_tools/`, so Blender loads the add-on straight
+from the repository. Set `BLENDER_PYTHON` to use another Python, and `PYTHON_INCLUDE_DIR` if that
+Python has no `Python.h`. See [Blender extension](blender.md#install-from-source).
 
 ## API
 
