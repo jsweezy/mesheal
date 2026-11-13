@@ -1,0 +1,34 @@
+// Windows resources for mesheal.exe: the icon Explorer, the taskbar and the installer's shortcuts
+// show, and the version details in the file's Properties. Configured by src/app/CMakeLists.txt.
+#include <winver.h>
+
+1 ICON "@MESHEAL_ICO_PATH@"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     @PROJECT_VERSION_MAJOR@,0,0,0
+PRODUCTVERSION  @PROJECT_VERSION_MAJOR@,0,0,0
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+FILEFLAGS       0
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     0
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "Mesheal"
+            VALUE "FileDescription",  "Mesheal - STL repair"
+            VALUE "FileVersion",      "@PROJECT_VERSION@"
+            VALUE "InternalName",     "mesheal"
+            VALUE "LegalCopyright",   "GNU GPL v3"
+            VALUE "OriginalFilename", "mesheal.exe"
+            VALUE "ProductName",      "Mesheal"
+            VALUE "ProductVersion",   "@PROJECT_VERSION@"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

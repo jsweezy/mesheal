@@ -10,6 +10,16 @@
 #include "app/MacFileOpenHandler.h"
 #endif
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+
 #include <filesystem>
 #include <iostream>
 #include <string_view>
@@ -19,6 +29,18 @@ int main(int argc, char** argv) {
     if (mesheal::isHeadlessCommand(cli)) {
         return mesheal::executeCliCommand(cli);
     }
+
+#ifdef _WIN32
+    // mesheal.exe is a console program so the command line prints to PowerShell. Opened from the
+    // Start menu, Explorer or an .stl file, Windows gives it a console of its own: close that one
+    // (this process is its only user) so no empty black window stays behind the app.
+    {
+        DWORD processes[2];
+        if (GetConsoleProcessList(processes, 2) == 1) {
+            FreeConsole();
+        }
+    }
+#endif
 
     if (cli.noRelaunch) {
 #ifdef __APPLE__

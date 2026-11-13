@@ -1,6 +1,6 @@
 # Desktop Integration & File Association Guide
 
-Mesheal is configured as a native desktop application on both **macOS** and **Linux**, allowing you to associate `.stl` files with Mesheal so that double-clicking any STL in Finder or your Linux file browser opens it directly.
+Mesheal is configured as a native desktop application on **macOS**, **Linux** and **Windows**, allowing you to associate `.stl` files with Mesheal so that double-clicking any STL in Finder, Explorer or your Linux file browser opens it directly.
 
 ---
 
@@ -90,3 +90,19 @@ On Linux, double-clicking multiple STL files in Nautilus (GNOME Files), Dolphin 
 ### 4. Drag & Drop
 Dragging an `.stl` file from your Linux file manager directly into an open Mesheal 3D viewport immediately loads that model into the window.
 
+
+---
+
+## Windows
+
+### 1. Installer
+`Mesheal-windows-x64-setup.exe` (built by `.github/workflows/release.yml` from `packaging/windows/mesheal.iss` with Inno Setup):
+1. Installs for the current user into `%LOCALAPPDATA%\Programs\Mesheal`, with no administrator prompt. Choosing *Install for all users* installs into `Program Files` instead and asks for administrator rights.
+2. Adds a Start menu entry and, if ticked, a desktop icon.
+3. Registers Mesheal under **Open with** for `.stl` files (`Mesheal.stl` under `Software\Classes`). Windows 10 and 11 do not let an installer become the default app: right-click an `.stl` file, choose **Open with → Choose another app**, pick **Mesheal** and click **Always**.
+4. Adds an uninstaller to **Settings → Apps → Installed apps**, which also removes the `.stl` registration. Running a newer installer updates an existing install.
+
+Silent install for scripted setups: `Mesheal-windows-x64-setup.exe /VERYSILENT /CURRENTUSER` (or `/ALLUSERS`).
+
+### 2. Icon and console
+`mesheal.exe` carries the icon `assets/icons/mesheal.ico` (made from `mesheal.png` by `packaging/windows/make-ico.py`). It is a console program so the command line prints to PowerShell; opened from the Start menu, Explorer or an `.stl` file it closes the console window Windows gave it.

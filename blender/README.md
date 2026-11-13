@@ -72,8 +72,8 @@ uses the oneTBB that Blender itself ships and has already loaded, never a copy o
 built with `-DMESHEAL_USE_TBB=ON` and `MESHEAL_BLENDER_TBB_INCLUDE_DIR` / `_TBB_LIBRARY` /
 `_TBBMALLOC_LIBRARY` (see `cmake/Dependencies.cmake`) against Blender 5.1's TBB (oneTBB 2022.3),
 the oldest that module supports. On macOS it finds Blender's copy through
-`@executable_path/../Resources/lib`. With TBB, Precision Isosurface runs about twice as fast. The
-smoke test checks that only Blender's TBB is loaded.
+`@executable_path/../Resources/lib`. With TBB, Precision Isosurface uses every core: about twice as fast on a laptop with two
+performance cores, more with more cores. The smoke test checks that only Blender's TBB is loaded.
 
 - `packaging/blender/build-extension.py` assembles a zip from built modules (and refuses modules that
   still need other libraries).

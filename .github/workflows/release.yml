@@ -191,6 +191,19 @@ jobs:
         with:
           arch: x64
 
+      # oneTBB's own Windows release (the version Blender 5.1+ ships): CMake config, import
+      # libraries and tbb12.dll / tbbmalloc.dll, which go next to mesheal.exe. The DLL folder goes
+      # on PATH so the tests find them.
+      - name: Get oneTBB
+        shell: pwsh
+        run: |
+          curl.exe -fsSLo onetbb.zip "https://github.com/uxlfoundation/oneTBB/releases/download/v$env:ONETBB_VERSION/oneapi-tbb-$env:ONETBB_VERSION-win.zip"
+          7z x -bd onetbb.zip | Out-Null
+          $tbb = "$((Get-Location).Path -replace '\\', '/')/oneapi-tbb-$env:ONETBB_VERSION"
+          "ONETBB=$tbb" >> $env:GITHUB_ENV
+          "$tbb/redist/intel64/vc14" -replace '/', '\' >> $env:GITHUB_PATH
+          Get-ChildItem "$tbb/lib/cmake/tbb"
+
       # Configure also builds the vcpkg libraries on a cold cache (about an hour); a hang should fail
       # well before the job limit, and the cache below is saved either way
       - name: Configure
@@ -204,7 +217,9 @@ jobs:
             -DVCPKG_OVERLAY_TRIPLETS="${{ github.workspace }}/packaging/vcpkg/triplets" `
             -DVCPKG_TARGET_TRIPLET=x64-windows-static-md-release `
             -DVCPKG_HOST_TRIPLET=x64-windows-static-md-release `
-            -DMESHEAL_USE_TBB=OFF
+            -DMESHEAL_USE_TBB=ON -DTBB_DIR="$env:ONETBB/lib/cmake/tbb"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Select-String -Quiet "^TBB_DIR:PATH=.*oneapi-tbb" build/CMakeCache.txt)) { throw "oneTBB was not found" }
 
       # Save the built libraries even when a later step fails, so the next run skips rebuilding them
       - name: Save vcpkg cache
@@ -229,6 +244,9 @@ jobs:
           New-Item -ItemType Directory -Force $out | Out-Null
           Copy-Item build/src/app/mesheal.exe $out/
           Copy-Item LICENSE.md $out/
+          Copy-Item packaging/windows/README.txt $out/
+          # oneTBB, the parallel library CGAL uses (Precision Isosurface runs on every core)
+          Copy-Item "$env:ONETBB/redist/intel64/vc14/tbb12.dll", "$env:ONETBB/redist/intel64/vc14/tbbmalloc.dll" $out/
           # GMP and MPFR (LGPL v3) are linked into mesheal.exe here, so their licenses ship with it
           New-Item -ItemType Directory -Force $out/licenses | Out-Null
           foreach ($lib in "gmp", "mpfr") {
@@ -236,9 +254,15 @@ jobs:
             if (-not (Test-Path $copyright)) { throw "missing license file $copyright" }
             Copy-Item $copyright "$out/licenses/$lib-copyright.txt"
           }
+          $tbbLicense = Get-ChildItem -Recurse "$env:ONETBB" -Filter "LICENSE*" | Select-Object -First 1
+          if (-not $tbbLicense) { throw "missing oneTBB license file" }
+          Copy-Item $tbbLicense.FullName "$out/licenses/onetbb-license.txt"
           @(
             "mesheal.exe includes GMP and MPFR, linked statically. Both are licensed under the"
             "GNU LGPL v3; their license texts are in this folder."
+            ""
+            "tbb12.dll and tbbmalloc.dll are oneTBB $env:ONETBB_VERSION, licensed under the Apache"
+            "License 2.0 (onetbb-license.txt)."
             ""
             "Mesheal itself is licensed under the GNU GPL v3 (LICENSE.md). Its complete source code,"
             "with the build recipe, is at https://github.com/jsweezy/mesheal, so you can rebuild"
@@ -250,17 +274,71 @@ jobs:
           Compress-Archive -Path $out -DestinationPath Mesheal-windows-x64.zip
           Get-ChildItem $out
 
+      # Run from the unzipped folder with the oneTBB folder taken off PATH, so tbb12.dll must come
+      # from the zip
       - name: Smoke test
         shell: pwsh
         run: |
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'oneapi-tbb' }) -join ';'
           Expand-Archive Mesheal-windows-x64.zip smoke
+          $version = ./smoke/Mesheal/mesheal.exe --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $version
+          if (-not ($version -match 'oneTBB')) { throw "mesheal.exe was built without oneTBB" }
           ./smoke/Mesheal/mesheal.exe examples/self_intersecting_box.stl --diagnostics
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # Inno Setup comes with the GitHub Windows runners; install it if an image ever drops it
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $version = (Select-String '^CMAKE_PROJECT_VERSION:STATIC=(.+)$' build/CMakeCache.txt).Matches[0].Groups[1].Value
+          & $iscc /Qp "/DAppVersion=$version" "/DSourceDir=$((Resolve-Path Mesheal).Path)" "/O$((Get-Location).Path)" packaging/windows/mesheal.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Item Mesheal-windows-x64-setup.exe
+
+      # Silent per-user install as a user would get it, then the uninstaller must remove it all
+      - name: Test installer
+        shell: pwsh
+        run: |
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'oneapi-tbb' }) -join ';'
+          $app = "$env:LOCALAPPDATA\Programs\Mesheal"
+          $shortcut = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Mesheal.lnk"
+          $openWith = "HKCU:\Software\Classes\.stl\OpenWithProgids"
+          $p = Start-Process -Wait -PassThru ./Mesheal-windows-x64-setup.exe -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/LOG=install.log"
+          Get-Content install.log -Tail 20
+          if ($p.ExitCode -ne 0) { throw "installer exited with $($p.ExitCode)" }
+          foreach ($f in "mesheal.exe", "tbb12.dll", "README.txt", "licenses\README.txt") {
+            if (-not (Test-Path "$app\$f")) { throw "not installed: $app\$f" }
+          }
+          if (-not (Test-Path $shortcut)) { throw "no Start menu entry" }
+          if ($null -eq (Get-ItemProperty $openWith -Name "Mesheal.stl" -ErrorAction SilentlyContinue)) { throw ".stl Open with entry missing" }
+          $command = (Get-ItemProperty "HKCU:\Software\Classes\Mesheal.stl\shell\open\command").'(default)'
+          "Open command: $command"
+          & "$app\mesheal.exe" examples/self_intersecting_box.stl --diagnostics
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $p = Start-Process -Wait -PassThru "$app\unins000.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"
+          if ($p.ExitCode -ne 0) { throw "uninstaller exited with $($p.ExitCode)" }
+          # The uninstaller finishes by deleting itself from a copy that runs on: give it a moment
+          for ($i = 0; $i -lt 30 -and (Test-Path "$app\mesheal.exe"); $i++) { Start-Sleep 1 }
+          if (Test-Path "$app\mesheal.exe") { throw "uninstall left $app\mesheal.exe" }
+          if (Test-Path $shortcut) { throw "uninstall left the Start menu entry" }
+          if (Test-Path "HKCU:\Software\Classes\Mesheal.stl") { throw "uninstall left the .stl registration" }
+          if ($null -ne (Get-ItemProperty $openWith -Name "Mesheal.stl" -ErrorAction SilentlyContinue)) { throw "uninstall left the Open with entry" }
+          "Install and uninstall OK"
 
       - uses: actions/upload-artifact@v4
         with:
           name: Mesheal-windows-x64
-          path: Mesheal-windows-x64.zip
+          path: |
+            Mesheal-windows-x64.zip
+            Mesheal-windows-x64-setup.exe
           if-no-files-found: error
 
   # ----------------------------------------------------------------------------
@@ -677,7 +755,7 @@ jobs:
 
           ## Downloads
 
-          - **Windows (64-bit):** `Mesheal-windows-x64.zip`
+          - **Windows (64-bit):** `Mesheal-windows-x64-setup.exe` (installer: Start menu entry, opens .stl files, uninstall from Settings > Apps), or `Mesheal-windows-x64.zip` to run without installing
           - **macOS (Apple Silicon):** `Mesheal-macos-arm64.zip`
           - **Linux (x86-64):** `Mesheal-linux-x86_64.AppImage`
           - **Blender extension (Blender 4.2 or later):** `Mesheal-blender-windows-x64.zip`, `Mesheal-blender-macos-arm64.zip` or `Mesheal-blender-linux-x64.zip`. In Blender: Edit > Preferences > Get Extensions > Install from Disk.

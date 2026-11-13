@@ -8,7 +8,7 @@ use the [Docker image](DOCKER.md).
 
 | System | Download |
 |--------|----------|
-| Windows 10 / 11 (64-bit) | [Mesheal-windows-x64.zip](https://github.com/jsweezy/mesheal/releases/latest/download/Mesheal-windows-x64.zip) |
+| Windows 10 / 11 (64-bit) | [Mesheal-windows-x64-setup.exe](https://github.com/jsweezy/mesheal/releases/latest/download/Mesheal-windows-x64-setup.exe) (installer), or [Mesheal-windows-x64.zip](https://github.com/jsweezy/mesheal/releases/latest/download/Mesheal-windows-x64.zip) to run without installing |
 | macOS 15 or newer (Apple Silicon: M1 and later) | [Mesheal-macos-arm64.zip](https://github.com/jsweezy/mesheal/releases/latest/download/Mesheal-macos-arm64.zip) |
 | Linux (x86-64) | [Mesheal-linux-x86_64.AppImage](https://github.com/jsweezy/mesheal/releases/latest/download/Mesheal-linux-x86_64.AppImage) |
 
@@ -20,13 +20,26 @@ does not recognise the developer. This is expected; the one-time steps to open i
 
 === "Windows"
 
-    1. Unzip the whole `Mesheal` folder somewhere permanent (for example `Documents`). Keep the
-       `.dll` files next to `mesheal.exe`.
-    2. Double-click `mesheal.exe`. If Windows shows **Windows protected your PC**, click
-       **More info**, then **Run anyway**.
+    **Installer** (recommended):
 
-    For the [command line](CLI.md), open PowerShell in that folder and run, for example,
-    `.\mesheal.exe part.stl --fix-all`.
+    1. Run `Mesheal-windows-x64-setup.exe`. If Windows shows **Windows protected your PC**,
+       click **More info**, then **Run anyway**.
+    2. Follow the steps. Mesheal installs for your user only, so no administrator password is
+       needed, and adds itself to the Start menu (tick the box for a desktop icon too).
+    3. To open `.stl` files with Mesheal by double-clicking them: right-click an `.stl` file,
+       choose **Open with → Choose another app**, pick **Mesheal** and click **Always**. Windows
+       does not let an installer make this choice for you.
+
+    Installing a newer version over an older one updates it. Remove Mesheal from
+    **Settings → Apps → Installed apps**.
+
+    **Zip** (no install): unzip the whole `Mesheal` folder somewhere permanent (for example
+    `Documents`), keep the `.dll` files next to `mesheal.exe`, and double-click `mesheal.exe`.
+    The `README.txt` inside explains how to pin it to Start and open `.stl` files with it.
+
+    For the [command line](CLI.md), open PowerShell in the Mesheal folder and run, for example,
+    `.\mesheal.exe part.stl --fix-all`. The installer puts Mesheal in
+    `%LOCALAPPDATA%\Programs\Mesheal`.
 
 === "macOS"
 

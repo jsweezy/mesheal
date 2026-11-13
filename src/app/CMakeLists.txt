@@ -91,6 +91,13 @@ if(MESHEAL_BUILD_GUI)
         MacAppIcon.cpp
     )
 
+    if(WIN32)
+        # Icon and version details for Explorer, the taskbar and the installer's shortcuts
+        set(MESHEAL_ICO_PATH "${CMAKE_SOURCE_DIR}/assets/icons/mesheal.ico")
+        configure_file(mesheal.rc.in "${CMAKE_CURRENT_BINARY_DIR}/mesheal.rc" @ONLY)
+        target_sources(mesheal PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/mesheal.rc")
+    endif()
+
     if(APPLE)
         set(MESHEAL_ICNS_RESOURCE "${CMAKE_SOURCE_DIR}/assets/icons/mesheal.icns")
         set_source_files_properties("${MESHEAL_ICNS_RESOURCE}" PROPERTIES
