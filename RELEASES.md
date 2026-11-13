@@ -2,6 +2,18 @@
 
 Release notes, newest first. Versions are simple integers (v1, v2, ...) tagged in git as `v#`. See [the release process](https://github.com/jsweezy/mesheal/blob/main/RELEASE_PROCESS.md) for how to cut a release.
 
+## v4 — 2026-11-13
+
+First public release, with ready-to-run downloads and a Blender extension.
+
+- Downloads for Windows (an installer with a Start menu entry, "Open with" for `.stl` files and an uninstaller, or a zip to run without installing), macOS (Apple Silicon) and Linux (AppImage).
+- Blender extension for Blender 4.2 and later on Windows, macOS and Linux: check and repair meshes inside Blender, with each repair checked again afterwards. Install it with Edit > Preferences > Get Extensions > Install from Disk.
+- Precision Isosurface uses every processor core on Windows and in Blender 5.1 and later, as it already did on macOS and Linux.
+- Docker image and a command-line-only build for Linux.
+- Online documentation with a Getting Started guide; Help menu links to it, and `--help` lists every option.
+- Edge width sliders snap to standard line widths; the face selection shows over Custom back faces.
+- Cleaner app icon.
+
 ## v3 — 2026-11-07
 
 First release as Mesheal (formerly Ogun).
