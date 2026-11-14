@@ -5,6 +5,10 @@ a body, parts that cross it, and sometimes a hidden piece inside another. The **
 column) appears when the mesh has more than one shell. Mesh Health says *what is wrong*; the Shells
 panel says *which part you are working on*.
 
+![An eel model with loose tetrahedra around it, each shell in its own color](../assets/screenshots/eel-shells.png)
+
+*An eel with loose pieces around it: nine shells, each in its own color.*
+
 ## The panel
 
 Each row has a visibility box, a color swatch, the shell number (`#1` is the largest), its face count,

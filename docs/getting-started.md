@@ -61,6 +61,11 @@ moved, whether the result is watertight, and which defects remain. Nothing chang
 Every Apply is one undo step: **Edit > Undo** (`Cmd/Ctrl+Z`) goes back one step at a time. Try a
 different repair and compare.
 
+![Mesh Info after a Precision Isosurface rebuild of the eel](assets/screenshots/eel-isosurface-result.png)
+
+*After a Precision Isosurface rebuild, Mesh Info compares the result with the mesh as loaded:
+80% fewer triangles and 4.7% less volume.*
+
 ## 6. Save
 
 - **File > Save As > Binary STL...** (`Cmd/Ctrl+Shift+S`) or **ASCII STL...** writes a new file.

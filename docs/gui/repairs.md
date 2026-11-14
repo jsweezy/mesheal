@@ -80,6 +80,10 @@ Focus one defect (click it in 3D or in the list, or press `N`) and the **Inspect
 bottom of the tool, with the repairs that apply to it and a live preview. **Commit Repair** (`R`)
 applies the chosen one.
 
+![A hole in the eel's eye, focused, with the Fill Smooth preview](../assets/screenshots/eel-hole-fill-smooth.png)
+
+*A hole in the eel's eye. The Inspector recommends Fill Smooth and previews the new faces.*
+
 === "Thin / sliver faces"
 
     The Inspector names the face's type and recommends a strategy:
@@ -120,6 +124,10 @@ manifold, but every triangle is new.
 | **Precision Isosurface (FEA Grade)** | Engineering parts, CAD exports, finite-element meshes. Triangles with angles of at least 30° that follow curves and fillets. | Slower than the voxel method |
 
 See [Feature reference](../FEATURES.md#34-remesh-watertight-rebuild-pipelines) for the algorithms.
+
+![Precision Isosurface preview of the eel shown with Both: the result over the original](../assets/screenshots/eel-isosurface-both.png)
+
+*Precision Isosurface preview with **Both**: the new surface drawn over the original.*
 
 ## Other mesh operations
 

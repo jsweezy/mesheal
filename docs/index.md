@@ -1,5 +1,7 @@
 # Mesheal
 
+*Heal your mesh ills.*
+
 **Mesheal inspects and repairs STL surface meshes for simulation.** Particle transport, FEA, CFD and
 ray tracing codes need meshes that are watertight and 2-manifold, with every triangle facing the right
 way. Mesheal finds what is wrong, offers repairs ranging from one triangle to the whole surface, and

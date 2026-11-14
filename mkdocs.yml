@@ -1,5 +1,5 @@
 site_name: Mesheal
-site_description: Inspect and repair STL meshes for simulation
+site_description: Heal your mesh ills. Inspect and repair STL meshes for simulation.
 site_url: https://jsweezy.github.io/mesheal/
 repo_url: https://github.com/jsweezy/mesheal
 repo_name: jsweezy/mesheal
@@ -12,8 +12,8 @@ exclude_docs: |
 
 theme:
   name: material
-  logo: assets/mesheal-icon.png
-  favicon: assets/mesheal-icon.png
+  logo: assets/mesheal-logo.png
+  favicon: assets/favicon.png
   features:
     - navigation.sections
     - navigation.top
