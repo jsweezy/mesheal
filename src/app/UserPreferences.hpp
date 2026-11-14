@@ -42,6 +42,7 @@ struct UserPreferences {
 
     // ---- GUI-only state (PolyscopeGui) ----
     float uiScale = 1.0f;
+    float arrowRotationDegrees = settings::kDefaultArrowRotationDegrees; ///< Preferences > Interface: arrow-key rotation step (deg)
     UiTheme theme = UiTheme::CustomLight; ///< Preferences > Interface: colour theme of the panels
     std::array<float, 4> backgroundColor = settings::kDefaultBackgroundColor;
     bool showCompass = false; ///< View > Compass: the XYZ orientation gizmo

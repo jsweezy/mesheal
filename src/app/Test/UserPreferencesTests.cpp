@@ -87,6 +87,7 @@ mesheal::UserPreferences customPreferences() {
     p.listCap = 42;
     p.overlayCap = 1234;
     p.uiScale = 1.35f;
+    p.arrowRotationDegrees = 90.0f;
     p.backgroundColor = {0.1f, 0.2f, 0.3f, 1.0f};
     p.showCompass = !p.showCompass;
     p.theme = mesheal::UiTheme::Dark;
@@ -143,6 +144,7 @@ TEST_CASE("User preferences round trip every field through the config file", "[a
     CHECK(loaded.appearance.baseMesh.color.isApprox(custom.appearance.baseMesh.color));
     CHECK(loaded.defaults.thinFace.minAltitude == custom.defaults.thinFace.minAltitude);
     CHECK(loaded.uiScale == custom.uiScale);
+    CHECK(loaded.arrowRotationDegrees == custom.arrowRotationDegrees);
     CHECK(loaded.backgroundColor == custom.backgroundColor);
     CHECK(loaded.showCompass == custom.showCompass);
     CHECK(loaded.mouse == custom.mouse);
@@ -181,6 +183,7 @@ TEST_CASE("Malformed or partial preference files fall back per key", "[app][pref
         "list_cap = -5\n"                          // malformed count: default
         "overlay_cap = 77\n"                       // valid
         "ui_scale = nan\n"                         // not finite: default
+        "arrow_rotation_deg = nan\n"               // not finite: default
         "line without equals sign\n");
 
     CHECK(prefs.tolerance.absFloor == 2.0e-6);
@@ -197,6 +200,7 @@ TEST_CASE("Malformed or partial preference files fall back per key", "[app][pref
     CHECK(prefs.listCap == defaults.listCap);
     CHECK(prefs.overlayCap == 77);
     CHECK(prefs.uiScale == defaults.uiScale);
+    CHECK(prefs.arrowRotationDegrees == defaults.arrowRotationDegrees);
     // Keys not in the text keep their defaults
     CHECK(prefs.ghostOpacity == defaults.ghostOpacity);
     CHECK(prefs.backgroundColor == defaults.backgroundColor);
@@ -281,6 +285,7 @@ TEST_CASE("Startup applies the saved preferences, live thin-face thresholds incl
     mesheal::AppController controller;
     const mesheal::UserPreferences loaded = mesheal::loadAndApplyUserPreferences(controller, file);
     CHECK(loaded.uiScale == custom.uiScale); // GUI-only fields are handed back
+    CHECK(loaded.arrowRotationDegrees == custom.arrowRotationDegrees);
 
     const mesheal::ThinFaceThresholds& live = controller.thresholds();
     CHECK(live.minAltitude == custom.defaults.thinFace.minAltitude);
@@ -297,6 +302,7 @@ TEST_CASE("Startup applies the saved preferences, live thin-face thresholds incl
     // The controller hands back the same values to save (GUI-only fields aside)
     mesheal::UserPreferences captured = controller.userPreferences();
     captured.uiScale = custom.uiScale;
+    captured.arrowRotationDegrees = custom.arrowRotationDegrees;
     captured.backgroundColor = custom.backgroundColor;
     captured.showCompass = custom.showCompass;
     captured.mouse = custom.mouse;

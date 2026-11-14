@@ -1346,6 +1346,14 @@ void PolyscopeGui::drawPreferencesWindow(float top, float bottom, float rightCol
             ImGui::SetNextItemWidth(160.0f);
             ImGui::SliderFloat("UI scale", &uiScale_, settings::kMinUiScale, settings::kMaxUiScale, "%.2f");
             ImGui::SetNextItemWidth(160.0f);
+            if (ImGui::SliderFloat("Arrow rotation (deg)", &arrowRotationDegrees_,
+                                   settings::kMinArrowRotationDegrees, settings::kMaxArrowRotationDegrees, "%.3g")) {
+                arrowRotationDegrees_ = std::clamp(arrowRotationDegrees_,
+                                                   settings::kMinArrowRotationDegrees,
+                                                   settings::kMaxArrowRotationDegrees);
+            }
+            gui::helpMarker("Step angle (in degrees) for Left/Right and Up/Down arrow-key rotation around the screen axes.");
+            ImGui::SetNextItemWidth(160.0f);
             if (ImGui::BeginCombo("Theme", uiThemeName(theme_))) {
                 for (const UiTheme theme : kAllUiThemes) {
                     if (ImGui::Selectable(uiThemeName(theme), theme == theme_) && theme != theme_) {
@@ -1452,6 +1460,7 @@ void PolyscopeGui::drawFixAllPreferencesTab() {
 UserPreferences PolyscopeGui::currentPreferences() const {
     UserPreferences prefs = controller_.userPreferences();
     prefs.uiScale = uiScale_;
+    prefs.arrowRotationDegrees = arrowRotationDegrees_;
     prefs.theme = theme_;
     prefs.backgroundColor = polyscope::view::bgColor;
     prefs.showCompass = showCompass_;
@@ -1462,6 +1471,7 @@ UserPreferences PolyscopeGui::currentPreferences() const {
 void PolyscopeGui::applyPreferences(const UserPreferences& prefs) {
     controller_.applyUserPreferences(prefs);
     uiScale_ = prefs.uiScale;
+    arrowRotationDegrees_ = prefs.arrowRotationDegrees;
     if (theme_ != prefs.theme) {
         theme_ = prefs.theme;
         gui::setUiTheme(theme_);
@@ -1751,6 +1761,8 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"Shift + .", "Frames the focused facet (or hole) from the -Normal (back / inside) side"},
         {"R", "Commit Repair: applies the Inspector's chosen repair to the focused defect (thin face, intersecting island or hole); one undo step. Refused, with the reason in the status bar, when the preview is not safe"},
         {"Home  or  H", "Frames the entire mesh and resets the Orbit Pivot to the mesh center"},
+        {"Left  /  Right Arrow", "Rotates the model around the screen's vertical axis from the current view by the configured step (45 deg by default; Edit > Preferences > Interface), orbiting around the active Orbit Pivot"},
+        {"Up  /  Down Arrow", "Rotates the model around the screen's horizontal axis from the current view by the configured step (45 deg by default; Edit > Preferences > Interface), orbiting around the active Orbit Pivot"},
         {"G", "Toggles Ghost (base-mesh transparency)"},
         {"View > Compass", "Draws X (red), Y (green), Z (blue) axes in the bottom-left of the 3D view, turning with the camera. Off by default"},
         {"View > Advanced", "Opens the Appearance, Slice Planes, Structures, Camera & Clipping and Render & Debug sections"},

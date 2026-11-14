@@ -212,6 +212,7 @@ private:
     /// Runs the click action bound to `button` (released without dragging).
     void handleViewportClick(MouseInput button);
     void processPivotRotate(float dragDeltaX, float dragDeltaY);
+    void rotateAroundScreenAxis(bool verticalAxis, int directionSign);
     void processPivotTranslate(float dragDeltaX, float dragDeltaY, double effectiveDist);
     void processPivotZoom(double amount, double effectiveDist);
 
@@ -304,6 +305,7 @@ private:
     bool leftColumnAutoCollapsed_ = false;
     float rightColumnWidth_ = settings::kRightColumnDefaultPx;
     float uiScale_ = 1.0f;
+    float arrowRotationDegrees_ = settings::kDefaultArrowRotationDegrees; ///< Preferences > Interface (saved preference)
     UiTheme theme_ = UiTheme::CustomLight; ///< Preferences > Interface (saved preference)
     MouseMapping mouseMapping_;                  ///< Preferences > Mouse (saved preference)
     MouseAction editingMouseAction_ = MouseAction::Orbit; ///< Binding open in the Mouse tab's editor

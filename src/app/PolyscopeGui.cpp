@@ -242,6 +242,7 @@ PolyscopeGui::PolyscopeGui(AppController& controller, std::filesystem::path pref
     : controller_(controller),
       showCompass_(prefs.showCompass),
       uiScale_(prefs.uiScale),
+      arrowRotationDegrees_(prefs.arrowRotationDegrees),
       theme_(prefs.theme),
       mouseMapping_(prefs.mouse),
       preferencesFile_(std::move(preferencesFile)),
@@ -299,6 +300,7 @@ void PolyscopeGui::run() {
         }
     });
     polyscope::view::bgColor = savedPreferences_.backgroundColor;
+    polyscope::view::setNavigateStyle(polyscope::NavigateStyle::Free);
     applyTransparencyModeForPreview();
     loadAndApplyApplicationIcon();
 
@@ -809,6 +811,34 @@ void PolyscopeGui::processPivotRotate(float dragDeltaX, float dragDeltaY) {
     polyscope::requestRedraw();
 }
 
+void PolyscopeGui::rotateAroundScreenAxis(bool verticalAxis, int directionSign) {
+    if (polyscope::view::getNavigateStyle() == polyscope::NavigateStyle::None ||
+        polyscope::view::getNavigateStyle() == polyscope::NavigateStyle::Planar) {
+        return;
+    }
+
+    glm::vec3 frameLookDir(0.0f, 0.0f, -1.0f);
+    glm::vec3 frameUpDir(0.0f, 1.0f, 0.0f);
+    glm::vec3 frameRightDir(1.0f, 0.0f, 0.0f);
+    polyscope::view::getCameraFrame(frameLookDir, frameUpDir, frameRightDir);
+
+    const Eigen::Vector3d& pivotEig = controller_.orbitPivot();
+    const glm::vec3 pivot(
+        static_cast<float>(pivotEig.x()),
+        static_cast<float>(pivotEig.y()),
+        static_cast<float>(pivotEig.z()));
+
+    const glm::vec3& axis = verticalAxis ? frameUpDir : frameRightDir;
+    const float angleRad = static_cast<float>(directionSign) * arrowRotationDegrees_ * static_cast<float>(kDegToRad);
+    polyscope::view::viewMat = glm::translate(polyscope::view::viewMat, pivot);
+    polyscope::view::viewMat = glm::rotate(polyscope::view::viewMat, angleRad, axis);
+    polyscope::view::viewMat = glm::translate(polyscope::view::viewMat, -pivot);
+
+    controller_.notifyCameraRotated();
+    polyscope::view::immediatelyEndFlight();
+    polyscope::requestRedraw();
+}
+
 void PolyscopeGui::processPivotTranslate(float dragDeltaX, float dragDeltaY, double effectiveDist) {
     if (polyscope::view::getNavigateStyle() == polyscope::NavigateStyle::None) {
         return;
@@ -979,6 +1009,20 @@ void PolyscopeGui::handleKeyboardShortcuts() {
     if (ImGui::IsKeyPressed(ImGuiKey_Home, false) ||
         ImGui::IsKeyPressed(ImGuiKey_H, false)) {
         resetCameraAndPivotToHome();
+    }
+    if (!io.KeyShift && !io.KeyAlt) {
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false)) {
+            rotateAroundScreenAxis(true, -1);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, false)) {
+            rotateAroundScreenAxis(true, +1);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false)) {
+            rotateAroundScreenAxis(false, +1);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, false)) {
+            rotateAroundScreenAxis(false, -1);
+        }
     }
 }
 

@@ -299,6 +299,8 @@ const std::vector<Field>& preferenceFields() {
         const char* ui = "Preferences > Interface / Performance";
         f.push_back(realField(ui, "ui_scale", [](auto& p) -> auto& { return p.uiScale; },
                               settings::kMinUiScale, settings::kMaxUiScale));
+        f.push_back(realField(ui, "arrow_rotation_deg", [](auto& p) -> auto& { return p.arrowRotationDegrees; },
+                              settings::kMinArrowRotationDegrees, settings::kMaxArrowRotationDegrees));
         f.push_back(enumField(ui, "theme", [](auto& p) -> auto& { return p.theme; },
                               std::array<std::pair<UiTheme, const char*>, kUiThemeCount>{{
                                   {UiTheme::PolyscopeDefault, uiThemeKey(UiTheme::PolyscopeDefault)},

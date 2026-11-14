@@ -186,6 +186,9 @@ inline constexpr std::array<float, 4> kPolyscopeWindowHeightsPx = {230.0f, 420.0
 inline constexpr float kUiWheelScrollScale     = 0.25f;           // Mouse-wheel / trackpad scroll over ImGui windows (ImGui scrolls 5 lines per tick: this makes about 1)
 inline constexpr float kMinUiScale             = 0.6f;            // Minimum Preferences > Interface UI scale
 inline constexpr float kMaxUiScale             = 2.5f;            // Maximum Preferences > Interface UI scale
+inline constexpr float kDefaultArrowRotationDegrees = 45.0f;      // Default Preferences > Interface arrow-key rotation step (degrees)
+inline constexpr float kMinArrowRotationDegrees     = 1.0f;       // Minimum Preferences > Interface arrow-key rotation step (degrees)
+inline constexpr float kMaxArrowRotationDegrees     = 180.0f;     // Maximum Preferences > Interface arrow-key rotation step (degrees)
 inline constexpr std::array<float, 4> kDefaultBackgroundColor = {1.0f, 1.0f, 1.0f, 0.0f}; // RGBA 3D-view background (Polyscope default; Display > Appearance)
 
 // -----------------------------------------------------------------------------
