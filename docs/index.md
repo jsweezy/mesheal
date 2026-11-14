@@ -1,6 +1,9 @@
 # Mesheal
 
-*Heal your mesh ills.*
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.5rem; margin-bottom: 1rem;">
+  <img src="assets/mesheal-logo.png" alt="Mesheal logo: an eel curled around a triangle mesh" width="180" height="180">
+  <p style="font-size: 1.6rem; font-style: italic; margin: 0;">Heal your mesh ills.</p>
+</div>
 
 **Mesheal inspects and repairs STL surface meshes for simulation.** Particle transport, FEA, CFD and
 ray tracing codes need meshes that are watertight and 2-manifold, with every triangle facing the right
