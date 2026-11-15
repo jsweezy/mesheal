@@ -148,7 +148,9 @@ IslandAnalysis analyze(const Mesh& mesh, const VertexFaces& vf, const Intersecti
                 if (fj <= fi || collarSet.count(fj) == 0) {
                     continue;
                 }
-                if (mesh.F(fj, 0) != v && mesh.F(fj, 1) != v && mesh.F(fj, 2) != v) {
+                // Must hold v too, and share exactly that edge: a duplicate or flipped copy of fi shares all three
+                // corners and is no neighbour (the old pairwise scan skipped it the same way)
+                if ((mesh.F(fj, 0) != v && mesh.F(fj, 1) != v && mesh.F(fj, 2) != v) || !shareEdge(mesh, fi, fj)) {
                     continue;
                 }
                 const double dot = std::clamp(ni.dot(faceNormal(mesh, fj)), -1.0, 1.0);
@@ -181,95 +183,107 @@ bool isCgalJob(IntersectionRepairMethod method) {
     return method != IntersectionRepairMethod::SelfUnion && method != IntersectionRepairMethod::None;
 }
 
-/// Maps `Mesh` faces for all CGAL jobs to the halfedge mesh built from it. `toCgalSurfaceMesh` keeps indices for
-/// manifold input; otherwise faces are matched once by their corner positions (any winding).
-std::vector<std::vector<CgalFaceIndex>> mapJobsToCgal(const Mesh& mesh, const CgalSurfaceMesh& sm,
-                                                      const std::vector<IslandJob>& jobs) {
-    const auto corners = [](std::array<Eigen::Vector3d, 3> p) {
-        std::sort(p.begin(), p.end(), [](const Eigen::Vector3d& a, const Eigen::Vector3d& b) {
-            return std::lexicographical_compare(a.data(), a.data() + 3, b.data(), b.data() + 3);
-        });
-        FaceGeometryKey key{};
-        for (std::size_t c = 0; c < 3; ++c) {
-            std::copy(p[c].data(), p[c].data() + 3, key.begin() + static_cast<std::ptrdiff_t>(3 * c));
-        }
-        return key;
-    };
-    const auto meshKey = [&](Eigen::Index f) {
-        return corners({mesh.V.row(mesh.F(f, 0)).transpose(), mesh.V.row(mesh.F(f, 1)).transpose(),
-                        mesh.V.row(mesh.F(f, 2)).transpose()});
-    };
-    const auto cgalKey = [&](CgalFaceIndex f) {
-        std::array<Eigen::Vector3d, 3> p;
-        std::size_t c = 0;
-        for (const CgalVertexIndex v : CGAL::vertices_around_face(sm.halfedge(f), sm)) {
-            const CgalPoint3& q = sm.point(v);
-            p[c++] = Eigen::Vector3d(q.x(), q.y(), q.z());
-        }
-        return corners(p);
-    };
+FaceGeometryKey sortedCorners(std::array<Eigen::Vector3d, 3> p) {
+    std::sort(p.begin(), p.end(), [](const Eigen::Vector3d& a, const Eigen::Vector3d& b) {
+        return std::lexicographical_compare(a.data(), a.data() + 3, b.data(), b.data() + 3);
+    });
+    FaceGeometryKey key{};
+    for (std::size_t c = 0; c < 3; ++c) {
+        std::copy(p[c].data(), p[c].data() + 3, key.begin() + static_cast<std::ptrdiff_t>(3 * c));
+    }
+    return key;
+}
 
-    std::vector<std::vector<CgalFaceIndex>> mapped(jobs.size());
+FaceGeometryKey meshFaceKey(const Mesh& mesh, Eigen::Index f) {
+    return sortedCorners({mesh.V.row(mesh.F(f, 0)).transpose(), mesh.V.row(mesh.F(f, 1)).transpose(),
+                          mesh.V.row(mesh.F(f, 2)).transpose()});
+}
+
+FaceGeometryKey cgalFaceKey(const CgalSurfaceMesh& sm, CgalFaceIndex f) {
+    std::array<Eigen::Vector3d, 3> p;
+    std::size_t c = 0;
+    for (const CgalVertexIndex v : CGAL::vertices_around_face(sm.halfedge(f), sm)) {
+        const CgalPoint3& q = sm.point(v);
+        p[c++] = Eigen::Vector3d(q.x(), q.y(), q.z());
+        if (c == 3) {
+            break;
+        }
+    }
+    return sortedCorners(p);
+}
+
+/// One job's faces in the halfedge mesh, with the corners each had when mapped. A fill frees face slots that
+/// `Surface_mesh` hands to the next patch it builds, so a mapped index may later name a neighbour's new face.
+struct MappedFaces {
+    std::vector<CgalFaceIndex> faces;
+    std::vector<FaceGeometryKey> keys;
+};
+
+/// The mapped faces still in `sm` as they were mapped: not removed, and the slot not reused by a patch.
+std::vector<CgalFaceIndex> liveFaces(const CgalSurfaceMesh& sm, const MappedFaces& mapped) {
+    std::vector<CgalFaceIndex> out;
+    out.reserve(mapped.faces.size());
+    for (std::size_t i = 0; i < mapped.faces.size(); ++i) {
+        const CgalFaceIndex f = mapped.faces[i];
+        if (!sm.is_removed(f) && cgalFaceKey(sm, f) == mapped.keys[i]) {
+            out.push_back(f);
+        }
+    }
+    return out;
+}
+
+/// Maps the faces of every CGAL job to the halfedge mesh built from `mesh`, in one pass. `toCgalSurfaceMesh`
+/// keeps indices for manifold input; otherwise faces are matched by their corner positions (any winding).
+std::vector<MappedFaces> mapJobsToCgal(const Mesh& mesh, const CgalSurfaceMesh& sm, const std::vector<IslandJob>& jobs) {
+    std::vector<MappedFaces> mapped(jobs.size());
     bool direct = static_cast<Eigen::Index>(sm.number_of_faces()) == mesh.numFaces();
-    if (direct) {
-        for (std::size_t j = 0; j < jobs.size() && direct; ++j) {
-            if (!isCgalJob(jobs[j].method)) {
-                continue;
-            }
-            mapped[j].reserve(jobs[j].faces.size());
-            for (const Eigen::Index f : jobs[j].faces) {
-                const CgalFaceIndex cf(static_cast<CgalSurfaceMesh::size_type>(f));
-                if (cgalKey(cf) != meshKey(f)) {
-                    direct = false;
-                    break;
-                }
-                mapped[j].push_back(cf);
-            }
-        }
-        if (direct) {
-            return mapped;
-        }
-    }
-
-    std::size_t wantedCount = 0;
-    for (const IslandJob& job : jobs) {
-        if (isCgalJob(job.method)) {
-            wantedCount += job.faces.size();
-        }
-    }
-    std::unordered_map<FaceGeometryKey, CgalFaceIndex, FaceGeometryKeyHash> byKey;
-    byKey.reserve(wantedCount);
-    std::vector<std::vector<FaceGeometryKey>> jobKeys(jobs.size());
-    for (std::size_t j = 0; j < jobs.size(); ++j) {
-        mapped[j].clear();
+    for (std::size_t j = 0; j < jobs.size() && direct; ++j) {
         if (!isCgalJob(jobs[j].method)) {
             continue;
         }
-        jobKeys[j].reserve(jobs[j].faces.size());
         for (const Eigen::Index f : jobs[j].faces) {
-            const FaceGeometryKey key = meshKey(f);
-            jobKeys[j].push_back(key);
-            byKey.emplace(key, CgalSurfaceMesh::null_face());
+            const CgalFaceIndex cf(static_cast<CgalSurfaceMesh::size_type>(f));
+            const FaceGeometryKey key = meshFaceKey(mesh, f);
+            if (cgalFaceKey(sm, cf) != key) {
+                direct = false;
+                break;
+            }
+            mapped[j].faces.push_back(cf);
+            mapped[j].keys.push_back(key);
         }
     }
-    if (!byKey.empty()) {
-        std::size_t remaining = byKey.size();
-        for (const CgalFaceIndex f : sm.faces()) {
-            if (const auto it = byKey.find(cgalKey(f));
-                it != byKey.end() && it->second == CgalSurfaceMesh::null_face()) {
-                it->second = f;
-                if (--remaining == 0) {
-                    break;
-                }
-            }
+    if (direct) {
+        return mapped;
+    }
+
+    std::unordered_map<FaceGeometryKey, CgalFaceIndex, FaceGeometryKeyHash> byKey;
+    for (std::size_t j = 0; j < jobs.size(); ++j) {
+        mapped[j] = {};
+        if (!isCgalJob(jobs[j].method)) {
+            continue;
         }
-        for (std::size_t j = 0; j < jobs.size(); ++j) {
-            mapped[j].reserve(jobKeys[j].size());
-            for (const FaceGeometryKey& key : jobKeys[j]) {
-                const CgalFaceIndex cf = byKey.at(key);
-                if (cf != CgalSurfaceMesh::null_face()) {
-                    mapped[j].push_back(cf);
-                }
+        for (const Eigen::Index f : jobs[j].faces) {
+            mapped[j].keys.push_back(meshFaceKey(mesh, f));
+            byKey.emplace(mapped[j].keys.back(), CgalSurfaceMesh::null_face());
+        }
+    }
+    std::size_t unmatched = byKey.size();
+    for (const CgalFaceIndex f : sm.faces()) {
+        if (unmatched == 0) {
+            break;
+        }
+        if (const auto it = byKey.find(cgalFaceKey(sm, f)); it != byKey.end() && it->second == CgalSurfaceMesh::null_face()) {
+            it->second = f;
+            --unmatched;
+        }
+    }
+    for (MappedFaces& m : mapped) {
+        std::vector<FaceGeometryKey> keys;
+        keys.swap(m.keys);
+        for (const FaceGeometryKey& key : keys) {
+            if (const CgalFaceIndex cf = byKey.at(key); cf != CgalSurfaceMesh::null_face()) {
+                m.faces.push_back(cf);
+                m.keys.push_back(key);
             }
         }
     }
@@ -315,20 +329,20 @@ bool touchesBorder(const CgalSurfaceMesh& sm, const std::vector<CgalFaceIndex>& 
     return false;
 }
 
+enum class FillOutcome {
+    NotCut,   ///< Refused before removing anything; the mesh is unchanged
+    Filled,   ///< Cut and every new hole filled
+    LeftHole, ///< Cut, but a new hole could not be filled: the mesh now has an opening the input did not
+};
+
 /// Cuts the island (+ rings) out, grown so the hole boundary stays manifold, and fills each new hole.
 /// A cut that would reach an open border of the input is retried without rings, then refused: the
 /// merged hole would include the original border and filling it would cover the whole opening.
-bool fillIsland(CgalSurfaceMesh& sm, const std::vector<CgalFaceIndex>& faces, bool smooth, int rings,
-                CgalSurfaceMesh::Property_map<CgalFaceIndex, bool>& selected, std::string& status) {
-    std::vector<CgalFaceIndex> live;
-    for (const CgalFaceIndex f : faces) {
-        if (!sm.is_removed(f)) {
-            live.push_back(f);
-        }
-    }
+FillOutcome fillIsland(CgalSurfaceMesh& sm, const std::vector<CgalFaceIndex>& live, bool smooth, int rings,
+                       CgalSurfaceMesh::Property_map<CgalFaceIndex, bool>& selected, std::string& status) {
     if (live.empty()) {
         status = "The island was already removed by a neighbouring repair.";
-        return false;
+        return FillOutcome::NotCut;
     }
     std::vector<CgalFaceIndex> cut;
     const auto clearSelected = [&]() {
@@ -347,7 +361,7 @@ bool fillIsland(CgalSurfaceMesh& sm, const std::vector<CgalFaceIndex>& faces, bo
         clearSelected();
         status = "The island reaches an open border: cutting it out would merge with that hole. "
                  "Try CGAL Local Repair or Cut & Merge Walls.";
-        return false;
+        return FillOutcome::NotCut;
     }
 
     // Halfedges that turn into hole borders: the cut side of edges between cut and kept faces
@@ -360,12 +374,11 @@ bool fillIsland(CgalSurfaceMesh& sm, const std::vector<CgalFaceIndex>& faces, bo
             }
         }
     }
-    if (newBorder.empty()) {
-        clearSelected();
-        status = "The cut would remove the whole shell, leaving nothing to fill. Try another method or fewer rings.";
-        return false;
-    }
     clearSelected();
+    if (newBorder.empty()) {
+        status = "The cut would remove the whole shell, leaving nothing to fill. Try another method or fewer rings.";
+        return FillOutcome::NotCut;
+    }
     for (const CgalFaceIndex f : cut) {
         if (!sm.is_removed(f)) {
             CGAL::Euler::remove_face(sm.halfedge(f), sm);
@@ -385,31 +398,49 @@ bool fillIsland(CgalSurfaceMesh& sm, const std::vector<CgalFaceIndex>& faces, bo
             visited.insert(b.idx());
             ++holeEdges;
         }
-        const bool skipCubic = holeEdges > settings::kMaxCubicHoleFillEdges;
+        // Same search as Fill Hole (HoleFiller): 2D CDT first; no O(n^3) fallback on big holes
         std::vector<CgalFaceIndex> patch;
+        const auto np = CGAL::parameters::use_2d_constrained_delaunay_triangulation(true)
+                            .do_not_use_cubic_algorithm(holeEdges > settings::kMaxCubicHoleFillEdges)
+                            .face_output_iterator(std::back_inserter(patch));
         if (smooth) {
-            const auto result = PMP::triangulate_refine_and_fair_hole(
-                sm, h,
-                CGAL::parameters::use_2d_constrained_delaunay_triangulation(true)
-                    .do_not_use_cubic_algorithm(skipCubic)
-                    .face_output_iterator(std::back_inserter(patch)));
-            fairFailed += std::get<0>(result) ? 0 : 1;
+            fairFailed += std::get<0>(PMP::triangulate_refine_and_fair_hole(sm, h, np)) ? 0 : 1;
         } else {
-            PMP::triangulate_hole(
-                sm, h,
-                CGAL::parameters::use_2d_constrained_delaunay_triangulation(true)
-                    .do_not_use_cubic_algorithm(skipCubic)
-                    .face_output_iterator(std::back_inserter(patch)));
+            PMP::triangulate_hole(sm, h, np);
         }
         if (patch.empty()) {
-            status = "A hole left by the cut could not be triangulated.";
-            return false;
+            status = "A " + std::to_string(holeEdges) + "-edge hole left by the cut could not be triangulated.";
+            return FillOutcome::LeftHole;
         }
         ++filled;
     }
     status = "Cut " + std::to_string(cut.size()) + " faces, filled " + std::to_string(filled) + " hole" +
              (filled == 1 ? "" : "s") + (fairFailed > 0 ? " (fairing failed; refined patch kept)" : "") + ".";
-    return filled > 0;
+    return filled > 0 ? FillOutcome::Filled : FillOutcome::LeftHole;
+}
+
+/// Grows `faces` (marked in `inSet`) by whole vertex rings, `rings` times or until it holds more than `maxFaces`.
+/// Returns false if it outgrew `maxFaces`.
+bool growByVertexRings(const CgalSurfaceMesh& sm, std::vector<CgalFaceIndex>& faces,
+                       std::unordered_set<std::uint32_t>& inSet, int rings, std::size_t maxFaces) {
+    std::size_t ringStart = 0;
+    for (int r = 0; r < rings && ringStart < faces.size(); ++r) {
+        const std::size_t ringEnd = faces.size();
+        for (std::size_t i = ringStart; i < ringEnd; ++i) {
+            for (const CgalVertexIndex v : CGAL::vertices_around_face(sm.halfedge(faces[i]), sm)) {
+                for (const CgalFaceIndex g : CGAL::faces_around_target(sm.halfedge(v), sm)) {
+                    if (g != CgalSurfaceMesh::null_face() && inSet.insert(g.idx()).second) {
+                        faces.push_back(g);
+                        if (faces.size() > maxFaces) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        ringStart = ringEnd;
+    }
+    return true;
 }
 
 std::size_t countSetBoundaryEdges(const CgalSurfaceMesh& sm, const std::vector<CgalFaceIndex>& faces,
@@ -426,238 +457,287 @@ std::size_t countSetBoundaryEdges(const CgalSurfaceMesh& sm, const std::vector<C
     return boundaryEdges;
 }
 
-bool cgalLocalRepair(CgalSurfaceMesh& sm, const std::vector<CgalFaceIndex>& faces, int maxSteps, std::string& status) {
-    std::unordered_set<std::uint32_t> remaining;
-    remaining.reserve(faces.size());
-    std::vector<CgalFaceIndex> candidates;
-    candidates.reserve(faces.size());
-    for (const CgalFaceIndex f : faces) {
-        if (!sm.is_removed(f) && remaining.insert(f.idx()).second) {
-            candidates.push_back(f);
-        }
-    }
-    if (candidates.empty()) {
-        status = "The island was already removed by a neighbouring repair.";
-        return false;
-    }
+/// What a batch CGAL local repair may take on. `remove_self_intersections` grows each crossing patch by up to
+/// `maxSteps - 1` rings, merges patches that touch, and refills each with a hole search that costs O(n^3) in the
+/// rim length when its Delaunay search fails. Patches are predicted the same way and taken smallest first: any
+/// hole over `kMaxCgalLocalRepairHoleEdges` rim edges is left out, and the rest until their summed n^3 reaches
+/// the budget. A batch on an ordinary mesh takes everything; one on a mesh with 300k crossings stays bounded.
+struct LocalRepairPlan {
+    std::vector<CgalFaceIndex> faces; ///< Crossing faces to hand to CGAL
+    std::size_t patches = 0;          ///< Predicted holes taken
+    std::size_t skippedLarge = 0;     ///< Predicted holes left out for size
+    std::size_t skippedBudget = 0;    ///< Predicted holes left out for the time budget
+};
 
-    // `PMP::experimental::remove_self_intersections` dilates up to `maxSteps` rings and merges touching holes
-    // before running CGAL's O(n^3) hole triangulation. Filter both initial components and max-step dilated groups.
-    struct LocalPatch {
-        std::vector<CgalFaceIndex> seedFaces;
-        std::vector<CgalFaceIndex> dilatedFaces;
+LocalRepairPlan planLocalRepair(const CgalSurfaceMesh& sm, const std::vector<CgalFaceIndex>& live, int maxSteps) {
+    struct Patch {
+        std::vector<CgalFaceIndex> seeds;
+        std::vector<CgalFaceIndex> grown;
     };
-    std::vector<LocalPatch> patches;
-    std::unordered_set<std::uint32_t> compSet;
-    std::vector<CgalFaceIndex> comp;
-    std::unordered_set<std::uint32_t> dilatedSet;
-    std::vector<CgalFaceIndex> dilated;
-    std::vector<CgalFaceIndex> frontier;
-    std::vector<CgalFaceIndex> nextFrontier;
-    const int ringLimit = std::max(maxSteps, 0);
-
-    for (const CgalFaceIndex seed : candidates) {
-        if (remaining.erase(seed.idx()) == 0) {
+    LocalRepairPlan plan;
+    std::unordered_set<std::uint32_t> unvisited;
+    for (const CgalFaceIndex f : live) {
+        unvisited.insert(f.idx());
+    }
+    std::vector<Patch> patches;
+    for (const CgalFaceIndex seed : live) {
+        if (unvisited.erase(seed.idx()) == 0) {
             continue;
         }
-        comp.clear();
-        compSet.clear();
-        comp.push_back(seed);
-        compSet.insert(seed.idx());
-        for (std::size_t q = 0; q < comp.size(); ++q) {
-            for (const CgalVertexIndex v : CGAL::vertices_around_face(sm.halfedge(comp[q]), sm)) {
+        Patch p;
+        p.seeds.push_back(seed);
+        for (std::size_t q = 0; q < p.seeds.size(); ++q) {
+            for (const CgalVertexIndex v : CGAL::vertices_around_face(sm.halfedge(p.seeds[q]), sm)) {
                 for (const CgalFaceIndex g : CGAL::faces_around_target(sm.halfedge(v), sm)) {
-                    if (g != CgalSurfaceMesh::null_face() && remaining.erase(g.idx()) != 0) {
-                        comp.push_back(g);
-                        compSet.insert(g.idx());
+                    if (g != CgalSurfaceMesh::null_face() && unvisited.erase(g.idx()) != 0) {
+                        p.seeds.push_back(g);
                     }
                 }
             }
         }
-        if (countSetBoundaryEdges(sm, comp, compSet) > settings::kMaxCgalLocalRepairBoundaryEdges) {
+        p.grown = p.seeds;
+        std::unordered_set<std::uint32_t> grownSet;
+        for (const CgalFaceIndex f : p.grown) {
+            grownSet.insert(f.idx());
+        }
+        if (p.grown.size() > settings::kMaxCgalLocalRepairPatchFaces ||
+            !growByVertexRings(sm, p.grown, grownSet, std::max(maxSteps - 1, 0), settings::kMaxCgalLocalRepairPatchFaces)) {
+            ++plan.skippedLarge;
             continue;
         }
-
-        dilated = comp;
-        dilatedSet = compSet;
-        frontier = comp;
-        bool tooLarge = dilated.size() > settings::kMaxCgalLocalRepairPatchFaces;
-        for (int step = 0; step < ringLimit && !frontier.empty() && !tooLarge; ++step) {
-            nextFrontier.clear();
-            for (const CgalFaceIndex f : frontier) {
-                for (const CgalVertexIndex v : CGAL::vertices_around_face(sm.halfedge(f), sm)) {
-                    for (const CgalFaceIndex g : CGAL::faces_around_target(sm.halfedge(v), sm)) {
-                        if (g != CgalSurfaceMesh::null_face() && dilatedSet.insert(g.idx()).second) {
-                            dilated.push_back(g);
-                            nextFrontier.push_back(g);
-                            if (dilated.size() > settings::kMaxCgalLocalRepairPatchFaces) {
-                                tooLarge = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (tooLarge) {
-                        break;
-                    }
-                }
-                if (tooLarge) {
-                    break;
-                }
-            }
-            frontier.swap(nextFrontier);
-        }
-        if (tooLarge || countSetBoundaryEdges(sm, dilated, dilatedSet) > settings::kMaxCubicHoleFillEdges) {
-            continue;
-        }
-        patches.push_back({std::move(comp), std::move(dilated)});
+        patches.push_back(std::move(p));
     }
 
-    if (patches.empty()) {
-        status = "Crossing patch boundary exceeds " + std::to_string(settings::kMaxCgalLocalRepairBoundaryEdges) +
-                 " edges; skipped CGAL local repair.";
-        return false;
-    }
-
+    // Grown patches sharing a vertex become one hole in CGAL
     UnionFind uf(patches.size());
     std::unordered_map<std::uint32_t, std::size_t> vertexOwner;
     for (std::size_t i = 0; i < patches.size(); ++i) {
-        for (const CgalFaceIndex f : patches[i].dilatedFaces) {
+        for (const CgalFaceIndex f : patches[i].grown) {
             for (const CgalVertexIndex v : CGAL::vertices_around_face(sm.halfedge(f), sm)) {
-                const auto [it, inserted] = vertexOwner.try_emplace(v.idx(), i);
-                if (!inserted) {
+                if (const auto [it, inserted] = vertexOwner.try_emplace(v.idx(), i); !inserted) {
                     uf.unite(i, it->second);
                 }
             }
         }
     }
-
-    std::unordered_map<std::size_t, std::vector<std::size_t>> groups;
+    std::unordered_map<std::size_t, std::vector<std::size_t>> byRoot;
     for (std::size_t i = 0; i < patches.size(); ++i) {
-        groups[uf.find(i)].push_back(i);
+        byRoot[uf.find(i)].push_back(i);
     }
-
-    std::vector<CgalFaceIndex> live;
-    std::unordered_set<std::uint32_t> mergedSet;
-    std::vector<CgalFaceIndex> mergedFaces;
-    for (const auto& [root, memberIndices] : groups) {
-        (void)root;
-        if (memberIndices.size() > 1) {
-            mergedSet.clear();
-            mergedFaces.clear();
-            for (const std::size_t idx : memberIndices) {
-                for (const CgalFaceIndex f : patches[idx].dilatedFaces) {
-                    if (mergedSet.insert(f.idx()).second) {
-                        mergedFaces.push_back(f);
-                    }
+    struct Hole {
+        std::size_t rimEdges;
+        std::vector<std::size_t> members;
+    };
+    std::vector<Hole> holes;
+    for (auto& [root, members] : byRoot) {
+        std::vector<CgalFaceIndex> faces;
+        std::unordered_set<std::uint32_t> faceSet;
+        for (const std::size_t i : members) {
+            for (const CgalFaceIndex f : patches[i].grown) {
+                if (faceSet.insert(f.idx()).second) {
+                    faces.push_back(f);
                 }
             }
-            if (countSetBoundaryEdges(sm, mergedFaces, mergedSet) > settings::kMaxCubicHoleFillEdges) {
-                continue;
+        }
+        holes.push_back({countSetBoundaryEdges(sm, faces, faceSet), std::move(members)});
+    }
+    std::sort(holes.begin(), holes.end(), [](const Hole& a, const Hole& b) {
+        return a.rimEdges != b.rimEdges ? a.rimEdges < b.rimEdges : a.members.front() < b.members.front();
+    });
+
+    double work = 0.0;
+    for (const Hole& hole : holes) {
+        const double cost = std::pow(static_cast<double>(hole.rimEdges), 3.0);
+        if (hole.rimEdges > settings::kMaxCgalLocalRepairHoleEdges) {
+            ++plan.skippedLarge;
+        } else if (work + cost > settings::kMaxCgalLocalRepairCubicWork) {
+            ++plan.skippedBudget;
+        } else {
+            work += cost;
+            ++plan.patches;
+            for (const std::size_t i : hole.members) {
+                plan.faces.insert(plan.faces.end(), patches[i].seeds.begin(), patches[i].seeds.end());
             }
         }
-        for (const std::size_t idx : memberIndices) {
-            live.insert(live.end(), patches[idx].seedFaces.begin(), patches[idx].seedFaces.end());
+    }
+    return plan;
+}
+
+/// Runs CGAL's local self-intersection repair on `faces`. A batch (`limitSize`) plans the patches first and
+/// leaves out any whose refill would stall (see `LocalRepairPlan`); a repair the user picked for one island
+/// is always attempted in full.
+bool cgalLocalRepair(CgalSurfaceMesh& sm, const std::vector<CgalFaceIndex>& faces, int maxSteps, bool limitSize,
+                     std::string& status) {
+    std::vector<CgalFaceIndex> live;
+    std::unordered_set<std::uint32_t> seen;
+    for (const CgalFaceIndex f : faces) {
+        if (!sm.is_removed(f) && seen.insert(f.idx()).second) {
+            live.push_back(f);
         }
     }
-
     if (live.empty()) {
-        status = "Crossing patch boundary exceeds " + std::to_string(settings::kMaxCubicHoleFillEdges) +
-                 " edges after dilation; skipped CGAL local repair.";
+        status = "The island was already removed by a neighbouring repair.";
         return false;
     }
 
-    // `use_smoothing(true)` inside CGAL copies the full Face_filtered_graph per hole (scanning every edge of `sm`).
-    const bool useSmoothing = sm.number_of_faces() <= settings::kMaxCgalLocalSmoothingFaces;
+    std::size_t patches = 1;
+    std::string skippedNote;
+    if (limitSize) {
+        LocalRepairPlan plan = planLocalRepair(sm, live, maxSteps);
+        const std::size_t skipped = plan.skippedLarge + plan.skippedBudget;
+        if (skipped > 0) {
+            skippedNote = " Skipped " + std::to_string(skipped) + " of " + std::to_string(skipped + plan.patches) +
+                          " crossing patches:";
+            if (plan.skippedLarge > 0) {
+                skippedNote += " " + std::to_string(plan.skippedLarge) + " would leave a hole over " +
+                               std::to_string(settings::kMaxCgalLocalRepairHoleEdges) + " edges or " +
+                               std::to_string(settings::kMaxCgalLocalRepairPatchFaces) + " faces";
+            }
+            if (plan.skippedBudget > 0) {
+                skippedNote += std::string(plan.skippedLarge > 0 ? "," : "") + " " + std::to_string(plan.skippedBudget) +
+                               " did not fit the time budget";
+            }
+            skippedNote += ".";
+        }
+        if (plan.faces.empty()) {
+            status = "Skipped CGAL local repair:" + skippedNote.substr(skippedNote.find(':') + 1);
+            return false;
+        }
+        live = std::move(plan.faces);
+        patches = plan.patches;
+    }
+
+    // CGAL's smoothing copies each patch through a Face_filtered_graph that scans every halfedge of `sm`:
+    // keep it while the scans stay cheap (always on ordinary meshes, a few patches on multi-million-face ones)
+    const bool useSmoothing =
+        static_cast<double>(patches) * static_cast<double>(sm.number_of_halfedges()) <= settings::kMaxCgalLocalSmoothingScans;
     bool solved = false;
     try {
         solved = PMP::experimental::remove_self_intersections(
-            live, sm,
-            CGAL::parameters::preserve_genus(false).use_smoothing(useSmoothing).number_of_iterations(maxSteps));
+            live, sm, CGAL::parameters::preserve_genus(false).use_smoothing(useSmoothing).number_of_iterations(maxSteps));
     } catch (const std::exception& e) {
         status = std::string("CGAL local repair failed: ") + e.what();
         return false;
     }
-    status = solved ? "CGAL local repair removed the crossings." : "CGAL local repair could not remove every crossing.";
+    status = std::string(solved ? "CGAL local repair removed the crossings it was given."
+                                : "CGAL local repair could not remove every crossing.") +
+             (useSmoothing ? "" : " (Smoothing skipped on this large mesh.)") + skippedNote;
     return true;
 }
 
-/// Applies every job to `shell`: cuts / CGAL repairs in place on one halfedge mesh, then one
-/// self-union if any job asked for it. Returns an empty mesh if nothing could be applied.
+/// Applies every job to `shell`: cuts / CGAL repairs in place on one halfedge mesh, then one self-union if any
+/// job asked for it. Returns an empty mesh if nothing could be applied. A fill that cuts but cannot close its
+/// hole spoils the halfedge mesh, so the shell is rebuilt and the jobs rerun without it (a few times at most).
+/// `batch` limits CGAL Local Repair to patches it can refill in bounded time.
 Mesh repairShell(const Mesh& shell, const std::vector<IslandJob>& jobs, const IntersectionRepairSettings& settings,
-                 std::string& status) {
+                 bool batch, std::string& status) {
     bool wantsUnion = false;
     bool wantsCgal = false;
     for (const IslandJob& job : jobs) {
         wantsUnion = wantsUnion || job.method == IntersectionRepairMethod::SelfUnion;
-        wantsCgal = wantsCgal || (job.method != IntersectionRepairMethod::SelfUnion && job.method != IntersectionRepairMethod::None);
+        wantsCgal = wantsCgal || isCgalJob(job.method);
     }
 
     Mesh current = shell;
     bool changed = false;
-    if (wantsCgal) {
+    std::vector<std::string> notes;
+    std::vector<bool> dropped(jobs.size(), false);
+    std::size_t droppedCount = 0;
+    for (int attempt = 0; wantsCgal && attempt < settings::kMaxShellRepairAttempts; ++attempt) {
         CgalSurfaceMesh sm;
         if (!toCgalSurfaceMesh(shell, sm)) {
             status = "The shell could not be converted to a halfedge mesh.";
             return {};
         }
-        const std::vector<std::vector<CgalFaceIndex>> mappedJobs = mapJobsToCgal(shell, sm, jobs);
-        CgalSurfaceMesh::Property_map<CgalFaceIndex, bool> selected;
-        bool hasSelectedMap = false;
-        std::vector<CgalFaceIndex> batchedLocalRepair;
-        std::unordered_set<std::uint32_t> seenLocalRepair;
+        const std::vector<MappedFaces> mapped = mapJobsToCgal(shell, sm, jobs);
+        auto selected = sm.add_property_map<CgalFaceIndex, bool>("f:mesheal_cut", false).first;
+        std::vector<std::size_t> leftHole;
+        std::vector<std::size_t> localJobs;
+        std::string firstFailure;
+        std::string lastSuccess;
+        changed = false;
         for (std::size_t j = 0; j < jobs.size(); ++j) {
-            const IslandJob& job = jobs[j];
-            const std::vector<CgalFaceIndex>& faces = mappedJobs[j];
-            std::string jobStatus;
-            bool ok = false;
-            switch (job.method) {
-            case IntersectionRepairMethod::FillFlat:
-            case IntersectionRepairMethod::FillSmooth:
-                if (!hasSelectedMap) {
-                    selected = sm.add_property_map<CgalFaceIndex, bool>("f:mesheal_cut", false).first;
-                    hasSelectedMap = true;
-                }
-                ok = fillIsland(sm, faces, job.method == IntersectionRepairMethod::FillSmooth, settings.dilationRings, selected,
-                                jobStatus);
-                break;
-            case IntersectionRepairMethod::CgalLocalRepair:
-                for (const CgalFaceIndex f : faces) {
-                    if (seenLocalRepair.insert(f.idx()).second) {
-                        batchedLocalRepair.push_back(f);
-                    }
-                }
-                continue;
-            default:
+            if (dropped[j]) {
                 continue;
             }
-            changed = changed || ok;
-            status = jobStatus;
-        }
-        if (hasSelectedMap) {
-            sm.remove_property_map(selected);
-        }
-        if (!batchedLocalRepair.empty()) {
+            if (jobs[j].method == IntersectionRepairMethod::CgalLocalRepair) {
+                localJobs.push_back(j); // one CGAL call for all of them, after the fills
+                continue;
+            }
+            if (jobs[j].method != IntersectionRepairMethod::FillFlat && jobs[j].method != IntersectionRepairMethod::FillSmooth) {
+                continue;
+            }
             std::string jobStatus;
-            if (cgalLocalRepair(sm, batchedLocalRepair, settings.cgalMaxSteps, jobStatus)) {
+            const FillOutcome outcome = fillIsland(sm, liveFaces(sm, mapped[j]),
+                                                   jobs[j].method == IntersectionRepairMethod::FillSmooth,
+                                                   settings.dilationRings, selected, jobStatus);
+            if (outcome == FillOutcome::LeftHole) {
+                leftHole.push_back(j);
+            }
+            if (outcome == FillOutcome::Filled) {
                 changed = true;
+                lastSuccess = jobStatus;
+            } else if (firstFailure.empty()) {
+                firstFailure = jobStatus;
             }
-            status = jobStatus;
+        }
+        sm.remove_property_map(selected);
+        if (!leftHole.empty()) {
+            for (const std::size_t j : leftHole) {
+                dropped[j] = true;
+            }
+            droppedCount += leftHole.size();
+            notes = {firstFailure};
+            changed = false;
+            bool anyLeft = false;
+            for (std::size_t j = 0; j < jobs.size(); ++j) {
+                anyLeft = anyLeft || (!dropped[j] && isCgalJob(jobs[j].method));
+            }
+            if (!anyLeft) {
+                break; // nothing left to rerun
+            }
+            continue; // `sm` has an open cut: rebuild it and rerun the other jobs
+        }
+        notes.clear();
+        if (droppedCount > 0) {
+            notes.push_back(std::to_string(droppedCount) + (droppedCount == 1 ? " island was" : " islands were") +
+                            " left as is: cutting it out left a hole that could not be filled.");
+        }
+        for (const std::string* s : {&lastSuccess, &firstFailure}) {
+            if (!s->empty()) {
+                notes.push_back(*s);
+            }
+        }
+        if (!localJobs.empty()) {
+            std::vector<CgalFaceIndex> faces;
+            for (const std::size_t j : localJobs) {
+                const std::vector<CgalFaceIndex> live = liveFaces(sm, mapped[j]);
+                faces.insert(faces.end(), live.begin(), live.end());
+            }
+            std::string localStatus;
+            changed = cgalLocalRepair(sm, faces, settings.cgalMaxSteps, batch, localStatus) || changed;
+            notes.push_back(localStatus);
         }
         if (changed) {
             sm.collect_garbage();
             current = fromCgalSurfaceMesh(sm, shell.fileUnit);
         }
+        break;
     }
     if (wantsUnion) {
         std::string unionStatus;
         Mesh united = selfUnion(current, &unionStatus);
         if (united.empty()) {
-            status = unionStatus;
+            notes.push_back(unionStatus);
         } else {
             current = std::move(united);
             changed = true;
-            status = "Self-union: " + unionStatus;
+            notes.push_back("Self-union: " + unionStatus);
         }
+    }
+    status.clear();
+    for (const std::string& note : notes) {
+        status += (status.empty() ? "" : " ") + note;
     }
     return changed ? current : Mesh{};
 }
@@ -893,7 +973,7 @@ IslandRepairResult repairIsland(
     }
     result.crossingsBefore = checkSelfIntersections(shellMesh, params).size();
 
-    const Mesh repaired = repairShell(shellMesh, {job}, settings, result.statusMessage);
+    const Mesh repaired = repairShell(shellMesh, {job}, settings, false, result.statusMessage);
     if (repaired.empty()) {
         if (result.statusMessage.empty()) {
             result.statusMessage = std::string(intersectionRepairMethodLabel(method)) + " changed nothing.";
@@ -1012,7 +1092,6 @@ IslandBatchResult healIntersectionIslands(
             }
         }
         std::size_t crossings = checkSelfIntersections(shellMesh, params).size();
-        bool selfUnionTried = false;
 
         for (int round = 0; round < settings::kMaxIslandRepairRounds && !shellIslands.empty(); ++round) {
             if (stopToken.stop_requested()) {
@@ -1022,18 +1101,14 @@ IslandBatchResult healIntersectionIslands(
             const VertexFaces vf(shellMesh);
             std::vector<IslandJob> jobs;
             jobs.reserve(shellIslands.size());
-            const bool allowSelfUnion = !selfUnionTried && crossings <= settings::kMaxIslandSelfUnionCrossings;
-            bool ranSelfUnion = false;
+            // Self-union refines the whole shell: on one with this many crossings it runs for many minutes
+            const bool allowSelfUnion = crossings <= settings::kMaxIslandSelfUnionCrossings;
             bool hasWork = false;
             for (const IntersectionIsland& island : shellIslands) {
                 const IslandAnalysis a = analyze(shellMesh, vf, island, settings);
                 auto m = islandFallbackOrder(a.recommended, island.local)[static_cast<std::size_t>(round)];
-                if (m == IntersectionRepairMethod::SelfUnion) {
-                    if (!allowSelfUnion) {
-                        m = IntersectionRepairMethod::None;
-                    } else {
-                        ranSelfUnion = true;
-                    }
+                if (m == IntersectionRepairMethod::SelfUnion && !allowSelfUnion) {
+                    m = IntersectionRepairMethod::None;
                 }
                 hasWork = hasWork || m != IntersectionRepairMethod::None;
                 jobs.push_back({island.faces, m});
@@ -1041,11 +1116,8 @@ IslandBatchResult healIntersectionIslands(
             if (!hasWork) {
                 continue;
             }
-            if (ranSelfUnion) {
-                selfUnionTried = true;
-            }
             std::string status;
-            Mesh candidate = repairShell(shellMesh, jobs, settings, status);
+            Mesh candidate = repairShell(shellMesh, jobs, settings, true, status);
             ++result.rounds;
             if (candidate.empty()) {
                 continue;

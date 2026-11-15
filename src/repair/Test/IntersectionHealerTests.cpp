@@ -15,6 +15,7 @@
 
 #include <Eigen/Geometry>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <filesystem>
@@ -432,8 +433,10 @@ TEST_CASE("Batch island repair handles multiple islands on one shell cleanly", "
     CHECK(closedManifold(r.mesh));
 }
 
-TEST_CASE("CgalLocalRepair skips crossing patches whose boundary exceeds limit", "[repair][intersections][islands]") {
-    // Closed triangulated bar subdivided along X so a single fold has > kMaxCgalLocalRepairBoundaryEdges rim edges
+TEST_CASE("CGAL Local Repair picked for one large island is attempted, not refused for size",
+          "[repair][intersections][islands]") {
+    // Closed triangulated bar subdivided along X so a single fold is one long island. The batch size limits
+    // exist to keep Fix All bounded; a repair the user picks for one island must still be tried in full.
     constexpr int nx = 110;
     mesheal::Mesh bar;
     bar.V.resize(4 * (nx + 1), 3);
@@ -471,19 +474,20 @@ TEST_CASE("CgalLocalRepair skips crossing patches whose boundary exceeds limit",
 
     const auto islands = islandsOf(bar);
     REQUIRE(islands.size() == 1);
-    REQUIRE(islands[0].faces.size() > mesheal::settings::kMaxCgalLocalRepairBoundaryEdges);
+    REQUIRE(islands[0].faces.size() > 200);
 
     const mesheal::IslandRepairResult r = mesheal::repairIsland(
         bar, islands[0], mesheal::IntersectionRepairMethod::CgalLocalRepair, mesheal::CheckParams{});
-    CHECK_FALSE(r.success);
-    CHECK(r.statusMessage.find("skipped CGAL local repair") != std::string::npos);
+    CHECK(r.statusMessage.find("Skipped") == std::string::npos);
+    CHECK(r.statusMessage.find("CGAL local repair") != std::string::npos);
 }
 
-TEST_CASE("Batch CgalLocalRepair skips closely spaced islands whose dilated boundary exceeds limit",
+TEST_CASE("Batch CGAL Local Repair still repairs many closely spaced small islands",
           "[repair][intersections][islands][batch]") {
     // Open 220 x 18 sheet with 28 small folds spaced 7 quads apart along the y = 0 border:
-    // FillFlat/FillSmooth refuse border-touching cuts, leaving Round 1 (CgalLocalRepair) with 28 tiny
-    // components (each <= 10 boundary edges) whose 7-ring neighborhoods merge past kMaxCubicHoleFillEdges.
+    // FillFlat/FillSmooth refuse border-touching cuts, leaving CgalLocalRepair with 28 tiny components
+    // whose grown neighbourhoods merge into one long hole. That hole is cheap to refill on a mesh this
+    // size, so the batch size limits must not leave it alone.
     constexpr int nx = 220;
     constexpr int ny = 18;
     mesheal::Mesh sheet;
@@ -519,6 +523,90 @@ TEST_CASE("Batch CgalLocalRepair skips closely spaced islands whose dilated boun
     }
 
     const mesheal::IslandBatchResult batch = mesheal::healIntersectionIslands(sheet, mesheal::CheckParams{});
-    CHECK_FALSE(batch.success);
-    CHECK(batch.islandsAfter == batch.islandsBefore);
+    CHECK(batch.success);
+    CHECK(batch.islandsAfter < batch.islandsBefore);
+}
+
+TEST_CASE("Batch island repair keeps two nearby islands on one face closed and crossing-free",
+          "[repair][intersections][batch]") {
+    // Two folds three cells apart on the same face: the first fill frees face slots that the patch reuses,
+    // and the second island's faces (inside the first cut's rings) must not be mistaken for that patch.
+    mesheal::Mesh mesh = mesheal::SampleMeshes::createGridCubeMesh(12, 12.0);
+    mesh.V.row(vertexAt(mesh, {4.0, 6.0, 12.0})) << 5.5, 6.2, 12.0;
+    mesh.V.row(vertexAt(mesh, {8.0, 6.0, 12.0})) << 9.5, 6.2, 12.0;
+    mesh.recomputeNormals();
+    const auto islands = islandsOf(mesh);
+    REQUIRE(islands.size() == 2);
+
+    const mesheal::IslandBatchResult r = mesheal::healIntersectionIslands(mesh, mesheal::CheckParams{});
+    REQUIRE(r.success);
+    CHECK(r.islandsAfter == 0);
+    CHECK(crossings(r.mesh) == 0);
+    CHECK(closedManifold(r.mesh));
+}
+
+TEST_CASE("Island collar dihedral angles count only faces sharing exactly one edge",
+          "[repair][intersections][islands]") {
+    // A flipped duplicate of a collar face shares all three corners with it; like any non-neighbour it must
+    // not count as an edge-adjacent pair (it would add a 180 degree angle and flip the recommendation).
+    mesheal::Mesh mesh = makeFoldedCube();
+    const auto islands = islandsOf(mesh);
+    REQUIRE(islands.size() == 1);
+    const mesheal::IntersectionIsland& island = islands[0];
+
+    std::vector<Eigen::Index> collar;
+    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+        const bool inIsland = std::find(island.faces.begin(), island.faces.end(), f) != island.faces.end();
+        bool touches = false;
+        for (const Eigen::Index g : island.faces) {
+            for (int a = 0; a < 3; ++a) {
+                for (int b = 0; b < 3; ++b) {
+                    touches = touches || mesh.F(f, a) == mesh.F(g, b);
+                }
+            }
+        }
+        if (touches && !inIsland) {
+            collar.push_back(f);
+        }
+    }
+    REQUIRE(!collar.empty());
+    // Append a flipped copy of a collar face (also in the collar: it shares the original's corners)
+    const Eigen::Index dup = mesh.numFaces();
+    mesh.F.conservativeResize(dup + 1, 3);
+    mesh.F.row(dup) << mesh.F(collar[0], 0), mesh.F(collar[0], 2), mesh.F(collar[0], 1);
+    collar.push_back(dup);
+    mesh.recomputeNormals();
+
+    // Reference: every collar pair sharing exactly two corners, as the original pairwise scan counted them
+    const auto normal = [&](Eigen::Index f) {
+        const Eigen::Vector3d a = mesh.V.row(mesh.F(f, 0));
+        const Eigen::Vector3d b = mesh.V.row(mesh.F(f, 1));
+        const Eigen::Vector3d c = mesh.V.row(mesh.F(f, 2));
+        return Eigen::Vector3d((b - a).cross(c - a).normalized());
+    };
+    double sum = 0.0;
+    double maxDeg = 0.0;
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < collar.size(); ++i) {
+        for (std::size_t j = i + 1; j < collar.size(); ++j) {
+            int shared = 0;
+            for (int a = 0; a < 3; ++a) {
+                for (int b = 0; b < 3; ++b) {
+                    shared += mesh.F(collar[i], a) == mesh.F(collar[j], b) ? 1 : 0;
+                }
+            }
+            if (shared != 2) {
+                continue;
+            }
+            const double deg = std::acos(std::clamp(normal(collar[i]).dot(normal(collar[j])), -1.0, 1.0)) * 180.0 / M_PI;
+            sum += deg;
+            maxDeg = std::max(maxDeg, deg);
+            ++count;
+        }
+    }
+    REQUIRE(count > 0);
+
+    const mesheal::IslandAnalysis a = mesheal::analyzeIsland(mesh, island);
+    CHECK(a.collarMaxDihedralDeg == Catch::Approx(maxDeg).margin(1e-9));
+    CHECK(a.collarMeanDihedralDeg == Catch::Approx(sum / static_cast<double>(count)).margin(1e-9));
 }
