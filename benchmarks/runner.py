@@ -185,6 +185,7 @@ def repair(
     input_path = Path(input_file).resolve()
 
     method_flag_map = {
+        "dedup": "--dedup",
         "fix-all": "--fix-all",
         "fix_all": "--fix-all",
         "remesh-voxel": "--remesh-voxel",

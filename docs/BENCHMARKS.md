@@ -4,7 +4,7 @@ Mesheal includes a Python-driven benchmarking framework modeled after the [FixST
 
 ## Key Features
 
-- **Decoupled Local Caching**: Models are downloaded on demand and cached in `~/.cache/mesheal/benchmarks/models/` (or a custom path via `MESHEAL_BENCHMARK_CACHE` or `--cache-dir`). No benchmark STLs are checked into git.
+- **Decoupled Local Caching**: Models are downloaded on demand and cached in `~/.cache/mesheal/benchmarks/models/<source_id>/<source_id>.stl` (or a custom path via `MESHEAL_BENCHMARK_CACHE` or `--cache-dir`), alongside a `README.md` linking to the original Thingiverse page. No benchmark STLs are checked into git.
 - **Deduplication & Integrity**: Verifies SHA-256 digests against dataset specifications.
 - **Thingiverse Zip Extraction & Mirror Fallbacks**: Supports extracting target STLs from Thingiverse project zip archives (`https://www.thingiverse.com/thing:<id>/zip`) or direct Thingi10K raw repository mirrors.
 - **Volume & Area Tracking**: Directly tracks volume before/after, volume change percentage ($\Delta V\%$), surface area change percentage ($\Delta A\%$), and full defect counts.
@@ -63,7 +63,7 @@ python3 -m benchmarks.run_benchmark --limit 20 --dry-run
 
 | Argument | Default | Description |
 |---|---|---|
-| `--benchmark-json` | `https://fixstl.ai/benchmarks/thingi10k-200-2026-10-27.json` | Path or URL to benchmark specification. |
+| `--benchmark-json` | `benchmarks/specs/thingi10k-200-2026-10-27.json` | Path or URL to benchmark specification (archived from `https://fixstl.ai/benchmarks/thingi10k-200-2026-10-27.json`). |
 | `--method` | `fix-all` | Repair method (`fix-all`, `remesh-voxel`, `remesh-iso`, etc.). |
 | `--limit` | 0 (all) | Maximum number of models to process. |
 | `--cache-dir` | `~/.cache/mesheal/benchmarks/models/` | Directory where downloaded STLs are stored. |

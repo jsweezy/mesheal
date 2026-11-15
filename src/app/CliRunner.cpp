@@ -5,7 +5,9 @@
 #include "io/StlWriter.hpp"
 #include "mesh/Mesh.hpp"
 #include "repair/GlobalRepair.hpp"
+#include "repair/MeshCleanup.hpp"
 #include "repair/RepairMetrics.hpp"
+#include "repair/TopologyCleanup.hpp"
 #include "mesheal/Version.hpp"
 
 #include <chrono>
@@ -42,6 +44,7 @@ void printJsonEscape(std::ostream& os, std::string_view s) {
 
 std::string actionName(CliAction action) {
     switch (action) {
+    case CliAction::Dedup:          return "dedup";
     case CliAction::FixAll:         return "fix_all";
     case CliAction::RemeshVoxel:    return "remesh_voxel";
     case CliAction::RemeshIso:      return "remesh_iso";
@@ -56,6 +59,40 @@ std::string actionName(CliAction action) {
     return "unknown";
 }
 
+RepairCandidate runDedupPass(const Mesh& mesh, const GlobalRepairParams& params) {
+    RepairCandidate candidate;
+    Mesh work = mesh;
+
+    const MergeByDistanceResult weld = mergeByDistance(work, params.fixAll.weldTolerance, {}, true);
+    if (!weld.success) {
+        candidate.statusMessage = weld.statusMessage;
+        return candidate;
+    }
+    if ((weld.verticesMerged + weld.degenerateRemoved + weld.duplicatesRemoved) > 0) {
+        work = weld.mesh;
+    }
+
+    const RepeatedVertexFacesResult dropped = removeRepeatedVertexFaces(work);
+    if (dropped.removed > 0) {
+        work = dropped.mesh;
+    }
+
+    const DuplicateFacesResult deduped = removeDuplicateFaces(work);
+    if (deduped.removed() > 0) {
+        work = deduped.mesh;
+    }
+
+    if (work.empty()) {
+        candidate.statusMessage = "Deduplication removed all faces";
+        return candidate;
+    }
+
+    candidate.mesh = std::move(work);
+    candidate.success = true;
+    candidate.metrics = computeRepairMetrics(mesh, candidate.mesh, params.checkParams);
+    return candidate;
+}
+
 } // namespace
 
 std::string usageText(std::string_view prog) {
@@ -68,6 +105,7 @@ std::string usageText(std::string_view prog) {
        << "      Run headless (no window): check or repair the file, write the result and exit.\n\n"
        << "Actions (pick one):\n"
        << "  --diagnostics, --inspect Report mesh health; never changes or writes the mesh\n"
+       << "  --dedup                  Weld nearby vertices and remove duplicate/collapsed faces only\n"
        << "  --fix-all                Multi-pass Fix All: weld cracks, remove collapsed and duplicate\n"
        << "                           faces, heal slivers, split non-manifold contacts, fix normals,\n"
        << "                           fill holes and repair intersections\n"
@@ -121,6 +159,8 @@ CliOptions parseCliArguments(int argc, char const* const* argv) {
             opt.action = CliAction::Version;
         } else if (arg == "--diagnostics" || arg == "--inspect") {
             opt.action = CliAction::Diagnostics;
+        } else if (arg == "--dedup") {
+            opt.action = CliAction::Dedup;
         } else if (arg == "--fix-all") {
             opt.action = CliAction::FixAll;
         } else if (arg == "--remesh-voxel") {
@@ -315,7 +355,9 @@ int executeCliCommand(const CliOptions& options) {
     }
 
     const auto startTime = std::chrono::steady_clock::now();
-    const RepairCandidate candidate = runGlobalRepair(mesh, {}, method, params);
+    const RepairCandidate candidate = (effectiveAction == CliAction::Dedup)
+                                          ? runDedupPass(mesh, params)
+                                          : runGlobalRepair(mesh, {}, method, params);
     const double elapsedMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - startTime).count();
 
     if (!candidate.success || candidate.mesh.empty()) {

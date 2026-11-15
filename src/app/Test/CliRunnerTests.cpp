@@ -1,5 +1,6 @@
 #include "app/CliRunner.hpp"
 #include "io/SampleMeshes.hpp"
+#include "io/StlReader.hpp"
 #include "io/StlWriter.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -129,6 +130,31 @@ TEST_CASE("CliRunner command execution", "[app][cli]") {
         const auto expectedOut = sandbox.path / "cube_fixed_1.stl";
         CHECK(std::filesystem::exists(expectedOut));
         CHECK(std::filesystem::file_size(expectedOut) > 0);
+    }
+
+    SECTION("Dedup removes duplicate faces while preserving geometry") {
+        TempTestDir sandbox("test_scratch_cli_dedup");
+        const auto inputPath = sandbox.path / "dup_cube.stl";
+        const auto outputPath = sandbox.path / "deduped.stl";
+
+        Mesh cube = SampleMeshes::createCubeMesh();
+        Eigen::MatrixXi doubleFaces(cube.F.rows() * 2, 3);
+        doubleFaces << cube.F, cube.F;
+        cube.F = doubleFaces;
+        REQUIRE(saveStl(inputPath, cube));
+
+        CliOptions opt;
+        opt.action = CliAction::Dedup;
+        opt.inputPath = inputPath;
+        opt.outputPath = outputPath;
+        opt.jsonOutput = true;
+        opt.quiet = true;
+        CHECK(executeCliCommand(opt) == 0);
+        REQUIRE(std::filesystem::exists(outputPath));
+
+        Mesh deduped;
+        REQUIRE(loadStl(outputPath, deduped));
+        CHECK(deduped.numFaces() == 12);
     }
 }
 

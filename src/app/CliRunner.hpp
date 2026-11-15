@@ -15,6 +15,7 @@ enum class CliAction {
     Help,
     Version,
     Diagnostics,
+    Dedup,
     FixAll,
     RemeshVoxel,
     RemeshIso,

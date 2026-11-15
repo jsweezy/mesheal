@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from .cache import ModelCache
-from .evaluator import evaluate_repair_result
+from .evaluator import attach_non_dedup_metrics, evaluate_repair_result, needs_non_dedup_check
 from .runner import find_mesheal_binary, repair
 
 
@@ -31,11 +31,13 @@ def load_benchmark_spec(spec_source: str) -> Dict[str, Any]:
 
 
 def main() -> int:
+    DEFAULT_BENCHMARK_JSON = str(Path(__file__).resolve().parent / "specs" / "thingi10k-200-2026-10-27.json")
+
     parser = argparse.ArgumentParser(description="Run Mesheal benchmark tests matching FixSTL format")
     parser.add_argument(
         "--benchmark-json",
-        default="https://fixstl.ai/benchmarks/thingi10k-200-2026-10-27.json",
-        help="Path or URL to input benchmark spec (default: FixSTL 200 model benchmark)",
+        default=DEFAULT_BENCHMARK_JSON,
+        help="Path or URL to input benchmark spec (default: archived FixSTL 200-model benchmark)",
     )
     parser.add_argument(
         "--method",
@@ -119,6 +121,24 @@ def main() -> int:
             )
 
             eval_res = evaluate_repair_result(defective, result)
+            if args.method != "dedup" and needs_non_dedup_check(eval_res):
+                out_dedup = tmp_path / f"{source_id}_dedup.stl"
+                dedup_res = repair(
+                    input_file=model_path,
+                    method="dedup",
+                    output_file=out_dedup,
+                    mesheal_bin=args.mesheal_bin,
+                )
+                if dedup_res.is_success and out_dedup.is_file():
+                    out_post_dedup = tmp_path / f"{source_id}_post_dedup_fixed.stl"
+                    post_dedup_res = repair(
+                        input_file=out_dedup,
+                        method=args.method,
+                        output_file=out_post_dedup,
+                        mesheal_bin=args.mesheal_bin,
+                    )
+                    attach_non_dedup_metrics(eval_res, post_dedup_res, defective)
+
             entry.setdefault("results", {})["mesheal"] = eval_res
 
             if eval_res.get("repaired"):
@@ -129,9 +149,31 @@ def main() -> int:
                 broken_count += 1
             total_elapsed_ms += eval_res.get("elapsed_ms", 0.0)
 
-            v_chg = eval_res.get("volume_change_pct", 0.0)
-            status_str = "REPAIRED" if eval_res.get("repaired") else ("SOLID" if eval_res.get("solid") else "FAILED")
-            print(f"{status_str} in {eval_res.get('elapsed_ms', 0):.1f}ms (vol change: {v_chg:+.2f}%)")
+            a_chg = eval_res.get("area_change_pct", 0.0)
+            if eval_res.get("volume_sign_flipped"):
+                v_chg = eval_res.get("volume_magnitude_change_pct", 0.0)
+                flip_dir = "- -> +" if eval_res.get("volume_before", 0.0) < 0 else "+ -> -"
+                vol_str = f"vol: {v_chg:+.2f}% [sign flipped: {flip_dir}]"
+            else:
+                v_chg = eval_res.get("volume_change_pct", 0.0)
+                vol_str = f"vol: {v_chg:+.2f}%"
+            if not defective:
+                status_str = "HEALTHY (broken)" if eval_res.get("broken") else "HEALTHY (unchanged)"
+            elif eval_res.get("repaired"):
+                status_str = "REPAIRED"
+            elif eval_res.get("solid"):
+                status_str = "SOLID (SHAPE LOST)"
+            else:
+                status_str = "FAILED"
+            dupes_removed = eval_res.get("duplicate_faces_removed", 0)
+            dedup_str = f", deduped: {dupes_removed} faces" if dupes_removed > 0 else ""
+            non_dedup_str = ""
+            if "non_dedup_volume_change_pct" in eval_res:
+                nd_vol = eval_res["non_dedup_volume_change_pct"]
+                nd_area = eval_res.get("non_dedup_area_change_pct", 0.0)
+                nd_flip = " [sign flipped]" if eval_res.get("non_dedup_volume_sign_flipped") else ""
+                non_dedup_str = f" | non-dedup vol: {nd_vol:+.2f}%{nd_flip}, area: {nd_area:+.2f}%"
+            print(f"{status_str} in {eval_res.get('elapsed_ms', 0):.1f}ms ({vol_str}, area: {a_chg:+.2f}%{dedup_str}{non_dedup_str})")
 
     if args.dry_run:
         print("\nDry run complete.")
@@ -152,12 +194,12 @@ def main() -> int:
     print("\n" + "=" * 60)
     print("BENCHMARK SUMMARY")
     print("=" * 60)
-    print(f"Total Models Tested:  {total_count}")
-    print(f"Solid Output Meshes:  {solid_count} / {total_count} ({solid_count / max(1, total_count) * 100:.1f}%)")
-    print(f"Repaired Defective:   {repaired_count} / {total_count} ({repaired_count / max(1, total_count) * 100:.1f}%)")
-    print(f"Broken Healthy:       {broken_count}")
-    print(f"Average Time / Mesh:  {total_elapsed_ms / max(1, total_count):.1f} ms")
-    print(f"Results Written To:   {out_path}")
+    print(f"Total Models Tested:              {total_count}")
+    print(f"Solid Output Meshes:              {solid_count} / {total_count} ({solid_count / max(1, total_count) * 100:.1f}%)")
+    print(f"Repaired -- Originally Defective: {repaired_count} / {total_count} ({repaired_count / max(1, total_count) * 100:.1f}%)")
+    print(f"Broken -- Originally Healthy:     {broken_count}")
+    print(f"Average Time / Mesh:              {total_elapsed_ms / max(1, total_count):.1f} ms")
+    print(f"Results Written To:               {out_path}")
     print("=" * 60)
 
     return 0
