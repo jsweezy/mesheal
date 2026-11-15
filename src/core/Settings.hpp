@@ -135,6 +135,10 @@ inline constexpr std::size_t kDefaultMaxHolePatchFaces = 50000; // Refine / Smoo
 inline constexpr double kDefaultCrackSnapFactor       = 3.0;    // Close Crack: vertices move at most this many mean gap widths (a wedge is 2x its mean)
 inline constexpr double kMinCrackSnapEdgeShare        = 1.0e-3; // Close Crack: ... but at least this share of the mean rim edge (zero-width T-junctions)
 inline constexpr std::size_t kMaxCubicHoleFillEdges   = 400;    // Fill Flat / Refine / Smooth: bigger holes skip CGAL's O(n^3) fallback search (n = 600 takes ~1 s)
+inline constexpr std::size_t kMaxCgalLocalRepairBoundaryEdges = kMaxCubicHoleFillEdges / 2; // CGAL remove_self_intersections always uses O(n^3) hole fill and grows up to 7 rings: skip oversized components before cutting
+inline constexpr std::size_t kMaxCgalLocalRepairPatchFaces    = 4096;                       // CGAL remove_self_intersections: skip components whose max-step dilated patch grows past this many faces
+inline constexpr std::size_t kMaxCgalLocalSmoothingFaces      = 50000;                      // CGAL remove_self_intersections smoothing copies the full mesh graph per hole; disable it on larger meshes
+inline constexpr std::size_t kMaxIslandSelfUnionCrossings    = 25000;                      // Batch island repair: skip global SelfUnion fallback above this many crossing faces (exact GMP snap rounding stalls on huge soups)
 inline constexpr int    kHoleCrossingGridMaxCellsPerAxis = 128;  // Batch fill crossing test: at most this many grid cells per axis for the faces near a patch
 inline constexpr int    kHoleCrossingGridMaxCellsPerFace = 64;   // Batch fill crossing test: a face over more cells than this is tested against every patch instead
 

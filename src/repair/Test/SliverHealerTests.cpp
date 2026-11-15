@@ -16,6 +16,7 @@
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <CGAL/boost/graph/Euler_operations.h>
 #include <CGAL/boost/graph/helpers.h>
 
 #include <algorithm>
@@ -486,6 +487,61 @@ TEST_CASE("CollapseShortestEdge dissolves needles and respects the link conditio
         CHECK_FALSE(r.success);
         CHECK(r.mesh.V == tet.V);
         CHECK(r.mesh.F == tet.F);
+    }
+
+    SECTION("collapse across a degree-2 vertex between multi-edges is rejected before corrupting halfedges") {
+        // Two distinct edges between q and t allow p to have degree 2 while sharing opposite vertex t across p-q:
+        // CGAL's link-condition check misses this 2-shared-edge configuration and collapse_edge corrupts prev/next.
+        mesheal::CgalSurfaceMesh sm;
+        const auto vP = sm.add_vertex(mesheal::CgalPoint3(0.0, 0.0, 0.0));
+        const auto vQ = sm.add_vertex(mesheal::CgalPoint3(1.0e-5, 0.0, 0.0));
+        const auto vT = sm.add_vertex(mesheal::CgalPoint3(0.0, 1.0, 0.0));
+        const auto vU = sm.add_vertex(mesheal::CgalPoint3(0.0, -1.0, 1.0));
+
+        const auto hPQ = sm.add_edge(vP, vQ);
+        const auto hQP = sm.opposite(hPQ);
+        const auto hTP = sm.add_edge(vT, vP);
+        const auto hPT = sm.opposite(hTP);
+        const auto hQT1 = sm.add_edge(vQ, vT);
+        const auto hTQ1 = sm.opposite(hQT1);
+        const auto hQT2 = sm.add_edge(vQ, vT);
+        const auto hTQ2 = sm.opposite(hQT2);
+        const auto hQU = sm.add_edge(vQ, vU);
+        const auto hUQ = sm.opposite(hQU);
+        const auto hUT = sm.add_edge(vU, vT);
+        const auto hTU = sm.opposite(hUT);
+
+        const auto addTri = [&](mesheal::CgalHalfedgeIndex a, mesheal::CgalHalfedgeIndex b,
+                                mesheal::CgalHalfedgeIndex c) {
+            const auto f = sm.add_face();
+            sm.set_halfedge(f, a);
+            sm.set_face(a, f);
+            sm.set_face(b, f);
+            sm.set_face(c, f);
+            sm.set_next(a, b);
+            sm.set_next(b, c);
+            sm.set_next(c, a);
+            return f;
+        };
+
+        const auto f0 = addTri(hPQ, hQT1, hTP);
+        addTri(hTQ1, hQU, hUT);
+        addTri(hQP, hPT, hTQ2);
+        addTri(hUQ, hQT2, hTU);
+
+        sm.set_halfedge(vP, hQP);
+        sm.set_halfedge(vQ, hPQ);
+        sm.set_halfedge(vT, hQT1);
+        sm.set_halfedge(vU, hQU);
+
+        REQUIRE(sm.is_valid(false));
+        REQUIRE(CGAL::Euler::does_satisfy_link_condition(sm.edge(hPQ), sm));
+
+        std::string status;
+        CHECK_FALSE(mesheal::SliverHealer::applyHealAction(
+            sm, f0, mesheal::HealAction::CollapseShortestEdge, {}, &status));
+        CHECK(status.find("link condition") != std::string::npos);
+        CHECK(sm.is_valid(false));
     }
 }
 

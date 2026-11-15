@@ -415,3 +415,110 @@ TEST_CASE("Precision Isosurface rejects an open flat sheet without hanging", "[r
     REQUIRE(out.empty());
     REQUIRE(status.find("no enclosed volume") != std::string::npos);
 }
+
+TEST_CASE("Batch island repair handles multiple islands on one shell cleanly", "[repair][intersections][batch]") {
+    mesheal::Mesh mesh = mesheal::SampleMeshes::createGridCubeMesh(12, 12.0);
+    // Two separate local folds on opposite faces of the same shell
+    mesh.V.row(vertexAt(mesh, {3.0, 3.0, 12.0})) << 4.5, 3.2, 12.0;
+    mesh.V.row(vertexAt(mesh, {9.0, 9.0, 0.0})) << 10.5, 9.2, 0.0;
+    mesh.recomputeNormals();
+    REQUIRE(islandsOf(mesh).size() == 2);
+
+    const mesheal::IslandBatchResult r = mesheal::healIntersectionIslands(mesh, mesheal::CheckParams{});
+    REQUIRE(r.success);
+    CHECK(r.islandsBefore == 2);
+    CHECK(r.islandsAfter == 0);
+    CHECK(crossings(r.mesh) == 0);
+    CHECK(closedManifold(r.mesh));
+}
+
+TEST_CASE("CgalLocalRepair skips crossing patches whose boundary exceeds limit", "[repair][intersections][islands]") {
+    // Closed triangulated bar subdivided along X so a single fold has > kMaxCgalLocalRepairBoundaryEdges rim edges
+    constexpr int nx = 110;
+    mesheal::Mesh bar;
+    bar.V.resize(4 * (nx + 1), 3);
+    const auto vIdx = [&](int i, int corner) { return 4 * i + corner; };
+    for (int i = 0; i <= nx; ++i) {
+        const double x = static_cast<double>(i);
+        bar.V.row(vIdx(i, 0)) << x, 0.0, 0.0;
+        bar.V.row(vIdx(i, 1)) << x, 1.0, 0.0;
+        bar.V.row(vIdx(i, 2)) << x, 1.0, 1.0;
+        bar.V.row(vIdx(i, 3)) << x, 0.0, 1.0;
+    }
+    std::vector<Eigen::Vector3i> tris;
+    tris.reserve(8 * nx + 4);
+    const auto addQuad = [&](int a, int b, int c, int d) {
+        tris.emplace_back(a, b, c);
+        tris.emplace_back(a, c, d);
+    };
+    for (int i = 0; i < nx; ++i) {
+        for (int s = 0; s < 4; ++s) {
+            const int sNext = (s + 1) % 4;
+            addQuad(vIdx(i, s), vIdx(i + 1, s), vIdx(i + 1, sNext), vIdx(i, sNext));
+        }
+    }
+    addQuad(vIdx(0, 0), vIdx(0, 3), vIdx(0, 2), vIdx(0, 1));
+    addQuad(vIdx(nx, 0), vIdx(nx, 1), vIdx(nx, 2), vIdx(nx, 3));
+    bar.F.resize(static_cast<Eigen::Index>(tris.size()), 3);
+    for (std::size_t k = 0; k < tris.size(); ++k) {
+        bar.F.row(static_cast<Eigen::Index>(k)) = tris[k];
+    }
+    // Fold corner 2 along x = 1..nx-1 inward across corner 0..3 so all crossing faces form one large island
+    for (int i = 1; i < nx; ++i) {
+        bar.V.row(vIdx(i, 2)) << static_cast<double>(i), -0.5, 0.25;
+    }
+    bar.recomputeNormals();
+
+    const auto islands = islandsOf(bar);
+    REQUIRE(islands.size() == 1);
+    REQUIRE(islands[0].faces.size() > mesheal::settings::kMaxCgalLocalRepairBoundaryEdges);
+
+    const mesheal::IslandRepairResult r = mesheal::repairIsland(
+        bar, islands[0], mesheal::IntersectionRepairMethod::CgalLocalRepair, mesheal::CheckParams{});
+    CHECK_FALSE(r.success);
+    CHECK(r.statusMessage.find("skipped CGAL local repair") != std::string::npos);
+}
+
+TEST_CASE("Batch CgalLocalRepair skips closely spaced islands whose dilated boundary exceeds limit",
+          "[repair][intersections][islands][batch]") {
+    // Open 220 x 18 sheet with 28 small folds spaced 7 quads apart along the y = 0 border:
+    // FillFlat/FillSmooth refuse border-touching cuts, leaving Round 1 (CgalLocalRepair) with 28 tiny
+    // components (each <= 10 boundary edges) whose 7-ring neighborhoods merge past kMaxCubicHoleFillEdges.
+    constexpr int nx = 220;
+    constexpr int ny = 18;
+    mesheal::Mesh sheet;
+    sheet.V.resize((nx + 1) * (ny + 1), 3);
+    const auto vIdx = [&](int i, int j) { return j * (nx + 1) + i; };
+    for (int j = 0; j <= ny; ++j) {
+        for (int i = 0; i <= nx; ++i) {
+            sheet.V.row(vIdx(i, j)) << static_cast<double>(i), static_cast<double>(j), 0.0;
+        }
+    }
+    // Fold y = 0 border vertices at spaced x positions across the y = 1 row to create 28 separate crossings
+    for (int i = 10; i <= nx - 10; i += 7) {
+        sheet.V.row(vIdx(i, 0)) << static_cast<double>(i), 1.6, 0.0;
+    }
+    sheet.F.resize(2 * nx * ny, 3);
+    Eigen::Index f = 0;
+    for (int j = 0; j < ny; ++j) {
+        for (int i = 0; i < nx; ++i) {
+            const int v00 = vIdx(i, j);
+            const int v10 = vIdx(i + 1, j);
+            const int v11 = vIdx(i + 1, j + 1);
+            const int v01 = vIdx(i, j + 1);
+            sheet.F.row(f++) << v00, v10, v11;
+            sheet.F.row(f++) << v00, v11, v01;
+        }
+    }
+    sheet.recomputeNormals();
+
+    const auto islands = islandsOf(sheet);
+    REQUIRE(islands.size() >= 20);
+    for (const auto& island : islands) {
+        REQUIRE(island.faces.size() <= 16);
+    }
+
+    const mesheal::IslandBatchResult batch = mesheal::healIntersectionIslands(sheet, mesheal::CheckParams{});
+    CHECK_FALSE(batch.success);
+    CHECK(batch.islandsAfter == batch.islandsBefore);
+}

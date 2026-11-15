@@ -32,6 +32,35 @@ namespace PMP = CGAL::Polygon_mesh_processing;
 
 namespace {
 
+bool isTriangleFace(const CgalSurfaceMesh& mesh, CgalHalfedgeIndex h) {
+    if (mesh.is_border(h)) {
+        return false;
+    }
+    const CgalHalfedgeIndex h1 = mesh.next(h);
+    const CgalHalfedgeIndex h2 = mesh.next(h1);
+    return h2 != h && mesh.next(h2) == h;
+}
+
+// Extra guard on top of CGAL's link condition: `does_satisfy_link_condition` misses an interior
+// edge whose two incident triangles share the same opposite vertex (e.g. a degree-2 vertex between
+// two multi-edges), which makes `CGAL::Euler::collapse_edge` corrupt halfedge prev/next pointers.
+bool canTopologicallyCollapseEdge(const CgalSurfaceMesh& mesh, CgalEdgeIndex e) {
+    const CgalHalfedgeIndex pq = mesh.halfedge(e);
+    const CgalHalfedgeIndex qp = mesh.opposite(pq);
+    const bool hasTop = !mesh.is_border(pq);
+    const bool hasBot = !mesh.is_border(qp);
+    if (hasTop && !isTriangleFace(mesh, pq)) {
+        return false;
+    }
+    if (hasBot && !isTriangleFace(mesh, qp)) {
+        return false;
+    }
+    if (hasTop && hasBot && mesh.target(mesh.next(pq)) == mesh.target(mesh.next(qp))) {
+        return false;
+    }
+    return CGAL::Euler::does_satisfy_link_condition(e, mesh);
+}
+
 using Triangle = std::array<Eigen::Vector3d, 3>;
 
 Eigen::Vector3d toEigen(const CgalPoint3& p) {
@@ -436,7 +465,7 @@ bool canCollapseEdgeSafely(
     };
 
     const CgalEdgeIndex e = mesh.edge(h);
-    if (!CGAL::Euler::does_satisfy_link_condition(e, mesh)) {
+    if (!canTopologicallyCollapseEdge(mesh, e)) {
         return fail("Collapse violates the topological link condition (the surface would become non-manifold).");
     }
 
@@ -694,7 +723,7 @@ bool collapseMicroCluster(
         if (mesh.is_border(h) || mesh.is_border(mesh.opposite(h))) {
             continue;
         }
-        if (!CGAL::Euler::does_satisfy_link_condition(e, mesh)) {
+        if (!canTopologicallyCollapseEdge(mesh, e)) {
             continue;
         }
 
