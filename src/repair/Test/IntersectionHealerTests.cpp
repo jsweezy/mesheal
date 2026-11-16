@@ -205,6 +205,47 @@ TEST_CASE("Batch island repair: all islands, or only the seeded ones", "[repair]
     REQUIRE(islandsOf(some.mesh).size() == 1); // the poke-through is untouched
 }
 
+TEST_CASE("Islands of two shells touching at one vertex stay apart (thingi-73400 crash)",
+          "[repair][intersections][islands][batch]") {
+    // Two poked cubes; the second is mirrored through the poked vertex, so both spikes end at one shared vertex
+    const Eigen::RowVector3d tip(3.0, 3.0, -1.0);
+    mesheal::Mesh mesh = makePokedCube();
+    mesheal::Mesh other = makePokedCube();
+    other.V = (-other.V).rowwise() + 2.0 * tip;
+    other.F.col(1).swap(other.F.col(2)); // a point reflection inverts the winding
+    const Eigen::Index sharedTip = vertexAt(mesh, tip);
+    const Eigen::Index otherTip = mesh.numVertices() + vertexAt(other, tip);
+    const Eigen::Index firstOtherFace = mesh.numFaces();
+    mesheal::appendMesh(mesh, other);
+    for (Eigen::Index f = firstOtherFace; f < mesh.numFaces(); ++f) {
+        for (int c = 0; c < 3; ++c) {
+            if (mesh.F(f, c) == otherTip) {
+                mesh.F(f, c) = static_cast<int>(sharedTip);
+            }
+        }
+    }
+    mesh = mesheal::extractFaces(mesh, [&] {
+        std::vector<Eigen::Index> all(static_cast<std::size_t>(mesh.numFaces()));
+        std::iota(all.begin(), all.end(), Eigen::Index{0});
+        return all;
+    }()); // drop the second cube's unused tip vertex
+    mesh.recomputeNormals();
+
+    const std::vector<int> faceShell = mesheal::shellIdsOfFaces(mesh);
+    REQUIRE(*std::max_element(faceShell.begin(), faceShell.end()) == 1); // two shells, joined only at the tip
+    const auto islands = islandsOf(mesh);
+    REQUIRE(islands.size() == 2);
+    for (const mesheal::IntersectionIsland& island : islands) {
+        for (const Eigen::Index f : island.faces) {
+            REQUIRE(faceShell[static_cast<std::size_t>(f)] == island.shell);
+        }
+    }
+
+    const mesheal::IslandBatchResult r = mesheal::healIntersectionIslands(mesh, mesheal::CheckParams{});
+    REQUIRE(r.islandsBefore == 2);
+    REQUIRE(r.success);
+}
+
 TEST_CASE("Batch island repair keeps a CAD part's walls when a fill would bulge over them",
           "[repair][intersections][batch][tom-shuttle]") {
     // CAD part by teil3 (CC BY-SA, examples/tom_x_axis_shuttle_license.md): 6 small crossings next to large walls

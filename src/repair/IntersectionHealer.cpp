@@ -893,10 +893,14 @@ std::vector<IntersectionIsland> clusterIntersectionIslands(
     for (const auto& [a, b] : pairs) {
         sets.unite(slot[a], slot[b]);
     }
-    std::unordered_map<int, std::size_t> vertexOwner;
+    // Faces sharing a vertex join one island, but only within a shell: shells are edge-connected, so two can
+    // touch at one non-manifold vertex, and an island spanning both would be repaired as part of one shell only
+    std::unordered_map<std::uint64_t, std::size_t> vertexOwner; // (shell, vertex) -> first island face there
     for (std::size_t i = 0; i < faces.size(); ++i) {
+        const auto shell = static_cast<std::uint64_t>(static_cast<std::uint32_t>(shellOf(faces[i])));
         for (int c = 0; c < 3; ++c) {
-            const auto [it, inserted] = vertexOwner.try_emplace(mesh.F(faces[i], c), i);
+            const std::uint64_t key = (shell << 32) | static_cast<std::uint32_t>(mesh.F(faces[i], c));
+            const auto [it, inserted] = vertexOwner.try_emplace(key, i);
             if (!inserted) {
                 sets.unite(i, it->second);
             }
