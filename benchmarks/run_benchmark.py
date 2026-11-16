@@ -88,6 +88,9 @@ def main() -> int:
     repaired_count = 0
     solid_count = 0
     broken_count = 0
+    defective_count = 0
+    healthy_count = 0
+    crashed_ids: List[str] = []
     total_elapsed_ms = 0.0
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -141,12 +144,19 @@ def main() -> int:
 
             entry.setdefault("results", {})["mesheal"] = eval_res
 
+            if defective:
+                defective_count += 1
+            else:
+                healthy_count += 1
+
             if eval_res.get("repaired"):
                 repaired_count += 1
             if eval_res.get("solid"):
                 solid_count += 1
             if eval_res.get("broken"):
                 broken_count += 1
+            if eval_res.get("crashed"):
+                crashed_ids.append(entry_id)
             total_elapsed_ms += eval_res.get("elapsed_ms", 0.0)
 
             a_chg = eval_res.get("area_change_pct", 0.0)
@@ -157,6 +167,15 @@ def main() -> int:
             else:
                 v_chg = eval_res.get("volume_change_pct", 0.0)
                 vol_str = f"vol: {v_chg:+.2f}%"
+            if eval_res.get("status") == "failed":
+                # No metrics came back: the process crashed or reported an error.
+                kind = "CRASHED" if eval_res.get("crashed") else "ERROR"
+                if not defective:
+                    kind = f"HEALTHY ({kind.lower()})"
+                err = str(eval_res.get("error", "")).splitlines()
+                err_str = err[0] if err else "unknown error"
+                print(f"{kind} after {eval_res.get('elapsed_ms', 0):.1f}ms: {err_str}")
+                continue
             if not defective:
                 status_str = "HEALTHY (broken)" if eval_res.get("broken") else "HEALTHY (unchanged)"
             elif eval_res.get("repaired"):
@@ -196,8 +215,9 @@ def main() -> int:
     print("=" * 60)
     print(f"Total Models Tested:              {total_count}")
     print(f"Solid Output Meshes:              {solid_count} / {total_count} ({solid_count / max(1, total_count) * 100:.1f}%)")
-    print(f"Repaired -- Originally Defective: {repaired_count} / {total_count} ({repaired_count / max(1, total_count) * 100:.1f}%)")
-    print(f"Broken -- Originally Healthy:     {broken_count}")
+    print(f"Repaired -- Originally Defective: {repaired_count} / {defective_count} ({repaired_count / max(1, defective_count) * 100:.1f}%)")
+    print(f"Broken -- Originally Healthy:     {broken_count} / {healthy_count} ({broken_count / max(1, healthy_count) * 100:.1f}%)")
+    print(f"Crashed:                          {len(crashed_ids)}" + (f" ({', '.join(crashed_ids)})" if crashed_ids else ""))
     print(f"Average Time / Mesh:              {total_elapsed_ms / max(1, total_count):.1f} ms")
     print(f"Results Written To:               {out_path}")
     print("=" * 60)

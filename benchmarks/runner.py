@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import signal
 import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
@@ -93,6 +95,32 @@ class RepairResult:
     def is_success(self) -> bool:
         return self.status == "success" and self.exit_code == 0
 
+    @property
+    def crashed(self) -> bool:
+        """True when the mesheal process was killed by a signal (segfault, abort, OOM kill)."""
+        return self.exit_code < 0
+
+
+def _describe_exit(returncode: int) -> str:
+    if returncode < 0:
+        try:
+            name = signal.Signals(-returncode).name
+        except ValueError:
+            name = f"signal {-returncode}"
+        return f"mesheal crashed ({name})"
+    return f"mesheal exited with code {returncode}"
+
+
+def _no_json_error(proc: subprocess.CompletedProcess) -> str:
+    """Error text for a run that produced no parseable JSON (usually a crash)."""
+    detail = proc.stderr.strip() or proc.stdout.strip()
+    if detail:
+        detail = detail[-500:]
+    if proc.returncode != 0:
+        head = _describe_exit(proc.returncode)
+        return f"{head}: {detail}" if detail else head
+    return detail or "Invalid JSON output from mesheal"
+
 
 def find_mesheal_binary() -> Path:
     """Finds the Mesheal binary path in repository build trees or system PATH."""
@@ -135,7 +163,9 @@ def diagnostics(
     input_path = Path(input_file).resolve()
 
     cmd = [str(bin_path), str(input_path), "--diagnostics", "--json"]
+    start = time.perf_counter()
     proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    wall_ms = (time.perf_counter() - start) * 1000.0
 
     try:
         data = json.loads(proc.stdout.strip())
@@ -161,7 +191,8 @@ def diagnostics(
             status="error",
             action="diagnostics",
             input_file=str(input_path),
-            error=proc.stderr.strip() or proc.stdout.strip() or "Invalid JSON output from mesheal",
+            elapsed_ms=wall_ms,
+            error=_no_json_error(proc),
             exit_code=proc.returncode,
         )
 
@@ -223,7 +254,9 @@ def repair(
     if resolution != 128:
         cmd.extend(["--resolution", str(resolution)])
 
+    start = time.perf_counter()
     proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    wall_ms = (time.perf_counter() - start) * 1000.0
 
     try:
         data = json.loads(proc.stdout.strip())
@@ -250,6 +283,7 @@ def repair(
             status="error",
             action=method,
             input_file=str(input_path),
-            error=proc.stderr.strip() or proc.stdout.strip() or "Invalid JSON output from mesheal",
+            elapsed_ms=wall_ms,
+            error=_no_json_error(proc),
             exit_code=proc.returncode,
         )

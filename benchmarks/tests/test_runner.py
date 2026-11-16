@@ -1,9 +1,11 @@
 """Unit tests for the Mesheal Python runner."""
 
 from pathlib import Path
+import stat
 import tempfile
 import unittest
 
+from benchmarks.evaluator import evaluate_repair_result
 from benchmarks.runner import diagnostics, find_mesheal_binary, repair
 
 
@@ -34,6 +36,39 @@ class TestMeshealRunner(unittest.TestCase):
             self.assertGreater(res.metrics.volume_after, 0.0)
             self.assertNotEqual(res.metrics.volume_change_pct, 0.0)
             self.assertTrue(out_file.is_file())
+
+
+class TestCrashReporting(unittest.TestCase):
+    """A mesheal process that dies on a signal must be reported as a crash, not a 0 ms failure."""
+
+    def _fake_bin(self, tmpdir: str, body: str) -> Path:
+        path = Path(tmpdir) / "fake_mesheal"
+        path.write_text("#!/bin/sh\n" + body + "\n")
+        path.chmod(path.stat().st_mode | stat.S_IXUSR)
+        return path
+
+    def test_signal_death_is_reported_as_crash(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fake = self._fake_bin(tmpdir, "echo 'partial log' >&2\nkill -ABRT $$")
+            res = repair(Path(tmpdir) / "in.stl", mesheal_bin=fake)
+        self.assertFalse(res.is_success)
+        self.assertTrue(res.crashed)
+        self.assertIn("SIGABRT", res.error)
+        self.assertIn("partial log", res.error)
+        self.assertGreater(res.elapsed_ms, 0.0)
+
+        ev = evaluate_repair_result(True, res)
+        self.assertEqual(ev["status"], "failed")
+        self.assertTrue(ev["crashed"])
+        self.assertEqual(ev["exit_code"], -6)
+
+    def test_nonzero_exit_without_json_is_error_not_crash(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fake = self._fake_bin(tmpdir, "echo 'bad input' >&2\nexit 2")
+            res = diagnostics(Path(tmpdir) / "in.stl", mesheal_bin=fake)
+        self.assertFalse(res.crashed)
+        self.assertIn("exited with code 2", res.error)
+        self.assertIn("bad input", res.error)
 
 
 if __name__ == "__main__":
