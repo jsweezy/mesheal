@@ -2,13 +2,86 @@
 
 Mesheal includes a Python-driven benchmarking framework modeled after the [FixSTL 3D Repair Benchmark](https://fixstl.ai/benchmarks). It automates pulling models from benchmark datasets (such as Thingi10K), caching them locally without tracking them in git, running Mesheal repairs (Fix All, Voxel Remesh, Precision Isosurface, Shrink-Wrap), and evaluating results in standardized JSON format.
 
+## Results: Thingi10K 200-file set (2026-11-15)
+
+The test set, the definitions, and every non-Mesheal number below come from the
+**[FixSTL STL repair benchmark](https://fixstl.ai/benchmarks)** (run dated October 27, 2026).
+Many thanks to the FixSTL team for publishing the per-file results and the file list. That is what makes
+a comparison like this possible. Mesheal's row is our own run of **Fix All** on the same 200 files.
+
+| Tool | Repaired (of 131 broken) | Healthy files broken (of 69) | Solid, shape changed | Median time |
+|---|---:|---:|---:|---:|
+| **Mesheal 4** (`v4-19-g2ebabf2`), Fix All | **82** | **0** | 1 | 0.32 s |
+| FixSTL, engine 0.6.0 (a7ea280) | 57 | 0 | 2 | 0.46 s |
+| Blender 3D Print Toolbox (Blender 5.2.1, toolbox 1.5.0) | 41 | 1 | 3 | 0.77 s |
+| MeshFix (pymeshfix 0.18.1) | 40 | 11 | 66 | 0.99 s |
+| ADMesh 0.98.5 | 33 | 2 | 2 | 0.06 s |
+| PrusaSlicer 2.9.6 | 30 | 4 | 2 | 0.75 s |
+| trimesh 5.2.0 | 26 | 2 | 2 | 0.48 s |
+| MeshLab (PyMeshLab 2025.7.post1) | 25 | 2 | 0 | 0.46 s |
+
+**Download the per-file results:** [`mesheal-fix-all-200-2026-11-15.json`](assets/benchmarks/mesheal-fix-all-200-2026-11-15.json) (520 KB).
+It is FixSTL's published per-file file ([`thingi10k-200-2026-10-27.json`](https://fixstl.ai/benchmarks/thingi10k-200-2026-10-27.json))
+with a `mesheal` entry added to each file. The entry holds volume and area before and after, face counts, and the run time.
+The other tools' entries are FixSTL's, unchanged.
+
+### By problem type
+
+Broken files repaired, grouped by the problems each file had. A file can have more than one problem, so the rows overlap.
+
+| Tool | Holes (76) | Non-manifold (82) | Flipped / inside-out (29) | Self-intersections (88) | Duplicate or zero-area faces (90) |
+|---|---:|---:|---:|---:|---:|
+| **Mesheal** | **39** | **39** | **11** | **42** | **48** |
+| FixSTL | 29 | 26 | 5 | 20 | 30 |
+| Blender 3D Print Toolbox | 23 | 17 | 4 | 5 | 17 |
+| MeshFix (pymeshfix) | 23 | 17 | 3 | 16 | 19 |
+| ADMesh | 20 | 12 | 1 | 1 | 12 |
+| PrusaSlicer | 17 | 12 | 1 | 1 | 12 |
+| trimesh | 11 | 14 | 2 | 2 | 14 |
+| MeshLab (PyMeshLab) | 11 | 14 | 2 | 2 | 14 |
+
+### Other numbers from this run
+
+- **Solid output:** 152 of 200 files.
+- **By group:** 27 of 37 broken files repaired in FixSTL's 50-file development group, and 55 of 94 in the 150-file holdout group.
+- **Compared with FixSTL:** Mesheal repaired 26 broken files that FixSTL did not. FixSTL repaired 1 that Mesheal did not (`thingi-260540`).
+- **Files no other tool repaired:** 64 broken files. Mesheal repaired 17 of them.
+- **Crashes:** 1 (`thingi-73400`, segmentation fault). It counts as not repaired.
+- **Slow files:** the mean time is 16.4 s, much higher than the median, because a few large files take minutes.
+  Two files ran past FixSTL's 300-second limit (`thingi-1368052`, 572 s, and `thingi-117959`, 626 s). Neither was repaired,
+  so the 300-second limit would not change the totals.
+
+### How to read this comparison
+
+The two sets of numbers were not measured the same way, so this is not an exact head-to-head:
+
+- **Different checker.** FixSTL checks every tool with its own `stl-repair diagnose` and `assess-shape` commands,
+  which are not public. Mesheal's row is checked with Mesheal's own diagnostics (see `benchmarks/evaluator.py`).
+  The **solid** check covers the same list of problems: closed, manifold edges and vertices, consistent winding,
+  outward shells, and no self-intersections, duplicate faces, or zero-area faces.
+- **Looser shape check.** FixSTL's **shape kept** test needs the same number of shells, surface area within ±5%,
+  and every sampled point within 5% of the bounding-box diagonal of the other surface. Mesheal's evaluator only checks
+  that surface area **or** volume changed by no more than 5%. It also allows for area lost by deleting duplicate faces.
+  It does not yet check the shell count or the surface distance, so some of Mesheal's repairs might fail FixSTL's stricter test.
+- **No cross-check.** FixSTL also cross-checks results with trimesh and MeshLab. Mesheal's run does not do that yet,
+  so the `crossCheckSolid` field in Mesheal's entries just copies `solid`. That column is left out of the table above.
+- **Different hardware.** FixSTL timed its run on an Apple M5 with 32 GB, five jobs in parallel. Mesheal ran one file at a time
+  on an Apple A18 Pro with 8 GB. Both timings include process startup. Treat them as rough orders of magnitude only.
+- **Not a blind test for either tool.** FixSTL notes that it used these files while developing its engine.
+  Mesheal has also been tuned against files from this set.
+
+To confirm Mesheal's numbers independently, run the repaired files through the trimesh and MeshLab cross-check
+that the FixSTL page describes.
+
+---
+
 ## Key Features
 
 - **Decoupled Local Caching**: Models are downloaded on demand and cached in `~/.cache/mesheal/benchmarks/models/<source_id>/<source_id>.stl` (or a custom path via `MESHEAL_BENCHMARK_CACHE` or `--cache-dir`), alongside a `README.md` linking to the original Thingiverse page. No benchmark STLs are checked into git.
 - **Deduplication & Integrity**: Verifies SHA-256 digests against dataset specifications.
 - **Thingiverse Zip Extraction & Mirror Fallbacks**: Supports extracting target STLs from Thingiverse project zip archives (`https://www.thingiverse.com/thing:<id>/zip`) or direct Thingi10K raw repository mirrors.
 - **Volume & Area Tracking**: Directly tracks volume before/after, volume change percentage ($\Delta V\%$), surface area change percentage ($\Delta A\%$), and full defect counts.
-- **FixSTL Criteria**: Evaluates `solid`, `shapeKept`, `repaired`, and `broken` definitions matching the FixSTL benchmark specification.
+- **FixSTL Criteria**: Evaluates `solid`, `shapeKept`, `repaired`, and `broken` using FixSTL's definitions. The shape check is simpler than FixSTL's (see [How to read this comparison](#how-to-read-this-comparison)).
 
 ---
 
