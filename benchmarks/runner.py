@@ -90,6 +90,7 @@ class RepairResult:
     metrics: Optional[MeshMetrics] = None
     error: Optional[str] = None
     exit_code: int = 0
+    timed_out: bool = False
 
     @property
     def is_success(self) -> bool:
@@ -98,7 +99,7 @@ class RepairResult:
     @property
     def crashed(self) -> bool:
         """True when the mesheal process was killed by a signal (segfault, abort, OOM kill)."""
-        return self.exit_code < 0
+        return self.exit_code < 0 and not self.timed_out
 
 
 def _describe_exit(returncode: int) -> str:
@@ -210,8 +211,12 @@ def repair(
     offset: Optional[float] = None,
     resolution: int = 128,
     mesheal_bin: Optional[Union[str, Path]] = None,
+    timeout_sec: Optional[float] = None,
 ) -> RepairResult:
-    """Repairs an STL file using Mesheal and returns detailed before/after volume metrics."""
+    """Repairs an STL file using Mesheal and returns detailed before/after volume metrics.
+
+    With `timeout_sec`, a run that takes longer (wall clock) is killed and reported as timed out.
+    """
     bin_path = Path(mesheal_bin) if mesheal_bin else find_mesheal_binary()
     input_path = Path(input_file).resolve()
 
@@ -255,7 +260,18 @@ def repair(
         cmd.extend(["--resolution", str(resolution)])
 
     start = time.perf_counter()
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_sec)
+    except subprocess.TimeoutExpired:
+        return RepairResult(
+            status="error",
+            action=method,
+            input_file=str(input_path),
+            elapsed_ms=(time.perf_counter() - start) * 1000.0,
+            error=f"mesheal timed out after {timeout_sec:g} s",
+            exit_code=-int(signal.SIGKILL),
+            timed_out=True,
+        )
     wall_ms = (time.perf_counter() - start) * 1000.0
 
     try:

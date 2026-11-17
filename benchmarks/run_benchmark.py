@@ -56,6 +56,12 @@ def main() -> int:
     parser.add_argument("--cache-dir", type=str, default=None, help="Directory to cache downloaded models")
     parser.add_argument("-o", "--output", type=str, default=None, help="Output benchmark JSON path")
     parser.add_argument("--mesheal-bin", type=str, default=None, help="Explicit path to mesheal binary")
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=1800.0,
+        help="Stop a repair that runs longer than this many seconds, wall clock (default: 1800; 0 = no limit)",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Download and verify cache only without running repair")
 
     args = parser.parse_args()
@@ -91,6 +97,7 @@ def main() -> int:
     defective_count = 0
     healthy_count = 0
     crashed_ids: List[str] = []
+    timed_out_ids: List[str] = []
     total_elapsed_ms = 0.0
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -121,6 +128,7 @@ def main() -> int:
                 method=args.method,
                 output_file=out_fixed,
                 mesheal_bin=args.mesheal_bin,
+                timeout_sec=args.timeout or None,
             )
 
             eval_res = evaluate_repair_result(defective, result)
@@ -131,6 +139,7 @@ def main() -> int:
                     method="dedup",
                     output_file=out_dedup,
                     mesheal_bin=args.mesheal_bin,
+                    timeout_sec=args.timeout or None,
                 )
                 if dedup_res.is_success and out_dedup.is_file():
                     out_post_dedup = tmp_path / f"{source_id}_post_dedup_fixed.stl"
@@ -139,6 +148,7 @@ def main() -> int:
                         method=args.method,
                         output_file=out_post_dedup,
                         mesheal_bin=args.mesheal_bin,
+                        timeout_sec=args.timeout or None,
                     )
                     attach_non_dedup_metrics(eval_res, post_dedup_res, defective)
 
@@ -157,6 +167,8 @@ def main() -> int:
                 broken_count += 1
             if eval_res.get("crashed"):
                 crashed_ids.append(entry_id)
+            if eval_res.get("timed_out"):
+                timed_out_ids.append(entry_id)
             total_elapsed_ms += eval_res.get("elapsed_ms", 0.0)
 
             a_chg = eval_res.get("area_change_pct", 0.0)
@@ -169,7 +181,7 @@ def main() -> int:
                 vol_str = f"vol: {v_chg:+.2f}%"
             if eval_res.get("status") == "failed":
                 # No metrics came back: the process crashed or reported an error.
-                kind = "CRASHED" if eval_res.get("crashed") else "ERROR"
+                kind = "CRASHED" if eval_res.get("crashed") else ("TIMED OUT" if eval_res.get("timed_out") else "ERROR")
                 if not defective:
                     kind = f"HEALTHY ({kind.lower()})"
                 err = str(eval_res.get("error", "")).splitlines()
@@ -218,6 +230,7 @@ def main() -> int:
     print(f"Repaired -- Originally Defective: {repaired_count} / {defective_count} ({repaired_count / max(1, defective_count) * 100:.1f}%)")
     print(f"Broken -- Originally Healthy:     {broken_count} / {healthy_count} ({broken_count / max(1, healthy_count) * 100:.1f}%)")
     print(f"Crashed:                          {len(crashed_ids)}" + (f" ({', '.join(crashed_ids)})" if crashed_ids else ""))
+    print(f"Timed Out:                        {len(timed_out_ids)}" + (f" ({', '.join(timed_out_ids)})" if timed_out_ids else ""))
     print(f"Average Time / Mesh:              {total_elapsed_ms / max(1, total_count):.1f} ms")
     print(f"Results Written To:               {out_path}")
     print("=" * 60)

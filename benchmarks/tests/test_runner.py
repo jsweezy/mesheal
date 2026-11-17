@@ -62,6 +62,21 @@ class TestCrashReporting(unittest.TestCase):
         self.assertTrue(ev["crashed"])
         self.assertEqual(ev["exit_code"], -6)
 
+    def test_slow_run_is_stopped_and_reported_as_timed_out(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fake = self._fake_bin(tmpdir, "exec sleep 30")
+            res = repair(Path(tmpdir) / "in.stl", mesheal_bin=fake, timeout_sec=0.5)
+        self.assertFalse(res.is_success)
+        self.assertTrue(res.timed_out)
+        self.assertFalse(res.crashed)
+        self.assertIn("timed out", res.error)
+        self.assertLess(res.elapsed_ms, 10000.0)
+
+        ev = evaluate_repair_result(True, res)
+        self.assertEqual(ev["status"], "failed")
+        self.assertTrue(ev["timed_out"])
+        self.assertFalse(ev["crashed"])
+
     def test_nonzero_exit_without_json_is_error_not_crash(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             fake = self._fake_bin(tmpdir, "echo 'bad input' >&2\nexit 2")

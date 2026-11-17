@@ -87,6 +87,7 @@ def evaluate_repair_result(
             "broken": not defective_input,
             "error": result.error or "Unknown repair failure",
             "crashed": result.crashed,
+            "timed_out": result.timed_out,
             "exit_code": result.exit_code,
             "elapsed_ms": result.elapsed_ms,
         }
