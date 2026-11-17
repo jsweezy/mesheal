@@ -120,6 +120,10 @@ struct RepairResults {
     int facesRemoved = 0;
     int iterations = 0;
     bool usedPmpCleanup = false;
+    /// The input could not be held as a halfedge mesh as it is (non-manifold edges, inconsistent winding or
+    /// pinched vertices): it was read as a polygon soup, or not repaired. `healFacesInReadableRegion` heals
+    /// the part that can be held.
+    bool unreadable = false;
 
     std::size_t initialThinFaces = 0;
     std::size_t remainingThinFaces = 0;
@@ -139,6 +143,9 @@ struct SliverHealOptions {
     /// One flag per input vertex (empty = none). A pinned vertex never moves and is never removed; an edge
     /// between two pinned vertices is never flipped or collapsed (so a face scope's border stays put).
     std::span<const std::uint8_t> pinnedVertices;
+    /// Finish with CGAL's remove_almost_degenerate_faces. Off for `healFacesInReadableRegion`: on the rims
+    /// a left-out region leaves, it reads removed faces and crashes (thingi-79093, -87674, -1368052).
+    bool cgalCleanup = true;
 };
 
 /// CGAL-powered thin / sliver face classification and repair.
@@ -197,6 +204,20 @@ public:
     /// Applies each listed face's recommended action (with the batch fallbacks) in one pass and
     /// returns the compacted result. Faces removed by an earlier repair in the list are skipped.
     [[nodiscard]] static RepairResults healFaces(
+        const Mesh& mesh,
+        const std::vector<Eigen::Index>& faceIndices,
+        const ThinFaceThresholds& thresholds = {},
+        const SliverHealerSettings& settings = {},
+        const SliverHealOptions& options = {});
+
+    /// `healFaces` on the part of `mesh` a halfedge mesh can hold, for a mesh that would otherwise be read
+    /// as a polygon soup (non-manifold edges, inconsistent winding, pinched vertices). Faces on an edge
+    /// shared by three or more faces, or by two with the same direction, are left out, then the rest are
+    /// added one at a time and any CGAL cannot take is left out too. The vertices the region shares with the
+    /// faces left out are pinned, the region is healed and stitched back. The maps are full-mesh maps, like
+    /// `healFaces`'; listed faces outside the region are not healed. `statusMessage` says how many faces
+    /// were left out. Fails (input returned) when no listed face is in the region.
+    [[nodiscard]] static RepairResults healFacesInReadableRegion(
         const Mesh& mesh,
         const std::vector<Eigen::Index>& faceIndices,
         const ThinFaceThresholds& thresholds = {},

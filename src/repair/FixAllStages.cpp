@@ -545,6 +545,23 @@ using fixall_detail::shellList;
     options.pinnedVertices = context.scope.pinned;
     RepairResults healed =
         SliverHealer::healFaces(mesh, faces, context.params.checkParams.thinThresholds, settings, options);
+    // Non-manifold edges or inconsistent winding left elsewhere make CGAL read the whole mesh as a polygon soup,
+    // which loses the face numbers: heal the part it can read instead, with its border pinned
+    std::string regionNote;
+    if (!healed.cancelled && healed.unreadable) {
+        healed = SliverHealer::healFacesInReadableRegion(mesh, faces, context.params.checkParams.thinThresholds,
+                                                         settings, options);
+        if (!healed.cancelled && !healed.success) {
+            outcome.failure = "The healer had to read the mesh as a polygon soup, which loses the face numbers, and "
+                              "the readable part could not be healed: " + healed.statusMessage;
+            return outcome;
+        }
+        const std::size_t open = healed.statusMessage.rfind('(');
+        regionNote = open == std::string::npos ? std::string() : "; " + healed.statusMessage.substr(open + 1);
+        if (!regionNote.empty() && regionNote.back() == ')') {
+            regionNote.pop_back();
+        }
+    }
     if (healed.cancelled) {
         outcome.cancelled = true;
         return outcome;
@@ -580,7 +597,7 @@ using fixall_detail::shellList;
     const std::size_t fixed = faces.size() - std::min(faces.size(), left.size());
     outcome.detail = "Healed " + std::to_string(fixed) + " of " + counted(faces.size(), one, many) + " (" +
                      counted(static_cast<std::size_t>(healed.edgeFlips), "flip", "flips") + ", " +
-                     counted(static_cast<std::size_t>(healed.edgeCollapses), "collapse", "collapses") + ")";
+                     counted(static_cast<std::size_t>(healed.edgeCollapses), "collapse", "collapses") + ")" + regionNote;
     return outcome;
 }
 

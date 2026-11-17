@@ -846,21 +846,22 @@ TEST_CASE("Fix All heals a zero-area cap by flipping it, where deleting it would
         REQUIRE(result.mesh.numFaces() == capped.numFaces());
         REQUIRE(result.stopReason == FixAllStopReason::Clean);
     }
-    SECTION("Healing before orienting: a flipped face makes the healer read a polygon soup, so the step is refused") {
+    SECTION("Healing before orienting: a flipped face is left out and the rest of the mesh is healed") {
         Mesh flipped = capped;
         flipped.F.row(0) << capped.F(0, 0), capped.F(0, 2), capped.F(0, 1);
         flipped.recomputeNormals();
         const mesheal::FixAllTestHooks hooks = moveStage(FixAllStageId::Slivers, FixAllStageId::Orient, 1);
         const mesheal::FixAllResult result = run(flipped, {}, &hooks);
+        // The flipped face's edges run the same way as its neighbours', so CGAL would read a polygon soup:
+        // the healer heals the part it can read (all but the faces on those edges) with its border pinned
         const mesheal::FixAllStepReport* first = stepOf(result, FixAllStageId::Slivers, 1);
-        REQUIRE(first->status == FixAllStepStatus::Refused);
-        REQUIRE(first->guard == FixAllGuard::Failed);
-        REQUIRE(first->reason == "The healer had to read the mesh as a polygon soup, which loses the face numbers.");
-        // Oriented at the end of pass 1, the cap is healed in pass 2
-        REQUIRE(stepOf(result, FixAllStageId::Slivers, 2)->accepted());
-        REQUIRE(result.passesRun == 2);
+        INFO(first->detail << first->reason);
+        REQUIRE(first->accepted());
+        REQUIRE(first->detail.find("left out") != std::string::npos);
+        REQUIRE(result.passesRun == 1);
         REQUIRE(result.stopReason == FixAllStopReason::Clean);
         REQUIRE(result.countsAfter.degenerateFaces == 0);
+        REQUIRE(result.countsAfter.openEdges == 0);
     }
 }
 

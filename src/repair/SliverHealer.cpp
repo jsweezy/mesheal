@@ -7,6 +7,7 @@
 
 #include <CGAL/boost/graph/Euler_operations.h>
 #include <CGAL/boost/graph/iterator.h>
+#include <CGAL/boost/graph/helpers.h>
 #include <CGAL/Polygon_mesh_processing/detect_features.h>
 #include <CGAL/Polygon_mesh_processing/repair_degeneracies.h>
 #include <CGAL/Polygon_mesh_processing/triangulate_faces.h>
@@ -22,13 +23,20 @@
 #include <numeric>
 #include <optional>
 #include <set>
+#include <unordered_map>
 #include <unordered_set>
 #include <span>
+#include <stdexcept>
 #include <vector>
 
 namespace mesheal {
 
 namespace PMP = CGAL::Polygon_mesh_processing;
+
+// CGAL cleanup budget (`BudgetedPointMap`): point reads allowed per face handed to it, plus a floor. On 110
+// FixSTL benchmark files a cleanup took at most ~4.5k reads per face and 123k in all, so this is ~40x that.
+constexpr std::uint64_t kPmpCleanupReadsPerFace = 20000;
+constexpr std::uint64_t kPmpCleanupMinReads = 5000000;
 
 namespace {
 
@@ -84,7 +92,8 @@ bool hasReliableNormal(const Triangle& t) {
 }
 
 bool isLiveFace(const CgalSurfaceMesh& mesh, CgalFaceIndex f) {
-    return f != CgalSurfaceMesh::null_face() && mesh.is_valid(f) && !mesh.is_removed(f);
+    return f != CgalSurfaceMesh::null_face() && static_cast<std::size_t>(f.idx()) < mesh.num_faces() && mesh.is_valid(f) &&
+           !mesh.is_removed(f);
 }
 
 using PinMap = CgalSurfaceMesh::Property_map<CgalVertexIndex, std::uint8_t>;
@@ -1170,6 +1179,12 @@ bool buildTracked(const Mesh& mesh, std::span<const std::uint8_t> pinned, CgalSu
                  "fix its non-manifold edges and flipped faces first.";
         return false;
     }
+    // Faces added one at a time around a pinched (bowtie) vertex can leave a halfedge mesh CGAL accepted
+    // but cannot walk: healing it corrupts memory (thingi-79093), so it counts as unreadable
+    if (!CGAL::is_valid_polygon_mesh(surface)) {
+        status = "The mesh has pinched vertices that a halfedge mesh cannot hold.";
+        return false;
+    }
     tracked = !soup;
     surface.set_recycle_garbage(false); // new elements get new indices, so their origin stays -1
     if (tracked) {
@@ -1801,6 +1816,41 @@ RepairResults SliverHealer::healSingleFace(
     return results;
 }
 
+namespace {
+
+/// Thrown by `BudgetedPointMap` to stop CGAL's cleanup.
+struct CleanupStopped : std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
+
+/// The surface's point map, counting reads. CGAL's remove_almost_degenerate_faces has no step limit and no
+/// cancel: on some meshes its collapses and flips undo each other and it never returns (thingi-87674). It
+/// reads a point for every predicate, so a read budget bounds it, and the reads are where a cancel is seen.
+struct BudgetedPointMap {
+    using key_type = CgalVertexIndex;
+    using value_type = CgalSurfaceMesh::Point;
+    using reference = const value_type&;
+    using category = boost::readable_property_map_tag;
+
+    const CgalSurfaceMesh* surface = nullptr;
+    std::uint64_t* reads = nullptr;
+    std::uint64_t limit = 0;
+    const std::stop_token* stop = nullptr;
+
+    friend reference get(const BudgetedPointMap& map, key_type v) {
+        const std::uint64_t n = ++*map.reads;
+        if (n > map.limit) {
+            throw CleanupStopped("cleanup ran out of steps");
+        }
+        if ((n & 0xFFFFu) == 0 && map.stop->stop_requested()) {
+            throw CleanupStopped("cancelled");
+        }
+        return map.surface->point(v);
+    }
+};
+
+} // namespace
+
 void runPmpCleanup(
     CgalSurfaceMesh& surface,
     const std::vector<CgalFaceIndex>& remaining,
@@ -1808,16 +1858,18 @@ void runPmpCleanup(
     const SliverHealerSettings& settings,
     const SliverHealOptions& options,
     RepairResults& results) {
-    if (remaining.empty()) {
+    // CGAL walks the mesh without checking it: a mesh the passes before left unwalkable crashes it (thingi-1368052)
+    if (remaining.empty() || !options.cgalCleanup || !CGAL::is_valid_polygon_mesh(surface)) {
         return;
     }
     const std::optional<PinMap> pins = pinMap(surface);
-    std::optional<CgalSurfaceMesh> beforeCleanup;
-    if (pins) {
-        beforeCleanup = surface;
-    }
+    CgalSurfaceMesh beforeCleanup = surface; // restored when the cleanup is stopped or moves a pinned vertex
     auto creaseMap = surface.add_property_map<CgalEdgeIndex, bool>("e:mesheal_crease", false).first;
     PMP::detect_sharp_edges(surface, settings.creaseAngleDeg, creaseMap);
+    std::uint64_t reads = 0;
+    const BudgetedPointMap points{&surface, &reads,
+                                  kPmpCleanupReadsPerFace * static_cast<std::uint64_t>(remaining.size()) + kPmpCleanupMinReads,
+                                  &options.stopToken};
     bool cleanupFailed = false;
     try {
         if (pins) {
@@ -1833,22 +1885,29 @@ void runPmpCleanup(
                 CGAL::parameters::cap_threshold(std::cos(settings.capAngleDeg * kDegToRad))
                     .needle_threshold(1.0 / settings.needleEdgeRatio)
                     .edge_is_constrained_map(creaseMap)
-                    .vertex_is_constrained_map(*pins));
+                    .vertex_is_constrained_map(*pins)
+                    .vertex_point_map(points));
         } else {
             PMP::remove_almost_degenerate_faces(
                 remaining,
                 surface,
                 CGAL::parameters::cap_threshold(std::cos(settings.capAngleDeg * kDegToRad))
                     .needle_threshold(1.0 / settings.needleEdgeRatio)
-                    .edge_is_constrained_map(creaseMap));
+                    .edge_is_constrained_map(creaseMap)
+                    .vertex_point_map(points));
         }
     } catch (const std::exception&) {
-        cleanupFailed = true; // leave the mesh as healed by passes 1-2
+        cleanupFailed = true;
+    }
+    if (cleanupFailed) {
+        surface = std::move(beforeCleanup); // leave the mesh as healed by passes 1-2
+        surface.collect_garbage();
+        return;
     }
     surface.remove_property_map(creaseMap);
 
     // CGAL keeps a constrained vertex but may not promise its position: undo the pass if one moved
-    if (pins && !cleanupFailed) {
+    if (pins) {
         const VertexOriginMap origin = *surface.property_map<CgalVertexIndex, std::int64_t>(kVertexOriginProperty);
         const PinMap after = *pinMap(surface);
         std::size_t pinnedLeft = 0;
@@ -1864,7 +1923,7 @@ void runPmpCleanup(
         const auto pinnedBefore = static_cast<std::size_t>(
             std::count_if(options.pinnedVertices.begin(), options.pinnedVertices.end(), [](std::uint8_t p) { return p != 0; }));
         if (moved || pinnedLeft < pinnedBefore) {
-            surface = std::move(*beforeCleanup);
+            surface = std::move(beforeCleanup);
         }
     }
     surface.collect_garbage();
@@ -1888,8 +1947,10 @@ RepairResults SliverHealer::healFaces(
     CgalSurfaceMesh surface;
     bool tracked = false;
     if (!buildTracked(mesh, options.pinnedVertices, surface, tracked, results.statusMessage)) {
+        results.unreadable = true;
         return results;
     }
+    results.unreadable = !tracked;
 
     // Lazy deletion keeps the handles of faces not yet visited valid while earlier repairs run
     std::vector<CgalFaceIndex> faces;
@@ -2005,7 +2066,24 @@ RepairResults SliverHealer::healFaces(
         }
     }
 
+    // `faces` are handles into `surface`, and collect_garbage renumbers faces: carry the list through each
+    // renumbering in a face property (properties move with their faces), or the handles dangle (thingi-79093)
+    auto listedMark = surface.add_property_map<CgalFaceIndex, std::uint8_t>("f:mesheal_listed", 0).first;
+    for (const CgalFaceIndex f : faces) {
+        if (isLiveFace(surface, f)) {
+            put(listedMark, f, 1);
+        }
+    }
+    const auto relist = [&] {
+        faces.clear();
+        for (const CgalFaceIndex f : surface.faces()) {
+            if (get(listedMark, f) != 0) {
+                faces.push_back(f);
+            }
+        }
+    };
     surface.collect_garbage();
+    relist();
     std::vector<CgalFaceIndex> remaining;
     for (const CgalFaceIndex f : faces) {
         if (isLiveFace(surface, f) && evaluateCgalFace(surface, f, thresholds).isDefective()) {
@@ -2014,6 +2092,8 @@ RepairResults SliverHealer::healFaces(
     }
     if (!remaining.empty()) {
         runPmpCleanup(surface, remaining, mesh, settings, options, results);
+        listedMark = *surface.property_map<CgalFaceIndex, std::uint8_t>("f:mesheal_listed"); // a restored copy has its own
+        relist();
     }
 
     std::size_t remainingDefects = 0;
@@ -2049,6 +2129,7 @@ RepairResults SliverHealer::healFaces(
         results.statusMessage = "None of the " + std::to_string(initialCount) + " selected faces could be repaired safely.";
         return results;
     }
+    surface.remove_property_map(listedMark);
     surface.collect_garbage();
     finishTracked(surface, mesh, tracked, results);
     results.remainingThinFaces = ThinFaceChecker::check(results.mesh, thresholds).numDefects();
@@ -2115,8 +2196,10 @@ RepairResults SliverHealer::healAllThinFaces(
     CgalSurfaceMesh surface;
     bool tracked = false;
     if (!buildTracked(mesh, options.pinnedVertices, surface, tracked, results.statusMessage)) {
+        results.unreadable = true;
         return results;
     }
+    results.unreadable = !tracked;
 
     for (int iter = 0; iter < settings.maxBatchIterations; ++iter) {
         bool changed = false;
@@ -2228,6 +2311,286 @@ RepairResults SliverHealer::healAllThinFaces(
                             std::to_string(results.edgeFlips) + " flips, " +
                             std::to_string(results.edgeCollapses) + " collapses, " +
                             std::to_string(results.facesRemoved) + " removals).";
+    return results;
+}
+
+
+RepairResults SliverHealer::healFacesInReadableRegion(
+    const Mesh& mesh,
+    const std::vector<Eigen::Index>& faceIndices,
+    const ThinFaceThresholds& thresholds,
+    const SliverHealerSettings& settings,
+    const SliverHealOptions& options) {
+    RepairResults results;
+    results.initialThinFaces = ThinFaceChecker::check(mesh, thresholds).numDefects();
+    leaveUnchanged(mesh, results);
+    const auto nf = static_cast<std::size_t>(mesh.numFaces());
+    const auto nv = static_cast<std::size_t>(mesh.numVertices());
+    if (!options.pinnedVertices.empty() && options.pinnedVertices.size() != nv) {
+        results.statusMessage = "The pinned-vertex mask does not match the mesh.";
+        return results;
+    }
+
+    // Edges shared by three or more faces, or by two running the same way, cannot be held
+    const auto key = [](int a, int b) { return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(a)) << 32) | static_cast<std::uint32_t>(b); };
+    std::unordered_map<std::uint64_t, int> directed;
+    std::unordered_map<std::uint64_t, int> undirected;
+    directed.reserve(nf * 3);
+    undirected.reserve(nf * 3);
+    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+        for (int c = 0; c < 3; ++c) {
+            const int a = mesh.F(f, c);
+            const int b = mesh.F(f, (c + 1) % 3);
+            ++directed[key(a, b)];
+            ++undirected[key(std::min(a, b), std::max(a, b))];
+        }
+    }
+    std::vector<std::uint8_t> inRegion(nf, 1);
+    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+        for (int c = 0; c < 3; ++c) {
+            const int a = mesh.F(f, c);
+            const int b = mesh.F(f, (c + 1) % 3);
+            if (a == b || directed[key(a, b)] > 1 || undirected[key(std::min(a, b), std::max(a, b))] > 2) {
+                inRegion[static_cast<std::size_t>(f)] = 0;
+            }
+        }
+    }
+    // Then the faces CGAL takes, one at a time (pinched vertices and the like are left out)
+    {
+        CgalSurfaceMesh probe;
+        std::vector<CgalVertexIndex> verts(nv);
+        for (std::size_t v = 0; v < nv; ++v) {
+            verts[v] = probe.add_vertex(CgalPoint3(mesh.V(static_cast<Eigen::Index>(v), 0), mesh.V(static_cast<Eigen::Index>(v), 1),
+                                                   mesh.V(static_cast<Eigen::Index>(v), 2)));
+        }
+        for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+            if (inRegion[static_cast<std::size_t>(f)] != 0 &&
+                probe.add_face(verts[static_cast<std::size_t>(mesh.F(f, 0))], verts[static_cast<std::size_t>(mesh.F(f, 1))],
+                               verts[static_cast<std::size_t>(mesh.F(f, 2))]) == CgalSurfaceMesh::null_face()) {
+                inRegion[static_cast<std::size_t>(f)] = 0;
+            }
+        }
+    }
+
+    // A vertex whose region faces form more than one fan (a bowtie) cannot be held either: leave its faces
+    // out, which can pinch a neighbour, so repeat until none is left
+    for (bool pinched = true; pinched;) {
+        pinched = false;
+        std::vector<std::uint32_t> offsets(nv + 1, 0);
+        for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+            if (inRegion[static_cast<std::size_t>(f)] != 0) {
+                for (int c = 0; c < 3; ++c) {
+                    ++offsets[static_cast<std::size_t>(mesh.F(f, c)) + 1];
+                }
+            }
+        }
+        std::partial_sum(offsets.begin(), offsets.end(), offsets.begin());
+        std::vector<Eigen::Index> around(offsets.back());
+        std::vector<std::uint32_t> fill(offsets.begin(), offsets.end() - 1);
+        for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+            if (inRegion[static_cast<std::size_t>(f)] != 0) {
+                for (int c = 0; c < 3; ++c) {
+                    around[fill[static_cast<std::size_t>(mesh.F(f, c))]++] = f;
+                }
+            }
+        }
+        std::vector<Eigen::Index> pinchedFaces;
+        for (std::size_t v = 0; v < nv; ++v) {
+            const std::span<const Eigen::Index> fan(around.data() + offsets[v], around.data() + offsets[v + 1]);
+            if (fan.size() < 2) {
+                continue;
+            }
+            // Fans: faces joined through an edge at v (they share v and one more vertex)
+            std::vector<std::size_t> parent(fan.size());
+            std::iota(parent.begin(), parent.end(), std::size_t{0});
+            const auto find = [&](std::size_t x) {
+                while (parent[x] != x) {
+                    x = parent[x] = parent[parent[x]];
+                }
+                return x;
+            };
+            std::unordered_map<int, std::size_t> byOther; // other vertex of an edge at v -> first fan face there
+            for (std::size_t i = 0; i < fan.size(); ++i) {
+                for (int c = 0; c < 3; ++c) {
+                    const int w = mesh.F(fan[i], c);
+                    if (static_cast<std::size_t>(w) == v) {
+                        continue;
+                    }
+                    const auto [it, inserted] = byOther.try_emplace(w, i);
+                    if (!inserted) {
+                        parent[find(i)] = find(it->second);
+                    }
+                }
+            }
+            std::size_t fans = 0;
+            for (std::size_t i = 0; i < fan.size(); ++i) {
+                fans += find(i) == i ? 1 : 0;
+            }
+            if (fans > 1) {
+                pinchedFaces.insert(pinchedFaces.end(), fan.begin(), fan.end());
+            }
+        }
+        for (const Eigen::Index f : pinchedFaces) {
+            pinched = pinched || inRegion[static_cast<std::size_t>(f)] != 0;
+            inRegion[static_cast<std::size_t>(f)] = 0;
+        }
+    }
+
+    // The region as its own mesh; its vertices shared with the faces left out are pinned
+    std::vector<std::uint8_t> sharedOut(nv, 0);
+    std::vector<Eigen::Index> regionFaces;
+    std::vector<Eigen::Index> outFaces;
+    for (Eigen::Index f = 0; f < mesh.numFaces(); ++f) {
+        if (inRegion[static_cast<std::size_t>(f)] != 0) {
+            regionFaces.push_back(f);
+        } else {
+            outFaces.push_back(f);
+            for (int c = 0; c < 3; ++c) {
+                sharedOut[static_cast<std::size_t>(mesh.F(f, c))] = 1;
+            }
+        }
+    }
+    std::vector<Eigen::Index> subOf(nv, -1);
+    std::vector<Eigen::Index> fullOf;
+    Mesh region;
+    region.fileUnit = mesh.fileUnit;
+    region.F.resize(static_cast<Eigen::Index>(regionFaces.size()), 3);
+    for (std::size_t r = 0; r < regionFaces.size(); ++r) {
+        for (int c = 0; c < 3; ++c) {
+            const auto v = static_cast<std::size_t>(mesh.F(regionFaces[r], c));
+            if (subOf[v] < 0) {
+                subOf[v] = static_cast<Eigen::Index>(fullOf.size());
+                fullOf.push_back(static_cast<Eigen::Index>(v));
+            }
+            region.F(static_cast<Eigen::Index>(r), c) = static_cast<int>(subOf[v]);
+        }
+    }
+    region.V.resize(static_cast<Eigen::Index>(fullOf.size()), 3);
+    std::vector<std::uint8_t> pins(fullOf.size(), 0);
+    for (std::size_t i = 0; i < fullOf.size(); ++i) {
+        const auto v = static_cast<std::size_t>(fullOf[i]);
+        region.V.row(static_cast<Eigen::Index>(i)) = mesh.V.row(fullOf[i]);
+        pins[i] = sharedOut[v] != 0 || (!options.pinnedVertices.empty() && options.pinnedVertices[v] != 0) ? 1 : 0;
+    }
+    region.recomputeNormals();
+
+    std::vector<Eigen::Index> subFaceOf(nf, -1);
+    for (std::size_t r = 0; r < regionFaces.size(); ++r) {
+        subFaceOf[static_cast<std::size_t>(regionFaces[r])] = static_cast<Eigen::Index>(r);
+    }
+    std::vector<Eigen::Index> listed;
+    for (const Eigen::Index f : faceIndices) {
+        if (f >= 0 && static_cast<std::size_t>(f) < nf && subFaceOf[static_cast<std::size_t>(f)] >= 0) {
+            listed.push_back(subFaceOf[static_cast<std::size_t>(f)]);
+        }
+    }
+    const std::string leftOut = std::to_string(outFaces.size()) + (outFaces.size() == 1 ? " face" : " faces") +
+                                " on non-manifold or inconsistently wound edges or pinched vertices left out";
+    if (listed.empty()) {
+        results.statusMessage = "No listed face is in the part of the mesh the healer can read (" + leftOut + ").";
+        return results;
+    }
+
+    SliverHealOptions subOptions;
+    subOptions.stopToken = options.stopToken;
+    subOptions.pinnedVertices = pins;
+    subOptions.cgalCleanup = false;
+    RepairResults healed = healFaces(region, listed, thresholds, settings, subOptions);
+    if (healed.cancelled) {
+        cancel(mesh, results);
+        return results;
+    }
+    if (!healed.success || healed.faceMap.empty()) {
+        results.statusMessage = healed.statusMessage + " (" + leftOut + ")";
+        return results;
+    }
+
+    // Stitch: every input vertex keeps its slot (moved ones take the healed position), new vertices follow;
+    // the faces left out come first, then the healed region's faces
+    Mesh joined;
+    joined.fileUnit = mesh.fileUnit;
+    std::vector<Eigen::Index> healedToFull(static_cast<std::size_t>(healed.mesh.numVertices()), -1);
+    for (std::size_t s = 0; s < healed.vertexMap.size(); ++s) {
+        const Eigen::Index h = healed.vertexMap[s];
+        if (h >= 0 && healedToFull[static_cast<std::size_t>(h)] < 0) {
+            healedToFull[static_cast<std::size_t>(h)] = fullOf[s];
+        }
+    }
+    Eigen::Index extra = 0;
+    for (Eigen::Index& to : healedToFull) {
+        if (to < 0) {
+            to = static_cast<Eigen::Index>(nv) + extra++;
+        }
+    }
+    joined.V.resize(static_cast<Eigen::Index>(nv) + extra, 3);
+    joined.V.topRows(static_cast<Eigen::Index>(nv)) = mesh.V;
+    for (std::size_t h = 0; h < healedToFull.size(); ++h) {
+        joined.V.row(healedToFull[h]) = healed.mesh.V.row(static_cast<Eigen::Index>(h));
+    }
+    joined.F.resize(static_cast<Eigen::Index>(outFaces.size()) + healed.mesh.numFaces(), 3);
+    std::vector<Eigen::Index> faceMap(nf, -1);
+    for (std::size_t i = 0; i < outFaces.size(); ++i) {
+        joined.F.row(static_cast<Eigen::Index>(i)) = mesh.F.row(outFaces[i]);
+        faceMap[static_cast<std::size_t>(outFaces[i])] = static_cast<Eigen::Index>(i);
+    }
+    const auto offset = static_cast<Eigen::Index>(outFaces.size());
+    for (Eigen::Index h = 0; h < healed.mesh.numFaces(); ++h) {
+        for (int c = 0; c < 3; ++c) {
+            joined.F(offset + h, c) = static_cast<int>(healedToFull[static_cast<std::size_t>(healed.mesh.F(h, c))]);
+        }
+    }
+    for (std::size_t r = 0; r < regionFaces.size(); ++r) {
+        const Eigen::Index to = healed.faceMap[r];
+        faceMap[static_cast<std::size_t>(regionFaces[r])] = to >= 0 ? offset + to : -1;
+    }
+
+    // Compact: drop the vertices no face uses any more (collapsed into a neighbour)
+    std::vector<Eigen::Index> compact(static_cast<std::size_t>(joined.numVertices()), -1);
+    Eigen::Index used = 0;
+    for (Eigen::Index f = 0; f < joined.numFaces(); ++f) {
+        for (int c = 0; c < 3; ++c) {
+            Eigen::Index& slot = compact[static_cast<std::size_t>(joined.F(f, c))];
+            if (slot < 0) {
+                slot = 0; // marked; numbered below in vertex order
+            }
+        }
+    }
+    for (Eigen::Index& slot : compact) {
+        slot = slot < 0 ? -1 : used++;
+    }
+    results.mesh.fileUnit = mesh.fileUnit;
+    results.mesh.V.resize(used, 3);
+    for (std::size_t v = 0; v < compact.size(); ++v) {
+        if (compact[v] >= 0) {
+            results.mesh.V.row(compact[v]) = joined.V.row(static_cast<Eigen::Index>(v));
+        }
+    }
+    results.mesh.F.resize(joined.numFaces(), 3);
+    for (Eigen::Index f = 0; f < joined.numFaces(); ++f) {
+        for (int c = 0; c < 3; ++c) {
+            results.mesh.F(f, c) = static_cast<int>(compact[static_cast<std::size_t>(joined.F(f, c))]);
+        }
+    }
+    results.mesh.recomputeNormals();
+    results.faceMap = std::move(faceMap);
+    results.vertexMap.assign(nv, -1);
+    for (std::size_t v = 0; v < nv; ++v) {
+        results.vertexMap[v] = compact[v];
+    }
+    // A region vertex collapsed into another: its full slot is unused, so it takes the survivor's entry
+    for (std::size_t s = 0; s < healed.vertexMap.size(); ++s) {
+        const Eigen::Index h = healed.vertexMap[s];
+        const auto v = static_cast<std::size_t>(fullOf[s]);
+        results.vertexMap[v] = h >= 0 ? compact[static_cast<std::size_t>(healedToFull[static_cast<std::size_t>(h)])] : -1;
+    }
+    results.success = true;
+    results.edgeFlips = healed.edgeFlips;
+    results.edgeCollapses = healed.edgeCollapses;
+    results.facesRemoved = healed.facesRemoved;
+    results.iterations = healed.iterations;
+    results.usedPmpCleanup = healed.usedPmpCleanup;
+    results.remainingThinFaces = ThinFaceChecker::check(results.mesh, thresholds).numDefects();
+    results.statusMessage = healed.statusMessage + " (" + leftOut + ")";
     return results;
 }
 

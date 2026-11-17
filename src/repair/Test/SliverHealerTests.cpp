@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <numeric>
 #include <cstdint>
 #include <filesystem>
 #include <limits>
@@ -1335,4 +1336,120 @@ TEST_CASE("The safety net rejects a volume change on a closed mesh only", "[repa
     volumeOnly.maxVolumeChange = 1.0e-14;
     const mesheal::RepairResults openResult = mesheal::SliverHealer::healAllThinFaces(open, {}, volumeOnly);
     CHECK(openResult.success);
+}
+
+TEST_CASE("healFacesInReadableRegion heals a cap on a mesh CGAL can only read as a polygon soup",
+          "[repair][slivers][region]") {
+    using mesheal::Mesh;
+    const Mesh capped = mesheal::SampleMeshes::createCollinearCapCubeMesh();
+    const Eigen::Index cap = capped.numFaces() - 1;
+
+    // A fin on an edge none of the cap's corners touch: that edge then has three faces
+    Eigen::Index edgeFace = -1;
+    int corner = 0;
+    for (Eigen::Index f = 0; f < cap && edgeFace < 0; ++f) {
+        for (int c = 0; c < 3; ++c) {
+            const int a = capped.F(f, c);
+            const int b = capped.F(f, (c + 1) % 3);
+            const bool nearCap = (capped.F.row(cap).array() == a).any() || (capped.F.row(cap).array() == b).any();
+            if (!nearCap) {
+                edgeFace = f;
+                corner = c;
+                break;
+            }
+        }
+    }
+    REQUIRE(edgeFace >= 0);
+    Mesh mesh = capped;
+    const int a = capped.F(edgeFace, corner);
+    const int b = capped.F(edgeFace, (corner + 1) % 3);
+    const Eigen::RowVector3d tip = 0.5 * (capped.V.row(a) + capped.V.row(b)) + Eigen::RowVector3d(0.0, 0.0, 5.0);
+    mesh.V.conservativeResize(mesh.numVertices() + 1, 3);
+    mesh.V.row(mesh.numVertices() - 1) = tip;
+    mesh.F.conservativeResize(mesh.numFaces() + 1, 3);
+    mesh.F.row(mesh.numFaces() - 1) << a, b, static_cast<int>(mesh.numVertices() - 1);
+    mesh.recomputeNormals();
+    const Eigen::Index fin = mesh.numFaces() - 1;
+    REQUIRE(mesheal::checkNonManifoldEdges(mesh).size() == 1);
+
+    // The whole mesh is read as a soup: the plain batch heal loses the face numbers
+    const std::vector<Eigen::Index> faces{cap};
+    REQUIRE(mesheal::SliverHealer::healFaces(mesh, faces).faceMap.empty());
+
+    const mesheal::RepairResults r = mesheal::SliverHealer::healFacesInReadableRegion(mesh, faces);
+    INFO(r.statusMessage);
+    REQUIRE(r.success);
+    REQUIRE(r.statusMessage.find("left out") != std::string::npos);
+    REQUIRE_FALSE(r.usedPmpCleanup); // CGAL's cleanup crashes on the rims a left-out region leaves
+    REQUIRE(r.faceMap.size() == static_cast<std::size_t>(mesh.numFaces()));
+    REQUIRE(r.vertexMap.size() == static_cast<std::size_t>(mesh.numVertices()));
+    REQUIRE(mesheal::checkDegenerateFaces(r.mesh).size() == 0);
+    // The faces on the non-manifold edge are kept as they were, and the edge is still the only defect
+    for (const Eigen::Index f : {fin, edgeFace}) {
+        const Eigen::Index to = r.faceMap[static_cast<std::size_t>(f)];
+        REQUIRE(to >= 0);
+        for (int c = 0; c < 3; ++c) {
+            REQUIRE((r.mesh.V.row(r.mesh.F(to, c)) - mesh.V.row(mesh.F(f, c))).norm() == 0.0);
+        }
+    }
+    REQUIRE(mesheal::checkNonManifoldEdges(r.mesh).size() == 1);
+    REQUIRE(r.mesh.numFaces() == mesh.numFaces()); // the cap was flipped, not deleted
+    for (std::size_t v = 0; v < r.vertexMap.size(); ++v) {
+        REQUIRE(r.vertexMap[v] < r.mesh.numVertices());
+    }
+}
+
+TEST_CASE("A cube touching the capped cube at one corner (a pinched vertex) is left out and the cap is healed",
+          "[repair][slivers][region]") {
+    using mesheal::Mesh;
+    const Mesh capped = mesheal::SampleMeshes::createCollinearCapCubeMesh();
+    const Eigen::Index cap = capped.numFaces() - 1;
+
+    // The corner of the bounding box farthest from the cap
+    const Eigen::RowVector3d capCentre =
+        (capped.V.row(capped.F(cap, 0)) + capped.V.row(capped.F(cap, 1)) + capped.V.row(capped.F(cap, 2))) / 3.0;
+    Eigen::Index corner = 0;
+    (capped.V.rowwise() - capCentre).rowwise().squaredNorm().maxCoeff(&corner);
+    REQUIRE_FALSE((capped.F.row(cap).array() == static_cast<int>(corner)).any());
+
+    // A second cube placed diagonally so that one of its corners is that vertex
+    Mesh other = mesheal::SampleMeshes::createCubeMesh(1.0);
+    Eigen::Index otherCorner = 0;
+    other.V.rowwise().sum().minCoeff(&otherCorner);
+    const Eigen::RowVector3d outward = (capped.V.row(corner) - capped.V.colwise().mean()).array().sign().matrix();
+    for (Eigen::Index v = 0; v < other.numVertices(); ++v) {
+        const Eigen::RowVector3d d = other.V.row(v) - other.V.row(otherCorner);
+        other.V.row(v) = capped.V.row(corner) + d.cwiseProduct(outward);
+    }
+    if (outward.prod() < 0.0) {
+        other.F.col(1).swap(other.F.col(2)); // an odd number of mirrored axes inverts the winding
+    }
+    Mesh mesh = capped;
+    const Eigen::Index base = mesh.numVertices();
+    mesheal::appendMesh(mesh, other);
+    for (Eigen::Index f = capped.numFaces(); f < mesh.numFaces(); ++f) {
+        for (int c = 0; c < 3; ++c) {
+            if (mesh.F(f, c) == base + otherCorner) {
+                mesh.F(f, c) = static_cast<int>(corner);
+            }
+        }
+    }
+    mesh = mesheal::extractFaces(mesh, [&] {
+        std::vector<Eigen::Index> all(static_cast<std::size_t>(mesh.numFaces()));
+        std::iota(all.begin(), all.end(), Eigen::Index{0});
+        return all;
+    }());
+    mesh.recomputeNormals();
+    REQUIRE(mesheal::checkNonManifoldVertices(mesh).size() == 1);
+
+    const std::vector<Eigen::Index> faces{cap};
+    const mesheal::RepairResults whole = mesheal::SliverHealer::healFaces(mesh, faces);
+    REQUIRE(whole.unreadable);
+
+    const mesheal::RepairResults r = mesheal::SliverHealer::healFacesInReadableRegion(mesh, faces);
+    INFO(r.statusMessage);
+    REQUIRE(r.success);
+    REQUIRE(mesheal::checkDegenerateFaces(r.mesh).size() == 0);
+    REQUIRE(r.mesh.numFaces() == mesh.numFaces());
+    REQUIRE(mesheal::checkNonManifoldVertices(r.mesh).size() == 1); // the pinched corner is left as it was
 }
