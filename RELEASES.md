@@ -2,6 +2,19 @@
 
 Release notes, newest first. Versions are simple integers (v1, v2, ...) tagged in git as `v#`. See [the release process](https://github.com/jsweezy/mesheal/blob/main/RELEASE_PROCESS.md) for how to cut a release.
 
+## v5 — 2026-11-16
+
+Fix All repairs more broken files and no longer crashes or hangs on any file in the FixSTL 200-file benchmark: 86 of 131 broken files repaired, none of the 69 healthy files damaged. See the [benchmark results](https://jsweezy.github.io/mesheal/BENCHMARKS/).
+
+- Fix All merges parts that cross each other on its own, so a batch of files needs no manual choice. A solid wholly inside another is kept. On the command line, `--merge-shells` and `--no-merge-shells` override the choice, and `--report` lists every step Fix All ran.
+- Thin faces are repaired on meshes with non-manifold edges or pinched vertices elsewhere; those faces are left as they are and counted in the report.
+- Fixed crashes and endless runs in Fix All on several large or badly broken meshes, and a stall on very large files.
+- The intersection repair no longer accepts a result that shrinks the part.
+- `--dedup` on the command line only welds nearby vertices and removes duplicate and collapsed faces.
+- Rotate the view with the arrow keys.
+- New eel app icon and logo, and two eel example models.
+- Benchmark scripts for the FixSTL test set, with a time limit per file.
+
 ## v4 — 2026-11-13
 
 First public release, with ready-to-run downloads and a Blender extension.
