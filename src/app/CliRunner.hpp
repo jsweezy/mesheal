@@ -31,6 +31,10 @@ struct CliOptions {
 
     int passes = 3;
     double timeBudgetSeconds = 0.0;
+    /// Fix All's shell merge: unset = on when shells overlap or one is nested in another (as the app's
+    /// Fix All panel ticks it), or forced by --merge-shells / --no-merge-shells.
+    std::optional<bool> mergeShells;
+    bool report = false; ///< --report: list Fix All's steps (text) or add a "steps" array (JSON)
 
     double edgeLength = 0.0;
     int smoothingPasses = 3;

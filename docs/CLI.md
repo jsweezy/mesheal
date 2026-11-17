@@ -55,6 +55,9 @@ See [Repairing](gui/repairs.md#whole-surface-rebuilds) for how to choose between
 |---|---|---|---|
 | `--passes <N>` | 3 | `--fix-all` | Maximum number of passes. Stops earlier when the mesh is clean. |
 | `--time-budget <sec>` | 0 (no limit) | `--fix-all` | Stop after this many seconds. |
+| `--merge-shells` | automatic | `--fix-all` | Always merge shells that overlap or nest. |
+| `--no-merge-shells` | automatic | `--fix-all` | Never merge shells. |
+| `--report` | off | `--fix-all` | List each step Fix All applied or refused. With `--json`, adds a `steps` array. |
 | `--edge-length <len>` | auto | remesh, rebuild | Target triangle edge length, in file units. |
 | `--smoothing <N>` | 3 | `--remesh-voxel` | Smoothing passes. |
 | `--chord-ratio <ratio>` | 0.10 | `--remesh-iso` | How closely the new surface follows curves (smaller is closer). |
@@ -66,6 +69,16 @@ See [Repairing](gui/repairs.md#whole-surface-rebuilds) for how to choose between
 | `--quiet` | off | all | Suppress informational output. Errors are still printed. |
 | `-v`, `--version` | | | Print version and build information. |
 | `-h`, `--help` | | | Print the help. |
+
+## Merging overlapping shells
+
+Without `--merge-shells` or `--no-merge-shells`, Fix All decides for itself:
+
+- It checks the input. If two shells cross or share a surface, the merge is on from the start.
+- Otherwise it checks again after each pass's repairs. Filling holes can show a crossing the input hid. Once the check finds one, the merge stays on for the rest of the run.
+- A solid that sits wholly inside another and touches nothing is kept. It may be meant, for example an insert printed in a second material. Use `--merge-shells` to delete it, as the app's Fix All panel does when **Merge shells that overlap** is ticked.
+
+The JSON output reports the choice in `merge_shells` and `merge_turned_on_in_pass` (0 when the merge was on from the start or never turned on). The text output prints a `Merge shells:` line when it ran.
 
 ## The input file is never overwritten
 

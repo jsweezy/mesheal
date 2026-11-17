@@ -81,6 +81,11 @@ struct FixAllParams {
     bool closeCracks = settings::kDefaultFixAllCloseCracks;
     bool healThinFaces = settings::kDefaultFixAllHealThin;
     bool mergeShells = settings::kDefaultFixAllMergeShells;
+    /// The merge is Fix All's own choice (the CLI without --merge-shells / --no-merge-shells). With
+    /// `mergeShells` off, check after each pass's phase 1 for shells that cross (`shellsCross`) and turn the
+    /// merge on for the rest of the run when some do: holes filled in phase 1 can show a crossing the input
+    /// hid. Either way the merge then leaves nested solids that touch nothing in place.
+    bool autoMergeShells = false;
     CheckParams checkParams{};
     HoleFillSettings holeFill{};                ///< Close Crack and the hole fill (Holes tool settings)
     IntersectionRepairSettings islandRepair{};  ///< The island step (Intersections tool settings)
@@ -471,6 +476,7 @@ struct FixAllResult {
     FixAllStopReason stopReason = FixAllStopReason::PassLimit;
     bool cancelled = false;
     bool onePass = false;
+    int mergeTurnedOnInPass = 0;     ///< `autoMergeShells`: the pass that turned the merge on (0 = it did not)
     bool changed = false;            ///< `mesh` differs from the input
     bool temporarilyWorse = false;   ///< One pass only: the pass's score is worse than the input's
     FixAllCounts countsBefore;

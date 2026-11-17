@@ -1184,3 +1184,85 @@ TEST_CASE("Fix All timings per step, phase and pass", "[repair][fixall][.benchma
     bench("Turkey merge on", turkey, true);
     bench("self_intersecting_box", box, false);
 }
+
+TEST_CASE("Automatic merge: Fix All turns the merge on when a pass leaves shells that overlap", "[repair][fixall][merge]") {
+    Mesh cubes = SampleMeshes::createCubeMesh(10.0);
+    Mesh second = cubes;
+    second.V.rowwise() += Eigen::RowVector3d(5.0, 5.0, 5.0);
+    mesheal::appendMesh(cubes, second);
+    cubes.recomputeNormals();
+
+    mesheal::FixAllParams params;
+    params.mergeShells = false;
+    params.autoMergeShells = true;
+    const mesheal::FixAllResult automatic = mesheal::runFixAll(cubes, mesheal::FixAllScope::whole(cubes), params);
+    REQUIRE(automatic.success);
+    REQUIRE(automatic.mergeTurnedOnInPass == 1);
+    REQUIRE(std::any_of(automatic.steps.begin(), automatic.steps.end(), [](const mesheal::FixAllStepReport& step) {
+        return step.stage == mesheal::FixAllStageId::MergeShells && step.accepted();
+    }));
+    REQUIRE(automatic.stopReason == FixAllStopReason::Clean);
+    REQUIRE(mesheal::checkShells(automatic.mesh).size() == 1);
+
+    params.autoMergeShells = false;
+    const mesheal::FixAllResult off = mesheal::runFixAll(cubes, mesheal::FixAllScope::whole(cubes), params);
+    REQUIRE(off.mergeTurnedOnInPass == 0);
+    REQUIRE(mesheal::checkShells(off.mesh).size() == 2);
+}
+
+TEST_CASE("Automatic merge leaves shells that are apart unmerged", "[repair][fixall][merge]") {
+    Mesh cubes = SampleMeshes::createCubeMesh(10.0);
+    Mesh second = cubes;
+    second.V.rowwise() += Eigen::RowVector3d(30.0, 0.0, 0.0);
+    mesheal::appendMesh(cubes, second);
+    cubes.recomputeNormals();
+    mesheal::FixAllParams params;
+    params.autoMergeShells = true;
+    const mesheal::FixAllResult r = mesheal::runFixAll(cubes, mesheal::FixAllScope::whole(cubes), params);
+    REQUIRE(r.mergeTurnedOnInPass == 0);
+    REQUIRE(mesheal::checkShells(r.mesh).size() == 2);
+}
+
+TEST_CASE("Automatic merge unites crossing shells but keeps a solid nested inside another", "[repair][fixall][merge]") {
+    // A cube with a small solid cube wholly inside it (54226, 61459): nothing crosses, so Fix All does not
+    // merge on its own. With a crossing pair beside them the merge turns on, and still keeps the nested solid.
+    Mesh outer = SampleMeshes::createCubeMesh(10.0);
+    Mesh inner = SampleMeshes::createCubeMesh(2.0);
+    inner.V.rowwise() += Eigen::RowVector3d(4.0, 4.0, 4.0);
+    mesheal::appendMesh(outer, inner);
+    outer.recomputeNormals();
+
+    mesheal::FixAllParams params;
+    params.autoMergeShells = true;
+    const mesheal::FixAllResult nestedOnly = mesheal::runFixAll(outer, mesheal::FixAllScope::whole(outer), params);
+    REQUIRE(nestedOnly.success);
+    REQUIRE(nestedOnly.mergeTurnedOnInPass == 0);
+    REQUIRE(mesheal::checkShells(nestedOnly.mesh).size() == 2);
+
+    Mesh withCrossing = outer;
+    Mesh a = SampleMeshes::createCubeMesh(10.0);
+    a.V.rowwise() += Eigen::RowVector3d(30.0, 0.0, 0.0);
+    Mesh b = a;
+    b.V.rowwise() += Eigen::RowVector3d(5.0, 5.0, 5.0);
+    mesheal::appendMesh(withCrossing, a);
+    mesheal::appendMesh(withCrossing, b);
+    withCrossing.recomputeNormals();
+    const auto deletedNested = [](const mesheal::FixAllResult& r) {
+        return std::any_of(r.steps.begin(), r.steps.end(), [](const mesheal::FixAllStepReport& step) {
+            return step.stage == mesheal::FixAllStageId::DeleteNestedSolids && step.accepted();
+        });
+    };
+
+    const mesheal::FixAllResult automatic = mesheal::runFixAll(withCrossing, mesheal::FixAllScope::whole(withCrossing), params);
+    REQUIRE(automatic.success);
+    REQUIRE(automatic.mergeTurnedOnInPass == 1);
+    REQUIRE_FALSE(deletedNested(automatic));
+    REQUIRE(mesheal::checkShells(automatic.mesh).size() == 3); // outer, nested, the united pair
+
+    // Ticked by the user (the app's panel, --merge-shells): the nested solid goes, as before
+    params.autoMergeShells = false;
+    params.mergeShells = true;
+    const mesheal::FixAllResult chosen = mesheal::runFixAll(withCrossing, mesheal::FixAllScope::whole(withCrossing), params);
+    REQUIRE(deletedNested(chosen));
+    REQUIRE(mesheal::checkShells(chosen.mesh).size() == 2);
+}

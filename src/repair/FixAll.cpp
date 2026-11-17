@@ -807,7 +807,8 @@ private:
         for (const FixAllStage& stage : repair) {
             total += std::max(0.0, stage.progressWeight);
         }
-        const bool mergeShare = params_.mergeShells || (hooks_ != nullptr && hooks_->adjustStages);
+        const bool mergeShare =
+            params_.mergeShells || params_.autoMergeShells || (hooks_ != nullptr && hooks_->adjustStages);
         const double mergeWeight = mergeShare ? settings::kFixAllMergeProgressWeight : 0.0;
         const double cleanupWeight = mergeShare ? settings::kFixAllCleanupProgressWeight : 0.0;
         total += mergeWeight + cleanupWeight;
@@ -825,6 +826,21 @@ private:
         }
         std::vector<FixAllStage> merge;
         double stagesWeight = mergeWeight;
+        if (!params_.mergeShells && params_.autoMergeShells && scope_.kind != FixAllScopeKind::Faces) {
+            // Phase 1 may have closed the holes that hid a crossing in the input, so check again on this
+            // pass's result. Only crossing shells count: a solid wholly inside another is the user's call.
+            report(passFraction(pass, done / total), passText(pass, "checking which shells overlap..."));
+            MergePlanParams checkParams;
+            checkParams.intersectionTolerance = params_.checkParams.intersectionTolerance;
+            const std::optional<bool> overlap = shellsCross(mesh_, scope_, checkParams, stop_);
+            if (!overlap || stop_.stop_requested()) {
+                return false;
+            }
+            if (*overlap) {
+                params_.mergeShells = true;
+                result_.mergeTurnedOnInPass = pass;
+            }
+        }
         if (mergeRuns()) {
             report(passFraction(pass, done / total), passText(pass, "phase 2, planning the merge..."));
             MergePlanParams planParams;
@@ -832,6 +848,11 @@ private:
             MergePlan plan = planMerge(mesh_, scope_, planParams, stop_);
             if (!plan.complete || stop_.stop_requested()) {
                 return false;
+            }
+            if (params_.autoMergeShells) {
+                // A merge Fix All turned on by itself unites crossing shells only; it keeps nested solids
+                // that touch nothing (54226, 61459: deleting them took 44% of the volume)
+                plan.isolatedNestedSolids.clear();
             }
             if (hooks_ != nullptr && hooks_->adjustPlan) {
                 hooks_->adjustPlan(pass, plan);
@@ -1073,7 +1094,7 @@ private:
     }
 
     const Mesh& input_;
-    const FixAllParams& params_;
+    FixAllParams params_; // a copy: `autoMergeShells` may turn the merge on during the run
     std::stop_token stop_;
     FixAllProgress* progress_;
     const FixAllTestHooks* hooks_;

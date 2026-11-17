@@ -4,7 +4,9 @@
 #include "io/StlReader.hpp"
 #include "io/StlWriter.hpp"
 #include "mesh/Mesh.hpp"
+#include "repair/FixAll.hpp"
 #include "repair/GlobalRepair.hpp"
+#include "repair/MergePlan.hpp"
 #include "repair/MeshCleanup.hpp"
 #include "repair/RepairMetrics.hpp"
 #include "repair/TopologyCleanup.hpp"
@@ -39,6 +41,59 @@ void printJsonEscape(std::ostream& os, std::string_view s) {
             }
             break;
         }
+    }
+}
+
+const char* stepStatusName(FixAllStepStatus status) {
+    switch (status) {
+    case FixAllStepStatus::Applied:   return "applied";
+    case FixAllStepStatus::Unchanged: return "unchanged";
+    case FixAllStepStatus::Refused:   return "refused";
+    case FixAllStepStatus::Skipped:   return "skipped";
+    }
+    return "unknown";
+}
+
+/// Fix All's steps that did something or were refused (skipped and unchanged steps are left out).
+std::vector<const FixAllStepReport*> reportedSteps(const RepairCandidate& candidate) {
+    std::vector<const FixAllStepReport*> steps;
+    if (candidate.fixAll) {
+        for (const FixAllStepReport& step : candidate.fixAll->result.steps) {
+            if (step.status == FixAllStepStatus::Applied || step.status == FixAllStepStatus::Refused) {
+                steps.push_back(&step);
+            }
+        }
+    }
+    return steps;
+}
+
+void printJsonSteps(std::ostream& os, const RepairCandidate& candidate) {
+    os << "\"steps\":[";
+    bool first = true;
+    for (const FixAllStepReport* step : reportedSteps(candidate)) {
+        os << (first ? "" : ",") << "{\"pass\":" << step->pass << ",\"phase\":" << static_cast<int>(step->phase)
+           << ",\"stage\":\"";
+        printJsonEscape(os, step->label);
+        os << "\",\"status\":\"" << stepStatusName(step->status) << "\",\"count_before\":" << step->countBefore
+           << ",\"count_after\":" << step->countAfter << ",\"faces_removed\":" << step->facesRemoved
+           << ",\"faces_added\":" << step->facesAdded << ",\"elapsed_ms\":" << step->elapsedMs << ",\"detail\":\"";
+        printJsonEscape(os, step->status == FixAllStepStatus::Refused ? step->reason : step->detail);
+        os << "\"}";
+        first = false;
+    }
+    os << "],";
+}
+
+void printTextSteps(std::ostream& os, const RepairCandidate& candidate) {
+    for (const FixAllStepReport* step : reportedSteps(candidate)) {
+        os << "  pass " << step->pass << "." << static_cast<int>(step->phase) << " " << step->label << ": "
+           << stepStatusName(step->status) << " (" << step->countBefore << " -> " << step->countAfter << ", -"
+           << step->facesRemoved << "/+" << step->facesAdded << " faces)";
+        const std::string& text = step->status == FixAllStepStatus::Refused ? step->reason : step->detail;
+        if (!text.empty()) {
+            os << " " << text;
+        }
+        os << "\n";
     }
 }
 
@@ -117,6 +172,10 @@ std::string usageText(std::string_view prog) {
        << "Repair options:\n"
        << "  --passes <N>             Maximum Fix All passes (default: 3)\n"
        << "  --time-budget <sec>      Stop Fix All after this many seconds (default: 0 = no limit)\n"
+       << "  --merge-shells           Fix All always merges shells that overlap or nest (default: when\n"
+       << "                           shells cross, checked on the input and again after each pass)\n"
+       << "  --no-merge-shells        Fix All never merges shells\n"
+       << "  --report                 List each Fix All step that ran (with --json: a \"steps\" array)\n"
        << "  --edge-length <len>      Target edge length for remeshing, in file units (default: auto)\n"
        << "  --smoothing <N>          Smoothing passes for --remesh-voxel (default: 3)\n"
        << "  --chord-ratio <ratio>    Surface approximation for --remesh-iso (default: 0.10)\n"
@@ -183,6 +242,12 @@ CliOptions parseCliArguments(int argc, char const* const* argv) {
             opt.outputPath = std::filesystem::path(argv[++i]);
         } else if (arg == "--passes" && i + 1 < argc) {
             opt.passes = std::max(1, std::stoi(argv[++i]));
+        } else if (arg == "--report") {
+            opt.report = true;
+        } else if (arg == "--merge-shells") {
+            opt.mergeShells = true;
+        } else if (arg == "--no-merge-shells") {
+            opt.mergeShells = false;
         } else if (arg == "--time-budget" && i + 1 < argc) {
             opt.timeBudgetSeconds = std::stod(argv[++i]);
         } else if (arg == "--edge-length" && i + 1 < argc) {
@@ -344,6 +409,15 @@ int executeCliCommand(const CliOptions& options) {
     params.checkParams = checkParams;
     params.fixAll.passes = options.passes;
     params.fixAll.timeBudgetSeconds = options.timeBudgetSeconds;
+    if (effectiveAction == CliAction::FixAll) {
+        // Unless forced either way, merge when shells cross (not when one only sits inside another), and
+        // let Fix All check again after each pass's repairs
+        MergePlanParams planParams;
+        planParams.intersectionTolerance = checkParams.intersectionTolerance;
+        params.fixAll.mergeShells =
+            options.mergeShells.value_or(shellsCross(mesh, FixAllScope::whole(mesh), planParams).value_or(false));
+        params.fixAll.autoMergeShells = !options.mergeShells.has_value();
+    }
     params.remeshTargetSize = options.edgeLength;
     params.voxelSmoothingPasses = options.smoothingPasses;
     params.isosurfaceSmoothingPasses = options.smoothingPasses;
@@ -394,8 +468,16 @@ int executeCliCommand(const CliOptions& options) {
         std::cout << "\","
                   << "\"output\":\"";
         printJsonEscape(std::cout, outputPath.string());
-        std::cout << "\","
-                  << "\"elapsed_ms\":" << elapsedMs << ","
+        std::cout << "\",";
+        if (effectiveAction == CliAction::FixAll) {
+            const int turnedOn = candidate.fixAll ? candidate.fixAll->result.mergeTurnedOnInPass : 0;
+            std::cout << "\"merge_shells\":" << (params.fixAll.mergeShells || turnedOn > 0 ? "true" : "false") << ","
+                      << "\"merge_turned_on_in_pass\":" << turnedOn << ",";
+        }
+        if (options.report) {
+            printJsonSteps(std::cout, candidate);
+        }
+        std::cout << "\"elapsed_ms\":" << elapsedMs << ","
                   << "\"metrics\":{"
                   << "\"volume_before\":" << m.volumeBefore << ","
                   << "\"volume_after\":" << m.volumeAfter << ","
@@ -437,6 +519,18 @@ int executeCliCommand(const CliOptions& options) {
                   << " (" << (m.volumeChangePercent() >= 0 ? "+" : "") << m.volumeChangePercent() << "%)\n"
                   << "  Watertight: " << (m.watertight() ? "Yes" : "No") << "\n"
                   << "  Elapsed: " << elapsedMs << " ms\n";
+        if (effectiveAction == CliAction::FixAll) {
+            const int turnedOn = candidate.fixAll ? candidate.fixAll->result.mergeTurnedOnInPass : 0;
+            if (params.fixAll.mergeShells) {
+                std::cout << (options.mergeShells.has_value() ? "  Merge shells: on (--merge-shells)\n"
+                                                              : "  Merge shells: on (shells cross)\n");
+            } else if (turnedOn > 0) {
+                std::cout << "  Merge shells: turned on in pass " << turnedOn << " (its repairs left shells that cross)\n";
+            }
+        }
+        if (options.report) {
+            printTextSteps(std::cout, candidate);
+        }
     }
 
     return 0;

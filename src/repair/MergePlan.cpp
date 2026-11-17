@@ -254,6 +254,24 @@ bool mergeTickedByDefault(const FixAllScope& scope, const ShellRelations& relati
     return false;
 }
 
+std::optional<bool> shellsCross(const Mesh& mesh, const FixAllScope& scope, const MergePlanParams& params,
+                                std::stop_token stopToken) {
+    if (scope.kind == FixAllScopeKind::Faces) {
+        return false;
+    }
+    const std::vector<std::vector<Eigen::Index>> shells = shellsLargestFirst(mesh);
+    ShellRelationParams relationParams;
+    relationParams.intersectionTolerance = params.intersectionTolerance;
+    const ShellRelations relations = computeShellRelations(mesh, shells, relationParams, stopToken);
+    if (!relations.complete || stopToken.stop_requested()) {
+        return std::nullopt;
+    }
+    const std::vector<std::uint8_t> in = shellsInScope(scope, shells);
+    const auto inScope = [&](int s) { return s >= 0 && static_cast<std::size_t>(s) < in.size() && in[static_cast<std::size_t>(s)] != 0; };
+    return std::any_of(relations.pairs.begin(), relations.pairs.end(),
+                       [&](const ShellPairRelation& pair) { return inScope(pair.a) && inScope(pair.b) && overlaps(pair); });
+}
+
 std::optional<bool> mergeTickedByDefault(const Mesh& mesh, const FixAllScope& scope, const MergePlanParams& params,
                                          std::stop_token stopToken) {
     if (scope.kind == FixAllScopeKind::Faces) {

@@ -311,7 +311,7 @@ bool GlobalRepairParams::operator==(const GlobalRepairParams& other) const noexc
            fixAll.removeTinyShells == other.fixAll.removeTinyShells &&
            fixAll.tinyShellFraction == other.fixAll.tinyShellFraction && fixAll.removeFins == other.fixAll.removeFins &&
            fixAll.closeCracks == other.fixAll.closeCracks && fixAll.healThinFaces == other.fixAll.healThinFaces &&
-           fixAll.mergeShells == other.fixAll.mergeShells;
+           fixAll.mergeShells == other.fixAll.mergeShells && fixAll.autoMergeShells == other.fixAll.autoMergeShells;
 }
 
 RepairCandidate runGlobalRepair(

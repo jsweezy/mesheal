@@ -163,6 +163,12 @@ struct MergePlan {
 [[nodiscard]] std::optional<bool> mergeTickedByDefault(const Mesh& mesh, const FixAllScope& scope,
                                                        const MergePlanParams& params = {}, std::stop_token stopToken = {});
 
+/// Two shells in scope cross or share face area (`mergeTickedByDefault` without the nested solids): the
+/// test Fix All uses to turn the merge on by itself. A solid wholly inside another may be meant (an insert
+/// for a second material), so it is the user's call. False for a face scope; std::nullopt when stopped.
+[[nodiscard]] std::optional<bool> shellsCross(const Mesh& mesh, const FixAllScope& scope,
+                                              const MergePlanParams& params = {}, std::stop_token stopToken = {});
+
 /// Phase 2's stages for `plan` (worked out on the mesh phase 2 starts from): one step deleting every
 /// isolated nested solid (when there is one), then one step per merge group, which unites the group's
 /// shells with `mergeShells` (its pass-through cavities kept bit-identical) and checks the merge guards.
