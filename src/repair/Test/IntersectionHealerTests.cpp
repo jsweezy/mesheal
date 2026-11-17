@@ -651,3 +651,40 @@ TEST_CASE("Island collar dihedral angles count only faces sharing exactly one ed
     CHECK(a.collarMaxDihedralDeg == Catch::Approx(maxDeg).margin(1e-9));
     CHECK(a.collarMeanDihedralDeg == Catch::Approx(sum / static_cast<double>(count)).margin(1e-9));
 }
+
+TEST_CASE("An island round that collapses the shell is refused; cutting out a poked spike is not",
+          "[repair][intersections][islands]") {
+    const mesheal::IntersectionRepairSettings settings;
+    const mesheal::Mesh cube = mesheal::SampleMeshes::createGridCubeMesh(6, 6.0);
+    const std::vector<std::uint8_t> islandOnly = [&] {
+        std::vector<std::uint8_t> flags(static_cast<std::size_t>(cube.numFaces()), 0);
+        flags[0] = 1;
+        return flags;
+    }();
+
+    // A round that leaves a small piece of the shell (thingi-111959: 29082 faces -> 17) changes the shape
+    mesheal::Mesh piece = mesheal::SampleMeshes::createCubeMesh(1.0);
+    REQUIRE_FALSE(mesheal::islandRoundKeepsShape(cube, piece, settings, islandOnly));
+    REQUIRE_FALSE(mesheal::islandRoundKeepsShape(cube, mesheal::Mesh{}, settings, islandOnly));
+    REQUIRE(mesheal::islandRoundKeepsShape(cube, cube, settings, islandOnly));
+
+    // The poked cube's spike reaches below the bottom wall; repairing it removes that extent, which is allowed
+    const mesheal::Mesh poked = makePokedCube();
+    const Eigen::Index tip = vertexAt(poked, {3.0, 3.0, -1.0});
+    std::vector<std::uint8_t> spike(static_cast<std::size_t>(poked.numFaces()), 0);
+    for (Eigen::Index f = 0; f < poked.numFaces(); ++f) {
+        for (int c = 0; c < 3; ++c) {
+            spike[static_cast<std::size_t>(f)] |= poked.F(f, c) == tip ? 1 : 0;
+        }
+    }
+    std::vector<Eigen::Index> rest;
+    for (Eigen::Index f = 0; f < poked.numFaces(); ++f) {
+        if (spike[static_cast<std::size_t>(f)] == 0) {
+            rest.push_back(f);
+        }
+    }
+    const mesheal::Mesh spikeCut = mesheal::extractFaces(poked, rest);
+    REQUIRE(spikeCut.boundingBox().min.z() == Catch::Approx(0.0)); // the spike's reach below z = 0 is gone
+    REQUIRE(mesheal::islandRoundKeepsShape(poked, spikeCut, settings, spike));
+    REQUIRE_FALSE(mesheal::islandRoundKeepsShape(poked, spikeCut, settings, islandOnly)); // unless it was not under repair
+}

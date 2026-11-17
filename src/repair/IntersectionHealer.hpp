@@ -61,6 +61,12 @@ struct IslandAnalysis {
     IntersectionRepairMethod recommended = IntersectionRepairMethod::None;
 };
 
+/// The shape guard of one island-repair round on a shell: new faces must lie within
+/// `settings.maxDeviationFraction` of the shell's diagonal from `before`, and the outer extent of the
+/// vertices that no face in `repairing` (one flag per face of `before`) touches must not shrink by more.
+[[nodiscard]] bool islandRoundKeepsShape(const Mesh& before, const Mesh& after, const IntersectionRepairSettings& settings,
+                                         const std::vector<std::uint8_t>& repairing);
+
 /// Shell id of every face (faces with no edge neighbour still get their own shell).
 [[nodiscard]] std::vector<int> shellIdsOfFaces(const Mesh& mesh);
 

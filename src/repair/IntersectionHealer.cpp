@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cmath>
 #include <exception>
+#include <limits>
 #include <numeric>
 #include <unordered_map>
 #include <unordered_set>
@@ -746,11 +747,42 @@ Mesh repairShell(const Mesh& shell, const std::vector<IslandJob>& jobs, const In
 /// along the crossings (self-union) only splits old faces and drops what ends up inside, so its new faces lie on
 /// the old surface; a fill that bulges over a CAD wall to undo a small crossing does not. Faces removed are not
 /// measured: an inner part a union drops (a post sealed inside a cup) is far from the result but no damage.
-bool keepsShape(const Mesh& before, const Mesh& after, const IntersectionRepairSettings& settings) {
+/// The outer extent is: no side of the bounding box of the vertices of faces not being repaired (`repairing`
+/// may go, like a spike poked through a wall) may move inward by more than the limit, so a round that deletes most
+/// of the shell (CGAL or a union collapsing it to a few faces, thingi-111959) is undone.
+bool keepsShape(const Mesh& before, const Mesh& after, const IntersectionRepairSettings& settings,
+                const std::vector<std::uint8_t>& repairing) {
     if (settings.maxDeviationFraction <= 0.0) {
         return true;
     }
+    if (after.empty()) {
+        return before.empty();
+    }
     const double limit = settings.maxDeviationFraction * before.boundingBox().diagonal();
+    // Corners of the faces under repair may move (a corner pulled through a wall), so only untouched vertices count
+    std::vector<std::uint8_t> touched(static_cast<std::size_t>(before.numVertices()), 0);
+    for (Eigen::Index f = 0; f < before.numFaces(); ++f) {
+        if (static_cast<std::size_t>(f) < repairing.size() && repairing[static_cast<std::size_t>(f)] != 0) {
+            for (int c = 0; c < 3; ++c) {
+                touched[static_cast<std::size_t>(before.F(f, c))] = 1;
+            }
+        }
+    }
+    Eigen::Vector3d lo = Eigen::Vector3d::Constant(std::numeric_limits<double>::infinity());
+    Eigen::Vector3d hi = -lo;
+    for (Eigen::Index f = 0; f < before.numFaces(); ++f) {
+        for (int c = 0; c < 3; ++c) {
+            if (touched[static_cast<std::size_t>(before.F(f, c))] == 0) {
+                const Eigen::Vector3d p = before.V.row(before.F(f, c));
+                lo = lo.cwiseMin(p);
+                hi = hi.cwiseMax(p);
+            }
+        }
+    }
+    const BoundingBox kept = after.boundingBox();
+    if (lo.allFinite() && (((kept.min - lo).array() > limit).any() || ((hi - kept.max).array() > limit).any())) {
+        return false;
+    }
     return maxSurfaceDistance(extractFaces(after, faceDiff(before, after).added), before) <= limit;
 }
 
@@ -927,6 +959,11 @@ std::vector<IntersectionIsland> clusterIntersectionIslands(
         return a.faces.size() > b.faces.size();
     });
     return islands;
+}
+
+bool islandRoundKeepsShape(const Mesh& before, const Mesh& after, const IntersectionRepairSettings& settings,
+                           const std::vector<std::uint8_t>& repairing) {
+    return keepsShape(before, after, settings, repairing);
 }
 
 IslandAnalysis analyzeIsland(const Mesh& mesh, const IntersectionIsland& island, const IntersectionRepairSettings& settings) {
@@ -1130,7 +1167,15 @@ IslandBatchResult healIntersectionIslands(
             if (after.size() >= crossings && crossings > 0) {
                 continue; // this round made nothing better: undo it, next fallback
             }
-            if (!keepsShape(shellMesh, candidate, settings)) {
+            std::vector<std::uint8_t> repairing(static_cast<std::size_t>(shellMesh.numFaces()), 0);
+            for (const IslandJob& job : jobs) {
+                if (job.method != IntersectionRepairMethod::None) {
+                    for (const Eigen::Index f : job.faces) {
+                        repairing[static_cast<std::size_t>(f)] = 1;
+                    }
+                }
+            }
+            if (!keepsShape(shellMesh, candidate, settings, repairing)) {
                 ++result.roundsRefusedForShape;
                 continue; // it would remove or move real surface: undo it, next fallback
             }
