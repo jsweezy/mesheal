@@ -167,8 +167,8 @@ ShellMergeResult mergeShells(const Mesh& mesh, const ShellMergeInput& input) {
         ShellRelationParams params;
         params.intersectionTolerance = input.intersectionTolerance;
         params.involving = hollows;
-        const ShellRelations near = computeShellRelations(mesh, faceLists, params);
-        const std::vector<CavityReach> reaches = findCavityReaches(near, candidates, hollows, hollowContainers);
+        const ShellRelations nearby = computeShellRelations(mesh, faceLists, params);
+        const std::vector<CavityReach> reaches = findCavityReaches(nearby, candidates, hollows, hollowContainers);
 
         if (!reaches.empty()) {
             // Merge groups from every pair, so only the groups that reach a hollow are refused
@@ -238,7 +238,7 @@ ShellMergeResult mergeShells(const Mesh& mesh, const ShellMergeInput& input) {
             for (int c = 0; c < m; ++c) {
                 if (inRefusedGroup[static_cast<std::size_t>(n + c)] == 0 &&
                     united(input.cavities[static_cast<std::size_t>(c)].container) &&
-                    holds(near.shells[static_cast<std::size_t>(o)], n + c) && !meets(near.pair(o, n + c))) {
+                    holds(nearby.shells[static_cast<std::size_t>(o)], n + c) && !meets(nearby.pair(o, n + c))) {
                     refuse(o, MergeRefusal::InsideCavity, "It floats inside a cavity that is kept: left as it is.", c);
                     break;
                 }

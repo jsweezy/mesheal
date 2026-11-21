@@ -721,7 +721,7 @@ FillReport capCutPlane(Workspace& ws, const HoleLoop& hole, const std::stop_toke
     std::vector<std::array<char, 2>> want(static_cast<std::size_t>(regions), {0, 0});
     std::vector<std::array<char, 2>> refused(static_cast<std::size_t>(regions), {0, 0});
     std::vector<std::array<std::size_t, 2>> refusedBy(static_cast<std::size_t>(regions), {0, 0}); // a rim edge that refused it
-    const auto near = [&](const RimEdge& r) {
+    const auto nearPoint = [&](const RimEdge& r) {
         const Eigen::Vector3d p = 0.5 * (ws.point(r.a) + ws.point(r.b));
         char text[96];
         std::snprintf(text, sizeof(text), " (near %.4g, %.4g, %.4g)", p.x(), p.y(), p.z());
@@ -762,7 +762,7 @@ FillReport capCutPlane(Workspace& ws, const HoleLoop& hole, const std::stop_toke
     for (std::size_t r = 0; r < want.size(); ++r) {
         for (std::size_t w = 0; w < 2; ++w) {
             if (want[r][w] != 0 && refused[r][w] != 0) {
-                report.status = "The faces around the openings disagree about which side is solid" + near(rim[refusedBy[r][w]]) + ".";
+                report.status = "The faces around the openings disagree about which side is solid" + nearPoint(rim[refusedBy[r][w]]) + ".";
                 return report;
             }
         }
