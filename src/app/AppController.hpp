@@ -71,6 +71,7 @@ struct FixAllPreferences {
     bool removeFins = settings::kDefaultFixAllFins;
     bool closeCracks = settings::kDefaultFixAllCloseCracks;
     bool healThinFaces = settings::kDefaultFixAllHealThin;
+    bool uniteSelfCrossingShells = settings::kDefaultFixAllUniteSelfCrossing;
 };
 
 struct PreferenceDefaults {
@@ -396,6 +397,15 @@ public:
 
     /// Loads an ASCII or binary STL file from disk using the active `fileUnit()` and `toleranceConfig()`.
     bool loadStlFile(const std::filesystem::path& filepath);
+
+    /// Re-reads `currentFilePath()` from disk using the active `fileUnit()` and `toleranceConfig()`.
+    /// Returns false (preserving the current mesh) when no file path is active or the read fails.
+    bool reloadCurrentFile();
+
+    /// True when the current mesh came from or was saved to a file on disk (`!currentFilePath().empty()`).
+    [[nodiscard]] bool canReload() const noexcept {
+        return !currentFilePath_.empty();
+    }
 
     /// Loads the built-in sample cube with 3 injected triangles (zero-area, microscopic, needle; at the
     /// default 100 : 1 aspect limit only the zero-area and needle faces are thin).

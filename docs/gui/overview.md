@@ -21,7 +21,7 @@ Each panel collapses to its title bar. **View > Reset Layout** restores the defa
 |---|---|
 | **File** | Open, Open Recent (last 10 files), Load Sample, Save, Save As (binary or ASCII STL), Export Selected Shells, Quit. |
 | **Edit** | Undo (names the last action), Select Defects (all, none, invert, next, previous), Select Faces (box, circle, all, none, X-ray), Preferences (`Cmd/Ctrl+,`). |
-| **View** | Camera (Home, Frame selection, standard views, Orthographic), Compass, Ghost Mesh (`G`), Wireframe Edges, Advanced (Polyscope appearance, slice planes, clipping), Screenshot, Reset Layout. |
+| **View** | Reload (`Ctrl+R` / `Cmd+R`), Camera (Home, Frame selection, standard views, Orthographic), Compass, Ghost Mesh (`G`), Wireframe Edges, Advanced (Polyscope appearance, slice planes, clipping), Screenshot, Reset Layout. |
 | **Mesh** | Operations that change the mesh but are not defect repairs: Units & Scale, Transform (Set Origin to Selection, Translate / Rotate), Shells, and under *Modify*: Decimate, Merge by Distance, Weld, Delete Selected Faces, Remove Small Shells. Mesh Info. |
 | **Repair** | Check Mesh (`F5`), Fix All (`Shift+F5`), Fix All One Pass (`Alt+Shift+F5`), Remesh & Watertight Rebuild, and one *Fix All* / *Repair All* item per Mesh Health row. |
 | **Help** | Getting Started, Navigation & Shortcuts (`F1` or `?`), Online Documentation, Report an Issue, About Mesheal. |

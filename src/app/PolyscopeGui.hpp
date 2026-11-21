@@ -92,6 +92,8 @@ private:
     void openFileDialog();
     /// Loads an STL by path (Open dialog and Open Recent): records it in the recent list on success.
     void openStlFile(const std::filesystem::path& path);
+    void reloadCurrentFile();
+    void performReload();
     void drawOpenRecentMenu();
     void saveCurrentFile();
     void saveAsDialog(StlFormat format);
@@ -298,6 +300,7 @@ private:
     bool showAboutWindow_ = false;
     bool showGettingStartedWindow_ = false;
     bool requestSaveConfirm_ = false;
+    bool requestReloadConfirm_ = false;
     bool requestDeleteConfirm_ = false;                      ///< Open the X-key "Delete N selected faces?" popup
     bool requestSetOrigin_ = false;                          ///< Open the Set Origin to Selection confirmation
     Eigen::Vector3d pendingOrigin_ = Eigen::Vector3d::Zero(); ///< Selection centroid shown in that confirmation

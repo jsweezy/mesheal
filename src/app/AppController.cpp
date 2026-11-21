@@ -138,6 +138,20 @@ bool AppController::loadStlFile(const std::filesystem::path& filepath) {
     return true;
 }
 
+bool AppController::reloadCurrentFile() {
+    if (currentFilePath_.empty()) {
+        lastErrorMessage_ = "No file on disk to reload.";
+        postStatusMessage(lastErrorMessage_, true);
+        return false;
+    }
+    const std::filesystem::path path = currentFilePath_; // copy: loadStlFile -> setMesh clears currentFilePath_
+    if (!loadStlFile(path)) {
+        return false;
+    }
+    postStatusMessage("Reloaded " + loadedSourceLabel_);
+    return true;
+}
+
 void AppController::loadSampleDefectiveMesh() {
     lastErrorMessage_.clear();
     setMesh(SampleMeshes::createSampleDefectiveMesh(mesh_.fileUnit), "Sample Defective Mesh");

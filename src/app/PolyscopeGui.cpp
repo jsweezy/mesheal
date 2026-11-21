@@ -912,6 +912,9 @@ void PolyscopeGui::handleKeyboardShortcuts() {
     if (mod && ImGui::IsKeyPressed(ImGuiKey_O, false)) {
         openFileDialog();
     }
+    if (mod && ImGui::IsKeyPressed(ImGuiKey_R, false)) {
+        reloadCurrentFile();
+    }
     if (mod && ImGui::IsKeyPressed(ImGuiKey_S, false)) {
         if (io.KeyShift) {
             saveAsDialog(saveFormat_);

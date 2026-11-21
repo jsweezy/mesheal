@@ -672,6 +672,11 @@ void PolyscopeGui::drawViewMenu() {
     if (!ImGui::BeginMenu("View")) {
         return;
     }
+    if (ImGui::MenuItem("Reload", modShortcut("R").c_str(), false, controller_.canReload())) {
+        reloadCurrentFile();
+    }
+    tooltip("Re-read the current STL file from disk (keeping the camera view). Disabled for built-in samples.");
+    ImGui::Separator();
     if (ImGui::BeginMenu("Camera", controller_.hasMesh())) {
         if (ImGui::MenuItem("Home (frame all)", "Home / H")) {
             resetCameraAndPivotToHome();
@@ -989,6 +994,24 @@ void PolyscopeGui::openStlFile(const std::filesystem::path& path) {
     }
     overwriteConfirmedFor_.clear();
     syncMeshStructureToPolyscope(true);
+}
+
+void PolyscopeGui::reloadCurrentFile() {
+    if (!controller_.canReload()) {
+        return;
+    }
+    if (controller_.isModified()) {
+        requestReloadConfirm_ = true;
+        return;
+    }
+    performReload();
+}
+
+void PolyscopeGui::performReload() {
+    if (!controller_.reloadCurrentFile()) {
+        return;
+    }
+    syncMeshStructureToPolyscope(false); // keep the current camera view while reloading from disk
 }
 
 // A missing file is shown greyed out (not removed on click), so the list stays predictable and the
@@ -1441,6 +1464,9 @@ void PolyscopeGui::drawFixAllPreferencesTab() {
     ImGui::Checkbox("Close cracks", &fix.closeCracks);
     ImGui::Checkbox("Heal thin faces", &fix.healThinFaces);
     gui::helpMarker("Uses the aspect-ratio limit of the Thin / sliver faces settings.");
+    ImGui::Checkbox("Unite shells that cross themselves", &fix.uniteSelfCrossingShells);
+    gui::helpMarker("After the island patches, cuts each closed shell that still passes through itself along every "
+                    "crossing (exact arithmetic) and keeps its outer surface. Cavities and open shells are never touched.");
     ImGui::TextDisabled("Merge shells is decided for each mesh in the Fix All panel; it is not saved.");
     if (ImGui::Button("Reset Fix All settings")) {
         fix = FixAllPreferences{};
@@ -1449,7 +1475,8 @@ void PolyscopeGui::drawFixAllPreferencesTab() {
     if (fix.passes != s.passes || fix.timeBudgetSeconds != s.timeBudgetSeconds || fix.weld != s.weld ||
         fix.weldTolerance.absFloor != s.weldTolerance.absFloor || fix.weldTolerance.relTol != s.weldTolerance.relTol ||
         fix.removeTinyShells != s.removeTinyShells || fix.tinyShellFraction != s.tinyShellFraction ||
-        fix.removeFins != s.removeFins || fix.closeCracks != s.closeCracks || fix.healThinFaces != s.healThinFaces) {
+        fix.removeFins != s.removeFins || fix.closeCracks != s.closeCracks || fix.healThinFaces != s.healThinFaces ||
+        fix.uniteSelfCrossingShells != s.uniteSelfCrossingShells) {
         if (fix.weldTolerance.relTol <= 0.0) {
             fix.weldTolerance.relTol = s.weldTolerance.relTol; // 0 is refused
         }
@@ -1580,6 +1607,25 @@ void PolyscopeGui::drawModalPopups() {
         if (ImGui::Button("Save As...")) {
             ImGui::CloseCurrentPopup();
             saveAsDialog(saveFormat_);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (requestReloadConfirm_) {
+        ImGui::OpenPopup("Reload from disk?");
+        requestReloadConfirm_ = false;
+    }
+    if (ImGui::BeginPopupModal("Reload from disk?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("Discard unsaved changes and reload %s?",
+                    controller_.currentFilePath().filename().string().c_str());
+        ImGui::TextDisabled("%s", controller_.currentFilePath().string().c_str());
+        if (ImGui::Button("Reload")) {
+            performReload();
+            ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
         if (ImGui::Button("Cancel")) {
@@ -1781,6 +1827,7 @@ void PolyscopeGui::drawNavigationHelpWindow() {
         {"Ctrl/Cmd + Z", "Undoes the last mesh modification (repair, Fix All / Fix Selected, Scale, Transform, Decimate, Merge by Distance, Weld, Delete Faces / Shells), one step at a time. "
                          "Undoing a Scale or Transform re-frames the camera (Home)"},
         {"Ctrl/Cmd + O / S / Shift+S", "Open, Save (overwrite, asks the first time), Save As"},
+        {"Ctrl/Cmd + R", "View > Reload: re-reads the current STL file from disk (asks if there are unsaved changes), keeping the camera view"},
         {"Ctrl/Cmd + ,", "Preferences"},
         {"?  or  F1", "Toggles this Navigation & Shortcuts window"},
         {"Ctrl+C / Ctrl+V", "Copy / paste the camera pose (Polyscope built-in)"},

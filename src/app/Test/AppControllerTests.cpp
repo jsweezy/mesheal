@@ -232,6 +232,51 @@ TEST_CASE("AppController loads STL file from disk and manages ghost mesh setting
     REQUIRE(controller.ghostMeshOpacity() == Catch::Approx(0.4));
 }
 
+TEST_CASE("AppController reloads modified STL file from disk and handles missing files",
+          "[app][controller][io][reload]") {
+    mesheal::AppController controller;
+    REQUIRE_FALSE(controller.canReload());
+    REQUIRE_FALSE(controller.reloadCurrentFile());
+
+    // Built-in samples have no file on disk
+    controller.loadSampleDefectiveMesh();
+    REQUIRE_FALSE(controller.canReload());
+    REQUIRE_FALSE(controller.reloadCurrentFile());
+
+    const auto tempDir = std::filesystem::temp_directory_path();
+    const auto uniqueSuffix = std::to_string(
+        std::chrono::steady_clock::now().time_since_epoch().count());
+    const auto tempPath = tempDir / ("mesheal_reload_test_" + uniqueSuffix + ".stl");
+
+    {
+        std::ofstream out(tempPath, std::ios::binary);
+        out << mesheal::SampleMeshes::createCubeAsciiStl(10.0);
+    }
+
+    REQUIRE(controller.loadStlFile(tempPath));
+    REQUIRE(controller.canReload());
+    REQUIRE(controller.mesh().V.col(0).maxCoeff() - controller.mesh().V.col(0).minCoeff() == Catch::Approx(10.0));
+
+    // Overwrite the STL on disk with a larger cube and reload
+    {
+        std::ofstream out(tempPath, std::ios::binary | std::ios::trunc);
+        out << mesheal::SampleMeshes::createCubeAsciiStl(25.0);
+    }
+
+    REQUIRE(controller.reloadCurrentFile());
+    REQUIRE(controller.canReload());
+    REQUIRE(controller.currentFilePath() == tempPath);
+    REQUIRE_FALSE(controller.isModified());
+    REQUIRE(controller.mesh().V.col(0).maxCoeff() - controller.mesh().V.col(0).minCoeff() == Catch::Approx(25.0));
+
+    // If the file disappears on disk, reload fails without discarding the current mesh
+    std::filesystem::remove(tempPath);
+    REQUIRE_FALSE(controller.reloadCurrentFile());
+    REQUIRE(controller.hasMesh());
+    REQUIRE(controller.currentFilePath() == tempPath);
+    REQUIRE(controller.mesh().V.col(0).maxCoeff() - controller.mesh().V.col(0).minCoeff() == Catch::Approx(25.0));
+}
+
 TEST_CASE("AppController persists overlay styles across defect selections and computes the near-clip zoom scale",
           "[app][controller][highlight][zoom]") {
     mesheal::AppController controller;
