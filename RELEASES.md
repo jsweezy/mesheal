@@ -2,6 +2,19 @@
 
 Release notes, newest first. Versions are simple integers (v1, v2, ...) tagged in git as `v#`. See [the release process](https://github.com/jsweezy/mesheal/blob/main/RELEASE_PROCESS.md) for how to cut a release.
 
+## v6 — 2026-11-21
+
+Fix All repairs 92 of 131 broken files in the FixSTL 200-file benchmark (v5: 86), still without damaging any of the 69 healthy files, and every file gets the same result on every run. See the [benchmark results](https://jsweezy.github.io/mesheal/BENCHMARKS/).
+
+- Fix All cuts a closed part that passes through itself along every crossing and keeps its outer surface. Cavities, open parts and other parts are left alone. Turn it off with `--no-unite-shells`, the Fix All options in the app, or the Blender panel.
+- Fix All unfolds faces that fold back onto each other along a shared edge.
+- New hole fill, Cap Cut Plane: closes the base of a model that was cut flat, and leaves a ring's through-hole open. Fix All uses it on its own when several openings share one plane; it is also in the app's Holes list.
+- Heal thin faces no longer moves the edge of a flat opening, so it can still be capped.
+- Hole filling gives the same result on every run.
+- When Fix All cannot fill a hole, its report says why.
+- `--trace` on the command line, and `fix_all.trace_steps` in Python, measure the whole mesh after every Fix All step. Python also gains `measure()`, `crossing_pairs()` and `shell_ids()`.
+- View > Reload (Cmd/Ctrl+R) reloads the STL file from disk.
+
 ## v5 — 2026-11-16
 
 Fix All repairs more broken files and no longer crashes or hangs on any file in the FixSTL 200-file benchmark: 86 of 131 broken files repaired, none of the 69 healthy files damaged. See the [benchmark results](https://jsweezy.github.io/mesheal/BENCHMARKS/).

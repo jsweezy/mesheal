@@ -4,12 +4,12 @@ cmake_minimum_required(VERSION 3.20)
 # (see RELEASE_PROCESS.md). Versions are simple integers: 1, 2, 3, ...
 project(
     Mesheal
-    VERSION 5
+    VERSION 6
     DESCRIPTION "Mesheal — STL Repair Tool for Simulation Meshes"
     LANGUAGES CXX C
 )
 
-set(MESHEAL_VERSION_DATE "2026-11-16")  # ISO release date (YYYY-MM-DD)
+set(MESHEAL_VERSION_DATE "2026-11-21")  # ISO release date (YYYY-MM-DD)
 
 # ------------------------------------------------------------------------------
 # Language Standard & Global Settings
