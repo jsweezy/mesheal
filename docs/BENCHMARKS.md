@@ -179,6 +179,26 @@ slower there. `--dry-run` times the candidates without changing the list.
 python3 -m benchmarks.add_fast_files --count 10 --seed 2
 ```
 
+### Other tools on the same files
+
+Two more methods run another tool instead of Mesheal and judge its output with Mesheal's own checker, the same
+way as Fix All. Their results are stored under their own key (`blender_print3d_local`, `fixstl_web_local`),
+next to FixSTL's published entries, so new Thingi10K files get a comparison too.
+
+- **`--method blender-print3d`** runs Blender's 3D Print Toolbox, *Make Manifold* with default settings, as FixSTL
+  did. Blender runs in the background, one file per process, with a separate profile so your own Blender setup is
+  not touched. The time is the whole Blender process, start-up included. Setup, once:
+  download `add-on-print3d-toolbox-v1.5.0.zip` from extensions.blender.org, then
+  `BLENDER_USER_RESOURCES=~/.cache/mesheal/blender-print3d/profile Blender -b --factory-startup --command extension install-file -r user_default -e add-on-print3d-toolbox-v1.5.0.zip`.
+- **`--method fixstl-web`** runs the [FixSTL](https://fixstl.ai) web tool in a headless browser: it chooses the
+  file, applies the conservative repair and saves the download. The model never leaves the machine; usage
+  analytics requests are blocked so test runs are not counted. The time is the check plus the repair, without
+  loading the page. Each result records whether FixSTL repaired the file or kept the input, and the engine file
+  the page loaded. It needs Playwright in its own environment; see `benchmarks/fixstl_web.py` for the setup.
+
+On the 137 fast-set files that FixSTL published results for, these runs agree with FixSTL's own verdicts on 130
+files (Blender) and 132 files (FixSTL); the rest differ because the two checkers disagree, not the tools.
+
 ### Command-Line Arguments
 
 | Argument | Default | Description |
@@ -189,6 +209,8 @@ python3 -m benchmarks.add_fast_files --count 10 --seed 2
 | `--cache-dir` | `~/.cache/mesheal/benchmarks/models/` | Directory where downloaded STLs are stored. |
 | `-o, --output` | `benchmarks/results/mesheal-<method>-<N>-<date>.json` | Destination path for benchmark results JSON. |
 | `--timeout` | 1800 | Stops a repair that runs longer than this many seconds (wall clock) and records it as timed out. 0 = no limit. |
+| `--blender-bin`, `--blender-profile` | Blender's usual install, `~/.cache/mesheal/blender-print3d/profile` | Blender and the profile with the 3D Print Toolbox, for `blender-print3d`. |
+| `--fixstl-python` | `~/.cache/mesheal/fixstl-venv/bin/python` | Python with Playwright, for `fixstl-web`. |
 | `--dry-run` | false | Downloads and caches models without running repair passes. |
 
 ---

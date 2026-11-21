@@ -12,7 +12,9 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List
 
+from .blender_runner import repair_with_print3d
 from .cache import ModelCache
+from .fixstl_runner import repair_with_fixstl_web
 from .evaluator import attach_non_dedup_metrics, evaluate_repair_result, needs_non_dedup_check
 from .runner import find_mesheal_binary, repair
 
@@ -49,8 +51,12 @@ def main() -> int:
             "rebuild-alpha",
             "rebuild-union",
             "rebuild-winding",
+            "blender-print3d",
+            "fixstl-web",
         ],
-        help="Repair method to test (default: fix-all)",
+        help="Repair method to test (default: fix-all). blender-print3d runs Blender's 3D Print Toolbox "
+        "(Make Manifold) instead of Mesheal, and fixstl-web the FixSTL web tool in a headless browser; both are "
+        "checked with Mesheal",
     )
     parser.add_argument("--limit", type=int, default=0, help="Limit number of models to process (0 = all)")
     parser.add_argument("--cache-dir", type=str, default=None, help="Directory to cache downloaded models")
@@ -62,6 +68,11 @@ def main() -> int:
         default=1800.0,
         help="Stop a repair that runs longer than this many seconds, wall clock (default: 1800; 0 = no limit)",
     )
+    parser.add_argument("--blender-bin", type=str, default=None, help="Blender to run for blender-print3d")
+    parser.add_argument("--blender-profile", type=str, default=None,
+                        help="Blender profile with the 3D Print Toolbox (default: ~/.cache/mesheal/blender-print3d/profile)")
+    parser.add_argument("--fixstl-python", type=str, default=None,
+                        help="Python with Playwright for fixstl-web (default: ~/.cache/mesheal/fixstl-venv/bin/python)")
     parser.add_argument("--dry-run", action="store_true", help="Download and verify cache only without running repair")
 
     args = parser.parse_args()
@@ -99,6 +110,10 @@ def main() -> int:
     crashed_ids: List[str] = []
     timed_out_ids: List[str] = []
     total_elapsed_ms = 0.0
+    blender = args.method == "blender-print3d"
+    fixstl = args.method == "fixstl-web"
+    # Other tools' results get their own key, so FixSTL's published entries and Mesheal's stay as they are
+    result_key = "blender_print3d_local" if blender else ("fixstl_web_local" if fixstl else "mesheal")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
@@ -123,16 +138,28 @@ def main() -> int:
                 continue
 
             out_fixed = tmp_path / f"{source_id}_fixed.stl"
-            result = repair(
-                input_file=model_path,
-                method=args.method,
-                output_file=out_fixed,
-                mesheal_bin=args.mesheal_bin,
-                timeout_sec=args.timeout or None,
-            )
+            if fixstl:
+                result = repair_with_fixstl_web(model_path, out_fixed, mesheal_bin=args.mesheal_bin,
+                                                python=args.fixstl_python, timeout_sec=args.timeout or None)
+            elif blender:
+                result = repair_with_print3d(model_path, out_fixed, mesheal_bin=args.mesheal_bin,
+                                             blender_bin=args.blender_bin, profile=args.blender_profile,
+                                             timeout_sec=args.timeout or None)
+            else:
+                result = repair(
+                    input_file=model_path,
+                    method=args.method,
+                    output_file=out_fixed,
+                    mesheal_bin=args.mesheal_bin,
+                    timeout_sec=args.timeout or None,
+                )
 
             eval_res = evaluate_repair_result(defective, result)
-            if args.method != "dedup" and needs_non_dedup_check(eval_res):
+            if blender and result.metrics is not None:
+                eval_res["blender"] = result.metrics.raw.get("blender", {})
+            if fixstl and result.metrics is not None:
+                eval_res["fixstl"] = result.metrics.raw.get("fixstl", {})
+            if not blender and not fixstl and args.method != "dedup" and needs_non_dedup_check(eval_res):
                 out_dedup = tmp_path / f"{source_id}_dedup.stl"
                 dedup_res = repair(
                     input_file=model_path,
@@ -152,7 +179,7 @@ def main() -> int:
                     )
                     attach_non_dedup_metrics(eval_res, post_dedup_res, defective)
 
-            entry.setdefault("results", {})["mesheal"] = eval_res
+            entry.setdefault("results", {})[result_key] = eval_res
 
             if defective:
                 defective_count += 1
