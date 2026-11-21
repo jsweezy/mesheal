@@ -246,29 +246,27 @@ TEST_CASE("Islands of two shells touching at one vertex stay apart (thingi-73400
     REQUIRE(r.success);
 }
 
-TEST_CASE("Batch island repair keeps a CAD part's walls when a fill would bulge over them",
-          "[repair][intersections][batch][tom-shuttle]") {
-    // CAD part by teil3 (CC BY-SA, examples/tom_x_axis_shuttle_license.md): 6 small crossings next to large walls
+TEST_CASE("Batch island repair keeps a CAD part's walls", "[repair][intersections][batch][tom-shuttle]") {
+    // CAD part by teil3 (CC BY-SA, examples/tom_x_axis_shuttle_license.md): 6 small crossings next to large walls.
+    // CGAL's 3D Delaunay hole search used to fill these holes by bulging over whole walls (5+ mm), which the
+    // shape guard undid; with that search compiled out (CGAL_HOLE_FILLING_DO_NOT_USE_DT3) even an unguarded
+    // round keeps the walls. The guard itself is tested on synthetic geometry below (islandRoundKeepsShape).
     const std::filesystem::path path =
         std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() / "examples" / "tom_x_axis_shuttle.stl";
     REQUIRE(std::filesystem::exists(path));
     const mesheal::Mesh shuttle = mesheal::loadStl(path);
     REQUIRE(islandsOf(shuttle).size() == 6);
 
-    // Without the guard the first round's fills cut whole walls out and bulge over them (the old behaviour)
     mesheal::IntersectionRepairSettings unguarded;
     unguarded.maxDeviationFraction = 0.0;
     const mesheal::IslandBatchResult old = mesheal::healIntersectionIslands(shuttle, mesheal::CheckParams{}, {}, {}, unguarded);
     REQUIRE(old.success);
-    CHECK(mesheal::maxSurfaceDistance(shuttle, old.mesh) > 5.0); // mm of wall lost
+    CHECK(mesheal::maxSurfaceDistance(shuttle, old.mesh) < 0.01);
 
-    // With it that round is undone and the next method cuts along the crossings: nothing moves
     const mesheal::IslandBatchResult r = mesheal::healIntersectionIslands(shuttle, mesheal::CheckParams{});
     REQUIRE(r.success);
     CHECK(r.islandsAfter == 0);
     CHECK(crossings(r.mesh) == 0);
-    CHECK(r.roundsRefusedForShape >= 1);
-    CHECK(r.statusMessage.find("would have changed the shape") != std::string::npos);
     CHECK(mesheal::maxSurfaceDistance(shuttle, r.mesh) < 0.01);
     CHECK(mesheal::maxSurfaceDistance(r.mesh, shuttle) < 0.01);
     CHECK(mesheal::signedVolume(r.mesh) == Catch::Approx(mesheal::signedVolume(shuttle)).epsilon(1e-4));

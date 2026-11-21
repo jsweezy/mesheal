@@ -510,7 +510,7 @@ FillReport applyFill(Workspace& ws, const HoleLoop& hole, HoleFillMethod method,
                 if (newFaces.size() == before) {
                     report.status = "CGAL found no valid triangulation for this hole";
                     report.status += hole.shape == HoleShape::Crack ? " (every triangle across a zero-width gap is degenerate): try Close Crack."
-                                     : skipCubic ? " in its Delaunay search space; the full O(n^3) search is skipped for holes over " +
+                                     : skipCubic ? " with the 2D triangulation; the full O(n^3) search is skipped for holes over " +
                                                        std::to_string(settings::kMaxCubicHoleFillEdges) + " edges."
                                                  : ".";
                     return report;

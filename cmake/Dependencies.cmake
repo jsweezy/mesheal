@@ -123,6 +123,12 @@ if(NOT CGAL_FOUND)
 endif()
 mesheal_mark_target_includes_system(CGAL::CGAL)
 mesheal_record_dependency("CGAL" "${CGAL_VERSION}")
+# CGAL's hole filling narrows its search with a 3D Delaunay triangulation of the rim. On a nearly
+# flat rim that triangulation depends on where its objects sit in memory, so the same input could be
+# filled differently from one run to the next (seen in remove_self_intersections). Without it CGAL
+# uses its full O(n^3) search, which is deterministic; the 2D constrained triangulation still runs
+# first. Set for every target (it changes inline CGAL templates, so all files must agree).
+add_compile_definitions(CGAL_HOLE_FILLING_DO_NOT_USE_DT3)
 # The Python module either turns TBB off or uses the oneTBB that Blender ships (Blender 5.1+): two
 # TBB copies in one process are risky. For the latter, MESHEAL_BLENDER_TBB_LIBRARY and
 # MESHEAL_BLENDER_TBBMALLOC_LIBRARY name Blender's own libtbb/libtbbmalloc (on Windows, import

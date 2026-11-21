@@ -158,9 +158,10 @@ TEST_CASE("CGAL triangulate_hole uses the 2D CDT only when asked", "[repair][hol
     mesheal::CgalSurfaceMesh sm = toCgal(holed);
     Phases byDefault;
     PMP::triangulate_hole(sm, borderCycles(sm).front(), CGAL::parameters::visitor(PhaseVisitor(byDefault)));
+    // Mesheal compiles CGAL with CGAL_HOLE_FILLING_DO_NOT_USE_DT3 (its 3D Delaunay search space varied from run
+    // to run), so without the 2D CDT the full cubic search runs
     REQUIRE(byDefault.planar == 0);
-    REQUIRE(byDefault.quadraticOk); // 3D Delaunay search space (2D for a flat hole: no start call)
-    REQUIRE(byDefault.cubic == 0);
+    REQUIRE(byDefault.cubic == 1);
 
     mesheal::CgalSurfaceMesh sm2 = toCgal(holed);
     Phases withCdt;

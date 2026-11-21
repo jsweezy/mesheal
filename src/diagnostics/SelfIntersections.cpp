@@ -431,6 +431,10 @@ std::optional<std::vector<FacePairHit>> findFacePairs(
     for (Traverser& traverser : traversers) {
         pairs.insert(pairs.end(), traverser.pairs().begin(), traverser.pairs().end());
     }
+    // Which worker found which pair depends on timing: sort, so every caller sees the same order on every run
+    std::sort(pairs.begin(), pairs.end(), [](const FacePairHit& x, const FacePairHit& y) {
+        return x.a != y.a ? x.a < y.a : x.b < y.b;
+    });
     return pairs;
 }
 

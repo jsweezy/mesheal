@@ -399,7 +399,8 @@ FillOutcome fillIsland(CgalSurfaceMesh& sm, const std::vector<CgalFaceIndex>& li
             visited.insert(b.idx());
             ++holeEdges;
         }
-        // Same search as Fill Hole (HoleFiller): 2D CDT first; no O(n^3) fallback on big holes
+        // Same search as Fill Hole (HoleFiller): 2D CDT first; no O(n^3) fallback on big holes (the 3D Delaunay
+        // search is compiled out, CGAL_HOLE_FILLING_DO_NOT_USE_DT3, so results are the same on every run)
         std::vector<CgalFaceIndex> patch;
         const auto np = CGAL::parameters::use_2d_constrained_delaunay_triangulation(true)
                             .do_not_use_cubic_algorithm(holeEdges > settings::kMaxCubicHoleFillEdges)

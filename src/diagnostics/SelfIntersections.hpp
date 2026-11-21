@@ -46,7 +46,7 @@ struct FacePairHit {
 };
 
 /// The face pairs behind `checkSelfIntersections` (same tree, same test, same tolerance `tol`, a length),
-/// restricted by `query`. Unsorted. std::nullopt when stopped.
+/// restricted by `query`. Sorted by (a, b), the same on every run whatever the threads. std::nullopt when stopped.
 [[nodiscard]] std::optional<std::vector<FacePairHit>> findFacePairs(
     const Mesh& mesh,
     double tol,
