@@ -16,7 +16,7 @@ namespace mesheal {
 enum class FixAllRowSwitch : std::uint8_t {
     Option,   ///< A box the user can tick or untick for this run (`FixAllParams`)
     Always,   ///< Always runs: ticked, no box to change
-    Required  ///< Runs only after a merge (row 11): never a real box
+    Required  ///< Runs only after a merge (row 12): never a real box
 };
 
 /// One numbered row of the Fix All plan (Plan state), with its texts. Pure data for the panel.
@@ -39,7 +39,7 @@ struct FixAllPlanRow {
     }
 };
 
-/// The 12 rows for the controller's current mesh, scope, plan-time check and Fix All settings.
+/// The 13 rows for the controller's current mesh, scope, plan-time check and Fix All settings.
 [[nodiscard]] std::vector<FixAllPlanRow> fixAllPlanRows(AppController& controller);
 
 /// Shells in scope after the planned merge: each group counts as one, each deleted nested solid as none.
@@ -48,7 +48,7 @@ struct FixAllPlanRow {
 /// Shell count of the scope before the planned merge.
 [[nodiscard]] std::size_t shellsInPlanScope(const MergePlan& plan);
 
-/// "28 -> 1 shell" (the row 10 count), "nothing to merge", or "-" when the plan has nothing to say.
+/// "28 -> 1 shell" (the row 11 count), "nothing to merge", or "-" when the plan has nothing to say.
 [[nodiscard]] std::string mergeEstimateText(const MergePlan& plan);
 
 /// The orange note under row 0 when the weld tolerance is large next to the model, else empty.
@@ -123,7 +123,7 @@ struct FixAllLineGroup {
 inline constexpr std::size_t kFixAllMinGroup = 3;
 [[nodiscard]] std::vector<FixAllLineGroup> fixAllLineGroups(const std::vector<FixAllResultLine>& lines);
 
-/// The plan row number of a stage (0..11; phase 3 steps are row 11).
+/// The plan row number of a stage (0..12; phase 3 steps are row 12).
 [[nodiscard]] int fixAllStepNumber(FixAllStageId stage, FixAllPhase phase) noexcept;
 
 /// "6 ms", "1.2 s", "1 min 5 s".

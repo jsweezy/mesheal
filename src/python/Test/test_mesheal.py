@@ -148,6 +148,74 @@ class RepairTests(unittest.TestCase):
             self.assertEqual(c[m.Category.NON_MANIFOLD_EDGES].count, 0, method)
 
 
+def self_crossing_cube():
+    """The unit cube with its top corner (1, 1, 1) pushed through the bottom face."""
+    v, f = cube()
+    v[7] = [0.5, 0.5, -0.5]
+    return v, f
+
+
+def two_overlapping_cubes():
+    v, f = cube()
+    return np.vstack([v, v + 0.5]), np.vstack([f, f + len(v)]).astype(np.int32)
+
+
+class TraceTests(unittest.TestCase):
+    def test_measure_clean_cube(self):
+        v, f = cube()
+        s = m.measure(v, f)
+        self.assertTrue(s.complete)
+        self.assertEqual((s.faces, s.shells, s.open_edges, s.crossing_faces), (12, 1, 0, 0))
+        self.assertAlmostEqual(s.volume, 1.0)
+        self.assertEqual(set(s.pairs_within_shell), set(m.CROSSING_KINDS))
+        self.assertEqual(sum(s.pairs_within_shell.values()), 0)
+
+    def test_shell_ids_and_pairs_between_shells(self):
+        v, f = two_overlapping_cubes()
+        ids = m.shell_ids(v, f)
+        self.assertEqual(len(ids), len(f))
+        self.assertEqual(set(ids.tolist()), {0, 1})
+        pairs = m.crossing_pairs(v, f)
+        self.assertGreater(len(pairs["a"]), 0)
+        self.assertTrue((pairs["a"] < pairs["b"]).all())
+        self.assertTrue((pairs["shell_a"] != pairs["shell_b"]).all())
+        self.assertTrue(((pairs["kind"] >= 0) & (pairs["kind"] < len(m.CROSSING_KINDS))).all())
+        s = m.measure(v, f)
+        self.assertEqual(sum(s.pairs_between_shells.values()), len(pairs["a"]))
+        self.assertEqual(sum(s.pairs_within_shell.values()), 0)
+
+    def test_crossing_within_one_shell(self):
+        v, f = self_crossing_cube()
+        pairs = m.crossing_pairs(v, f)
+        self.assertGreater(len(pairs["a"]), 0)
+        self.assertTrue((pairs["shell_a"] == pairs["shell_b"]).all())
+        self.assertGreater(m.measure(v, f).crossing_faces, 0)
+
+    def test_fix_all_trace(self):
+        v, f = self_crossing_cube()
+        p = m.RepairParams()
+        p.fix_all.trace_steps = True
+        r = m.repair(v, f, m.Method.FIX_ALL, p)
+        self.assertTrue(r.success, r.status)
+        self.assertIsNotNone(r.state_before)
+        self.assertGreater(r.state_before.crossing_faces, 0)
+        ran = [s for s in r.steps if s.status != "skipped"]
+        self.assertTrue(all(s.state is not None for s in ran))
+        applied = [s for s in ran if s.status == "applied"]
+        self.assertGreater(len(applied), 0)
+        self.assertEqual(applied[-1].state.crossing_faces, 0)
+        self.assertGreaterEqual(r.best_pass, 1)
+        self.assertGreater(len(r.passes), 0)
+        self.assertEqual(r.passes[0].pass_number, 1)
+
+    def test_fix_all_without_trace_measures_nothing(self):
+        v, f = self_crossing_cube()
+        r = m.repair(v, f, m.Method.FIX_ALL)
+        self.assertIsNone(r.state_before)
+        self.assertTrue(all(s.state is None for s in r.steps))
+        self.assertGreater(len(r.steps), 0)
+
+
 class DefaultsAndValidation(unittest.TestCase):
     def test_defaults(self):
         self.assertEqual(m.RepairParams().decimate_ratio, 0.5)

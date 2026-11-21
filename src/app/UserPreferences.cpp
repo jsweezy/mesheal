@@ -287,6 +287,7 @@ const std::vector<Field>& preferenceFields() {
         f.push_back(boolField(fix, "fixall.fins", [](auto& p) -> auto& { return p.defaults.fixAll.removeFins; }));
         f.push_back(boolField(fix, "fixall.cracks", [](auto& p) -> auto& { return p.defaults.fixAll.closeCracks; }));
         f.push_back(boolField(fix, "fixall.thin", [](auto& p) -> auto& { return p.defaults.fixAll.healThinFaces; }));
+        f.push_back(boolField(fix, "fixall.unite", [](auto& p) -> auto& { return p.defaults.fixAll.uniteSelfCrossingShells; }));
 
         const char* diag = "Preferences > Diagnostics";
         f.push_back(boolField(diag, "check_mesh_after_load", [](auto& p) -> auto& { return p.checkMeshAfterLoad; }));

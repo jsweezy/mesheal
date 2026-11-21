@@ -86,6 +86,7 @@ class VIEW3D_PT_mesheal_fix_all(_Sidebar, Panel):
             col.prop(props, "remove_fins")
             col.prop(props, "close_cracks")
             col.prop(props, "heal_thin_faces")
+            col.prop(props, "unite_self_crossing_shells")
             col.prop(props, "merge_shells")
             col.separator()
             col.prop(props, "fixall_time_budget")

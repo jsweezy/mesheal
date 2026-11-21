@@ -1,6 +1,8 @@
 #include "repair/FixAll.hpp"
 
 #include "diagnostics/HoleLoops.hpp"
+#include "diagnostics/MeshChecks.hpp"
+#include "diagnostics/SelfIntersections.hpp"
 #include "diagnostics/MeshHealth.hpp"
 #include "diagnostics/ReliableNormal.hpp"
 #include "diagnostics/ShellRelations.hpp"
@@ -165,7 +167,7 @@ TEST_CASE("Fix All leaves a clean cube alone in one pass", "[repair][fixall]") {
     REQUIRE(result.priorityBefore.clean());
     REQUIRE(result.priorityAfter == result.priorityBefore);
     REQUIRE(result.steps.size() == mesheal::fixAllRepairStages().size());
-    REQUIRE(result.steps.size() == 12);
+    REQUIRE(result.steps.size() == 13);
     for (const mesheal::FixAllStepReport& step : result.steps) {
         REQUIRE(step.status == FixAllStepStatus::Unchanged);
         REQUIRE(step.pass == 1);
@@ -736,7 +738,10 @@ TEST_CASE("Fix All fills a cup's opening with a fill that crosses nothing, else 
         REQUIRE(result.countsAfter.intersectingFaces == 0);
     }
     SECTION("Post through the opening: the fewest-crossing fill is kept and the island step repairs it") {
-        const mesheal::FixAllResult result = run(SampleMeshes::createCupWithPostMesh(SampleMeshes::CupPost::ThroughOpening));
+        mesheal::FixAllParams islandsOnly; // the union would cut the closed cup first
+        islandsOnly.uniteSelfCrossingShells = false;
+        const mesheal::FixAllResult result =
+            run(SampleMeshes::createCupWithPostMesh(SampleMeshes::CupPost::ThroughOpening), islandsOnly);
         const mesheal::FixAllStepReport* fill = stepOf(result, FixAllStageId::FillHoles);
         REQUIRE(fill->accepted());
         REQUIRE(fill->detail == "Filled 1 of 1 hole (hole 1: every fill crosses its shell, Fill Flat used, left for the island step)");
@@ -988,14 +993,17 @@ TEST_CASE("Fix All keeps cavities and leaves inside-out bodies with inner shells
 
 TEST_CASE("Fix All judges a pass at its end: closed but crossing is kept, the next pass repairs the crossing",
           "[repair][fixall]") {
-    // The island step is off in pass 1 only
+    // The island step is off in pass 1 only (and the union, which would repair the crossing in pass 1)
     mesheal::FixAllTestHooks hooks;
     hooks.adjustStages = [](int pass, FixAllPhase phase, std::vector<FixAllStage>& stages) {
         if (pass == 1 && phase == FixAllPhase::Repair) {
             std::erase_if(stages, [](const FixAllStage& stage) { return stage.id == FixAllStageId::Islands; });
         }
     };
-    const mesheal::FixAllResult result = run(SampleMeshes::createCupWithPostMesh(SampleMeshes::CupPost::ThroughOpening), {}, &hooks);
+    mesheal::FixAllParams params;
+    params.uniteSelfCrossingShells = false;
+    const mesheal::FixAllResult result =
+        run(SampleMeshes::createCupWithPostMesh(SampleMeshes::CupPost::ThroughOpening), params, &hooks);
     REQUIRE(result.passes.size() == 3);
     REQUIRE(result.passes[0].after.closedManifold == 0);
     REQUIRE(result.passes[0].after.intersecting > 0);
@@ -1265,4 +1273,149 @@ TEST_CASE("Automatic merge unites crossing shells but keeps a solid nested insid
     const mesheal::FixAllResult chosen = mesheal::runFixAll(withCrossing, mesheal::FixAllScope::whole(withCrossing), params);
     REQUIRE(deletedNested(chosen));
     REQUIRE(mesheal::checkShells(chosen.mesh).size() == 2);
+}
+
+namespace {
+
+/// Fix All with the island step taken out, so a crossing is left to step 10b.
+mesheal::FixAllTestHooks withoutIslands() {
+    mesheal::FixAllTestHooks hooks;
+    hooks.adjustStages = [](int, FixAllPhase phase, std::vector<FixAllStage>& stages) {
+        if (phase == FixAllPhase::Repair) {
+            std::erase_if(stages, [](const FixAllStage& s) { return s.id == mesheal::FixAllStageId::Islands; });
+        }
+    };
+    return hooks;
+}
+
+const mesheal::FixAllStepReport* firstStep(const mesheal::FixAllResult& result, mesheal::FixAllStageId id) {
+    for (const mesheal::FixAllStepReport& step : result.steps) {
+        if (step.stage == id) {
+            return &step;
+        }
+    }
+    return nullptr;
+}
+
+std::size_t crossingFaces(const Mesh& mesh) {
+    return mesheal::checkSelfIntersections(mesh, mesheal::CheckParams{}).elements.size();
+}
+
+} // namespace
+
+TEST_CASE("Fix All unites a closed shell that still crosses itself", "[repair][fixall][unite]") {
+    const Mesh box = SampleMeshes::createSelfIntersectingBoxMesh();
+    REQUIRE(crossingFaces(box) > 0);
+    const mesheal::FixAllTestHooks hooks = withoutIslands();
+    mesheal::FixAllParams params;
+    params.passes = 2;
+    const mesheal::FixAllResult result = run(box, params, &hooks);
+    REQUIRE(result.success);
+    const mesheal::FixAllStepReport* unite = firstStep(result, mesheal::FixAllStageId::UniteSelfCrossing);
+    REQUIRE(unite != nullptr);
+    CHECK(unite->status == FixAllStepStatus::Applied);
+    CHECK(unite->detail.starts_with("United 1 self-crossing shell"));
+    CHECK(crossingFaces(result.mesh) == 0);
+    CHECK(mesheal::checkOpenEdges(result.mesh).elements.empty());
+    CHECK(mesheal::checkNonManifoldEdges(result.mesh).elements.empty());
+}
+
+TEST_CASE("A traced Fix All records the mesh after every step", "[repair][fixall][trace]") {
+    const Mesh box = SampleMeshes::createSelfIntersectingBoxMesh();
+    mesheal::FixAllParams params;
+    params.passes = 2;
+    SECTION("off by default: nothing measured") {
+        const mesheal::FixAllResult result = run(box, params);
+        REQUIRE(result.success);
+        CHECK_FALSE(result.stateBefore);
+        CHECK(std::none_of(result.steps.begin(), result.steps.end(),
+                           [](const mesheal::FixAllStepReport& step) { return step.state.has_value(); }));
+    }
+    SECTION("on") {
+        params.traceSteps = true;
+        const mesheal::FixAllResult result = run(box, params);
+        REQUIRE(result.success);
+        REQUIRE(result.stateBefore);
+        CHECK(result.stateBefore->crossingFaces == crossingFaces(box));
+        const mesheal::MeshState* last = &*result.stateBefore;
+        for (const mesheal::FixAllStepReport& step : result.steps) {
+            if (step.status == FixAllStepStatus::Skipped) {
+                CHECK_FALSE(step.state);
+                continue;
+            }
+            REQUIRE(step.state);
+            if (step.status != FixAllStepStatus::Applied) {
+                // A step that kept nothing leaves the mesh as the step before left it
+                CHECK(step.state->faces == last->faces);
+                CHECK(step.state->crossingFaces == last->crossingFaces);
+            }
+            CHECK(step.refusedState.has_value() == (step.status == FixAllStepStatus::Refused));
+            last = &*step.state;
+        }
+        CHECK(last->crossingFaces == 0);
+    }
+}
+
+TEST_CASE("Fix All's union step can be turned off", "[repair][fixall][unite]") {
+    const Mesh box = SampleMeshes::createSelfIntersectingBoxMesh();
+    const mesheal::FixAllTestHooks hooks = withoutIslands();
+    mesheal::FixAllParams params;
+    params.passes = 1;
+    params.uniteSelfCrossingShells = false;
+    const mesheal::FixAllResult result = run(box, params, &hooks);
+    REQUIRE(result.success);
+    const mesheal::FixAllStepReport* unite = firstStep(result, mesheal::FixAllStageId::UniteSelfCrossing);
+    REQUIRE(unite != nullptr);
+    CHECK(unite->status == FixAllStepStatus::Skipped);
+    CHECK(unite->reason == "Turned off in the options.");
+    CHECK(crossingFaces(result.mesh) > 0);
+}
+
+TEST_CASE("Fix All's union step never cuts a cavity", "[repair][fixall][unite]") {
+    // A self-crossing box wound inward (a cavity) inside a big outward box
+    Mesh cavity = SampleMeshes::createSelfIntersectingBoxMesh(2.0);
+    cavity.F.col(1).swap(cavity.F.col(2));
+    cavity.V.rowwise() += Eigen::RowVector3d(4.0, 4.0, 4.0);
+    cavity.recomputeNormals();
+    const Mesh outer = SampleMeshes::createBox({0, 0, 0}, {10, 10, 10});
+    const Mesh mesh = SampleMeshes::combineMeshes({outer, cavity});
+    const std::size_t before = crossingFaces(mesh);
+    REQUIRE(before > 0);
+
+    const mesheal::FixAllTestHooks hooks = withoutIslands();
+    mesheal::FixAllParams params;
+    params.passes = 1;
+    const mesheal::FixAllResult result = run(mesh, params, &hooks);
+    REQUIRE(result.success);
+    const mesheal::FixAllStepReport* unite = firstStep(result, mesheal::FixAllStageId::UniteSelfCrossing);
+    REQUIRE(unite != nullptr);
+    CHECK(unite->status == FixAllStepStatus::Unchanged);
+    CHECK(unite->detail.find("points inward") != std::string::npos);
+    CHECK(crossingFaces(result.mesh) == before);
+}
+
+TEST_CASE("Fix All's union step deletes a closed shell that encloses no volume", "[repair][fixall][unite]") {
+    // A tetrahedron flattened into the plane z = 20: closed and manifold, but its faces lie on each other
+    Mesh flat;
+    flat.V.resize(4, 3);
+    flat.V << 20.0, 0.0, 20.0, 24.0, 0.0, 20.0, 22.0, 3.0, 20.0, 22.0, 1.0, 20.0;
+    flat.F.resize(4, 3);
+    flat.F << 0, 2, 1, 0, 1, 3, 1, 2, 3, 2, 0, 3;
+    flat.recomputeNormals();
+    const Mesh box = SampleMeshes::createBox({0, 0, 0}, {10, 10, 10});
+    const Mesh mesh = SampleMeshes::combineMeshes({box, flat});
+    REQUIRE(crossingFaces(mesh) > 0);
+
+    const mesheal::FixAllTestHooks hooks = withoutIslands();
+    mesheal::FixAllParams params;
+    params.passes = 1;
+    params.removeTinyShells = false; // else it goes as floating debris first
+    const mesheal::FixAllResult result = run(mesh, params, &hooks);
+    REQUIRE(result.success);
+    const mesheal::FixAllStepReport* unite = firstStep(result, mesheal::FixAllStageId::UniteSelfCrossing);
+    REQUIRE(unite != nullptr);
+    CHECK(unite->status == FixAllStepStatus::Applied);
+    CHECK(unite->detail.find("enclosed no volume: deleted") != std::string::npos);
+    CHECK(result.mesh.numFaces() == box.numFaces());
+    CHECK(crossingFaces(result.mesh) == 0);
 }

@@ -2,6 +2,7 @@
 
 #include "core/Settings.hpp"
 #include "diagnostics/MeshHealth.hpp"
+#include "diagnostics/MeshState.hpp"
 #include "mesh/Mesh.hpp"
 #include "mesh/ToleranceConfig.hpp"
 #include "repair/HoleFiller.hpp"
@@ -15,6 +16,7 @@
 #include <cstdint>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <stop_token>
 #include <string>
@@ -80,6 +82,13 @@ struct FixAllParams {
     bool removeFins = settings::kDefaultFixAllFins;
     bool closeCracks = settings::kDefaultFixAllCloseCracks;
     bool healThinFaces = settings::kDefaultFixAllHealThin;
+    /// Before the island patches: cut each closed, outward shell that crosses itself along every crossing and
+    /// keep its outer surface (`exactSelfUnion`). Never touches cavities, open shells or other shells.
+    bool uniteSelfCrossingShells = settings::kDefaultFixAllUniteSelfCrossing;
+    /// Measure the whole mesh (`measureMeshState`) before the run and after every step that ran, into
+    /// `FixAllResult::stateBefore` and `FixAllStepReport::state`. For investigating a run: it costs about a
+    /// full Mesh Health per step.
+    bool traceSteps = false;
     bool mergeShells = settings::kDefaultFixAllMergeShells;
     /// The merge is Fix All's own choice (the CLI without --merge-shells / --no-merge-shells). With
     /// `mergeShells` off, check after each pass's phase 1 for shells that cross (`shellsCross`) and turn the
@@ -178,7 +187,8 @@ enum class FixAllStageId : std::uint8_t {
     CloseCracks,   ///< Step 7: Close Crack on the holes shaped like cracks
     Slivers,       ///< Step 8: heal thin faces (flip / collapse, pinned vertices kept)
     FillHoles,     ///< Step 9: fill every hole, the fill that crosses least when every fill crosses
-    Islands,       ///< Step 10: patch intersection islands within shells
+    UniteSelfCrossing, ///< Step 9b: exact union of each closed shell that crosses itself
+    Islands,       ///< Step 10: patch intersection islands within shells (the ones the union could not cut)
     OrientAgain,   ///< Step 11: step 6 again (shells closed this pass are judged by rule O here)
     PlanMerge,     ///< Step 12: the merge plan (report only: groups, kept cavities, refusals, skipped shells)
     DeleteNestedSolids, ///< Step 13: delete the nested solids that touch nothing
@@ -322,6 +332,10 @@ struct FixAllStepReport {
     /// Deleting steps (tiny shells, fins and walls, nested solids): the input faces they removed, sorted
     /// (for *Show in original*).
     std::vector<Eigen::Index> removedInputFaces;
+    /// `FixAllParams::traceSteps`: the mesh after the step (unchanged by a refused or unchanged step), and
+    /// for a refused step the result it would have kept.
+    std::optional<MeshState> state;
+    std::optional<MeshState> refusedState;
     /// The faces of `notes` are faces of `FixAllResult::mesh`. False for the steps of passes after the
     /// one a full run returned: they describe a state that was not kept.
     bool notesInResult = true;
@@ -489,6 +503,7 @@ struct FixAllResult {
     /// and deleted nested solids (sorted; for *Show removed*).
     std::vector<Eigen::Index> mergeRemovedFaces;
     FixAllFinalReport report;        ///< What is left, by shell and by crossing pair (steps 18 and 19)
+    std::optional<MeshState> stateBefore; ///< `FixAllParams::traceSteps`: the input
     double elapsedMs = 0.0;
 };
 

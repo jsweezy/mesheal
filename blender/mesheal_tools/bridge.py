@@ -144,6 +144,7 @@ def repair_params(props):
     fa.remove_fins = props.remove_fins
     fa.close_cracks = props.close_cracks
     fa.heal_thin_faces = props.heal_thin_faces
+    fa.unite_self_crossing_shells = props.unite_self_crossing_shells
     fa.merge_shells = props.merge_shells
 
     p.remesh_target_size = props.remesh_target_size

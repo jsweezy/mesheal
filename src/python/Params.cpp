@@ -33,6 +33,8 @@ void bindParams(nb::module_& m) {
         .def_rw("remove_fins", &FixAllParams::removeFins)
         .def_rw("close_cracks", &FixAllParams::closeCracks)
         .def_rw("heal_thin_faces", &FixAllParams::healThinFaces)
+        .def_rw("unite_self_crossing_shells", &FixAllParams::uniteSelfCrossingShells)
+        .def_rw("trace_steps", &FixAllParams::traceSteps)
         .def_rw("merge_shells", &FixAllParams::mergeShells)
         .def_rw("auto_merge_shells", &FixAllParams::autoMergeShells);
 

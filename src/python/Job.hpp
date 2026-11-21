@@ -2,6 +2,7 @@
 
 #include "Convert.hpp"
 #include "diagnostics/MeshHealth.hpp"
+#include "diagnostics/MeshState.hpp"
 #include "repair/GlobalRepair.hpp"
 
 #include <atomic>
@@ -39,6 +40,36 @@ struct CheckOutput {
     std::vector<CategoryOutput> categories;
 };
 
+/// One Fix All step, as plain data (`FixAllStepReport`).
+struct StepOutput {
+    int pass = 0;
+    int phase = 0;
+    std::string stage;
+    std::string status; ///< "applied", "unchanged", "refused" or "skipped"
+    std::string detail;
+    std::string reason;
+    std::size_t countBefore = 0;
+    std::size_t countAfter = 0;
+    std::size_t facesAdded = 0;
+    std::size_t facesRemoved = 0;
+    double elapsedMs = 0.0;
+    std::optional<MeshState> state;        ///< `trace_steps`
+    std::optional<MeshState> refusedState; ///< `trace_steps`, refused steps
+};
+
+/// One Fix All pass's score at its end (`FixAllPassReport`).
+struct PassOutput {
+    int pass = 0;
+    std::size_t closedManifold = 0;
+    std::size_t oriented = 0;
+    std::size_t intersecting = 0;
+    std::size_t junk = 0;
+    std::size_t thin = 0;
+    bool newBest = false;
+    bool repeated = false;
+    double elapsedMs = 0.0;
+};
+
 struct RepairOutput {
     bool success = false;
     bool cancelled = false;
@@ -48,6 +79,10 @@ struct RepairOutput {
     std::vector<std::int64_t> changedFaces;
     std::vector<std::int64_t> removedFaces;
     std::vector<std::string> report;
+    std::vector<StepOutput> steps;          ///< Fix All: every step, skipped ones included
+    std::vector<PassOutput> passes;         ///< Fix All
+    int bestPass = 0;                       ///< Fix All: the pass returned (0 = the input)
+    std::optional<MeshState> stateBefore;   ///< Fix All with `trace_steps`
 };
 
 /// Optional observers of a check run (a Job's progress).

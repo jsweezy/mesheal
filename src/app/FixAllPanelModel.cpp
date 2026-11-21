@@ -180,7 +180,7 @@ std::vector<FixAllPlanRow> fixAllPlanRows(AppController& controller) {
     const std::string unit(unitSymbol(controller.fileUnit()));
     const char* const wholeShells = "needs whole shells";
 
-    std::vector<FixAllPlanRow> rows(12);
+    std::vector<FixAllPlanRow> rows(13);
     for (int i = 0; i < 12; ++i) {
         rows[static_cast<std::size_t>(i)].number = i;
     }
@@ -261,16 +261,27 @@ std::vector<FixAllPlanRow> fixAllPlanRows(AppController& controller) {
     }
     {
         FixAllPlanRow& r = set(8, 1, "Fill holes", FixAllRowSwitch::Always, true,
-                               "Every hole that can be filled is filled. If a patch crosses its own shell, row 9 repairs it; "
-                               "if it pokes into another shell, row 10 merges the two. Crossings still left at the end are listed.");
+                               "Every hole that can be filled is filled. If a patch crosses its own shell, rows 9 and 10 repair it; "
+                               "if it pokes into another shell, row 11 merges the two. Crossings still left at the end are listed.");
         r.category = DefectCategory::OpenEdges;
         const bool known = knownCount(controller, DefectCategory::OpenEdges).has_value();
         r.found = known ? plural(controller.holeCountInScope(), "hole", "holes") : "?";
     }
     {
-        FixAllPlanRow& r = set(9, 1, "Repair intersecting islands", FixAllRowSwitch::Always, true,
-                               "Where faces of one shell cross each other, cuts out the crossing patch and fills it again. "
-                               "Crossings between different shells are left to row 10.");
+        FixAllPlanRow& r = set(9, 1, "Unite shells that cross themselves", FixAllRowSwitch::Option, p.uniteSelfCrossingShells,
+                               "Where a closed shell passes through itself, cuts it along every crossing with exact arithmetic "
+                               "and keeps only its outer surface: folds and walls inside the solid are removed, everything else "
+                               "stays exactly where it was. Only closed shells that point outward; cavities and open shells are "
+                               "left to row 10. Needs whole shells.");
+        r.available = !faceScope;
+        r.found = faceScope ? wholeShells : "";
+    }
+
+    {
+        FixAllPlanRow& r = set(10, 1, "Repair intersecting islands", FixAllRowSwitch::Always, true,
+                               "Where faces of one shell still cross each other after row 9, cuts out the crossing patch and fills it "
+                               "again. "
+                               "Crossings between different shells are left to row 11.");
         r.category = DefectCategory::Intersections;
         const bool known = knownCount(controller, DefectCategory::Intersections).has_value();
         r.found = known ? plural(controller.intersectionIslandCount(), "island", "islands") : "?";
@@ -278,7 +289,7 @@ std::vector<FixAllPlanRow> fixAllPlanRows(AppController& controller) {
 
     // Phase 2 and 3
     {
-        FixAllPlanRow& r = set(10, 2, "Merge shells that overlap", FixAllRowSwitch::Option, p.mergeShells,
+        FixAllPlanRow& r = set(11, 2, "Merge shells that overlap", FixAllRowSwitch::Option, p.mergeShells,
                                "Unites shells that cross or overlap into one solid. What it destroys: the faces inside other "
                                "shells, a nested solid that touches nothing (deleted), and the separation between parts that may "
                                "be different materials. What it keeps: cavities are always kept. Groups that reach into a cavity, "
@@ -294,11 +305,11 @@ std::vector<FixAllPlanRow> fixAllPlanRows(AppController& controller) {
         }
     }
     {
-        FixAllPlanRow& r = set(11, 3, "Split contacts, fix normals, heal cut slivers, fill holes, repair islands",
+        FixAllPlanRow& r = set(12, 3, "Split contacts, fix normals, heal cut slivers, fill holes, repair islands",
                                FixAllRowSwitch::Required, p.mergeShells && !faceScope,
                                "Required after a merge: the union adds thin faces along every cut. Shells it closes or splits off "
                                "are merged by the next pass.");
-        r.found = p.mergeShells && !faceScope ? "(required after 10)" : "(skipped: runs only after a merge)";
+        r.found = p.mergeShells && !faceScope ? "(required after 11)" : "(skipped: runs only after a merge)";
     }
     for (FixAllPlanRow& row : rows) {
         if (row.sw == FixAllRowSwitch::Always) {
@@ -323,7 +334,7 @@ const char* fixAllPhaseCaption(int phase) noexcept {
 
 int fixAllStepNumber(FixAllStageId stage, FixAllPhase phase) noexcept {
     if (phase == FixAllPhase::Cleanup) {
-        return 11;
+        return 12;
     }
     switch (stage) {
     case FixAllStageId::Weld: return 0;
@@ -337,13 +348,14 @@ int fixAllStepNumber(FixAllStageId stage, FixAllPhase phase) noexcept {
     case FixAllStageId::CloseCracks: return 6;
     case FixAllStageId::Slivers: return 7;
     case FixAllStageId::FillHoles: return 8;
-    case FixAllStageId::Islands: return 9;
+    case FixAllStageId::UniteSelfCrossing: return 9;
+    case FixAllStageId::Islands: return 10;
     case FixAllStageId::PlanMerge:
     case FixAllStageId::DeleteNestedSolids:
-    case FixAllStageId::MergeShells: return 10;
+    case FixAllStageId::MergeShells: return 11;
     case FixAllStageId::Custom: break;
     }
-    return phase == FixAllPhase::Merge ? 10 : 0;
+    return phase == FixAllPhase::Merge ? 11 : 0;
 }
 
 std::string fixAllTimeText(double milliseconds) {

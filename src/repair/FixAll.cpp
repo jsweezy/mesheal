@@ -571,6 +571,10 @@ public:
         BestState best{input_, scope_, baseline, result_.priorityBefore, 0, 0, {}, lastHealth, fillOf_, 0, {}};
         FixAllCounts lastCounts = baseline;
         std::unordered_set<std::uint64_t> seen{meshGeometryHash(input_)};
+        if (params_.traceSteps) {
+            traceState_ = measureMeshState(mesh_, params_.checkParams, stop_);
+            result_.stateBefore = traceState_;
+        }
         int passesWithoutProgress = 0;
         result_.stopReason = FixAllStopReason::PassLimit;
 
@@ -981,6 +985,18 @@ private:
         if (stop_.stop_requested()) {
             return false;
         }
+        if (params_.traceSteps) {
+            if (step.status == FixAllStepStatus::Applied || !traceState_) {
+                traceState_ = measureMeshState(mesh_, params_.checkParams, stop_);
+            }
+            step.state = traceState_;
+            if (step.status == FixAllStepStatus::Refused && outcome.mesh.numFaces() > 0) {
+                step.refusedState = measureMeshState(outcome.mesh, params_.checkParams, stop_);
+            }
+            if (stop_.stop_requested()) {
+                return false;
+            }
+        }
         result_.steps.push_back(std::move(step));
         return true;
     }
@@ -1105,6 +1121,7 @@ private:
     FixAllScope inputScope_;
     double checkStart_ = 0.0; ///< Where the closing check starts within the pass (0..1)
     const Mesh* preMerge_ = nullptr; ///< Phase 3: the mesh before the merge
+    std::optional<MeshState> traceState_; ///< `traceSteps`: the state of `mesh_` after the last step
     std::vector<Eigen::Index> origin_;       ///< Input face of each face of `mesh_` (-1: made by the run)
     std::vector<Eigen::Index> planFaceMap_;  ///< Phase 2: face of the planned mesh -> row of `mesh_`
     std::vector<Eigen::Index> mergeRemoved_; ///< Input faces phase 2 removed (unsorted, may repeat)

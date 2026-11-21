@@ -8,6 +8,7 @@ add_executable(mesheal_diagnostics_tests
     ShellNestingTests.cpp
     ShellRelationsTests.cpp
     ShellRolesTests.cpp
+    MeshStateTests.cpp
 )
 
 target_link_libraries(mesheal_diagnostics_tests

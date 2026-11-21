@@ -82,6 +82,22 @@ while not job.done:
     print(job.progress, job.status_text)
     job.wait(timeout=0.1)
 result = job.result()
+
+# Investigate a mesh: every count, and the crossing face pairs by kind and shell
+s = m.measure(vertices, faces)
+print(s.crossing_faces, s.pairs_within_shell, s.pairs_between_shells)
+pairs = m.crossing_pairs(vertices, faces)   # dict of arrays: a, b, kind, shell_a, shell_b
+kinds = [m.CROSSING_KINDS[k] for k in pairs["kind"]]
+shells = m.shell_ids(vertices, faces)       # shell of every face (0 = the largest)
+
+# Trace Fix All: the mesh measured before the run and after every step
+p = m.RepairParams()
+p.fix_all.trace_steps = True
+r = m.repair(vertices, faces, m.Method.FIX_ALL, p)
+for step in r.steps:
+    if step.state is not None:
+        print(step.pass_number, step.stage, step.status, step.state.crossing_faces, step.state.thin_faces)
+print("returned pass", r.best_pass)
 ```
 
 | Name | Description |
@@ -93,8 +109,18 @@ result = job.result()
 | `Category` | `SHELLS`, `OPEN_EDGES`, `NON_MANIFOLD_EDGES`, `NON_MANIFOLD_VERTICES`, `FLIPPED_NORMALS`, `INVERTED_SHELLS`, `INTERSECTIONS`, `THIN_FACES`, `DEGENERATE`, `DUPLICATES` |
 | `Method` | `FIX_ALL`, `VOXEL`, `ISOSURFACE`, `ALPHA_WRAP`, `DECIMATE`, `MERGE` |
 | `CategoryResult` | `category`, `name`, `count`, `info_count`, `faces`, `warnings`, `cancelled`, `elapsed_ms` |
-| `RepairResult` | `success`, `cancelled`, `status`, `vertices`, `faces`, `changed_faces`, `removed_faces`, `report` |
+| `measure(vertices, faces, params=CheckParams())` | Every Mesh Health count and the crossing pairs by kind; returns a `MeshState` |
+| `crossing_pairs(vertices, faces, params=CheckParams())` | The face pairs the intersection check reports, as a dict of arrays `a`, `b`, `kind`, `shell_a`, `shell_b` |
+| `shell_ids(vertices, faces)` | The shell of every face, numbered as in the Shells panel (0 = the largest) |
+| `CROSSING_KINDS` | The kinds of a crossing pair, by `kind` index: `folded` (edge neighbours folded flat), `vertex_neighbour`, `coplanar`, `touching`, `crossing` |
+| `RepairResult` | `success`, `cancelled`, `status`, `vertices`, `faces`, `changed_faces`, `removed_faces`, `report`; for Fix All also `steps` (`FixAllStep`), `passes` (`FixAllPass`), `best_pass` and `state_before` |
+| `MeshState` | `faces`, `vertices`, `shells`, `volume`, `open_edges`, `non_manifold_edges`, `non_manifold_vertices`, `flipped_faces`, `inverted_shells`, `degenerate_faces`, `duplicate_faces`, `thin_faces`, `crossing_faces`, `pairs_within_shell`, `pairs_between_shells` (dicts by kind), `complete` |
+| `FixAllStep` | `pass_number`, `phase`, `stage`, `status` (`applied`, `unchanged`, `refused`, `skipped`), `detail`, `reason`, `count_before`, `count_after`, `faces_added`, `faces_removed`, `elapsed_ms`, `state` and `refused_state` (with `fix_all.trace_steps`) |
+| `FixAllPass` | `pass_number`, the score at its end (`closed_manifold`, `oriented`, `intersecting`, `junk`, `thin`), `new_best`, `repeated`, `elapsed_ms` |
 | `Job` | `progress`, `status_text`, `done`, `cancel()`, `wait(timeout=-1)`, `result()` |
+
+Tracing (`fix_all.trace_steps`, or `--trace` on the command line) runs every check after every step, so
+on a large mesh it can take several times as long as the repair itself.
 
 ## Scripting the command-line tool
 

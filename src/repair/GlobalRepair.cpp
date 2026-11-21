@@ -311,6 +311,8 @@ bool GlobalRepairParams::operator==(const GlobalRepairParams& other) const noexc
            fixAll.removeTinyShells == other.fixAll.removeTinyShells &&
            fixAll.tinyShellFraction == other.fixAll.tinyShellFraction && fixAll.removeFins == other.fixAll.removeFins &&
            fixAll.closeCracks == other.fixAll.closeCracks && fixAll.healThinFaces == other.fixAll.healThinFaces &&
+           fixAll.uniteSelfCrossingShells == other.fixAll.uniteSelfCrossingShells &&
+           fixAll.traceSteps == other.fixAll.traceSteps &&
            fixAll.mergeShells == other.fixAll.mergeShells && fixAll.autoMergeShells == other.fixAll.autoMergeShells;
 }
 

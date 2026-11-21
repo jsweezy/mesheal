@@ -34,7 +34,10 @@ struct CliOptions {
     /// Fix All's shell merge: unset = on when shells overlap or one is nested in another (as the app's
     /// Fix All panel ticks it), or forced by --merge-shells / --no-merge-shells.
     std::optional<bool> mergeShells;
+    /// Fix All unites each closed shell that still crosses itself (off with --no-unite-shells).
+    bool uniteShells = true;
     bool report = false; ///< --report: list Fix All's steps (text) or add a "steps" array (JSON)
+    bool trace = false;  ///< --trace (implies --report): the mesh state after every step
 
     double edgeLength = 0.0;
     int smoothingPasses = 3;

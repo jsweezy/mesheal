@@ -1,4 +1,5 @@
 add_executable(mesheal_repair_tests
+    ExactUnionTests.cpp
     FixAllMergeTests.cpp
     FixAllScopeTests.cpp
     FixAllTests.cpp

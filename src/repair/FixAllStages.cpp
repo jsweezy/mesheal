@@ -7,9 +7,11 @@
 
 #include "diagnostics/HoleLoops.hpp"
 #include "diagnostics/MeshChecks.hpp"
+#include "diagnostics/SelfIntersections.hpp"
 #include "diagnostics/ShellRelations.hpp"
 #include "repair/MeshCleanup.hpp"
 #include "repair/Orientation.hpp"
+#include "repair/ExactUnion.hpp"
 #include "repair/RepairMetrics.hpp"
 #include "repair/SliverHealer.hpp"
 #include "repair/TopologyCleanup.hpp"
@@ -921,6 +923,185 @@ using fixall_detail::shellList;
 }
 
 // ---------------------------------------------------------------------------------------------
+// Step 9b: unite each closed shell that crosses itself (before the island patches: the exact cut keeps
+// every piece of the surface that is not buried; the patches then handle the shells it cannot cut)
+// ---------------------------------------------------------------------------------------------
+
+[[nodiscard]] FixAllStageOutcome uniteSelfCrossingStage(const Mesh& mesh, const FixAllStageContext& context) {
+    FixAllStageOutcome outcome;
+    const CheckParams& checkParams = context.params.checkParams;
+    const CategoryResult crossings = checkSelfIntersections(mesh, checkParams, context.stopToken);
+    if (context.stopToken.stop_requested()) {
+        outcome.cancelled = true;
+        return outcome;
+    }
+    const std::vector<std::vector<Eigen::Index>> shells = shellsLargestFirst(mesh);
+    const std::vector<int> faceShell = fixall_detail::shellOfFaces(mesh.numFaces(), shells);
+    // Faces that cross a face of their own shell, per shell (crossings between shells are the merge's)
+    std::vector<std::size_t> ownCrossings(shells.size(), 0);
+    for (const IntersectionIsland& island : clusterIntersectionIslands(mesh, crossings, faceShell)) {
+        if (island.shell >= 0 && static_cast<std::size_t>(island.shell) < shells.size()) {
+            ownCrossings[static_cast<std::size_t>(island.shell)] += island.faces.size();
+        }
+    }
+    for (const std::size_t n : ownCrossings) {
+        outcome.targetBefore += n;
+    }
+    if (outcome.targetBefore == 0) {
+        return outcome;
+    }
+
+    Mesh unitedParts;
+    std::vector<std::uint8_t> replaced(static_cast<std::size_t>(mesh.numFaces()), 0);
+    struct United {
+        int shell = 0;
+        Eigen::Index firstRow = 0; ///< In `unitedParts`
+        Eigen::Index rows = 0;
+        std::size_t crossingsBefore = 0;
+        std::size_t crossingsAfter = 0;
+        std::size_t pockets = 0;
+        double pocketVolume = 0.0;
+    };
+    std::vector<United> united;
+    std::vector<std::string> left;
+    std::vector<int> leftShells;
+    double volumeBefore = 0.0;
+    double volumeAfter = 0.0;
+    for (std::size_t s = 0; s < shells.size(); ++s) {
+        const std::size_t before = ownCrossings[s];
+        if (before == 0) {
+            continue;
+        }
+        if (context.stopToken.stop_requested()) {
+            outcome.cancelled = true;
+            return outcome;
+        }
+        const auto keep = [&](std::string why) {
+            outcome.targetAfter += before;
+            left.push_back("#" + std::to_string(s + 1) + " " + why);
+            leftShells.push_back(static_cast<int>(s));
+        };
+        const std::vector<Eigen::Index>& faces = shells[s];
+        if (!std::all_of(faces.begin(), faces.end(), [&](Eigen::Index f) { return context.scope.inScope(f); })) {
+            keep("is only partly in scope");
+            continue;
+        }
+        const Mesh shell = extractFaces(mesh, faces);
+        if (!checkOpenEdges(shell).elements.empty() || !checkNonManifoldEdges(shell).elements.empty()) {
+            keep("is not closed and manifold");
+            continue;
+        }
+        const double volume = signedVolume(shell);
+        ExactUnionResult union_;
+        if (volume > 0.0) {
+            union_ = exactSelfUnion(shell, settings::kFixAllUniteMaxShellFaces, context.stopToken);
+        } else {
+            // Wound inward, or a flat folded sheet whose volume sign is only rounding. Turned around, a cavity
+            // unites to a solid and is left alone; a sheet that encloses nothing unites to nothing and goes.
+            Mesh reversed = shell;
+            reversed.F.col(1).swap(reversed.F.col(2));
+            union_ = exactSelfUnion(reversed, settings::kFixAllUniteMaxShellFaces, context.stopToken);
+            if (union_.status == ExactUnionStatus::United && union_.mesh.numFaces() > 0) {
+                keep("points inward (a cavity or inside out)");
+                continue;
+            }
+        }
+        if (union_.status == ExactUnionStatus::Cancelled) {
+            outcome.cancelled = true;
+            return outcome;
+        }
+        if (union_.status != ExactUnionStatus::United) {
+            keep("was not united: " + union_.message);
+            continue;
+        }
+        // A single shell encloses no cavity of its own: a pocket the union cuts out (an inward shell) only
+        // exists because the surface folds through itself, so it is filled, never kept as a cavity
+        double pocketVolume = 0.0;
+        const std::size_t pockets = fillEnclosedPockets(union_.mesh, &pocketVolume);
+        std::size_t after = 0;
+        if (union_.mesh.numFaces() > 0) {
+            if (!checkOpenEdges(union_.mesh).elements.empty()) {
+                keep("was not united: the union came out open");
+                continue;
+            }
+            after = checkSelfIntersections(union_.mesh, checkParams, context.stopToken).elements.size();
+            if (context.stopToken.stop_requested()) {
+                outcome.cancelled = true;
+                return outcome;
+            }
+            if (after >= before) {
+                keep("was not united: the union left as many crossing faces (" + std::to_string(after) + ")");
+                continue;
+            }
+        }
+        if (union_.mesh.numFaces() == 0) {
+            outcome.notCavityFaces.insert(outcome.notCavityFaces.end(), faces.begin(), faces.end());
+        }
+        outcome.targetAfter += after;
+        volumeBefore += volume;
+        volumeAfter += signedVolume(union_.mesh);
+        for (const Eigen::Index f : faces) {
+            replaced[static_cast<std::size_t>(f)] = 1;
+        }
+        united.push_back({static_cast<int>(s), unitedParts.numFaces(), union_.mesh.numFaces(), before, after, pockets, pocketVolume});
+        appendMesh(unitedParts, union_.mesh);
+    }
+
+    std::string leftText;
+    if (!left.empty()) {
+        leftText = joined(left, "; ");
+        outcome.notes.push_back({leftText, mappedShells(shells, leftShells, {}), true});
+    }
+    if (united.empty()) {
+        outcome.targetAfter = outcome.targetBefore;
+        outcome.detail = "No shell was united: " + leftText;
+        return outcome;
+    }
+
+    // Untouched faces keep their order; each united shell's faces are appended
+    std::vector<Eigen::Index> kept;
+    kept.reserve(replaced.size());
+    outcome.faceMap.assign(replaced.size(), -1);
+    for (std::size_t f = 0; f < replaced.size(); ++f) {
+        if (replaced[f] == 0) {
+            outcome.faceMap[f] = static_cast<Eigen::Index>(kept.size());
+            kept.push_back(static_cast<Eigen::Index>(f));
+        }
+    }
+    outcome.mesh = extractFaces(mesh, kept);
+    const Eigen::Index base = outcome.mesh.numFaces();
+    appendMesh(outcome.mesh, unitedParts);
+    outcome.mesh.recomputeNormals();
+    outcome.changed = true;
+
+    std::vector<std::string> parts;
+    for (const United& u : united) {
+        std::vector<Eigen::Index> rows(static_cast<std::size_t>(u.rows));
+        for (Eigen::Index r = 0; r < u.rows; ++r) {
+            rows[static_cast<std::size_t>(r)] = base + u.firstRow + r;
+        }
+        std::string text = "#" + std::to_string(u.shell + 1) +
+                           (u.rows == 0 ? " enclosed no volume: deleted"
+                                        : " united: crossing faces " + std::to_string(u.crossingsBefore) + " -> " +
+                                              std::to_string(u.crossingsAfter));
+        if (u.pockets > 0) {
+            text += ", " + counted(u.pockets, "pocket", "pockets") + " the fold enclosed filled (" +
+                    fixall_detail::formatVolume(u.pocketVolume, mesh.fileUnit) + ")";
+        }
+        outcome.notes.push_back({text, {std::move(rows)}});
+        parts.push_back(std::move(text));
+    }
+    outcome.detail = "United " + counted(united.size(), "self-crossing shell", "self-crossing shells") + " (volume " +
+                     fixall_detail::formatVolume(volumeBefore, mesh.fileUnit) + " -> " +
+                     fixall_detail::formatVolume(volumeAfter, mesh.fileUnit) + "): " +
+                     joined(parts, "; ");
+    if (!leftText.empty()) {
+        outcome.detail += "; left: " + leftText;
+    }
+    return outcome;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Skip rules
 // ---------------------------------------------------------------------------------------------
 
@@ -946,6 +1127,14 @@ constexpr const char* kTurnedOff = "Turned off in the options.";
     return params.closeCracks ? std::string() : std::string(kTurnedOff);
 }
 
+[[nodiscard]] std::string uniteSkipReason(const FixAllParams& params, const FixAllScope& scope) {
+    if (!params.uniteSelfCrossingShells) {
+        return kTurnedOff;
+    }
+    return scope.kind == FixAllScopeKind::Faces ? std::string("Needs whole shells: select shells, or clear the selection.")
+                                                : std::string();
+}
+
 [[nodiscard]] std::string sliversSkipReason(const FixAllParams& params, const FixAllScope&) {
     return params.healThinFaces ? std::string() : std::string(kTurnedOff);
 }
@@ -956,7 +1145,7 @@ std::vector<FixAllStage> fixAllRepairStages() {
     constexpr double quick = settings::kFixAllQuickStageProgressWeight;
     constexpr double heal = settings::kFixAllHealStageProgressWeight;
     std::vector<FixAllStage> stages;
-    stages.reserve(12);
+    stages.reserve(13);
     stages.push_back({FixAllStageId::Weld, "Weld by distance", "welding", quick, weldSkipReason, weldStage, true});
     stages.push_back({FixAllStageId::DropRepeated, "Remove collapsed faces", "removing collapsed faces", quick, {},
                       dropRepeatedStage, false});
@@ -973,6 +1162,8 @@ std::vector<FixAllStage> fixAllRepairStages() {
     stages.push_back({FixAllStageId::Slivers, "Heal thin faces", "healing thin faces", heal, sliversSkipReason,
                       sliversStage, true});
     stages.push_back({FixAllStageId::FillHoles, "Fill holes", "filling holes", heal, {}, fillHolesStage, false});
+    stages.push_back({FixAllStageId::UniteSelfCrossing, "Unite shells that cross themselves", "uniting self-crossing shells",
+                      heal, uniteSkipReason, uniteSelfCrossingStage, false});
     stages.push_back({FixAllStageId::Islands, "Patch intersection islands", "patching intersection islands", heal, {},
                       islandsStage, true});
     stages.push_back({FixAllStageId::OrientAgain, "Orient again", "orienting again", heal, {}, orientStage, false});

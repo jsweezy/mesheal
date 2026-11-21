@@ -177,6 +177,7 @@ void AppController::applyFixAllDefaults(FixAllParams& params, const FixAllPrefer
     params.removeFins = d.removeFins;
     params.closeCracks = d.closeCracks;
     params.healThinFaces = d.healThinFaces;
+    params.uniteSelfCrossingShells = d.uniteSelfCrossingShells;
 }
 
 void AppController::openFixAll(int passes) {

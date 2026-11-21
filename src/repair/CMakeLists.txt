@@ -1,4 +1,5 @@
 add_library(mesheal_repair STATIC
+    ExactUnion.cpp
     FixAll.cpp
     FixAllMerge.cpp
     FixAllReport.cpp

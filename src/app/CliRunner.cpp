@@ -1,6 +1,7 @@
 #include "app/CliRunner.hpp"
 #include "app/AboutInfo.hpp"
 #include "diagnostics/MeshHealth.hpp"
+#include "diagnostics/MeshState.hpp"
 #include "io/StlReader.hpp"
 #include "io/StlWriter.hpp"
 #include "mesh/Mesh.hpp"
@@ -12,6 +13,7 @@
 #include "repair/TopologyCleanup.hpp"
 #include "mesheal/Version.hpp"
 
+#include <array>
 #include <chrono>
 #include <exception>
 #include <iomanip>
@@ -54,17 +56,42 @@ const char* stepStatusName(FixAllStepStatus status) {
     return "unknown";
 }
 
-/// Fix All's steps that did something or were refused (skipped and unchanged steps are left out).
+/// Fix All's steps that did something or were refused (skipped and unchanged steps are left out, except
+/// when traced: then only skipped steps are).
 std::vector<const FixAllStepReport*> reportedSteps(const RepairCandidate& candidate) {
     std::vector<const FixAllStepReport*> steps;
     if (candidate.fixAll) {
         for (const FixAllStepReport& step : candidate.fixAll->result.steps) {
-            if (step.status == FixAllStepStatus::Applied || step.status == FixAllStepStatus::Refused) {
+            const bool traced = step.state.has_value();
+            if (step.status == FixAllStepStatus::Applied || step.status == FixAllStepStatus::Refused ||
+                (traced && step.status == FixAllStepStatus::Unchanged)) {
                 steps.push_back(&step);
             }
         }
     }
     return steps;
+}
+
+void printJsonKindCounts(std::ostream& os, const std::array<std::size_t, kCrossingKindCount>& counts) {
+    os << "{";
+    for (std::size_t k = 0; k < kCrossingKindCount; ++k) {
+        os << (k == 0 ? "" : ",") << "\"" << crossingKindName(static_cast<CrossingKind>(k)) << "\":" << counts[k];
+    }
+    os << "}";
+}
+
+void printJsonState(std::ostream& os, const MeshState& state) {
+    os << "{\"faces\":" << state.faces << ",\"vertices\":" << state.vertices << ",\"shells\":" << state.shells
+       << ",\"volume\":" << state.volume << ",\"open_edges\":" << state.openEdges
+       << ",\"non_manifold_edges\":" << state.nonManifoldEdges << ",\"non_manifold_vertices\":" << state.nonManifoldVertices
+       << ",\"flipped_faces\":" << state.flippedFaces << ",\"inverted_shells\":" << state.invertedShells
+       << ",\"degenerate_faces\":" << state.degenerateFaces << ",\"duplicate_faces\":" << state.duplicateFaces
+       << ",\"thin_faces\":" << state.thinFaces << ",\"crossing_faces\":" << state.crossingFaces
+       << ",\"pairs_within_shell\":";
+    printJsonKindCounts(os, state.pairsWithinShell);
+    os << ",\"pairs_between_shells\":";
+    printJsonKindCounts(os, state.pairsBetweenShells);
+    os << ",\"complete\":" << (state.complete ? "true" : "false") << "}";
 }
 
 void printJsonSteps(std::ostream& os, const RepairCandidate& candidate) {
@@ -78,13 +105,60 @@ void printJsonSteps(std::ostream& os, const RepairCandidate& candidate) {
            << ",\"count_after\":" << step->countAfter << ",\"faces_removed\":" << step->facesRemoved
            << ",\"faces_added\":" << step->facesAdded << ",\"elapsed_ms\":" << step->elapsedMs << ",\"detail\":\"";
         printJsonEscape(os, step->status == FixAllStepStatus::Refused ? step->reason : step->detail);
-        os << "\"}";
+        os << "\"";
+        if (step->state) {
+            os << ",\"state\":";
+            printJsonState(os, *step->state);
+        }
+        if (step->refusedState) {
+            os << ",\"refused_state\":";
+            printJsonState(os, *step->refusedState);
+        }
+        os << "}";
         first = false;
     }
     os << "],";
+    if (candidate.fixAll) {
+        const FixAllResult& result = candidate.fixAll->result;
+        if (result.stateBefore) {
+            os << "\"state_before\":";
+            printJsonState(os, *result.stateBefore);
+            os << ",";
+        }
+        os << "\"best_pass\":" << result.bestPass << ",\"stop_reason\":" << static_cast<int>(result.stopReason)
+           << ",\"passes\":[";
+        for (std::size_t i = 0; i < result.passes.size(); ++i) {
+            const FixAllPassReport& pass = result.passes[i];
+            os << (i == 0 ? "" : ",") << "{\"pass\":" << pass.pass << ",\"closed_manifold\":" << pass.after.closedManifold
+               << ",\"oriented\":" << pass.after.oriented << ",\"intersecting\":" << pass.after.intersecting
+               << ",\"junk\":" << pass.after.junk << ",\"thin\":" << pass.after.thin
+               << ",\"new_best\":" << (pass.newBest ? "true" : "false") << ",\"repeated\":" << (pass.repeated ? "true" : "false")
+               << ",\"elapsed_ms\":" << pass.elapsedMs << "}";
+        }
+        os << "],";
+    }
+}
+
+/// One line of a traced step's state: what is left that Fix All scores, and the crossing pairs by kind.
+void printTextState(std::ostream& os, const MeshState& state) {
+    os << "      state: open " << state.openEdges << ", nm edges " << state.nonManifoldEdges << ", nm vertices "
+       << state.nonManifoldVertices << ", flipped " << state.flippedFaces << ", thin " << state.thinFaces
+       << ", shells " << state.shells << ", crossing faces " << state.crossingFaces << " (pairs";
+    for (std::size_t k = 0; k < kCrossingKindCount; ++k) {
+        const std::size_t within = state.pairsWithinShell[k];
+        const std::size_t between = state.pairsBetweenShells[k];
+        if (within + between > 0) {
+            os << " " << crossingKindName(static_cast<CrossingKind>(k)) << " " << within << "+" << between;
+        }
+    }
+    os << ")\n";
 }
 
 void printTextSteps(std::ostream& os, const RepairCandidate& candidate) {
+    if (candidate.fixAll && candidate.fixAll->result.stateBefore) {
+        os << "  input\n";
+        printTextState(os, *candidate.fixAll->result.stateBefore);
+    }
     for (const FixAllStepReport* step : reportedSteps(candidate)) {
         os << "  pass " << step->pass << "." << static_cast<int>(step->phase) << " " << step->label << ": "
            << stepStatusName(step->status) << " (" << step->countBefore << " -> " << step->countAfter << ", -"
@@ -94,6 +168,22 @@ void printTextSteps(std::ostream& os, const RepairCandidate& candidate) {
             os << " " << text;
         }
         os << "\n";
+        if (step->state && step->status != FixAllStepStatus::Unchanged) {
+            printTextState(os, *step->state);
+        }
+        if (step->refusedState) {
+            os << "      refused result:\n";
+            printTextState(os, *step->refusedState);
+        }
+    }
+    if (candidate.fixAll) {
+        const FixAllResult& result = candidate.fixAll->result;
+        for (const FixAllPassReport& pass : result.passes) {
+            os << "  pass " << pass.pass << " score: closed/manifold " << pass.after.closedManifold << ", oriented "
+               << pass.after.oriented << ", intersecting " << pass.after.intersecting << ", junk " << pass.after.junk
+               << ", thin " << pass.after.thin << (pass.newBest ? " (best so far)" : "") << "\n";
+        }
+        os << "  returned pass " << result.bestPass << "\n";
     }
 }
 
@@ -175,7 +265,11 @@ std::string usageText(std::string_view prog) {
        << "  --merge-shells           Fix All always merges shells that overlap or nest (default: when\n"
        << "                           shells cross, checked on the input and again after each pass)\n"
        << "  --no-merge-shells        Fix All never merges shells\n"
+       << "  --no-unite-shells        Fix All never cuts a closed shell that crosses itself along its\n"
+       << "                           crossings (default: it does, keeping the outer surface)\n"
        << "  --report                 List each Fix All step that ran (with --json: a \"steps\" array)\n"
+       << "  --trace                  --report, plus the whole mesh measured after every Fix All step\n"
+       << "                           (every check, crossing pairs by kind; slow on large meshes)\n"
        << "  --edge-length <len>      Target edge length for remeshing, in file units (default: auto)\n"
        << "  --smoothing <N>          Smoothing passes for --remesh-voxel (default: 3)\n"
        << "  --chord-ratio <ratio>    Surface approximation for --remesh-iso (default: 0.10)\n"
@@ -244,10 +338,15 @@ CliOptions parseCliArguments(int argc, char const* const* argv) {
             opt.passes = std::max(1, std::stoi(argv[++i]));
         } else if (arg == "--report") {
             opt.report = true;
+        } else if (arg == "--trace") {
+            opt.report = true;
+            opt.trace = true;
         } else if (arg == "--merge-shells") {
             opt.mergeShells = true;
         } else if (arg == "--no-merge-shells") {
             opt.mergeShells = false;
+        } else if (arg == "--no-unite-shells") {
+            opt.uniteShells = false;
         } else if (arg == "--time-budget" && i + 1 < argc) {
             opt.timeBudgetSeconds = std::stod(argv[++i]);
         } else if (arg == "--edge-length" && i + 1 < argc) {
@@ -417,6 +516,8 @@ int executeCliCommand(const CliOptions& options) {
         params.fixAll.mergeShells =
             options.mergeShells.value_or(shellsCross(mesh, FixAllScope::whole(mesh), planParams).value_or(false));
         params.fixAll.autoMergeShells = !options.mergeShells.has_value();
+        params.fixAll.uniteSelfCrossingShells = options.uniteShells;
+        params.fixAll.traceSteps = options.trace;
     }
     params.remeshTargetSize = options.edgeLength;
     params.voxelSmoothingPasses = options.smoothingPasses;

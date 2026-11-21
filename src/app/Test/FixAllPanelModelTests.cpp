@@ -48,7 +48,7 @@ TEST_CASE("Fix All panel rows: the twelve rows, their phases and switches", "[ap
     controller.waitForFixAllPlan();
 
     const std::vector<FixAllPlanRow> rows = mesheal::fixAllPlanRows(controller);
-    REQUIRE(rows.size() == 12);
+    REQUIRE(rows.size() == 13);
     for (int i = 0; i < 12; ++i) {
         CHECK(rowOf(rows, i).number == i);
         CHECK_FALSE(rowOf(rows, i).label.empty());
@@ -56,18 +56,21 @@ TEST_CASE("Fix All panel rows: the twelve rows, their phases and switches", "[ap
     }
     CHECK(rowOf(rows, 0).phase == 1);
     CHECK(rowOf(rows, 9).phase == 1);
-    CHECK(rowOf(rows, 10).phase == 2);
-    CHECK(rowOf(rows, 11).phase == 3);
-    for (const int n : {0, 3, 4, 6, 7, 10}) {
+    CHECK(rowOf(rows, 10).phase == 1);
+    CHECK(rowOf(rows, 11).phase == 2);
+    CHECK(rowOf(rows, 12).phase == 3);
+    for (const int n : {0, 3, 4, 6, 7, 9, 11}) {
         CHECK(rowOf(rows, n).sw == FixAllRowSwitch::Option);
     }
-    for (const int n : {1, 2, 5, 8, 9}) {
+    for (const int n : {1, 2, 5, 8, 10}) {
         CHECK(rowOf(rows, n).sw == FixAllRowSwitch::Always);
     }
-    CHECK(rowOf(rows, 11).sw == FixAllRowSwitch::Required);
+    CHECK(rowOf(rows, 12).sw == FixAllRowSwitch::Required);
     CHECK(rowOf(rows, 0).label == "Weld vertices within 1e-6 x coordinate");
     CHECK(rowOf(rows, 3).label == "Delete tiny floating shells (< 0.1 %)");
     CHECK(rowOf(rows, 7).label == "Heal thin faces (stretched over 100 : 1)");
+    CHECK(rowOf(rows, 9).label == "Unite shells that cross themselves");
+    CHECK(rowOf(rows, 9).on); // on by default
 }
 
 TEST_CASE("Fix All panel rows: found-now counts are ? until Check Mesh, then the Mesh Health counts", "[app][fixall][gui]") {
@@ -94,10 +97,10 @@ TEST_CASE("Fix All panel rows: merge estimate and the default tick", "[app][fixa
         controller.openFixAll(3);
         controller.waitForFixAllPlan();
         const std::vector<FixAllPlanRow> rows = mesheal::fixAllPlanRows(controller);
-        CHECK(rowOf(rows, 10).on);
-        CHECK(rowOf(rows, 10).found == "2 -> 1 shell");
         CHECK(rowOf(rows, 11).on);
-        CHECK(rowOf(rows, 11).found == "(required after 10)");
+        CHECK(rowOf(rows, 11).found == "2 -> 1 shell");
+        CHECK(rowOf(rows, 12).on);
+        CHECK(rowOf(rows, 12).found == "(required after 11)");
         REQUIRE(controller.fixAllMergePlan() != nullptr);
         CHECK(mesheal::shellsInPlanScope(*controller.fixAllMergePlan()) == 2);
         CHECK(mesheal::shellsAfterPlannedMerge(*controller.fixAllMergePlan()) == 1);
@@ -108,9 +111,9 @@ TEST_CASE("Fix All panel rows: merge estimate and the default tick", "[app][fixa
         controller.openFixAll(3);
         controller.waitForFixAllPlan();
         const std::vector<FixAllPlanRow> rows = mesheal::fixAllPlanRows(controller);
-        CHECK_FALSE(rowOf(rows, 10).on);
-        CHECK(rowOf(rows, 10).found == "nothing to merge");
-        CHECK(rowOf(rows, 11).found == "(skipped: runs only after a merge)");
+        CHECK_FALSE(rowOf(rows, 11).on);
+        CHECK(rowOf(rows, 11).found == "nothing to merge");
+        CHECK(rowOf(rows, 12).found == "(skipped: runs only after a merge)");
         CHECK(mesheal::shellsAfterPlannedMerge(*controller.fixAllMergePlan()) == 2);
     }
 }
@@ -125,13 +128,15 @@ TEST_CASE("Fix All panel rows: a face selection turns off the whole-shell rows",
     const std::vector<FixAllPlanRow> rows = mesheal::fixAllPlanRows(controller);
     CHECK_FALSE(rowOf(rows, 3).available);
     CHECK(rowOf(rows, 3).found == "needs whole shells");
-    CHECK_FALSE(rowOf(rows, 10).available);
-    CHECK(rowOf(rows, 10).found == "needs whole shells");
-    CHECK(rowOf(rows, 11).found == "(skipped: runs only after a merge)");
+    CHECK_FALSE(rowOf(rows, 9).available);
+    CHECK(rowOf(rows, 9).found == "needs whole shells");
+    CHECK_FALSE(rowOf(rows, 11).available);
+    CHECK(rowOf(rows, 11).found == "needs whole shells");
+    CHECK(rowOf(rows, 12).found == "(skipped: runs only after a merge)");
     CHECK(rowOf(rows, 4).available);
 }
 
-TEST_CASE("Fix All panel rows: the row 10 tick follows the user's click and params", "[app][fixall][gui]") {
+TEST_CASE("Fix All panel rows: the row 11 tick follows the user's click and params", "[app][fixall][gui]") {
     AppController controller;
     controller.setMesh(overlappingCubes(), "cubes");
     controller.openFixAll(3);
@@ -141,10 +146,10 @@ TEST_CASE("Fix All panel rows: the row 10 tick follows the user's click and para
     params.weld = false;
     controller.setFixAllParams(params);
     const std::vector<FixAllPlanRow> rows = mesheal::fixAllPlanRows(controller);
-    CHECK_FALSE(rowOf(rows, 10).on);
     CHECK_FALSE(rowOf(rows, 11).on);
+    CHECK_FALSE(rowOf(rows, 12).on);
     CHECK_FALSE(rowOf(rows, 0).on);
-    CHECK(rowOf(rows, 10).found == "2 -> 1 shell");
+    CHECK(rowOf(rows, 11).found == "2 -> 1 shell");
 }
 
 TEST_CASE("Fix All panel: the weld note appears only for a large tolerance", "[app][fixall][gui]") {
@@ -179,16 +184,16 @@ TEST_CASE("Fix All panel rows: rows with no box carry a plain note, never a grey
     controller.openFixAll(3);
     controller.waitForFixAllPlan();
     std::vector<FixAllPlanRow> rows = mesheal::fixAllPlanRows(controller);
-    for (const int n : {0, 3, 4, 6, 7, 10}) {
+    for (const int n : {0, 3, 4, 6, 7, 9, 11}) {
         CHECK(rowOf(rows, n).hasBox());
         CHECK(rowOf(rows, n).note.empty());
     }
-    for (const int n : {1, 2, 5, 8, 9}) {
+    for (const int n : {1, 2, 5, 8, 10}) {
         CHECK_FALSE(rowOf(rows, n).hasBox());
         CHECK(rowOf(rows, n).note == "always runs");
     }
-    CHECK_FALSE(rowOf(rows, 11).hasBox());
-    CHECK(rowOf(rows, 11).note == "runs after a merge");
+    CHECK_FALSE(rowOf(rows, 12).hasBox());
+    CHECK(rowOf(rows, 12).note == "runs after a merge");
 
     // A face selection removes the box of the whole-shell rows too
     controller.selectFaces(std::vector<Eigen::Index>{0, 1, 2}, true);
@@ -196,7 +201,8 @@ TEST_CASE("Fix All panel rows: rows with no box carry a plain note, never a grey
     rows = mesheal::fixAllPlanRows(controller);
     CHECK_FALSE(rowOf(rows, 3).hasBox());
     CHECK(rowOf(rows, 3).note == "needs whole shells");
-    CHECK_FALSE(rowOf(rows, 10).hasBox());
+    CHECK_FALSE(rowOf(rows, 9).hasBox());
+    CHECK_FALSE(rowOf(rows, 11).hasBox());
 }
 
 TEST_CASE("Fix All panel: step numbers, times and the running text", "[app][fixall][gui]") {
@@ -206,8 +212,10 @@ TEST_CASE("Fix All panel: step numbers, times and the running text", "[app][fixa
     CHECK(mesheal::fixAllStepNumber(FixAllStageId::Dedupe, FixAllPhase::Repair) == 1);
     CHECK(mesheal::fixAllStepNumber(FixAllStageId::OrientAgain, FixAllPhase::Repair) == 5);
     CHECK(mesheal::fixAllStepNumber(FixAllStageId::FillHoles, FixAllPhase::Repair) == 8);
-    CHECK(mesheal::fixAllStepNumber(FixAllStageId::MergeShells, FixAllPhase::Merge) == 10);
-    CHECK(mesheal::fixAllStepNumber(FixAllStageId::FillHoles, FixAllPhase::Cleanup) == 11);
+    CHECK(mesheal::fixAllStepNumber(FixAllStageId::UniteSelfCrossing, FixAllPhase::Repair) == 9);
+    CHECK(mesheal::fixAllStepNumber(FixAllStageId::Islands, FixAllPhase::Repair) == 10);
+    CHECK(mesheal::fixAllStepNumber(FixAllStageId::MergeShells, FixAllPhase::Merge) == 11);
+    CHECK(mesheal::fixAllStepNumber(FixAllStageId::FillHoles, FixAllPhase::Cleanup) == 12);
 
     CHECK(mesheal::fixAllTimeText(6.2) == "6 ms");
     CHECK(mesheal::fixAllTimeText(1234.0) == "1.2 s");
@@ -247,14 +255,14 @@ TEST_CASE("Fix All panel: step lists and report lines of a real run", "[app][fix
         for (const mesheal::FixAllStepLine& line : pass.steps) {
             CHECK_FALSE(line.text.empty());
             CHECK(line.number >= 0);
-            CHECK(line.number <= 11);
+            CHECK(line.number <= 12);
         }
     }
     CHECK(steps > 0);
     CHECK(mesheal::fixAllStepsSummary(result).find("pass") != std::string::npos);
     bool sawMerge = false;
     for (const mesheal::FixAllStepLine& line : passes.front().steps) {
-        sawMerge = sawMerge || (line.number == 10 && line.dot == mesheal::FixAllDot::Green);
+        sawMerge = sawMerge || (line.number == 11 && line.dot == mesheal::FixAllDot::Green);
     }
     CHECK(sawMerge);
 

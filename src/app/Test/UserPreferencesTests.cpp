@@ -80,6 +80,7 @@ mesheal::UserPreferences customPreferences() {
     p.defaults.fixAll.removeFins = !p.defaults.fixAll.removeFins;
     p.defaults.fixAll.closeCracks = !p.defaults.fixAll.closeCracks;
     p.defaults.fixAll.healThinFaces = !p.defaults.fixAll.healThinFaces;
+    p.defaults.fixAll.uniteSelfCrossingShells = !p.defaults.fixAll.uniteSelfCrossingShells;
     p.checkMeshAfterLoad = !p.checkMeshAfterLoad;
     for (bool& autoCheck : p.autoCheckDefaults) {
         autoCheck = !autoCheck;
@@ -383,6 +384,7 @@ TEST_CASE("Fix All preferences: defaults, limits, refused zero, malformed values
     CHECK(defaults.defaults.fixAll.removeFins);
     CHECK(defaults.defaults.fixAll.closeCracks);
     CHECK(defaults.defaults.fixAll.healThinFaces);
+    CHECK(defaults.defaults.fixAll.uniteSelfCrossingShells);
     CHECK(defaults.tolerance.absFloor == settings::kDefaultWeldAbsFloor); // the load weld stays 1e-9
 
     // Limits clamp; rel = 0 (or negative) is refused and keeps the default

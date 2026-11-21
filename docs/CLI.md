@@ -57,7 +57,9 @@ See [Repairing](gui/repairs.md#whole-surface-rebuilds) for how to choose between
 | `--time-budget <sec>` | 0 (no limit) | `--fix-all` | Stop after this many seconds. |
 | `--merge-shells` | automatic | `--fix-all` | Always merge shells that overlap or nest. |
 | `--no-merge-shells` | automatic | `--fix-all` | Never merge shells. |
+| `--no-unite-shells` | unite | `--fix-all` | Never cut a shell that passes through itself. See [Shells that cross themselves](#shells-that-cross-themselves). |
 | `--report` | off | `--fix-all` | List each step Fix All applied or refused. With `--json`, adds a `steps` array. |
+| `--trace` | off | `--fix-all` | `--report`, plus the whole mesh measured before the run and after every step: every check's count and the crossing face pairs by kind, within a shell and between shells. Refused steps also show the result they would have kept. With `--json`, each step gets a `state` (and `refused_state`), plus `state_before`, `passes` and `best_pass`. Slow on large meshes. |
 | `--edge-length <len>` | auto | remesh, rebuild | Target triangle edge length, in file units. |
 | `--smoothing <N>` | 3 | `--remesh-voxel` | Smoothing passes. |
 | `--chord-ratio <ratio>` | 0.10 | `--remesh-iso` | How closely the new surface follows curves (smaller is closer). |
@@ -79,6 +81,17 @@ Without `--merge-shells` or `--no-merge-shells`, Fix All decides for itself:
 - A solid that sits wholly inside another and touches nothing is kept. It may be meant, for example an insert printed in a second material. Use `--merge-shells` to delete it, as the app's Fix All panel does when **Merge shells that overlap** is ticked.
 
 The JSON output reports the choice in `merge_shells` and `merge_turned_on_in_pass` (0 when the merge was on from the start or never turned on). The text output prints a `Merge shells:` line when it ran.
+
+## Shells that cross themselves
+
+A single closed shell can pass through itself, for example a surface folded through its own wall. Fix All cuts such a shell along every crossing with exact arithmetic and keeps only its outer surface, so the folds and the walls inside the solid go and the rest of the surface stays exactly where it was. Crossings it cannot cut (in open shells or cavities) are then patched island by island.
+
+- Only shells that are closed and point outward are cut. Cavities and open shells are never touched, and neither is any other shell.
+- Shells with more than 2 million faces are left as they are: the exact cut cannot be stopped once it starts.
+- Faces that only come very close to each other, closer than the intersection tolerance but without crossing, are not changed and are still reported.
+- `--report` lists each shell that was united and each one that was left, with the reason.
+
+Use `--no-unite-shells` to leave every crossing to the island patches.
 
 ## The input file is never overwritten
 

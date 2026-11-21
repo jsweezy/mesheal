@@ -33,9 +33,16 @@ Each pass runs these steps in order:
 | 6 | Close cracks | yes |
 | 7 | Heal thin faces | yes |
 | 8 | Fill holes | always runs |
-| 9 | Repair intersecting islands within a shell | always runs |
-| 10 | Merge shells that overlap (a union; cavities are kept) | yes; ticked automatically when shells overlap |
-| 11 | Clean up the merged result | runs only after a merge |
+| 9 | Unite shells that cross themselves (exact cut; keeps the outer surface) | yes |
+| 10 | Repair the intersecting islands left within a shell | always runs |
+| 11 | Merge shells that overlap (a union; cavities are kept) | yes; ticked automatically when shells overlap |
+| 12 | Clean up the merged result | runs only after a merge |
+
+Step 9 handles a closed shell that passes through itself, for example a surface folded through its
+own wall. It cuts the shell along every crossing with exact arithmetic and keeps only the outer
+surface; the rest of the surface stays exactly where it was. It never touches cavities, open shells or
+other shells, and skips shells over 2 million faces. Step 10 then patches the crossings it could not
+cut.
 
 Each row shows what Mesh Health finds now and has a tooltip saying what the step can change.
 **Passes** (default 3, set in Preferences > Fix All) is how many times the sequence may repeat. It

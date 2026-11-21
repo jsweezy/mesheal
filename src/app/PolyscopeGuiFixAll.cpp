@@ -339,10 +339,11 @@ void PolyscopeGui::drawFixAllPlanRows() {
                     case 4: params.removeFins = on; break;
                     case 6: params.closeCracks = on; break;
                     case 7: params.healThinFaces = on; break;
-                    case 10: controller_.setFixAllMergeShells(on); break;
+                    case 9: params.uniteSelfCrossingShells = on; break;
+                    case 11: controller_.setFixAllMergeShells(on); break;
                     default: break;
                     }
-                    changed = changed || row.number != 10;
+                    changed = changed || row.number != 11;
                 }
                 tooltip(tip.c_str());
             } else {
@@ -376,7 +377,7 @@ void PolyscopeGui::drawFixAllPlanRows() {
                 ImGui::Unindent();
             }
         }
-        if (row.number == 10) {
+        if (row.number == 11) {
             drawFixAllMergeNotes();
         }
         ImGui::PopID();

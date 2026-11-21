@@ -110,6 +110,33 @@ RepairOutput runRepairWorker(const MeshInput& input, Method method, const Global
         for (const FixAllReportLine& line : c.fixAll->result.report.lines) {
             out.report.push_back(line.text);
         }
+        const FixAllResult& result = c.fixAll->result;
+        for (const FixAllStepReport& step : result.steps) {
+            StepOutput o;
+            o.pass = step.pass;
+            o.phase = static_cast<int>(step.phase);
+            o.stage = step.label;
+            o.status = step.status == FixAllStepStatus::Applied    ? "applied"
+                       : step.status == FixAllStepStatus::Unchanged ? "unchanged"
+                       : step.status == FixAllStepStatus::Refused   ? "refused"
+                                                                    : "skipped";
+            o.detail = step.detail;
+            o.reason = step.reason;
+            o.countBefore = step.countBefore;
+            o.countAfter = step.countAfter;
+            o.facesAdded = step.facesAdded;
+            o.facesRemoved = step.facesRemoved;
+            o.elapsedMs = step.elapsedMs;
+            o.state = step.state;
+            o.refusedState = step.refusedState;
+            out.steps.push_back(std::move(o));
+        }
+        for (const FixAllPassReport& pass : result.passes) {
+            out.passes.push_back({pass.pass, pass.after.closedManifold, pass.after.oriented, pass.after.intersecting,
+                                  pass.after.junk, pass.after.thin, pass.newBest, pass.repeated, pass.elapsedMs});
+        }
+        out.bestPass = result.bestPass;
+        out.stateBefore = result.stateBefore;
     }
     return out;
 }

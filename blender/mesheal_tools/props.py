@@ -92,6 +92,11 @@ class MeshealSceneProps(PropertyGroup):
         description="Flip, collapse or remove needle and cap faces",
         default=True,
     )
+    unite_self_crossing_shells: BoolProperty(
+        name="Unite Self-Crossing Shells",
+        description="Cut each closed shell that still passes through itself along every crossing and keep its outer surface",
+        default=True,
+    )
     merge_shells: BoolProperty(
         name="Merge Overlapping Shells",
         description="Boolean-union shells that overlap each other (cavities are kept)",

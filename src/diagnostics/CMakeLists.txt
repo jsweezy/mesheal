@@ -9,6 +9,7 @@ add_library(mesheal_diagnostics STATIC
     ShellNesting.cpp
     ShellRelations.cpp
     ShellRoles.cpp
+    MeshState.cpp
 )
 add_library(mesheal::diagnostics ALIAS mesheal_diagnostics)
 

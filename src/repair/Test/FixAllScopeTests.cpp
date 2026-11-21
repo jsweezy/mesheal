@@ -534,9 +534,21 @@ void printSteps(const char* name, const mesheal::FixAllResult& result) {
 }
 
 TEST_CASE("Fix All on small real files and samples", "[repair][fixall][files]") {
-    SECTION("self_intersecting_box.stl: the corner pulled through the bottom is cut out and filled") {
+    // The island sections turn the union off: it would cut these closed shells first
+    mesheal::FixAllParams islandsOnly;
+    islandsOnly.uniteSelfCrossingShells = false;
+    SECTION("self_intersecting_box.stl: by default the union cuts off the corner pulled through the bottom") {
         const Mesh box = mesheal::loadStl(examplePath("self_intersecting_box.stl"));
         const mesheal::FixAllResult result = mesheal::runFixAll(box, FixAllScope::whole(box), {});
+        REQUIRE(result.success);
+        REQUIRE(result.priorityBefore.intersecting == 6);
+        REQUIRE(stepOf(result, FixAllStageId::UniteSelfCrossing)->accepted());
+        REQUIRE(stepOf(result, FixAllStageId::Islands)->status == FixAllStepStatus::Unchanged);
+        REQUIRE(result.priorityAfter.clean());
+    }
+    SECTION("self_intersecting_box.stl: the corner pulled through the bottom is cut out and filled") {
+        const Mesh box = mesheal::loadStl(examplePath("self_intersecting_box.stl"));
+        const mesheal::FixAllResult result = mesheal::runFixAll(box, FixAllScope::whole(box), islandsOnly);
         REQUIRE(result.success);
         REQUIRE(result.passesRun == 1);
         REQUIRE(result.stopReason == FixAllStopReason::Clean);
@@ -549,7 +561,7 @@ TEST_CASE("Fix All on small real files and samples", "[repair][fixall][files]") 
     }
     SECTION("Folded cube: both islands repaired in one pass") {
         const Mesh folded = SampleMeshes::createFoldedCubeMesh();
-        const mesheal::FixAllResult result = mesheal::runFixAll(folded, FixAllScope::whole(folded), {});
+        const mesheal::FixAllResult result = mesheal::runFixAll(folded, FixAllScope::whole(folded), islandsOnly);
         REQUIRE(result.success);
         REQUIRE(result.passesRun == 1);
         REQUIRE(result.stopReason == FixAllStopReason::Clean);
