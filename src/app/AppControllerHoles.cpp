@@ -58,7 +58,7 @@ void AppController::refreshHoleFocus(bool openEdgeFocus) {
         return; // same hole: keep the chosen method and its preview
     }
     focusedHole_ = static_cast<std::size_t>(index);
-    selectedHoleMethod_ = recommendedHoleFill(holes[*focusedHole_].shape);
+    selectedHoleMethod_ = recommendedHoleFill(holes[*focusedHole_], holes);
     refreshHolePreview();
 }
 
@@ -69,6 +69,11 @@ void AppController::refreshHolePreview() {
         return;
     }
     holePreview_ = previewHoleFill(mesh_, *hole, selectedHoleMethod_, checkParams(), holeSettings_);
+}
+
+HoleFillMethod AppController::recommendedHoleMethod() {
+    const HoleLoop* hole = focusedHole();
+    return hole == nullptr ? HoleFillMethod::None : recommendedHoleFill(*hole, holeLoops());
 }
 
 void AppController::setSelectedHoleMethod(HoleFillMethod method) {

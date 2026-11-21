@@ -7,14 +7,18 @@
 
 #include <Eigen/Geometry>
 
+#include <CGAL/Constrained_Delaunay_triangulation_2.h>
 #include <CGAL/Polygon_mesh_processing/fair.h>
 #include <CGAL/Polygon_mesh_processing/internal/Snapping/snap.h>
 #include <CGAL/Polygon_mesh_processing/stitch_borders.h>
 #include <CGAL/Polygon_mesh_processing/triangulate_hole.h>
+#include <CGAL/Triangulation_face_base_with_info_2.h>
+#include <CGAL/Triangulation_vertex_base_with_info_2.h>
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <exception>
 #include <functional>
 #include <limits>
@@ -24,6 +28,7 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include <tuple>
 #include <utility>
 
 namespace mesheal {
@@ -347,6 +352,9 @@ struct FillReport {
     std::size_t verticesAdded = 0;
     std::size_t openEdgesLeft = 0;
     double maxVertexMove = 0.0;
+    /// Cap Cut Plane only: the plane was read and this opening must stay open (a ring's through-hole, or
+    /// one that only the cap of the whole plane may close), so no other fill may cover it
+    bool leaveOpen = false;
 };
 
 /// Faces within `rings` vertex rings of the rim, copied into a halfedge mesh whose vertex and face
@@ -428,6 +436,425 @@ std::size_t closeCrack(CgalSurfaceMesh& sm, const std::vector<CgalHalfedgeIndex>
     return snapped + PMP::stitch_borders(sm);
 }
 
+/// The live faces on the undirected edge {a, b}.
+std::size_t facesOnEdge(const Workspace& ws, int a, int b, std::vector<Eigen::Index>& around) {
+    ws.facesAround(a, around);
+    std::size_t n = 0;
+    for (const Eigen::Index f : around) {
+        const FaceKey k = ws.face(f);
+        n += std::find(k.begin(), k.end(), b) != k.end() ? 1 : 0;
+    }
+    return n;
+}
+
+/// Every rim edge of `hole` now has a face on both sides (an earlier cap closed it).
+bool holeClosedNow(const Workspace& ws, const HoleLoop& hole) {
+    std::vector<Eigen::Index> around;
+    return std::all_of(hole.edges.begin(), hole.edges.end(),
+                       [&](const std::array<int, 2>& e) { return facesOnEdge(ws, e[0], e[1], around) >= 2; });
+}
+
+/// Cap Cut Plane: a model cut flat leaves every opening in one plane. The plane is cut into regions along
+/// all of them (and along mesh edges lying in it, such as a valley floor that comes down to the cut), and
+/// a region is capped when the faces on its rim edges say material lies against it; the rest (the hole of
+/// a ring, a region outside the part) stays open. No vertex moves; where the part touches the plane along
+/// its own edges only, the cap gets copies of those vertices at the same points.
+/// With `thisLoopOnly`, only `hole`'s own rim is capped, and only when the inside of it is solid and no
+/// other opening or edge of the part in the plane lies inside it (the fallback when the plane as a whole
+/// cannot be capped, e.g. two parts cut in nearly the same place).
+FillReport capCutPlane(Workspace& ws, const HoleLoop& hole, const std::stop_token& stopToken, bool thisLoopOnly = false) {
+    using K = CgalKernel;
+    using Vb = CGAL::Triangulation_vertex_base_with_info_2<int, K>;
+    using Fbi = CGAL::Triangulation_face_base_with_info_2<int, K>;
+    using Fb = CGAL::Constrained_triangulation_face_base_2<K, Fbi>;
+    using Tds = CGAL::Triangulation_data_structure_2<Vb, Fb>;
+    using Cdt = CGAL::Constrained_Delaunay_triangulation_2<K, Tds, CGAL::No_constraint_intersection_tag>;
+
+    FillReport report;
+    if (!hole.closed || hole.edges.empty()) {
+        report.status = "These open edges do not form a closed loop: fix the non-manifold edges first.";
+        return report;
+    }
+    // The plane: snapped to an axis when it is one (a cut at z = 0 stays exact)
+    Eigen::Vector3d n = hole.normal.normalized();
+    for (int axis = 0; axis < 3; ++axis) {
+        if (std::abs(n[axis]) > 1.0 - 1.0e-9) {
+            const double sign = n[axis] > 0.0 ? 1.0 : -1.0;
+            n = Eigen::Vector3d::Zero();
+            n[axis] = sign;
+        }
+    }
+    const Eigen::Vector3d origin = ws.point(hole.edges.front()[0]);
+    const double tol = settings::kCutPlaneTolerance * std::max(hole.size, 1.0e-12);
+    const auto height = [&](int v) { return (ws.point(v) - origin).dot(n); };
+    const auto inPlane = [&](int v) { return std::abs(height(v)) <= tol; };
+    for (const auto& [a, b] : hole.edges) {
+        if (!inPlane(a) || !inPlane(b)) {
+            report.status = "This hole's rim does not lie in one plane: Cap Cut Plane needs a flat cut.";
+            return report;
+        }
+    }
+    const Eigen::Vector3d u = n.unitOrthogonal();
+    const Eigen::Vector3d w = n.cross(u);
+    const auto to2d = [&](int v) {
+        const Eigen::Vector3d p = ws.point(v) - origin;
+        return K::Point_2(p.dot(u), p.dot(w));
+    };
+
+    // Directed edges in the plane of the live faces: an edge used one way only is open
+    std::unordered_map<std::array<int, 2>, Eigen::Index, EdgeHash> directed;
+    for (Eigen::Index f = 0; f < ws.totalFaces(); ++f) {
+        if (!ws.alive(f)) {
+            continue;
+        }
+        const FaceKey k = ws.face(f);
+        const std::array<bool, 3> on{inPlane(k[0]), inPlane(k[1]), inPlane(k[2])};
+        for (std::size_t c = 0; c < 3; ++c) {
+            if (on[c] && on[(c + 1) % 3]) {
+                directed[{k[c], k[(c + 1) % 3]}] = f;
+            }
+        }
+    }
+    if (stopToken.stop_requested()) {
+        return report;
+    }
+    struct RimEdge {
+        int a = 0; ///< The face runs a -> b; the cap runs b -> a
+        int b = 0;
+        int sign = 0; ///< Winding of the cap's faces in the plane's frame (+1 counter-clockwise)
+    };
+    std::vector<RimEdge> rim;
+    /// With `thisLoopOnly`: vertices in the plane that are not on the hole's rim, with the winding of the cap
+    /// their own rim would get (0 for an edge of the part)
+    std::vector<std::pair<int, int>> others;
+    std::vector<std::array<int, 2>> floor; ///< Closed edges in the plane that bound faces off it
+    for (const auto& [e, f] : directed) {
+        if (!inPlane(e[0]) || !inPlane(e[1])) {
+            continue;
+        }
+        const FaceKey k = ws.face(f);
+        int third = k[0];
+        for (const int v : k) {
+            third = v != e[0] && v != e[1] ? v : third;
+        }
+        const auto back = directed.find({e[1], e[0]});
+        if (back == directed.end()) {
+            // Open: the cap faces the way the face on the edge says
+            RimEdge r{e[0], e[1], 0};
+            const double h = height(third);
+            if (std::abs(h) > tol) {
+                r.sign = h > 0.0 ? -1 : 1; // material on the +n side: the cap faces -n
+            } else {
+                const CGAL::Orientation o = CGAL::orientation(to2d(e[0]), to2d(e[1]), to2d(third));
+                r.sign = o == CGAL::LEFT_TURN ? 1 : (o == CGAL::RIGHT_TURN ? -1 : 0);
+            }
+            if (r.sign == 0) {
+                report.status = "A face on the rim is degenerate: remove collapsed faces first.";
+                return report;
+            }
+            rim.push_back(r);
+        } else if (e[0] < e[1]) {
+            if (thisLoopOnly) {
+                // An edge of the part with walls on both sides (a valley floor) must not lie inside the cap
+                const FaceKey k2 = ws.face(back->second);
+                int third2 = k2[0];
+                for (const int v : k2) {
+                    third2 = v != e[0] && v != e[1] ? v : third2;
+                }
+                if (!inPlane(third) && !inPlane(third2)) {
+                    others.emplace_back(e[0], 0);
+                }
+                continue;
+            }
+            const FaceKey k2 = ws.face(back->second);
+            int third2 = k2[0];
+            for (const int v : k2) {
+                third2 = v != e[0] && v != e[1] ? v : third2;
+            }
+            if (!inPlane(third) || !inPlane(third2)) {
+                floor.push_back(e);
+            }
+        }
+    }
+
+    if (thisLoopOnly) {
+        std::unordered_set<std::array<int, 2>, EdgeHash> own;
+        for (const auto& [a, b] : hole.edges) {
+            own.insert({std::min(a, b), std::max(a, b)});
+        }
+        std::vector<RimEdge> mine;
+        for (const RimEdge& r : rim) {
+            if (own.contains({std::min(r.a, r.b), std::max(r.a, r.b)})) {
+                mine.push_back(r);
+            } else {
+                others.emplace_back(r.a, r.sign);
+            }
+        }
+        rim = std::move(mine);
+        floor.clear();
+        if (rim.empty()) {
+            report.status = "This hole's rim is not open any more.";
+            return report;
+        }
+    }
+    // Constrained Delaunay triangulation of the plane along every opening and floor edge. Mesh vertices
+    // that share a point (a rim that touches itself, split into copies) share one triangulation vertex;
+    // each cap face takes the copy on the edges that bound its side of the point.
+    Cdt cdt;
+    std::unordered_map<int, Cdt::Vertex_handle> handle;
+    std::vector<std::vector<int>> copies; // per triangulation vertex: its mesh vertices
+    // (vertex, other end, winding) of a constrained edge -> mesh vertex. Two parts cut in one place (two
+    // halves meeting at the cut) have their own edges on top of each other, one per winding.
+    std::map<std::tuple<int, int, int>, int> sideId;
+    const auto vertexOf = [&](int v) {
+        auto it = handle.find(v);
+        if (it == handle.end()) {
+            const std::size_t before = cdt.number_of_vertices();
+            Cdt::Vertex_handle h = cdt.insert(to2d(v));
+            if (cdt.number_of_vertices() > before) { // a new point (CGAL leaves the info uninitialised)
+                copies.emplace_back();
+                h->info() = static_cast<int>(copies.size());
+            }
+            copies[static_cast<std::size_t>(h->info() - 1)].push_back(v);
+            it = handle.emplace(v, h).first;
+        }
+        return it->second;
+    };
+    const auto constrain = [&](int p, int q, int sign) { // sign 0: a floor edge, for either winding
+        const Cdt::Vertex_handle a = vertexOf(p);
+        const Cdt::Vertex_handle b = vertexOf(q);
+        if (a == b) {
+            return false;
+        }
+        for (const int w : {-1, 1}) {
+            if (sign != 0 && w != sign) {
+                continue;
+            }
+            for (const auto& [key, id] : {std::pair{std::tuple{a->info(), b->info(), w}, p}, std::pair{std::tuple{b->info(), a->info(), w}, q}}) {
+                const auto [slot, fresh] = sideId.emplace(key, id);
+                if (!fresh && slot->second != id && sign != 0) {
+                    return false; // two edges of the cut on top of each other, facing the same way
+                }
+            }
+        }
+        cdt.insert_constraint(a, b);
+        return true;
+    };
+    try {
+        bool ok = true;
+        for (const RimEdge& r : rim) {
+            ok = ok && constrain(r.a, r.b, r.sign);
+        }
+        for (const auto& [p, q] : floor) {
+            ok = ok && constrain(p, q, 0);
+        }
+        if (!ok) {
+            report.status = "Edges of the cut lie on top of each other: weld the mesh first.";
+            return report;
+        }
+    } catch (const Cdt::Intersection_of_constraints_exception&) {
+        report.status = "Edges of the cut cross each other in the plane: repair the crossings first.";
+        return report;
+    }
+    if (cdt.number_of_vertices() != copies.size() || cdt.dimension() != 2) {
+        report.status = "A vertex of the cut lies on another edge of it: the cap would need new vertices.";
+        return report;
+    }
+    // The mesh vertex for corner i of cap face f: walk around the point to the first constrained edge
+    const auto meshVertex = [&](Cdt::Face_handle f, int i, int sign) {
+        const Cdt::Vertex_handle v = f->vertex(i);
+        const std::vector<int>& ids = copies[static_cast<std::size_t>(v->info() - 1)];
+        if (ids.size() == 1) {
+            return ids.front();
+        }
+        Cdt::Face_handle g = f;
+        for (std::size_t step = 0; step < 4 * ids.size() + 64; ++step) {
+            const int j = g->index(v);
+            const Cdt::Vertex_handle x = g->vertex(g->ccw(j));
+            if (cdt.is_constrained({g, g->cw(j)})) {
+                const auto it = sideId.find({v->info(), x->info(), sign});
+                return it != sideId.end() ? it->second : -1;
+            }
+            g = g->neighbor(g->cw(j));
+            if (cdt.is_infinite(g) || g == f) {
+                break;
+            }
+        }
+        return -1;
+    };
+
+    // Regions: faces joined across edges that are not constraints
+    for (auto f = cdt.all_faces_begin(); f != cdt.all_faces_end(); ++f) {
+        f->info() = -1;
+    }
+    int regions = 0;
+    std::vector<char> unbounded;
+    for (auto f = cdt.finite_faces_begin(); f != cdt.finite_faces_end(); ++f) {
+        if (f->info() >= 0) {
+            continue;
+        }
+        const int id = regions++;
+        unbounded.push_back(0);
+        std::vector<Cdt::Face_handle> stack{f};
+        f->info() = id;
+        while (!stack.empty()) {
+            const Cdt::Face_handle g = stack.back();
+            stack.pop_back();
+            for (int i = 0; i < 3; ++i) {
+                if (cdt.is_constrained({g, i})) {
+                    continue;
+                }
+                const Cdt::Face_handle h = g->neighbor(i);
+                if (cdt.is_infinite(h)) {
+                    unbounded[static_cast<std::size_t>(id)] = 1;
+                } else if (h->info() < 0) {
+                    h->info() = id;
+                    stack.push_back(h);
+                }
+            }
+        }
+    }
+
+    // Each opening edge says which side is the cap, with which winding, and which side is not. A region
+    // capped with both windings is where two parts meet at the cut: each gets its own cap.
+    const auto slot = [](int sign) { return sign > 0 ? std::size_t{0} : std::size_t{1}; };
+    std::vector<std::array<char, 2>> want(static_cast<std::size_t>(regions), {0, 0});
+    std::vector<std::array<char, 2>> refused(static_cast<std::size_t>(regions), {0, 0});
+    std::vector<std::array<std::size_t, 2>> refusedBy(static_cast<std::size_t>(regions), {0, 0}); // a rim edge that refused it
+    const auto near = [&](const RimEdge& r) {
+        const Eigen::Vector3d p = 0.5 * (ws.point(r.a) + ws.point(r.b));
+        char text[96];
+        std::snprintf(text, sizeof(text), " (near %.4g, %.4g, %.4g)", p.x(), p.y(), p.z());
+        return std::string(text);
+    };
+    for (const RimEdge& r : rim) {
+        const Cdt::Vertex_handle a = handle.at(r.a);
+        const Cdt::Vertex_handle b = handle.at(r.b);
+        Cdt::Face_handle f;
+        int i = 0;
+        if (!cdt.is_edge(a, b, f, i)) {
+            report.status = "A vertex of the cut lies on an open edge: the cap would need new vertices.";
+            return report;
+        }
+        for (const Cdt::Face_handle g : {f, f->neighbor(i)}) {
+            // The cap face runs b -> a: counter-clockwise when b is followed by a in g
+            const int ib = g->index(b);
+            const bool bThenA = g->vertex(g->ccw(ib)) == a;
+            const bool capSide = bThenA == (r.sign > 0);
+            if (cdt.is_infinite(g)) {
+                if (capSide) {
+                    report.status = "The cap would reach outside the part: the openings in this plane are not closed loops.";
+                    return report;
+                }
+                continue;
+            }
+            const auto region = static_cast<std::size_t>(g->info());
+            if (capSide) {
+                want[region][slot(r.sign)] = 1;
+            } else {
+                refused[region][slot(r.sign)] = 1;
+                refusedBy[region][slot(r.sign)] = static_cast<std::size_t>(&r - rim.data());
+            }
+        }
+    }
+    std::size_t capped = 0;
+    std::size_t left = 0;
+    for (std::size_t r = 0; r < want.size(); ++r) {
+        for (std::size_t w = 0; w < 2; ++w) {
+            if (want[r][w] != 0 && refused[r][w] != 0) {
+                report.status = "The faces around the openings disagree about which side is solid" + near(rim[refusedBy[r][w]]) + ".";
+                return report;
+            }
+        }
+        const bool any = want[r][0] != 0 || want[r][1] != 0;
+        if (any && unbounded[r] != 0) {
+            report.status = "The cap would reach outside the part: the openings in this plane are not closed loops.";
+            return report;
+        }
+        capped += any ? 1 : 0;
+        left += !any && unbounded[r] == 0 ? 1 : 0;
+    }
+    if (thisLoopOnly) {
+        // Nothing else of the plane may lie inside the cap: a ring's through-hole or a valley floor needs
+        // the cap of the whole plane
+        // (an opening whose part lies on the other side of the plane is another part meeting it at the cut)
+        for (const auto& [v, sign] : others) {
+            if (handle.contains(v)) {
+                continue;
+            }
+            const Cdt::Face_handle f = cdt.locate(to2d(v));
+            if (f == Cdt::Face_handle() || cdt.is_infinite(f)) {
+                continue;
+            }
+            const auto& w = want[static_cast<std::size_t>(f->info())];
+            if (sign == 0 ? (w[0] != 0 || w[1] != 0) : w[slot(sign)] != 0) {
+                report.status = "Other openings or edges of the part lie inside this opening in its plane: it needs the cap "
+                                "of the whole plane.";
+                report.leaveOpen = true;
+                return report;
+            }
+        }
+        if (capped == 0) {
+            report.status = "Nothing solid lies against this opening in its plane (the hole through a ring): left open.";
+            report.leaveOpen = true;
+            return report;
+        }
+    }
+    // A vertex in the plane that is on no opening belongs to the part's own edges there (a valley floor
+    // touching the cut): the cap gets a copy of it at the same point, so the part rests on the cap
+    // without sharing its edges
+    std::unordered_set<int> onRim;
+    for (const RimEdge& r : rim) {
+        onRim.insert(r.a);
+        onRim.insert(r.b);
+    }
+    std::map<std::pair<int, int>, int> capCopy; // (vertex, winding) -> its copy in that cap
+    std::vector<std::pair<FaceKey, int>> cap;
+    for (auto f = cdt.finite_faces_begin(); f != cdt.finite_faces_end(); ++f) {
+        for (const int sign : {1, -1}) {
+            if (want[static_cast<std::size_t>(f->info())][slot(sign)] == 0) {
+                continue;
+            }
+            FaceKey k{meshVertex(f, 0, sign), meshVertex(f, 1, sign), meshVertex(f, 2, sign)};
+            if (k[0] < 0 || k[1] < 0 || k[2] < 0) {
+                report.status = "Where the cut touches itself, a cap face could not tell which side it is on.";
+                return report;
+            }
+            if (sign < 0) {
+                std::swap(k[1], k[2]);
+            }
+            cap.emplace_back(k, sign);
+        }
+    }
+    for (auto& [k, sign] : cap) {
+        for (int& v : k) {
+            if (!onRim.contains(v)) {
+                auto it = capCopy.find({v, sign});
+                if (it == capCopy.end()) {
+                    it = capCopy.emplace(std::pair{v, sign}, ws.addVertex(ws.point(v))).first;
+                }
+                v = it->second;
+            }
+        }
+        report.added.push_back(ws.addFace(k));
+    }
+    report.verticesAdded = capCopy.size();
+    if (report.added.empty()) {
+        report.status = "No region of the plane has material against it: nothing to cap.";
+        return report;
+    }
+    report.changed = true;
+    std::vector<Eigen::Index> around;
+    report.openEdgesLeft = static_cast<std::size_t>(std::count_if(hole.edges.begin(), hole.edges.end(), [&](const std::array<int, 2>& e) {
+        return facesOnEdge(ws, e[0], e[1], around) < 2;
+    }));
+    report.status = "Capped the cut plane: " + std::to_string(rim.size()) + " open edges, " + std::to_string(capped) +
+                    (capped == 1 ? " region" : " regions") + " capped" +
+                    (left > 0 ? ", " + std::to_string(left) + (left == 1 ? " region" : " regions") + " left open (nothing solid against it)" : std::string()) +
+                    (floor.empty() ? std::string() : ", " + std::to_string(floor.size()) + " edges of the part lie in the plane") + ".";
+    return report;
+}
+
 /// Applies `method` to `hole` in `ws`. The workspace is unchanged on failure.
 FillReport applyFill(Workspace& ws, const HoleLoop& hole, HoleFillMethod method, const HoleFillSettings& settings,
                      const std::stop_token& stopToken) {
@@ -440,6 +867,26 @@ FillReport applyFill(Workspace& ws, const HoleLoop& hole, HoleFillMethod method,
         report.status = "These open edges do not form a closed loop (they end at a non-manifold edge): fix the "
                         "non-manifold edges first.";
         return report;
+    }
+    if (method == HoleFillMethod::CutPlane) {
+        const Workspace::Mark m = ws.mark();
+        try {
+            FillReport whole = capCutPlane(ws, hole, stopToken);
+            if (whole.changed || stopToken.stop_requested()) {
+                return whole;
+            }
+            FillReport alone = capCutPlane(ws, hole, stopToken, true);
+            if (alone.changed) {
+                alone.status = "Capped this opening on its own (" + whole.status + ") " + alone.status;
+            } else {
+                alone.status = whole.status + " On its own: " + alone.status;
+            }
+            return alone;
+        } catch (const CGAL::Failure_exception& e) {
+            ws.rollback(m);
+            report.status = std::string("CGAL could not triangulate the cut plane: ") + e.what();
+            return report;
+        }
     }
     LocalPatch patch;
     if (!extractPatch(ws, hole.vertices, settings.patchRings, patch)) {
@@ -987,6 +1434,8 @@ const char* holeFillMethodLabel(HoleFillMethod method) noexcept {
         return "Fill Smooth";
     case HoleFillMethod::CloseCrack:
         return "Close Crack";
+    case HoleFillMethod::CutPlane:
+        return "Cap Cut Plane";
     case HoleFillMethod::None:
         break;
     }
@@ -1005,6 +1454,33 @@ HoleFillMethod recommendedHoleFill(HoleShape shape) noexcept {
         break;
     }
     return HoleFillMethod::None;
+}
+
+bool isCutPlaneHole(const HoleLoop& hole) noexcept {
+    return hole.closed && hole.shape != HoleShape::Crack && hole.planeDeviation <= settings::kCutPlaneTolerance * hole.size;
+}
+
+bool sharesCutPlane(const HoleLoop& hole, std::span<const HoleLoop> holes) noexcept {
+    // A cut leaves walls rising out of its plane; holes in a flat wall have the wall's faces around them
+    if (!isCutPlaneHole(hole) || hole.inPlaneNeighbourShare > 0.5) {
+        return false;
+    }
+    const Eigen::Vector3d n = hole.normal.normalized();
+    for (const HoleLoop& other : holes) {
+        if (&other == &hole || !isCutPlaneHole(other) || other.inPlaneNeighbourShare > 0.5 ||
+            std::abs(other.normal.normalized().dot(n)) < 1.0 - 1.0e-9) {
+            continue;
+        }
+        const double tol = settings::kCutPlaneTolerance * std::max(hole.size, other.size);
+        if (std::abs((other.centroid - hole.centroid).dot(n)) <= tol) {
+            return true;
+        }
+    }
+    return false;
+}
+
+HoleFillMethod recommendedHoleFill(const HoleLoop& hole, std::span<const HoleLoop> holes) noexcept {
+    return sharesCutPlane(hole, holes) ? HoleFillMethod::CutPlane : recommendedHoleFill(hole.shape);
 }
 
 bool HoleFillSettings::operator==(const HoleFillSettings& other) const noexcept {
@@ -1126,6 +1602,8 @@ HoleBatchResult fillHoles(
     const auto inScope = [&](Eigen::Index f) {
         return !scoped || f >= mesh.numFaces() || options.faceInScope[static_cast<std::size_t>(f)] != 0;
     };
+    const bool partial = scoped && std::find(options.faceInScope.begin(), options.faceInScope.end(), std::uint8_t{0}) !=
+                                       options.faceInScope.end();
     const bool testCrossings = options.crossingPolicy != HoleCrossingPolicy::IgnoreCrossings;
     result.crossingsTested = testCrossings;
 
@@ -1190,7 +1668,23 @@ HoleBatchResult fillHoles(
         const HoleLoop& hole = holes[i];
         HoleFillOutcome& outcome = result.outcomes.emplace_back();
         outcome.hole = i;
-        const HoleFillMethod first = method == HoleFillMethod::None ? recommendedHoleFill(hole.shape) : method;
+        // A cap closes every opening in its plane, so a batch limited to part of the mesh does not pick it,
+        // nor one whose plane holds an opening over the size limit
+        const bool capAllowed = !partial && std::none_of(holes.begin(), holes.end(), [&](const HoleLoop& other) {
+            return settings.maxHoleEdges > 0 && other.edgeCount() > static_cast<std::size_t>(settings.maxHoleEdges) &&
+                   (&other == &hole || sharesCutPlane(hole, std::span<const HoleLoop>(&other, 1)));
+        });
+        const HoleFillMethod first = method != HoleFillMethod::None ? method
+                                     : capAllowed                   ? recommendedHoleFill(hole, holes)
+                                                                    : recommendedHoleFill(hole.shape);
+        if (hole.closed && holeClosedNow(ws, hole)) {
+            // Closed by an earlier hole's cap (Cap Cut Plane caps every opening in its plane)
+            outcome.method = HoleFillMethod::CutPlane;
+            outcome.closed = true;
+            outcome.status = "Closed with the cap of an earlier hole in the same plane.";
+            ++result.holesClosed;
+            continue;
+        }
         const bool tooBig = settings.maxHoleEdges > 0 && hole.edgeCount() > static_cast<std::size_t>(settings.maxHoleEdges);
         outcome.skipped = !hole.closed                     ? HoleSkipReason::OpenChain
                           : first == HoleFillMethod::None  ? HoleSkipReason::NoMethod
@@ -1217,7 +1711,17 @@ HoleBatchResult fillHoles(
         }
 
         // Try the chain; keep the first fill that closes the hole and crosses nothing, else the best
-        const std::vector<HoleFillMethod> chain = fillChain(first, options.crossingPolicy);
+        // Openings that share a cut plane are tried with the cap first: one of them alone may be the
+        // through-hole of a ring, which a fill of its own would cover with a lid. The usual fills follow
+        // only when the cap could not read the plane at all (loops that are not closed, crossing edges).
+        std::vector<HoleFillMethod> chain = method == HoleFillMethod::None && first == HoleFillMethod::CutPlane
+                                                ? std::vector<HoleFillMethod>{HoleFillMethod::CutPlane}
+                                                : fillChain(first, options.crossingPolicy);
+        // A flat opening of its own is capped flat only when no other fill can close it
+        if (capAllowed && options.crossingPolicy != HoleCrossingPolicy::IgnoreCrossings && isCutPlaneHole(hole) &&
+            std::find(chain.begin(), chain.end(), HoleFillMethod::CutPlane) == chain.end()) {
+            chain.push_back(HoleFillMethod::CutPlane);
+        }
         std::optional<std::size_t> kept;
         std::optional<std::size_t> best;
         FillCrossings keptCrossings;
@@ -1228,6 +1732,10 @@ HoleBatchResult fillHoles(
             return std::pair<int, std::size_t>(a.closed ? 0 : 1, a.crossingsOwnShell + a.crossingsOtherShells);
         };
         for (std::size_t k = 0; k < chain.size(); ++k) {
+            if (k > 0 && chain[k] == HoleFillMethod::CutPlane &&
+                std::any_of(outcome.attempts.begin(), outcome.attempts.end(), [](const HoleFillAttempt& a) { return a.closed; })) {
+                break; // the fallback cap: another fill closed the hole
+            }
             HoleFillAttempt& attempt = outcome.attempts.emplace_back();
             attempt.method = chain[k];
             const Workspace::Mark m = ws.mark();
@@ -1239,6 +1747,11 @@ HoleBatchResult fillHoles(
             }
             attempt.status = report.status;
             if (!report.changed) {
+                if (k == 0 && chain.size() == 1 && chain[0] == HoleFillMethod::CutPlane && method == HoleFillMethod::None &&
+                    !report.leaveOpen) {
+                    const std::vector<HoleFillMethod> rest = fillChain(recommendedHoleFill(hole.shape), options.crossingPolicy);
+                    chain.insert(chain.end(), rest.begin(), rest.end());
+                }
                 continue;
             }
             if (changedOutsideScope(m)) {
@@ -1289,7 +1802,8 @@ HoleBatchResult fillHoles(
             if (anyCrossing) {
                 outcome.status = "Every fill crosses other faces: left open.";
             } else {
-                outcome.status = outcome.attempts.empty() ? "No fill found." : outcome.attempts.back().status;
+                // The recommended fill's reason (the first tried) says most about the hole
+                outcome.status = outcome.attempts.empty() ? "No fill found." : outcome.attempts.front().status;
             }
             lastFailure = outcome.status;
         } else {

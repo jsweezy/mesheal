@@ -135,6 +135,8 @@ inline constexpr std::size_t kDefaultMaxHolePatchFaces = 50000; // Refine / Smoo
 inline constexpr double kDefaultCrackSnapFactor       = 3.0;    // Close Crack: vertices move at most this many mean gap widths (a wedge is 2x its mean)
 inline constexpr double kMinCrackSnapEdgeShare        = 1.0e-3; // Close Crack: ... but at least this share of the mean rim edge (zero-width T-junctions)
 inline constexpr std::size_t kMaxCubicHoleFillEdges   = 400;    // Fill Flat / Refine / Smooth: bigger holes skip CGAL's O(n^3) fallback search (n = 600 takes ~1 s)
+inline constexpr std::size_t kMaxFoldRepairFolds   = 2000;   // Patch islands: a shell with more folded face pairs skips the fold repair (each fold is tried a few ways)
+inline constexpr double kCutPlaneTolerance            = 1.0e-6; // Cap Cut Plane: a vertex lies in the rim's plane within this share of the rim size
 inline constexpr std::size_t kMaxCgalLocalRepairPatchFaces = 4096;    // Batch CGAL Local Repair: leave out a crossing patch that grows past this many faces over CGAL's rings
 inline constexpr std::size_t kMaxCgalLocalRepairHoleEdges  = 1000;    // Batch CGAL Local Repair: ... or whose merged hole rim is longer (its O(n^3) refill takes ~5 s)
 inline constexpr double kMaxCgalLocalRepairCubicWork      = 4.0e9;   // Batch CGAL Local Repair: sum of rim^3 over the holes taken in one call (~20 s worst case)

@@ -44,6 +44,19 @@ surface; the rest of the surface stays exactly where it was. It never touches ca
 other shells, and skips shells over 2 million faces. Step 10 then patches the crossings it could not
 cut.
 
+Step 8 caps a model that was cut flat as a whole: when two or more openings lie in one exact plane,
+they are closed together with **Cap Cut Plane** (see [the hole methods](#one-defect-at-a-time-the-inspector)),
+or left open for a later pass if the cap cannot be made yet. Fill Flat or Fill Smooth on one of
+them alone could put a lid over the hole through a ring. A single flat opening still gets the fill
+for its shape, since it may as well be the missing top of a dome; Cap Cut Plane is tried only when
+no other fill can close it. Step 7 never moves or merges the vertices on the rim of a flat opening,
+so the cap fits the outline exactly.
+
+Step 10 first unfolds faces folded flat onto an edge neighbour, which a patch cannot cut apart. It
+flips their shared edge, or moves the folded face's tip onto that edge, whichever leaves the fewest
+crossings nearby. A change is kept only if the surface stays manifold, and no point moves farther
+than the island repair's deviation limit. The report line counts the unfolded pairs.
+
 Each row shows what Mesh Health finds now and has a tooltip saying what the step can change.
 **Passes** (default 3, set in Preferences > Fix All) is how many times the sequence may repeat. It
 stops early when the mesh is clean or a pass changes nothing.
@@ -75,7 +88,7 @@ side before you apply one:
 
 - **Repair All Holes:** fill each hole with its recommended method, a winding-number rebuild, or
   Shrink-Wrap.
-- **Repair All Intersections:** patch each intersecting island, self-union (cut along every crossing
+- **Repair All Intersections:** patch each intersecting island (folded face pairs are unfolded first), self-union (cut along every crossing
   and keep the outer surface), a winding-number rebuild, or Shrink-Wrap. **Compare all** computes
   every method and lists them with volume, area, deviation, watertightness and remaining crossings.
 
@@ -107,6 +120,10 @@ applies the chosen one.
     - **Fill Smooth**: curved surfaces and scans.
     - **Close Crack**: unwelded seams and T-junctions; moves rim vertices together without adding
       faces.
+    - **Cap Cut Plane**: a model cut flat, for example a part with no base. It caps every opening
+      in the rim's plane at once, but only where material lies against the plane: the hole through
+      a ring stays open, and a valley that comes down to the cut rests on the cap. No vertex moves.
+      It is recommended when two or more openings lie in the same plane.
 
     A scorecard shows each fill's area, volume change and whether it crosses other faces.
 

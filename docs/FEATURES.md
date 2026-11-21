@@ -57,6 +57,7 @@ Targeted Euler operators for localized defects:
 - **Fill & Refine**: Triangulates and refines patch density to match adjacent wall faces.
 - **Fill Smooth**: Refines and fairs the patch to match local surface curvature.
 - **Close Crack**: Snaps opposing boundary edges together across narrow gaps without introducing new faces.
+- **Cap Cut Plane**: Caps a model cut flat: every opening in the plane at once, only where material lies against it (rings keep their hole; valleys that reach the cut rest on the cap).
 
 ### 3.4 Remesh & Watertight Rebuild Pipelines
 For severely corrupted meshes, Mesheal provides whole-surface reconstruction pipelines guaranteed to produce watertight, 2-manifold shells:

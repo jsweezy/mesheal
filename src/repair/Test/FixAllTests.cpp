@@ -221,6 +221,7 @@ TEST_CASE("Fix All's weld uses its own tolerance, never the load weld's", "[repa
         REQUIRE(result.steps.front().status == FixAllStepStatus::Skipped);
         REQUIRE_FALSE(result.steps.front().reason.empty());
         REQUIRE(stepOf(result, mesheal::FixAllStageId::CloseCracks)->status == FixAllStepStatus::Unchanged);
+        CAPTURE(stepOf(result, mesheal::FixAllStageId::FillHoles)->detail);
         REQUIRE(stepOf(result, mesheal::FixAllStageId::FillHoles)->detail.rfind("Filled 2 of 2 holes", 0) == 0);
         REQUIRE(result.countsAfter.openEdges == 0);
         REQUIRE(shellCount(result.mesh) == 2);

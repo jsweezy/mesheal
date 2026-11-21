@@ -47,6 +47,7 @@ struct HoleLoop {
     double width = 0.0;                     ///< Mean gap width: 2 x area / perimeter (radius of a round hole)
     double planeDeviation = 0.0;            ///< Farthest rim vertex from the best-fit plane
     double flatNeighbourShare = 0.0;        ///< Share of rim faces coplanar with or perpendicular to that plane
+    double inPlaneNeighbourShare = 0.0;     ///< Share of rim faces coplanar with that plane (a hole in a flat wall)
     Eigen::Vector3d centroid = Eigen::Vector3d::Zero();
     Eigen::Vector3d normal = Eigen::Vector3d::UnitZ(); ///< Best-fit plane normal (along the vector area when it is defined)
     HoleShape shape = HoleShape::Curved;

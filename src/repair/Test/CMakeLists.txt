@@ -1,8 +1,10 @@
 add_executable(mesheal_repair_tests
+    CutPlaneCapTests.cpp
     ExactUnionTests.cpp
     FixAllMergeTests.cpp
     FixAllScopeTests.cpp
     FixAllTests.cpp
+    FoldRepairTests.cpp
     HoleFillingTests.cpp
     IntersectionHealerTests.cpp
     MeshCleanupTests.cpp

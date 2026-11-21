@@ -544,7 +544,19 @@ using fixall_detail::shellList;
     settings.capAngleDeg = context.params.checkParams.capAngleDeg;
     SliverHealOptions options;
     options.stopToken = context.stopToken;
-    options.pinnedVertices = context.scope.pinned;
+    // The rim of a flat opening keeps its exact outline for the fill (Cap Cut Plane caps it as it is):
+    // its vertices are pinned like the edge of the scope
+    std::vector<std::uint8_t> pinned = context.scope.pinned;
+    for (const HoleLoop& hole : findHoleLoops(mesh, context.params.holeFill.shape)) {
+        if (!isCutPlaneHole(hole)) {
+            continue;
+        }
+        pinned.resize(static_cast<std::size_t>(mesh.numVertices()), 0);
+        for (const int v : hole.vertices) {
+            pinned[static_cast<std::size_t>(v)] = 1;
+        }
+    }
+    options.pinnedVertices = pinned;
     RepairResults healed =
         SliverHealer::healFaces(mesh, faces, context.params.checkParams.thinThresholds, settings, options);
     // Non-manifold edges or inconsistent winding left elsewhere make CGAL read the whole mesh as a polygon soup,
@@ -656,7 +668,13 @@ using fixall_detail::shellList;
             continue;
         }
         if (!hole.closed) {
-            skipped.push_back(name + " could not be filled");
+            std::string why = hole.status;
+            for (std::size_t k = 1; k < hole.attempts.size(); ++k) {
+                if (hole.attempts[k].method == HoleFillMethod::CutPlane && !hole.attempts[k].status.empty()) {
+                    why += " " + std::string(holeFillMethodLabel(HoleFillMethod::CutPlane)) + ": " + hole.attempts[k].status;
+                }
+            }
+            skipped.push_back(name + " could not be filled" + (why.empty() ? std::string() : " (" + why + ")"));
             continue;
         }
         ownCrossings += hole.crossingsOwnShell;
@@ -918,6 +936,9 @@ using fixall_detail::shellList;
     outcome.detail = "Repaired " + std::to_string(repaired) + " of " + counted(healed.islandsBefore, "island", "islands");
     if (healed.islandsAfter > 0) {
         outcome.detail += "; " + std::to_string(healed.islandsAfter) + " left";
+    }
+    if (healed.foldsUnfolded > 0) {
+        outcome.detail += "; " + counted(healed.foldsUnfolded, "folded face pair", "folded face pairs") + " unfolded";
     }
     return outcome;
 }

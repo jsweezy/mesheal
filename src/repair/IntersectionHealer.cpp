@@ -4,6 +4,7 @@
 #include "diagnostics/MeshChecks.hpp"
 #include "diagnostics/SelfIntersections.hpp"
 #include "mesh/CgalMesh.hpp"
+#include "repair/FoldRepair.hpp"
 #include "repair/SurfaceRebuild.hpp"
 
 #include <Eigen/Geometry>
@@ -1135,6 +1136,59 @@ IslandBatchResult healIntersectionIslands(
         }
         std::size_t crossings = checkSelfIntersections(shellMesh, params).size();
 
+        // Takes `candidate` (fewer crossings, `after`) as the shell and regroups what is left into islands
+        const auto adopt = [&](Mesh candidate, const CategoryResult& after) {
+            // New faces become targets too (a patch that crosses must be repaired again)
+            if (!seedFaces.empty()) {
+                for (const Eigen::Index f : faceDiff(shellMesh, candidate).added) {
+                    targetKeys.insert(faceGeometryKey(candidate, f));
+                }
+            }
+            shellMesh = std::move(candidate);
+            crossings = after.size();
+            const std::vector<int> candidateShells = shellIdsOfFaces(shellMesh);
+            shellIslands = clusterIntersectionIslands(shellMesh, after, candidateShells);
+            if (!seedFaces.empty()) {
+                std::erase_if(shellIslands, [&](const IntersectionIsland& island) {
+                    return std::none_of(island.faces.begin(), island.faces.end(), [&](Eigen::Index f) {
+                        return targetKeys.count(faceGeometryKey(shellMesh, f)) != 0;
+                    });
+                });
+            }
+        };
+        // Faces folded flat onto an edge neighbour: no round can cut along their shared edge, so they are
+        // flipped or collapsed first (and again after the rounds, which can fold a patch)
+        const auto unfold = [&]() -> bool {
+            std::vector<std::uint8_t> islandFace(static_cast<std::size_t>(shellMesh.numFaces()), 0);
+            for (const IntersectionIsland& island : shellIslands) {
+                for (const Eigen::Index f : island.faces) {
+                    islandFace[static_cast<std::size_t>(f)] = 1;
+                }
+            }
+            const double maxMove = settings.maxDeviationFraction > 0.0
+                                       ? settings.maxDeviationFraction * shellMesh.boundingBox().diagonal()
+                                       : std::numeric_limits<double>::infinity();
+            Mesh candidate = shellMesh;
+            const FoldRepairResult folds = unfoldFaces(candidate, params, maxMove, islandFace, stopToken);
+            if (folds.cancelled) {
+                return false;
+            }
+            if (folds.unfolded == 0) {
+                return true;
+            }
+            const CategoryResult after = checkSelfIntersections(candidate, params);
+            if (after.size() < crossings) {
+                result.foldsUnfolded += folds.unfolded;
+                adopt(std::move(candidate), after);
+            }
+            return true;
+        };
+        if (!unfold()) {
+            result.statusMessage = "Cancelled.";
+            return result;
+        }
+
+        bool roundKept = false;
         for (int round = 0; round < settings::kMaxIslandRepairRounds && !shellIslands.empty(); ++round) {
             if (stopToken.stop_requested()) {
                 result.statusMessage = "Cancelled.";
@@ -1180,23 +1234,12 @@ IslandBatchResult healIntersectionIslands(
                 ++result.roundsRefusedForShape;
                 continue; // it would remove or move real surface: undo it, next fallback
             }
-            // New faces become targets too (a patch that crosses must be repaired again)
-            if (!seedFaces.empty()) {
-                for (const Eigen::Index f : faceDiff(shellMesh, candidate).added) {
-                    targetKeys.insert(faceGeometryKey(candidate, f));
-                }
-            }
-            shellMesh = std::move(candidate);
-            crossings = after.size();
-            const std::vector<int> candidateShells = shellIdsOfFaces(shellMesh);
-            shellIslands = clusterIntersectionIslands(shellMesh, after, candidateShells);
-            if (!seedFaces.empty()) {
-                std::erase_if(shellIslands, [&](const IntersectionIsland& island) {
-                    return std::none_of(island.faces.begin(), island.faces.end(), [&](Eigen::Index f) {
-                        return targetKeys.count(faceGeometryKey(shellMesh, f)) != 0;
-                    });
-                });
-            }
+            adopt(std::move(candidate), after);
+            roundKept = true;
+        }
+        if (!shellIslands.empty() && roundKept && !unfold()) {
+            result.statusMessage = "Cancelled.";
+            return result;
         }
         islandsLeft += shellIslands.size();
         appendMesh(assembled, shellMesh);
@@ -1216,7 +1259,10 @@ IslandBatchResult healIntersectionIslands(
                                       (result.roundsRefusedForShape == 1 ? " repair round was undone because it"
                                                                          : " repair rounds were undone because they") +
                                       " would have changed the shape."
-                                : "");
+                                : "") +
+                           (result.foldsUnfolded > 0 ? " Unfolded " + std::to_string(result.foldsUnfolded) +
+                                                           (result.foldsUnfolded == 1 ? " folded face pair." : " folded face pairs.")
+                                                     : "");
     if (!result.success) {
         result.statusMessage = "No island could be repaired.";
     }

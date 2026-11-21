@@ -178,6 +178,54 @@ std::size_t countThinFaces(const CgalSurfaceMesh& mesh, const ThinFaceThresholds
 }
 
 // Checks whether flipping `h` (shared by face (s, t, a) and neighbor (t, s, o)) into diagonal a-o is safe.
+bool isBorderEdge(const CgalSurfaceMesh& mesh, CgalVertexIndex a, CgalVertexIndex b) {
+    const CgalHalfedgeIndex h = mesh.halfedge(a, b);
+    return h != CgalSurfaceMesh::null_halfedge() && (mesh.is_border(h) || mesh.is_border(mesh.opposite(h)));
+}
+
+// A pinned vertex on an open border (the outline of a model cut flat, which the fill caps as it is) keeps
+// its faces from lying flat along the outline: flipping edge(h) may not leave a face with two open edges
+// around a pinned vertex (an ear hanging off the outline, facing either way).
+bool flipMakesBorderEar(const CgalSurfaceMesh& mesh, CgalHalfedgeIndex h) {
+    const std::optional<PinMap> pins = pinMap(mesh);
+    if (!pins) {
+        return false;
+    }
+    const CgalHalfedgeIndex oh = mesh.opposite(h);
+    const CgalVertexIndex s = mesh.source(h);
+    const CgalVertexIndex t = mesh.target(h);
+    const CgalVertexIndex a = mesh.target(mesh.next(h));
+    const CgalVertexIndex o = mesh.target(mesh.next(oh));
+    // The new faces are (a, s, o) and (o, t, a): the edge a - o is new and inner
+    return (isPinned(pins, s) && isBorderEdge(mesh, a, s) && isBorderEdge(mesh, s, o)) ||
+           (isPinned(pins, t) && isBorderEdge(mesh, o, t) && isBorderEdge(mesh, t, a));
+}
+
+// ... nor may collapsing edge(h) onto its pinned border end join that end to another pinned border vertex
+// (a new edge across the outline).
+bool collapseJoinsBorderVertices(const CgalSurfaceMesh& mesh, CgalHalfedgeIndex h) {
+    const std::optional<PinMap> pins = pinMap(mesh);
+    if (!pins) {
+        return false;
+    }
+    const CgalVertexIndex v0 = mesh.source(h);
+    const CgalVertexIndex v1 = mesh.target(h);
+    const bool end0 = isPinned(pins, v0) && mesh.is_border(v0);
+    const bool end1 = isPinned(pins, v1) && mesh.is_border(v1);
+    if (end0 == end1) {
+        return false;
+    }
+    const CgalVertexIndex kept = end0 ? v0 : v1;
+    const CgalVertexIndex gone = end0 ? v1 : v0;
+    for (const CgalHalfedgeIndex g : CGAL::halfedges_around_target(mesh.halfedge(gone), mesh)) {
+        const CgalVertexIndex w = mesh.source(g);
+        if (w != kept && isPinned(pins, w) && mesh.is_border(w) && mesh.halfedge(kept, w) == CgalSurfaceMesh::null_halfedge()) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool canFlipEdge(
     const CgalSurfaceMesh& mesh,
     CgalHalfedgeIndex h,
@@ -199,6 +247,9 @@ bool canFlipEdge(
     const CgalVertexIndex t = mesh.target(h);
     const CgalVertexIndex a = mesh.target(mesh.next(h));
     const CgalVertexIndex o = mesh.target(mesh.next(oh));
+    if (flipMakesBorderEar(mesh, h)) {
+        return fail("The flip would leave a face hanging off an open border.");
+    }
     if (a == o || mesh.halfedge(a, o) != CgalSurfaceMesh::null_halfedge()) {
         return fail("Flipped diagonal already exists; flipping would create a duplicate edge.");
     }
@@ -295,6 +346,9 @@ bool canSplitNeighborEdge(
     const CgalVertexIndex t = mesh.target(h);
     const CgalVertexIndex a = mesh.target(mesh.next(h));
     const CgalVertexIndex o = mesh.target(mesh.next(oh));
+    if (flipMakesBorderEar(mesh, h)) {
+        return fail("The split would leave a face hanging off an open border.");
+    }
     if (a == o || mesh.halfedge(a, o) != CgalSurfaceMesh::null_halfedge()) {
         return fail("Split diagonal already exists; splitting would create a duplicate edge.");
     }
@@ -478,6 +532,9 @@ bool canCollapseEdgeSafely(
         return fail("Collapse violates the topological link condition (the surface would become non-manifold).");
     }
 
+    if (collapseJoinsBorderVertices(mesh, h)) {
+        return fail("The collapse would join two vertices of an open border.");
+    }
     const std::optional<PinMap> pins = pinMap(mesh);
     const bool pinned0 = isPinned(pins, mesh.source(h));
     const bool pinned1 = isPinned(pins, mesh.target(h));
@@ -732,7 +789,7 @@ bool collapseMicroCluster(
         if (mesh.is_border(h) || mesh.is_border(mesh.opposite(h))) {
             continue;
         }
-        if (!canTopologicallyCollapseEdge(mesh, e)) {
+        if (!canTopologicallyCollapseEdge(mesh, e) || collapseJoinsBorderVertices(mesh, h)) {
             continue;
         }
 
@@ -897,6 +954,9 @@ bool shouldFlipForDelaunay(
     const CgalVertexIndex t = mesh.target(h);
     const CgalVertexIndex a = mesh.target(mesh.next(h));
     const CgalVertexIndex o = mesh.target(mesh.next(oh));
+    if (flipMakesBorderEar(mesh, h)) {
+        return false;
+    }
     if (a == o || mesh.halfedge(a, o) != CgalSurfaceMesh::null_halfedge()) {
         return false;
     }
@@ -1870,35 +1930,31 @@ void runPmpCleanup(
     const BudgetedPointMap points{&surface, &reads,
                                   kPmpCleanupReadsPerFace * static_cast<std::uint64_t>(remaining.size()) + kPmpCleanupMinReads,
                                   &options.stopToken};
+    // Pinned vertices stay where they are, and so do the edges between two of them
+    auto fixedMap = surface.add_property_map<CgalVertexIndex, std::uint8_t>("v:mesheal_cleanup_fixed", 0).first;
+    for (const CgalVertexIndex v : surface.vertices()) {
+        put(fixedMap, v, static_cast<std::uint8_t>(isPinned(pins, v) ? 1 : 0));
+    }
+    for (const CgalEdgeIndex e : surface.edges()) {
+        const CgalHalfedgeIndex h = surface.halfedge(e);
+        if (get(fixedMap, surface.source(h)) != 0 && get(fixedMap, surface.target(h)) != 0) {
+            put(creaseMap, e, true);
+        }
+    }
     bool cleanupFailed = false;
     try {
-        if (pins) {
-            for (const CgalEdgeIndex e : surface.edges()) {
-                const CgalHalfedgeIndex h = surface.halfedge(e);
-                if (isPinned(pins, surface.source(h)) && isPinned(pins, surface.target(h))) {
-                    put(creaseMap, e, true);
-                }
-            }
-            PMP::remove_almost_degenerate_faces(
-                remaining,
-                surface,
-                CGAL::parameters::cap_threshold(std::cos(settings.capAngleDeg * kDegToRad))
-                    .needle_threshold(1.0 / settings.needleEdgeRatio)
-                    .edge_is_constrained_map(creaseMap)
-                    .vertex_is_constrained_map(*pins)
-                    .vertex_point_map(points));
-        } else {
-            PMP::remove_almost_degenerate_faces(
-                remaining,
-                surface,
-                CGAL::parameters::cap_threshold(std::cos(settings.capAngleDeg * kDegToRad))
-                    .needle_threshold(1.0 / settings.needleEdgeRatio)
-                    .edge_is_constrained_map(creaseMap)
-                    .vertex_point_map(points));
-        }
+        PMP::remove_almost_degenerate_faces(
+            remaining,
+            surface,
+            CGAL::parameters::cap_threshold(std::cos(settings.capAngleDeg * kDegToRad))
+                .needle_threshold(1.0 / settings.needleEdgeRatio)
+                .edge_is_constrained_map(creaseMap)
+                .vertex_is_constrained_map(fixedMap)
+                .vertex_point_map(points));
     } catch (const std::exception&) {
         cleanupFailed = true;
     }
+    surface.remove_property_map(fixedMap);
     if (cleanupFailed) {
         surface = std::move(beforeCleanup); // leave the mesh as healed by passes 1-2
         surface.collect_garbage();

@@ -444,7 +444,9 @@ TEST_CASE("A crack whose closing would move a pinned vertex is left for the hole
             // has no fill either, so it stays open
             REQUIRE(crack->status == FixAllStepStatus::Unchanged);
             REQUIRE(crack->detail == "1 crack would move a vertex on the selection's edge: left for the hole fill");
-            REQUIRE(stepOf(result, FixAllStageId::FillHoles)->detail == "Hole 1 could not be filled");
+            // ... with the reason of the fill it recommends (Close Crack would move a vertex outside the scope)
+            REQUIRE(stepOf(result, FixAllStageId::FillHoles)->detail ==
+                    "Hole 1 could not be filled (It would change faces outside the scope.)");
             REQUIRE(result.countsAfter.openEdges == 6);
             REQUIRE(result.mesh.V == cracked.V);
         } else {

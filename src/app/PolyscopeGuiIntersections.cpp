@@ -528,8 +528,9 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
     ImGui::PushItemWidth(140.0f);
     switch (method) {
     case GlobalRepairMethod::FillHoles: {
-        constexpr std::array<HoleFillMethod, 5> kChoices = {HoleFillMethod::None, HoleFillMethod::Flat, HoleFillMethod::Refine,
-                                                            HoleFillMethod::Smooth, HoleFillMethod::CloseCrack};
+        constexpr std::array<HoleFillMethod, 6> kChoices = {HoleFillMethod::None,   HoleFillMethod::Flat,
+                                                            HoleFillMethod::Refine, HoleFillMethod::Smooth,
+                                                            HoleFillMethod::CloseCrack, HoleFillMethod::CutPlane};
         const auto label = [](HoleFillMethod m) { return m == HoleFillMethod::None ? "Recommended per hole" : holeFillMethodLabel(m); };
         if (ImGui::BeginCombo("Fill", label(params.holeMethod))) {
             for (const HoleFillMethod choice : kChoices) {
@@ -540,8 +541,9 @@ void PolyscopeGui::drawGlobalMethodParams(GlobalRepairMethod method) {
             }
             ImGui::EndCombo();
         }
-        tooltip("Recommended: Flat holes get Fill Flat, Curved holes Fill Smooth, cracks Close Crack. A single method "
-                "applies to every hole (holes it cannot close stay open).");
+        tooltip("Recommended: Flat holes get Fill Flat, Curved holes Fill Smooth, cracks Close Crack, and openings "
+                "that share one exact plane (a model cut flat) Cap Cut Plane. A single method applies to every hole "
+                "(holes it cannot close stay open).");
         const HoleFillSettings& holes = controller_.holeFillSettings();
         ImGui::TextDisabled("Limits (Open edges tool settings): max hole edges %s, max refined faces %s",
                             holes.maxHoleEdges > 0 ? withThousands(static_cast<std::size_t>(holes.maxHoleEdges)).c_str() : "none",

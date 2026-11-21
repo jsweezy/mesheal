@@ -25,7 +25,7 @@ struct HoleMethodOption {
     const char* help;
 };
 
-constexpr std::array<HoleMethodOption, 4> kHoleMethodOptions = {{
+constexpr std::array<HoleMethodOption, 5> kHoleMethodOptions = {{
     {HoleFillMethod::Flat, "Fill Flat (Missing CAD Faces)",
      "CGAL triangulate_hole: new faces between the rim vertices only, no new vertices. A planar rim is "
      "triangulated in its plane (2D constrained Delaunay), so a missing flat face or end cap comes back flat."},
@@ -39,6 +39,10 @@ constexpr std::array<HoleMethodOption, 4> kHoleMethodOptions = {{
      "Snaps the rim vertices onto the rim edges across the gap and stitches them: no faces are added in the "
      "gap. Only for gaps much narrower than the faces around them; vertices move at most the crack snap "
      "distance (Settings)."},
+    {HoleFillMethod::CutPlane, "Cap Cut Plane (Model Cut Flat)",
+     "For a rim lying exactly in one plane, like a model cut flat. Caps every opening in that plane at once, "
+     "and only where material lies against it: the hole through a ring stays open, and a valley that comes "
+     "down to the cut rests on the cap. No vertex moves. Recommended when two or more openings share the plane."},
 }};
 
 std::string lengthText(double value, Unit unit) {
@@ -87,7 +91,7 @@ void PolyscopeGui::drawHoleInspector() {
         ImGui::TextWrapped("%s Fix the Non-manifold edges row first.", holeShapeHelp(hole->shape));
         ImGui::PopStyleColor();
     } else {
-        ImGui::TextDisabled("Recommended: %s", holeFillMethodLabel(recommendedHoleFill(hole->shape)));
+        ImGui::TextDisabled("Recommended: %s", holeFillMethodLabel(controller_.recommendedHoleMethod()));
         for (const HoleMethodOption& option : kHoleMethodOptions) {
             if (ImGui::RadioButton(option.label, controller_.selectedHoleMethod() == option.method)) {
                 controller_.setSelectedHoleMethod(option.method);

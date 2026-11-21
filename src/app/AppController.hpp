@@ -1178,6 +1178,9 @@ public:
         return selectedHoleMethod_;
     }
 
+    /// The fill recommended for the focused hole (`recommendedHoleFill` among all holes), or None.
+    [[nodiscard]] HoleFillMethod recommendedHoleMethod();
+
     /// Chooses the focused hole's fill method and recomputes its preview.
     void setSelectedHoleMethod(HoleFillMethod method);
 

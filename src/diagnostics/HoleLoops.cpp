@@ -132,6 +132,7 @@ void measureHoleLoop(const Mesh& mesh, HoleLoop& hole, const HoleShapeParams& pa
     const double perpendicular = std::sin(params.flatNeighbourDeg * kDegToRad);
     std::size_t counted = 0;
     std::size_t flat = 0;
+    std::size_t inPlane = 0;
     for (const Eigen::Index f : hole.faces) {
         const Eigen::Vector3d a = mesh.V.row(mesh.F(f, 0)).transpose();
         const Eigen::Vector3d n = (Eigen::Vector3d(mesh.V.row(mesh.F(f, 1)).transpose()) - a)
@@ -142,8 +143,10 @@ void measureHoleLoop(const Mesh& mesh, HoleLoop& hole, const HoleShapeParams& pa
         const double c = std::abs(n.normalized().dot(hole.normal));
         ++counted;
         flat += c >= coplanar || c <= perpendicular ? 1 : 0;
+        inPlane += c >= coplanar ? 1 : 0;
     }
     hole.flatNeighbourShare = counted > 0 ? static_cast<double>(flat) / static_cast<double>(counted) : 0.0;
+    hole.inPlaneNeighbourShare = counted > 0 ? static_cast<double>(inPlane) / static_cast<double>(counted) : 0.0;
 
     if (!hole.closed) {
         hole.shape = HoleShape::OpenChain;

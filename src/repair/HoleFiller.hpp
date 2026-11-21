@@ -24,20 +24,34 @@ enum class HoleFillMethod {
     Flat,        ///< CGAL `triangulate_hole`: new faces between the rim vertices only (2D CDT for a planar rim)
     Refine,      ///< ... plus interior vertices so the patch matches the density of the faces around it
     Smooth,      ///< ... refined, then faired (bi-Laplacian) so the patch continues the surrounding curvature
-    CloseCrack   ///< Snap the rim vertices onto the opposite side and stitch: no faces in the gap
+    CloseCrack,  ///< Snap the rim vertices onto the opposite side and stitch: no faces in the gap
+    CutPlane     ///< A model cut flat: cap every opening in the rim's plane where material lies against it
 };
 
-inline constexpr std::array<HoleFillMethod, 4> kHoleFillMethods = {
+inline constexpr std::array<HoleFillMethod, 5> kHoleFillMethods = {
     HoleFillMethod::Flat,
     HoleFillMethod::Refine,
     HoleFillMethod::Smooth,
     HoleFillMethod::CloseCrack,
+    HoleFillMethod::CutPlane,
 };
 
 [[nodiscard]] const char* holeFillMethodLabel(HoleFillMethod method) noexcept;
 
 /// Flat holes -> Flat, curved -> Smooth, cracks -> Close Crack, open chains -> None.
 [[nodiscard]] HoleFillMethod recommendedHoleFill(HoleShape shape) noexcept;
+
+/// The rim is a closed loop lying exactly in one plane (within `settings::kCutPlaneTolerance` of its size):
+/// the opening a flat cut leaves.
+[[nodiscard]] bool isCutPlaneHole(const HoleLoop& hole) noexcept;
+
+/// `hole` is a cut-plane hole and another of `holes` lies in the same plane, both with most of their rim
+/// faces rising out of it: two such openings in one exact plane are the mark of a model cut flat (one
+/// flat opening alone may as well be a missing dome, and holes in a flat wall have the wall around them).
+[[nodiscard]] bool sharesCutPlane(const HoleLoop& hole, std::span<const HoleLoop> holes) noexcept;
+
+/// Cap Cut Plane when `hole` shares its plane with another of `holes`, else the fill for its shape.
+[[nodiscard]] HoleFillMethod recommendedHoleFill(const HoleLoop& hole, std::span<const HoleLoop> holes) noexcept;
 
 struct HoleFillSettings {
     int patchRings = settings::kDefaultHolePatchRings;            ///< Face rings copied around the rim for CGAL

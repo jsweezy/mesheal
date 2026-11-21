@@ -5,6 +5,7 @@ add_library(mesheal_repair STATIC
     FixAllReport.cpp
     FixAllStages.cpp
     GlobalRepair.cpp
+    FoldRepair.cpp
     HoleFiller.cpp
     IntersectionHealer.cpp
     MergePlan.cpp

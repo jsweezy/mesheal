@@ -150,6 +150,7 @@ struct IslandBatchResult {
     std::size_t islandsAfter = 0;
     int rounds = 0;
     int roundsRefusedForShape = 0; ///< Rounds undone because they changed the shape too much
+    std::size_t foldsUnfolded = 0; ///< Face pairs folded flat onto a shared edge, flipped or collapsed (`unfoldFaces`)
 };
 
 [[nodiscard]] IslandBatchResult healIntersectionIslands(
