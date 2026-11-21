@@ -154,15 +154,29 @@ python3 -m benchmarks.run_benchmark --limit 20 --dry-run
 replace the 200-file list above, and its results are not compared with FixSTL's.
 
 - **What is in it:** Thingi10K files whose Fix All run took under 3 seconds when they were added. It started on
-  2026-11-21 with the 137 files of the 200-file set that ran under 3 seconds (82 broken, 55 healthy).
+  2026-11-21 with the 137 files of the 200-file set that ran under 3 seconds (82 broken, 55 healthy), and 10 new
+  Thingi10K files were added the same day (seed 1: 8 broken, 2 healthy).
 - **The list is fixed.** A file stays in it even if a later Fix All takes longer. New Thingi10K files are added only
   after a timed run under 3 seconds.
-- **Each entry** keeps FixSTL's per-file results from the list it came from, plus a `fast_set` record: the date it was
-  added, the source list, its Fix All time then, and its face count.
+- **Each entry** has a `fast_set` record: the date it was added, where it came from, its Fix All time then, and its
+  face count. Files from the 200-file set keep FixSTL's per-file results and labels. New Thingi10K files have no
+  FixSTL results: Mesheal's own check labels them broken or healthy and lists their problems
+  (`"labelled_by": "mesheal"`), and the record also says whether they were timed on battery or mains power.
 - **A full run** takes about a minute and a half.
 
 ```bash
 python3 -m benchmarks.run_benchmark --benchmark-json benchmarks/specs/mesheal-fast.json
+```
+
+To add new Thingi10K files, `benchmarks/add_fast_files.py` draws candidates at random from Thingi10K's metadata
+(version 1.5.0) with a seed you choose, leaving out files already in any list and files over 50,000 faces. It keeps
+about a fifth of the added files healthy. Each candidate is downloaded into the benchmark cache and repaired with
+Fix All, and is added only if it ran under 3 seconds. On battery power (macOS) the limit is multiplied by
+`--battery-factor` (default 1.05, measured on the development laptop: 3 s × 1.05 = 3.15 s), since the same file runs
+slower there. `--dry-run` times the candidates without changing the list.
+
+```bash
+python3 -m benchmarks.add_fast_files --count 10 --seed 2
 ```
 
 ### Command-Line Arguments

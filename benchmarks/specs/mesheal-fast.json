@@ -5,7 +5,8 @@
     "rule": "Mesheal Fix All under 3 seconds (wall clock, Release build) when added",
     "timeLimitSeconds": 3,
     "sources": {
-      "thingi10k-200-2026-10-27": "https://fixstl.ai/benchmarks/thingi10k-200-2026-10-27.json"
+      "thingi10k-200-2026-10-27": "https://fixstl.ai/benchmarks/thingi10k-200-2026-10-27.json",
+      "thingi10k-v1.5.0": "https://huggingface.co/datasets/Thingi10K/Thingi10K/resolve/v1.5.0/metadata (files labelled broken or healthy by Mesheal's own check; no FixSTL results)"
     },
     "timedWith": "docs/assets/benchmarks/mesheal-fix-all-200-2026-11-21.json (commit 995d6be, same code as v6)"
   },
@@ -10581,6 +10582,233 @@
         "source": "thingi10k-200-2026-10-27",
         "fix_all_seconds": 2.151,
         "faces": 140124
+      }
+    },
+    {
+      "id": "thingi-75133",
+      "group": "thingi10k-added",
+      "source_id": "75133",
+      "thing_url": "https://www.thingiverse.com/thing:24908",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "Oblomobka",
+      "input_sha256": "fcf214a3fa79bedf57b5df0781534500ed38aa3bfe67fe829c0d0c8578aa375e",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 1",
+        "fix_all_seconds": 0.49,
+        "power": "battery",
+        "faces": 30792,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-940040",
+      "group": "thingi10k-added",
+      "source_id": "940040",
+      "thing_url": "https://www.thingiverse.com/thing:584516",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "kellyegan",
+      "input_sha256": "4d34f2f9b585f22cb2860152b0890f7cb6153a16f3a5a6e8b85f747c89867ff6",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 1",
+        "fix_all_seconds": 0.113,
+        "power": "battery",
+        "faces": 2800,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-111261",
+      "group": "thingi10k-added",
+      "source_id": "111261",
+      "thing_url": "https://www.thingiverse.com/thing:38220",
+      "license": "GNU - GPL",
+      "author": "thecharacterg",
+      "input_sha256": "12b7c4aadddabc02cbce1da7963ddfb46ccf5193d08261d63030c9906c495a30",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 1",
+        "fix_all_seconds": 0.37,
+        "power": "battery",
+        "faces": 7782,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-69988",
+      "group": "thingi10k-added",
+      "source_id": "69988",
+      "thing_url": "https://www.thingiverse.com/thing:22834",
+      "license": "Creative Commons - Attribution",
+      "author": "wgss",
+      "input_sha256": "01e732726d60032af87d777cc64f0b02c5dc1f35a73e48c1c33930aea1129e77",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 1",
+        "fix_all_seconds": 0.087,
+        "power": "battery",
+        "faces": 2260,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-63052",
+      "group": "thingi10k-added",
+      "source_id": "63052",
+      "thing_url": "https://www.thingiverse.com/thing:19868",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "TeamTeamUSA",
+      "input_sha256": "5a746b4ab7b07955be0211bf58aa0f22a2105b9aa8527ed398e1879870e85533",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 1",
+        "fix_all_seconds": 0.015,
+        "power": "battery",
+        "faces": 460,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-53429",
+      "group": "thingi10k-added",
+      "source_id": "53429",
+      "thing_url": "https://www.thingiverse.com/thing:16234",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "crazytiti",
+      "input_sha256": "e4903ff9bb370645f6a24ef4ebecf86aeb771399cc2d69d409c5ea6745456376",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 1",
+        "fix_all_seconds": 0.0,
+        "power": "battery",
+        "faces": 12,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-42944",
+      "group": "thingi10k-added",
+      "source_id": "42944",
+      "thing_url": "https://www.thingiverse.com/thing:13171",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "Skimbal",
+      "input_sha256": "2e3fef7b7a7949659b8f6da1e82c890ae4a235ae2db9728fc46cb296d6e8b1e8",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 1",
+        "fix_all_seconds": 0.365,
+        "power": "battery",
+        "faces": 14487,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-301919",
+      "group": "thingi10k-added",
+      "source_id": "301919",
+      "thing_url": "https://www.thingiverse.com/thing:155903",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "coolarj10",
+      "input_sha256": "e8caf32dfaad1d35efd8ba8e9a59be2fd7b167cbf3ce799f019e61acfc0b679c",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 1",
+        "fix_all_seconds": 0.092,
+        "power": "battery",
+        "faces": 1846,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-55363",
+      "group": "thingi10k-added",
+      "source_id": "55363",
+      "thing_url": "https://www.thingiverse.com/thing:16897",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "jonducrou",
+      "input_sha256": "acb616844efc7fb2a4d7130eb53e5100b8dde48e20accdfe806e1eebf26d7222",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 1",
+        "fix_all_seconds": 0.047,
+        "power": "battery",
+        "faces": 396,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-70064",
+      "group": "thingi10k-added",
+      "source_id": "70064",
+      "thing_url": "https://www.thingiverse.com/thing:22858",
+      "license": "Creative Commons - Attribution",
+      "author": "cbabbage",
+      "input_sha256": "b5c8d677c93a0ba0481d63e3666018a6d3aa96b0fddd99b4857019c92f6c46ea",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 1",
+        "fix_all_seconds": 0.764,
+        "power": "battery",
+        "faces": 20992,
+        "labelled_by": "mesheal"
       }
     }
   ]
