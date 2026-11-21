@@ -2,7 +2,7 @@
 
 Mesheal includes a Python-driven benchmarking framework modeled after the [FixSTL 3D Repair Benchmark](https://fixstl.ai/benchmarks). It automates pulling models from benchmark datasets (such as Thingi10K), caching them locally without tracking them in git, running Mesheal repairs (Fix All, Voxel Remesh, Precision Isosurface, Shrink-Wrap), and evaluating results in standardized JSON format.
 
-## Results: Thingi10K 200-file set (2026-11-19)
+## Results: Thingi10K 200-file set (2026-11-21)
 
 The test set, the definitions, and every non-Mesheal number below come from the
 **[FixSTL STL repair benchmark](https://fixstl.ai/benchmarks)** (run dated October 27, 2026).
@@ -11,7 +11,7 @@ a comparison like this possible. Mesheal's row is our own run of **Fix All** on 
 
 | Tool | Repaired (of 131 broken) | Healthy files broken (of 69) | Solid, shape changed | Median time |
 |---|---:|---:|---:|---:|
-| **Mesheal 5** (`v5-3-g46702ba`), Fix All | **87** | **0** | 1 | 0.35 s |
+| **Mesheal 6** (`v6`), Fix All | **92** | **0** | 1 | 0.37 s |
 | FixSTL, engine 0.6.0 (a7ea280) | 57 | 0 | 2 | 0.46 s |
 | Blender 3D Print Toolbox (Blender 5.2.1, toolbox 1.5.0) | 41 | 1 | 3 | 0.77 s |
 | MeshFix (pymeshfix 0.18.1) | 40 | 11 | 66 | 0.99 s |
@@ -20,10 +20,11 @@ a comparison like this possible. Mesheal's row is our own run of **Fix All** on 
 | trimesh 5.2.0 | 26 | 2 | 2 | 0.48 s |
 | MeshLab (PyMeshLab 2025.7.post1) | 25 | 2 | 0 | 0.46 s |
 
-**Download the per-file results:** [`mesheal-fix-all-200-2026-11-19.json`](assets/benchmarks/mesheal-fix-all-200-2026-11-19.json) (520 KB).
+**Download the per-file results:** [`mesheal-fix-all-200-2026-11-21.json`](assets/benchmarks/mesheal-fix-all-200-2026-11-21.json) (520 KB).
 It is FixSTL's published per-file file ([`thingi10k-200-2026-10-27.json`](https://fixstl.ai/benchmarks/thingi10k-200-2026-10-27.json))
 with a `mesheal` entry added to each file. The entry holds volume and area before and after, face counts, and the run time.
 The other tools' entries are FixSTL's, unchanged. Earlier runs are kept as
+[`mesheal-fix-all-200-2026-11-19.json`](assets/benchmarks/mesheal-fix-all-200-2026-11-19.json),
 [`mesheal-fix-all-200-2026-11-16.json`](assets/benchmarks/mesheal-fix-all-200-2026-11-16.json) and
 [`mesheal-fix-all-200-2026-11-15.json`](assets/benchmarks/mesheal-fix-all-200-2026-11-15.json).
 
@@ -33,7 +34,7 @@ Broken files repaired, grouped by the problems each file had. A file can have mo
 
 | Tool | Holes (76) | Non-manifold (82) | Flipped / inside-out (29) | Self-intersections (88) | Duplicate or zero-area faces (90) |
 |---|---:|---:|---:|---:|---:|
-| **Mesheal** | **41** | **43** | **12** | **46** | **52** |
+| **Mesheal** | **45** | **47** | **13** | **50** | **55** |
 | FixSTL | 29 | 26 | 5 | 20 | 30 |
 | Blender 3D Print Toolbox | 23 | 17 | 4 | 5 | 17 |
 | MeshFix (pymeshfix) | 23 | 17 | 3 | 16 | 19 |
@@ -44,28 +45,26 @@ Broken files repaired, grouped by the problems each file had. A file can have mo
 
 ### Other numbers from this run
 
-- **Solid output:** 157 of 200 files.
-- **By group:** 28 of 37 broken files repaired in FixSTL's 50-file development group, and 59 of 94 in the 150-file holdout group.
-- **Compared with FixSTL:** Mesheal repaired 31 broken files that FixSTL did not. FixSTL repaired 1 that Mesheal did not (`thingi-260540`).
-- **Files no other tool repaired:** 64 broken files. Mesheal repaired 24 of them.
+- **Solid output:** 162 of 200 files.
+- **By group:** 30 of 37 broken files repaired in FixSTL's 50-file development group, and 62 of 94 in the 150-file holdout group.
+- **Compared with FixSTL:** Mesheal repaired 36 broken files that FixSTL did not. FixSTL repaired 1 that Mesheal did not (`thingi-260540`).
+- **Files no other tool repaired:** 64 broken files. Mesheal repaired 27 of them.
 - **Crashes:** none. Each file had a 30-minute limit, and none reached it.
-- **Slow files:** the mean time is 19.7 s, much higher than the median, because a few large files take minutes.
-  Two files ran past FixSTL's 300-second limit (`thingi-1368052`, 757 s, and `thingi-1423014`, 534 s).
+- **Slow files:** the mean time is 19.5 s, much higher than the median, because a few large files take minutes.
+  Two files ran past FixSTL's 300-second limit (`thingi-1368052`, 868 s, and `thingi-87674`, 311 s).
   Neither was repaired, so the 300-second limit would not change the totals.
-- **Same result on every run.** The run was repeated twice with the same build, and every file got the same verdict both times.
 
-### Changes since the 2026-11-16 run
+### Changes since the 2026-11-19 run
 
-- **86 → 87 repaired.** `thingi-61084`, `thingi-263993` and `thingi-61394` are now repaired. Fix All has a new step:
-  it cuts a closed shell that passes through itself along every crossing and keeps its outer surface.
-- **Two files lost:** `thingi-96639` and `thingi-1717686` are no longer repaired. `thingi-1717686` had been repaired only
-  in some runs (see the next point). Why `thingi-96639` now fails is still being investigated.
-- **Repeatable results.** CGAL's hole filling used a 3D Delaunay search whose result depended on memory layout,
-  so the same file could be repaired in one run and not the next. Mesheal now builds CGAL without that search.
-  Speed did not change.
-- **Smaller volume changes on files that are still not repaired.** `thingi-117959` went from +528% to −0.04%
-  (and from 612 s to 105 s), `thingi-1017011` from −23% to −1.1%, and `thingi-1772294` from −40% to 0%.
-  `thingi-1423014` changes less (−16% → −10%) but takes longer (199 s → 534 s).
+- **87 → 92 repaired, none lost.** Two new repairs did most of it:
+    - **Folded faces.** Where two faces sharing an edge fold back onto each other, Fix All flips the shared edge or
+      collapses one face's tip onto it. This repaired `thingi-688370`, `thingi-96639` and `thingi-1717686`.
+    - **Models cut flat.** *Cap Cut Plane* caps the openings a flat cut leaves, and leaves a ring's through-hole open.
+      This repaired `thingi-117959`, a model cut at z = 0 whose base was missing (volume change −0.01%).
+  `thingi-45811` is also repaired now.
+- **Smaller volume changes on files that are still not repaired.** `thingi-1423014` went from −10% to 0%
+  (and from 534 s to 160 s), and `thingi-48950` from +214% to +105%.
+- **`thingi-1368052` is slower** (757 s → 868 s) and still not repaired.
 - **No crashes or time-outs,** and no healthy file was broken.
 
 ### How to read this comparison
