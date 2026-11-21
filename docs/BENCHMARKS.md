@@ -148,6 +148,23 @@ python3 -m benchmarks.run_benchmark --limit 5 --method remesh-iso
 python3 -m benchmarks.run_benchmark --limit 20 --dry-run
 ```
 
+### Fast set
+
+`benchmarks/specs/mesheal-fast.json` is a second, separate list for quick checks while developing. It does not
+replace the 200-file list above, and its results are not compared with FixSTL's.
+
+- **What is in it:** Thingi10K files whose Fix All run took under 3 seconds when they were added. It started on
+  2026-11-21 with the 137 files of the 200-file set that ran under 3 seconds (82 broken, 55 healthy).
+- **The list is fixed.** A file stays in it even if a later Fix All takes longer. New Thingi10K files are added only
+  after a timed run under 3 seconds.
+- **Each entry** keeps FixSTL's per-file results from the list it came from, plus a `fast_set` record: the date it was
+  added, the source list, its Fix All time then, and its face count.
+- **A full run** takes about a minute and a half.
+
+```bash
+python3 -m benchmarks.run_benchmark --benchmark-json benchmarks/specs/mesheal-fast.json
+```
+
 ### Command-Line Arguments
 
 | Argument | Default | Description |
