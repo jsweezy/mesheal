@@ -83,7 +83,8 @@ def repair_with_print3d(
 
     start = time.perf_counter()
     try:
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env, timeout=timeout_sec)
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace", env=env,
+                              timeout=timeout_sec)
     except subprocess.TimeoutExpired:
         return RepairResult(status="error", action=action, input_file=str(src),
                             elapsed_ms=(time.perf_counter() - start) * 1000.0,

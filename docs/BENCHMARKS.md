@@ -181,8 +181,10 @@ python3 -m benchmarks.add_fast_files --count 10 --seed 2
 
 ### Other tools on the same files
 
-Two more methods run another tool instead of Mesheal and judge its output with Mesheal's own checker, the same
-way as Fix All. Their results are stored under their own key (`blender_print3d_local`, `fixstl_web_local`),
+Four more methods run another tool instead of Mesheal and judge its output with Mesheal's own checker, the same
+way as Fix All. They use each tool's latest version and default repair, and each result records the version
+that ran. Results are stored under their own key (`blender_print3d_local`, `fixstl_web_local`, `admesh_local`,
+`pymeshfix_local`),
 next to FixSTL's published entries, so new Thingi10K files get a comparison too.
 
 - **`--method blender-print3d`** runs Blender's 3D Print Toolbox, *Make Manifold* with default settings, as FixSTL
@@ -195,9 +197,19 @@ next to FixSTL's published entries, so new Thingi10K files get a comparison too.
   analytics requests are blocked so test runs are not counted. The time is the check plus the repair, without
   loading the page. Each result records whether FixSTL repaired the file or kept the input, and the engine file
   the page loaded. It needs Playwright in its own environment; see `benchmarks/fixstl_web.py` for the setup.
+- **`--method admesh`** runs `admesh -b out.stl in.stl`. With no fix options ADMesh runs all of its fixes: exact
+  and nearby merge, remove unconnected facets, fill holes, fix normals. Install it with `brew install admesh` (or
+  set `ADMESH_BIN`).
+- **`--method pymeshfix`** runs MeshFix's `repair()` with its defaults, which keep only the largest shell, through
+  `benchmarks/meshfix_run.py` in its own Python environment (see that file for the setup). A file MeshFix empties
+  completely counts as not repaired.
 
-On the 137 fast-set files that FixSTL published results for, these runs agree with FixSTL's own verdicts on 130
-files (Blender) and 132 files (FixSTL); the rest differ because the two checkers disagree, not the tools.
+All four time the whole run of the tool, one file per process (the FixSTL web tool: the check and repair only).
+
+On the 137 fast-set files that FixSTL published results for, these runs agree with FixSTL's own verdicts on 134
+files (ADMesh), 132 (FixSTL), 130 (Blender) and 117 (MeshFix); the rest differ because the two checkers disagree,
+not the tools. MeshFix differs most because it drops every shell but the largest: FixSTL's shape check also
+compares the number of shells, Mesheal's does not.
 
 ### Command-Line Arguments
 
@@ -210,6 +222,7 @@ files (Blender) and 132 files (FixSTL); the rest differ because the two checkers
 | `-o, --output` | `benchmarks/results/mesheal-<method>-<N>-<date>.json` | Destination path for benchmark results JSON. |
 | `--timeout` | 1800 | Stops a repair that runs longer than this many seconds (wall clock) and records it as timed out. 0 = no limit. |
 | `--blender-bin`, `--blender-profile` | Blender's usual install, `~/.cache/mesheal/blender-print3d/profile` | Blender and the profile with the 3D Print Toolbox, for `blender-print3d`. |
+| `--meshfix-python` | `~/.cache/mesheal/meshfix-venv/bin/python` | Python with pymeshfix, for `pymeshfix`. |
 | `--fixstl-python` | `~/.cache/mesheal/fixstl-venv/bin/python` | Python with Playwright, for `fixstl-web`. |
 | `--dry-run` | false | Downloads and caches models without running repair passes. |
 

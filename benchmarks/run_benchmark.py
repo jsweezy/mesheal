@@ -14,6 +14,7 @@ from typing import Any, Dict, List
 
 from .blender_runner import repair_with_print3d
 from .cache import ModelCache
+from .cli_tools import repair_with_admesh, repair_with_meshfix
 from .fixstl_runner import repair_with_fixstl_web
 from .evaluator import attach_non_dedup_metrics, evaluate_repair_result, needs_non_dedup_check
 from .runner import find_mesheal_binary, repair
@@ -53,10 +54,12 @@ def main() -> int:
             "rebuild-winding",
             "blender-print3d",
             "fixstl-web",
+            "admesh",
+            "pymeshfix",
         ],
         help="Repair method to test (default: fix-all). blender-print3d runs Blender's 3D Print Toolbox "
-        "(Make Manifold) instead of Mesheal, and fixstl-web the FixSTL web tool in a headless browser; both are "
-        "checked with Mesheal",
+        "(Make Manifold) instead of Mesheal, fixstl-web the FixSTL web tool in a headless browser, admesh ADMesh "
+        "and pymeshfix MeshFix; all are checked with Mesheal",
     )
     parser.add_argument("--limit", type=int, default=0, help="Limit number of models to process (0 = all)")
     parser.add_argument("--cache-dir", type=str, default=None, help="Directory to cache downloaded models")
@@ -73,6 +76,8 @@ def main() -> int:
                         help="Blender profile with the 3D Print Toolbox (default: ~/.cache/mesheal/blender-print3d/profile)")
     parser.add_argument("--fixstl-python", type=str, default=None,
                         help="Python with Playwright for fixstl-web (default: ~/.cache/mesheal/fixstl-venv/bin/python)")
+    parser.add_argument("--meshfix-python", type=str, default=None,
+                        help="Python with pymeshfix for pymeshfix (default: ~/.cache/mesheal/meshfix-venv/bin/python)")
     parser.add_argument("--dry-run", action="store_true", help="Download and verify cache only without running repair")
 
     args = parser.parse_args()
@@ -113,7 +118,10 @@ def main() -> int:
     blender = args.method == "blender-print3d"
     fixstl = args.method == "fixstl-web"
     # Other tools' results get their own key, so FixSTL's published entries and Mesheal's stay as they are
-    result_key = "blender_print3d_local" if blender else ("fixstl_web_local" if fixstl else "mesheal")
+    other_keys = {"blender-print3d": "blender_print3d_local", "fixstl-web": "fixstl_web_local",
+                  "admesh": "admesh_local", "pymeshfix": "pymeshfix_local"}
+    other = args.method in other_keys
+    result_key = other_keys.get(args.method, "mesheal")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
@@ -138,7 +146,12 @@ def main() -> int:
                 continue
 
             out_fixed = tmp_path / f"{source_id}_fixed.stl"
-            if fixstl:
+            if args.method == "admesh":
+                result = repair_with_admesh(model_path, out_fixed, mesheal_bin=args.mesheal_bin, timeout_sec=args.timeout or None)
+            elif args.method == "pymeshfix":
+                result = repair_with_meshfix(model_path, out_fixed, mesheal_bin=args.mesheal_bin, python=args.meshfix_python,
+                                             timeout_sec=args.timeout or None)
+            elif fixstl:
                 result = repair_with_fixstl_web(model_path, out_fixed, mesheal_bin=args.mesheal_bin,
                                                 python=args.fixstl_python, timeout_sec=args.timeout or None)
             elif blender:
@@ -159,7 +172,9 @@ def main() -> int:
                 eval_res["blender"] = result.metrics.raw.get("blender", {})
             if fixstl and result.metrics is not None:
                 eval_res["fixstl"] = result.metrics.raw.get("fixstl", {})
-            if not blender and not fixstl and args.method != "dedup" and needs_non_dedup_check(eval_res):
+            if other and result.metrics is not None and "tool" in result.metrics.raw:
+                eval_res["tool"] = result.metrics.raw["tool"]
+            if not other and args.method != "dedup" and needs_non_dedup_check(eval_res):
                 out_dedup = tmp_path / f"{source_id}_dedup.stl"
                 dedup_res = repair(
                     input_file=model_path,
