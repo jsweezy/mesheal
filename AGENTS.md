@@ -14,6 +14,10 @@
 - User documentation lives in `docs/` and is published with MkDocs Material (`mkdocs.yml`). Run `mkdocs build --strict` after editing it.
 - Internal design notes (vision, roadmap, UI spec, punch list) live in the private `.docs/` submodule. Update them when you have it; never copy them into the public tree.
 
+## Known Issues
+
+- Record problems we know about but have not fixed at the source (workarounds, deliberate decisions, tool limits) in `ISSUES.md`: what happens, why, the workaround, and when it can be removed. Move an entry to **Resolved** when it is fixed.
+
 ## Building & Testing
 
 - Limit CPU usage when building with `-j 2`. Testing can use `-j 4`.

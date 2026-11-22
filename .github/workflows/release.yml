@@ -182,9 +182,23 @@ jobs:
           # vcpkg only rebuilds what changed, so an older cache still saves most of the work
           restore-keys: vcpkg-x64-windows-static-md-release-
 
+      # MSVC toolset 14.52 builds CGAL's remove_self_intersections into code that crashes (see ISSUES.md):
+      # install 14.51, the toolset v5 was built with, and use it here and in vcpkg's triplet
+      - name: Install MSVC toolset 14.51
+        shell: pwsh
+        run: |
+          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+          $vs = & "$installer\vswhere.exe" -latest -property installationPath
+          Start-Process -Wait -NoNewWindow -FilePath "$installer\vs_installer.exe" -ArgumentList `
+            "modify", "--installPath", "`"$vs`"", "--add", "Microsoft.VisualStudio.Component.VC.14.51.x86.x64", `
+            "--quiet", "--norestart", "--nocache"
+          Get-ChildItem "$vs\VC\Tools\MSVC" | Select-Object Name
+          if (-not (Test-Path "$vs\VC\Tools\MSVC\14.51*")) { throw "MSVC toolset 14.51 was not installed" }
+
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
+          toolset: "14.51"
 
       # oneTBB's own Windows release (the version Blender 5.1+ ships): CMake config, import
       # libraries and tbb12.dll / tbbmalloc.dll, which go next to mesheal.exe. The DLL folder goes
@@ -565,9 +579,23 @@ jobs:
           key: vcpkg-x64-windows-static-md-release-${{ hashFiles('packaging/vcpkg/vcpkg.json', 'packaging/vcpkg/triplets/x64-windows-static-md-release.cmake') }}
           restore-keys: vcpkg-x64-windows-static-md-release-
 
+      # MSVC toolset 14.52 builds CGAL's remove_self_intersections into code that crashes (see ISSUES.md):
+      # install 14.51, the toolset v5 was built with, and use it here and in vcpkg's triplet
+      - name: Install MSVC toolset 14.51
+        shell: pwsh
+        run: |
+          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+          $vs = & "$installer\vswhere.exe" -latest -property installationPath
+          Start-Process -Wait -NoNewWindow -FilePath "$installer\vs_installer.exe" -ArgumentList `
+            "modify", "--installPath", "`"$vs`"", "--add", "Microsoft.VisualStudio.Component.VC.14.51.x86.x64", `
+            "--quiet", "--norestart", "--nocache"
+          Get-ChildItem "$vs\VC\Tools\MSVC" | Select-Object Name
+          if (-not (Test-Path "$vs\VC\Tools\MSVC\14.51*")) { throw "MSVC toolset 14.51 was not installed" }
+
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
+          toolset: "14.51"
 
       - uses: actions/setup-python@v5
         id: py311

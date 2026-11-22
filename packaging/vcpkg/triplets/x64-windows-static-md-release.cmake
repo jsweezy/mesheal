@@ -5,3 +5,6 @@ set(VCPKG_TARGET_ARCHITECTURE x64)
 set(VCPKG_CRT_LINKAGE dynamic)
 set(VCPKG_LIBRARY_LINKAGE static)
 set(VCPKG_BUILD_TYPE release)
+# Build the libraries with the same MSVC toolset as Mesheal (14.51: 14.52 miscompiles CGAL's
+# self-intersection repair, see ISSUES.md). The release workflow installs it.
+set(VCPKG_PLATFORM_TOOLSET_VERSION 14.51)

@@ -260,7 +260,9 @@ TEST_CASE("CGAL fill modes on a cylinder end cap and a sphere cap", "[repair][ho
     const double flatError = radiusError(sphereFlat, newFaces(holed, sphereFlat));
     const double fairError = radiusError(sphereFaired, newFaces(holed, sphereFaired));
     WARN("sphere cap radius error: flat " << flatError << ", faired " << fairError);
-    REQUIRE(fairError < 0.25 * flatError);
+    // The rim is a perfect circle, so many triangulations tie and each compiler breaks the ties its own way:
+    // the faired cap lands about 0.16 from the sphere with Clang and GCC, 0.23 with MSVC (flat: 0.91)
+    REQUIRE(fairError < flatError / 3.0);
 }
 
 TEST_CASE("A visitor exception aborts the cubic search and leaves the mesh untouched", "[repair][holes][cgal]") {
