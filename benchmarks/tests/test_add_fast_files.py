@@ -51,6 +51,26 @@ class TestAddFastFiles(unittest.TestCase):
         m = MeshMetrics(watertight_before=False, open_edges_before=3, self_intersecting_faces_before=2, duplicate_faces_before=1)
         self.assertEqual(problems_of(m), ["holes", "self-intersections", "duplicate-or-degenerate"])
 
+    def test_fingerprint_ignores_order_and_format(self):
+        import struct
+        import tempfile
+        from pathlib import Path
+
+        from benchmarks.add_fast_files import mesh_fingerprint, read_triangles
+
+        tris = [((0, 0, 0), (1, 0, 0), (0, 1, 0)), ((0, 0, 0), (0, 1, 0), (0, 0, 1))]
+        with tempfile.TemporaryDirectory() as d:
+            binary = Path(d) / "a.stl"
+            binary.write_bytes(b"x" * 80 + struct.pack("<I", 2) + b"".join(
+                struct.pack("<12fH", 0, 0, 0, *[c for p in t for c in p], 0) for t in reversed(tris)))
+            ascii_ = Path(d) / "b.stl"
+            ascii_.write_text("solid s\n" + "".join(
+                "facet normal 0 0 0\nouter loop\n" + "".join(f"vertex {p[0]} {p[1]} {p[2]}\n" for p in (t[1], t[2], t[0]))
+                + "endloop\nendfacet\n" for t in tris) + "endsolid s\n")
+            self.assertEqual(len(read_triangles(binary)), 2)
+            self.assertEqual(mesh_fingerprint(read_triangles(binary)), mesh_fingerprint(read_triangles(ascii_)))
+            self.assertNotEqual(mesh_fingerprint(read_triangles(binary)), mesh_fingerprint(tris[:1]))
+
 
 if __name__ == "__main__":
     unittest.main()

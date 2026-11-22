@@ -4,7 +4,8 @@
 Candidates are drawn at random, with a fixed seed, from Thingi10K's own metadata: files that are in no
 list yet and are under a face limit. About a fifth of the files added are healthy, the rest broken
 (by Thingi10K's metadata for the draw; by Mesheal's own check for the label that is stored). Each
-candidate is downloaded into the benchmark cache and repaired with Fix All, and is added only if it
+candidate is downloaded into the benchmark cache, skipped if it holds the same triangles as a file already
+in a list (Thingi10K has some models uploaded more than once), and repaired with Fix All; it is added only if it
 ran under the time limit. On battery power the limit is multiplied by --battery-factor, since the same
 file runs slower there (3 s x 1.05 = 3.15 s on the machine the factor was measured on).
 
@@ -23,6 +24,7 @@ import io
 import json
 import platform
 import random
+import struct
 import subprocess
 import sys
 import tempfile
@@ -165,6 +167,79 @@ def listed_ids(paths: Iterable[Path]) -> Set[str]:
     return ids
 
 
+def read_triangles(path: Path) -> List[Tuple[Tuple[float, float, float], ...]]:
+    """The triangles of a binary or ASCII STL file, each as three corner points."""
+    data = path.read_bytes()
+    if len(data) >= 84:
+        n = struct.unpack_from("<I", data, 80)[0]
+        if 84 + 50 * n == len(data):
+            out = []
+            for i in range(n):
+                c = struct.unpack_from("<9f", data, 84 + 50 * i + 12)
+                out.append(((c[0], c[1], c[2]), (c[3], c[4], c[5]), (c[6], c[7], c[8])))
+            return out
+    pts = [tuple(float(x) for x in ln.split()[1:4]) for ln in data.decode("utf-8", "replace").splitlines()
+           if ln.strip().startswith("vertex")]
+    return [tuple(pts[i:i + 3]) for i in range(0, len(pts) - 2, 3)]
+
+
+def triangle_count(path: Path) -> int:
+    """From a binary STL's header, without reading the triangles; an ASCII file is read."""
+    with open(path, "rb") as f:
+        head = f.read(84)
+    if len(head) == 84:
+        n = struct.unpack_from("<I", head, 80)[0]
+        if 84 + 50 * n == path.stat().st_size:
+            return n
+    return len(read_triangles(path))
+
+
+def mesh_fingerprint(triangles) -> str:
+    """The same for two files that hold the same triangles, whatever their header, format or order."""
+    key = sorted(tuple(sorted((round(x, 4), round(y, 4), round(z, 4)) for (x, y, z) in t)) for t in triangles)
+    return hashlib.sha256(repr(key).encode()).hexdigest()
+
+
+class Duplicates:
+    """Finds a listed file with the same triangles as a candidate. Only listed files with the same number of
+    triangles are read, and each at most once."""
+
+    def __init__(self, cache: ModelCache, source_ids: Iterable[str]):
+        self.cache = cache
+        self.pending = set(source_ids)
+        self.by_count: Dict[int, List[str]] = {}
+        self.prints: Dict[str, str] = {}
+        self.counted = False
+
+    def _path(self, sid: str) -> Optional[Path]:
+        p = self.cache.get_model_dir(sid) / f"{sid}.stl"
+        return p if p.is_file() else None
+
+    def _count_all(self) -> None:
+        for sid in self.pending:
+            p = self._path(sid)
+            if p is not None:
+                self.by_count.setdefault(triangle_count(p), []).append(sid)
+        self.counted = True
+
+    def add(self, sid: str, triangles) -> None:
+        self.by_count.setdefault(len(triangles), []).append(sid)
+        self.prints[sid] = mesh_fingerprint(triangles)
+
+    def find(self, triangles) -> Optional[str]:
+        if not self.counted:
+            self._count_all()
+        mine = None
+        for sid in self.by_count.get(len(triangles), []):
+            if sid not in self.prints:
+                p = self._path(sid)
+                self.prints[sid] = mesh_fingerprint(read_triangles(p)) if p else ""
+            mine = mine or mesh_fingerprint(triangles)
+            if self.prints[sid] == mine:
+                return sid
+        return None
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Add new Thingi10K files to the fast benchmark set")
     parser.add_argument("--count", type=int, default=10, help="Files to add (default: 10)")
@@ -195,6 +270,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     print(f"Power: {power}; time limit {limit:.2f} s ({args.max_seconds:g} s on mains power x {factor:g})")
 
     exclude = listed_ids(sorted(SPECS.glob("*.json")) + [spec_path])
+    duplicates = Duplicates(cache, exclude)
     summary_csv, geometry_csv, contextual_csv = metadata(cache.cache_dir.parent)
     candidates = draw_order(load_candidates(summary_csv, geometry_csv, contextual_csv, args.max_faces, exclude),
                             args.seed, args.healthy_share)
@@ -226,6 +302,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             except Exception as e:  # noqa: BLE001 - any download failure skips the file
                 print(f"skipped (download failed: {e})")
                 continue
+            triangles = read_triangles(path)
+            same = duplicates.find(triangles)
+            if same is not None:
+                print(f"skipped (the same mesh as thingi-{same}, already listed)")
+                continue
             result = repair(input_file=path, method="fix-all", output_file=Path(tmp) / f"{sid}.stl",
                             mesheal_bin=str(bin_path), timeout_sec=max(60.0, 20 * limit))
             if not result.is_success or result.metrics is None:
@@ -244,6 +325,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                       f"{'healthy' if c.healthy else 'broken'})")
                 continue
             got[defective] += 1
+            duplicates.add(sid, triangles)
             sha = hashlib.sha256(path.read_bytes()).hexdigest()
             added.append({
                 "id": f"thingi-{sid}",

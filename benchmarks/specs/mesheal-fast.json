@@ -10810,6 +10810,5743 @@
         "faces": 20992,
         "labelled_by": "mesheal"
       }
+    },
+    {
+      "id": "thingi-51491",
+      "group": "thingi10k-added",
+      "source_id": "51491",
+      "thing_url": "https://www.thingiverse.com/thing:14599",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "Ktronics",
+      "input_sha256": "4e2e21b7b880d759c004473ba3e31b4771ac026d2a2460d027e133d16b5e0413",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.023,
+        "power": "mains",
+        "faces": 696,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-37885",
+      "group": "thingi10k-added",
+      "source_id": "37885",
+      "thing_url": "https://www.thingiverse.com/thing:11836",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "Thing-O-Fun",
+      "input_sha256": "6a71fe4a3e7c903b72199821b248894011587e5b963e05c74ddd0b89f7b51a9f",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.009,
+        "power": "mains",
+        "faces": 304,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-139623",
+      "group": "thingi10k-added",
+      "source_id": "139623",
+      "thing_url": "https://www.thingiverse.com/thing:53543",
+      "license": "Attribution - Non-Commercial - No Derivatives",
+      "author": "dutchmogul",
+      "input_sha256": "10f19a037809f7b4c63a213f7d877c04b7888cee0373a305dbe38ac81baedbf9",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.533,
+        "power": "mains",
+        "faces": 10700,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-71493",
+      "group": "thingi10k-added",
+      "source_id": "71493",
+      "thing_url": "https://www.thingiverse.com/thing:23111",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "cerberus333",
+      "input_sha256": "727d53c0a7bc747ec99693fcc73028002959e7bfb4421207317e3902fab409f0",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 1.071,
+        "power": "mains",
+        "faces": 3479,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-63447",
+      "group": "thingi10k-added",
+      "source_id": "63447",
+      "thing_url": "https://www.thingiverse.com/thing:20012",
+      "license": "Creative Commons - Attribution",
+      "author": "pmoews",
+      "input_sha256": "de6a8c960696e01a4cbb0a8c7c0c14ced18f10a3ee89b29cfdb98db0941bcf83",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.003,
+        "power": "mains",
+        "faces": 144,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-62526",
+      "group": "thingi10k-added",
+      "source_id": "62526",
+      "thing_url": "https://www.thingiverse.com/thing:19622",
+      "license": "Creative Commons - Attribution",
+      "author": "Inorganic",
+      "input_sha256": "c5feb1779e97af039f5452b299a1df65bbc8ef6dd90d0317d5a75b9a4f9982da",
+      "problems": [
+        "holes",
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 2.596,
+        "power": "mains",
+        "faces": 13152,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-94900",
+      "group": "thingi10k-added",
+      "source_id": "94900",
+      "thing_url": "https://www.thingiverse.com/thing:32845",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "clothbot",
+      "input_sha256": "7552fd2d132b61a1b794c7ce7c8f99d1053be86de7d6dc14d11403d6f966ebb3",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 1.444,
+        "power": "mains",
+        "faces": 16950,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-60514",
+      "group": "thingi10k-added",
+      "source_id": "60514",
+      "thing_url": "https://www.thingiverse.com/thing:18767",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "connje",
+      "input_sha256": "57eaadd6cd165fb8b5da361f4acc5cef80a8760fbcda7bf737479ce05aeac4ec",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.198,
+        "power": "mains",
+        "faces": 11674,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1722420",
+      "group": "thingi10k-added",
+      "source_id": "1722420",
+      "thing_url": "https://www.thingiverse.com/thing:1095858",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "PrintThatThing",
+      "input_sha256": "da51b500effa722b527167177eace73de7114b5e244c6bbf675cfb1f35a1a9d5",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 2.247,
+        "power": "mains",
+        "faces": 2924,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-270322",
+      "group": "thingi10k-added",
+      "source_id": "270322",
+      "thing_url": "https://www.thingiverse.com/thing:135209",
+      "license": "Creative Commons - Attribution",
+      "author": "barspin",
+      "input_sha256": "5baf8aa6c5fa83e08a1798b327849383f87e56225ba0225af893da60e645c352",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.108,
+        "power": "mains",
+        "faces": 5050,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-199819",
+      "group": "thingi10k-added",
+      "source_id": "199819",
+      "thing_url": "https://www.thingiverse.com/thing:90134",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "exosequitur",
+      "input_sha256": "8439c4ad97da012eb5edc2cf7aad9bb96890d0eb683721a8200cea95e56204bc",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.021,
+        "power": "mains",
+        "faces": 162,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1056913",
+      "group": "thingi10k-added",
+      "source_id": "1056913",
+      "thing_url": "https://www.thingiverse.com/thing:644933",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "ericthepoolboy",
+      "input_sha256": "5a1ef91478dc4d553db5105b5c914cd8bcd409c4506cb05db967df34bca01045",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.061,
+        "power": "mains",
+        "faces": 3120,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-288354",
+      "group": "thingi10k-added",
+      "source_id": "288354",
+      "thing_url": "https://www.thingiverse.com/thing:148159",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "asteed",
+      "input_sha256": "c393dbfbbe8dca1b2d31603e906df7c0ca14fcf6be46b0c707031eb831935505",
+      "problems": [
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.075,
+        "power": "mains",
+        "faces": 3444,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-285368",
+      "group": "thingi10k-added",
+      "source_id": "285368",
+      "thing_url": "https://www.thingiverse.com/thing:145598",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "whpthomas",
+      "input_sha256": "e24a691b966b80b9264cb0e269db6500876b236af8d21793c90cf4d43f98eb08",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.013,
+        "power": "mains",
+        "faces": 442,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-110836",
+      "group": "thingi10k-added",
+      "source_id": "110836",
+      "thing_url": "https://www.thingiverse.com/thing:38990",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "christinachun",
+      "input_sha256": "5a396443912f3982e10c86deb6a6bbaa5f1e4f35be30abba150a0d2292de12cc",
+      "problems": [
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.121,
+        "power": "mains",
+        "faces": 9862,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-63497",
+      "group": "thingi10k-added",
+      "source_id": "63497",
+      "thing_url": "https://www.thingiverse.com/thing:19733",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "cymon",
+      "input_sha256": "73ba44f04fbfe45f40e3c8b0ea177e85e1a40237033c575beebd17e4c8265f9b",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.031,
+        "power": "mains",
+        "faces": 892,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1600243",
+      "group": "thingi10k-added",
+      "source_id": "1600243",
+      "thing_url": "https://www.thingiverse.com/thing:1014396",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "gzumwalt",
+      "input_sha256": "a5d16b89d002f793a7e519fdc559d93c448d55cc69feaf87619bd99072dbfc01",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.03,
+        "power": "mains",
+        "faces": 296,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-85886",
+      "group": "thingi10k-added",
+      "source_id": "85886",
+      "thing_url": "https://www.thingiverse.com/thing:29126",
+      "license": "Creative Commons - Attribution",
+      "author": "MakerBot",
+      "input_sha256": "c7a1d1028af4d1c443af22e7652bdc5bc1ef996b5896bf19847ac612d535f8aa",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.122,
+        "power": "mains",
+        "faces": 8176,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-233722",
+      "group": "thingi10k-added",
+      "source_id": "233722",
+      "thing_url": "https://www.thingiverse.com/thing:111490",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "greengiant83",
+      "input_sha256": "d39cf7234c8a98c6924579cb70f70a1c5f91bec5157289c4c304df33076c568a",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 1.546,
+        "power": "mains",
+        "faces": 38864,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-449906",
+      "group": "thingi10k-added",
+      "source_id": "449906",
+      "thing_url": "https://www.thingiverse.com/thing:240158",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "peetersm",
+      "input_sha256": "251e98a40afb8781632baf5d435e623b535581e7139873671013a7ae2833a15c",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 1.078,
+        "power": "mains",
+        "faces": 13228,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-73448",
+      "group": "thingi10k-added",
+      "source_id": "73448",
+      "thing_url": "https://www.thingiverse.com/thing:24266",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "ist",
+      "input_sha256": "d33739548a08009107a66bc814f0024b8e568337de3e13d3fd99fb7e668dd4b0",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.086,
+        "power": "mains",
+        "faces": 1160,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-409625",
+      "group": "thingi10k-added",
+      "source_id": "409625",
+      "thing_url": "https://www.thingiverse.com/thing:221521",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "dutchmogul",
+      "input_sha256": "c28dc495c2f66277a12210f82f0780d40864460d0d7638e06c1f9722c4a70293",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.158,
+        "power": "mains",
+        "faces": 5910,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-178202",
+      "group": "thingi10k-added",
+      "source_id": "178202",
+      "thing_url": "https://www.thingiverse.com/thing:76369",
+      "license": "Creative Commons - Attribution",
+      "author": "RichMac",
+      "input_sha256": "5bdfb72203f5fe1be91af86995de6489e8961e5e5041c1f3df4d352c87bf339b",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.013,
+        "power": "mains",
+        "faces": 740,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-649538",
+      "group": "thingi10k-added",
+      "source_id": "649538",
+      "thing_url": "https://www.thingiverse.com/thing:376158",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "3dprintler",
+      "input_sha256": "102a547eeebc2d8775e007de0fa6cb911ae8a8bbeecef9008c6b76286fb45b03",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 1.047,
+        "power": "mains",
+        "faces": 32758,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-69242",
+      "group": "thingi10k-added",
+      "source_id": "69242",
+      "thing_url": "https://www.thingiverse.com/thing:21612",
+      "license": "Creative Commons - Attribution",
+      "author": "than",
+      "input_sha256": "bf90c53f6b8312641f6cbe7d6eedd912c1a6beb42cbfdcf91c4b79de738fd372",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.023,
+        "power": "mains",
+        "faces": 400,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-95495",
+      "group": "thingi10k-added",
+      "source_id": "95495",
+      "thing_url": "https://www.thingiverse.com/thing:33096",
+      "license": "Creative Commons - Attribution",
+      "author": "mrbenbritton",
+      "input_sha256": "9732f2a91ba4a25424774039acd0b9307116a3bc18365e0a08ca20c6e31e3a46",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.034,
+        "power": "mains",
+        "faces": 1348,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-113001",
+      "group": "thingi10k-added",
+      "source_id": "113001",
+      "thing_url": "https://www.thingiverse.com/thing:39872",
+      "license": "Creative Commons - Attribution",
+      "author": "JonHollander",
+      "input_sha256": "dbb15f0610548cde514f38b7684d410172385f1c57d9c2d7179031c205d698fd",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.007,
+        "power": "mains",
+        "faces": 232,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-994063",
+      "group": "thingi10k-added",
+      "source_id": "994063",
+      "thing_url": "https://www.thingiverse.com/thing:614366",
+      "license": "Attribution - Non-Commercial - No Derivatives",
+      "author": "Shira",
+      "input_sha256": "06041368bc29bd3e3d22842265238d8384bd32a85015addba05bebf2352f2810",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.649,
+        "power": "mains",
+        "faces": 20364,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-80085",
+      "group": "thingi10k-added",
+      "source_id": "80085",
+      "thing_url": "https://www.thingiverse.com/thing:26860",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "obijuan",
+      "input_sha256": "caf62a619e6e714a1787c71e7629cdd549f025cf4dc3bef1ae666977917090f3",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.005,
+        "power": "mains",
+        "faces": 226,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-42186",
+      "group": "thingi10k-added",
+      "source_id": "42186",
+      "thing_url": "https://www.thingiverse.com/thing:12728",
+      "license": "GNU - GPL",
+      "author": "VeryWetPaint",
+      "input_sha256": "761af96287af4e62e7a4eadc055dd5cd1650f0f8a9316ca6db76a872e7146b36",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.176,
+        "power": "mains",
+        "faces": 9322,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-145503",
+      "group": "thingi10k-added",
+      "source_id": "145503",
+      "thing_url": "https://www.thingiverse.com/thing:52922",
+      "license": "Creative Commons - Attribution",
+      "author": "sethmoser",
+      "input_sha256": "8f67df3773c2ac44c57cc8cc3c1c85f5b973dfd8ce909ec728e2cddc9c66c091",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.131,
+        "power": "mains",
+        "faces": 7538,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-98019",
+      "group": "thingi10k-added",
+      "source_id": "98019",
+      "thing_url": "https://www.thingiverse.com/thing:33988",
+      "license": "Creative Commons - Attribution",
+      "author": "MakerBot",
+      "input_sha256": "14ffb56c161fc017431b2f016e3dd2d027b330ec528e365c41b1203a77eb60a1",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.038,
+        "power": "mains",
+        "faces": 2484,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-100644",
+      "group": "thingi10k-added",
+      "source_id": "100644",
+      "thing_url": "https://www.thingiverse.com/thing:34772",
+      "license": "Creative Commons - Attribution",
+      "author": "MakerBot",
+      "input_sha256": "d972dd4dcfb7552051bde3a5cb5d0f602ce66537707334098e83d162b002bf75",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.209,
+        "power": "mains",
+        "faces": 9806,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-110378",
+      "group": "thingi10k-added",
+      "source_id": "110378",
+      "thing_url": "https://www.thingiverse.com/thing:38857",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "7777773",
+      "input_sha256": "0dd314122012b7c5c376d7858621d367a128c4183482c105ef900627bee82868",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 1.309,
+        "power": "mains",
+        "faces": 16456,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-347935",
+      "group": "thingi10k-added",
+      "source_id": "347935",
+      "thing_url": "https://www.thingiverse.com/thing:185125",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "christinachun",
+      "input_sha256": "e972519c37a0a183c261f15c75d7e93a59fee497bcf7c64b80ce3bab633bdf20",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.132,
+        "power": "mains",
+        "faces": 7224,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1147177",
+      "group": "thingi10k-added",
+      "source_id": "1147177",
+      "thing_url": "https://www.thingiverse.com/thing:714484",
+      "license": "Creative Commons - Public Domain Dedication",
+      "author": "CyberCyclist",
+      "input_sha256": "43f40cab420b0d72cd84385051bfdd338a1e5bdc02a558fbb9dee5ceb0dd7a84",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.153,
+        "power": "mains",
+        "faces": 6424,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-44380",
+      "group": "thingi10k-added",
+      "source_id": "44380",
+      "thing_url": "https://www.thingiverse.com/thing:13581",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "custom3dstuff",
+      "input_sha256": "aa31487048400739d6b285e2696f0d14bb8cd9c67b539b793a8c166efaaaaa10",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.013,
+        "power": "mains",
+        "faces": 460,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-996799",
+      "group": "thingi10k-added",
+      "source_id": "996799",
+      "thing_url": "https://www.thingiverse.com/thing:619550",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "francfalco",
+      "input_sha256": "06309b557e0b371ce81e1c07b0b9b47d1b8f42e90a469173bcc7e072a76571af",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.134,
+        "power": "mains",
+        "faces": 6012,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-127152",
+      "group": "thingi10k-added",
+      "source_id": "127152",
+      "thing_url": "https://www.thingiverse.com/thing:44200",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "pintokitkat",
+      "input_sha256": "700b68bd0c7570f9483ae01eeefbd260295f2861e93e1718094a0fcfd7cfb008",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.007,
+        "power": "mains",
+        "faces": 270,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-996805",
+      "group": "thingi10k-added",
+      "source_id": "996805",
+      "thing_url": "https://www.thingiverse.com/thing:619550",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "francfalco",
+      "input_sha256": "566aa0a90379edb7a8c70d5c260e353db7f6a323467acbd0c64e409128c2d4b1",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.387,
+        "power": "mains",
+        "faces": 13500,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-99911",
+      "group": "thingi10k-added",
+      "source_id": "99911",
+      "thing_url": "https://www.thingiverse.com/thing:34778",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "emmett",
+      "input_sha256": "76a0b0caef711a4d9dade439c9699dec32a3536730892fd3066113183150f7c5",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.018,
+        "power": "mains",
+        "faces": 652,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-79959",
+      "group": "thingi10k-added",
+      "source_id": "79959",
+      "thing_url": "https://www.thingiverse.com/thing:26811",
+      "license": "Creative Commons - Attribution",
+      "author": "kokr",
+      "input_sha256": "b5a080f6cf763c65901e96eee80c7111a149cf1962c5f4296cabb269ce226e30",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.03,
+        "power": "mains",
+        "faces": 360,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-285367",
+      "group": "thingi10k-added",
+      "source_id": "285367",
+      "thing_url": "https://www.thingiverse.com/thing:145598",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "whpthomas",
+      "input_sha256": "e613e63ba90c030798aac86dce42f9e369c26726ddab24acd6ed18dbabfe3b59",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.048,
+        "power": "mains",
+        "faces": 626,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-106620",
+      "group": "thingi10k-added",
+      "source_id": "106620",
+      "thing_url": "https://www.thingiverse.com/thing:37454",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "rincewind",
+      "input_sha256": "4bbd182dea50a6af11c08bb57f98a7c8aaaa4e900f007ecfb105b23fb2278019",
+      "problems": [
+        "holes"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.367,
+        "power": "mains",
+        "faces": 47520,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-388632",
+      "group": "thingi10k-added",
+      "source_id": "388632",
+      "thing_url": "https://www.thingiverse.com/thing:208591",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "mathgrrl",
+      "input_sha256": "0ed30cfa1336de89066bc699ba49e5455974f749bd7e14f09c88e179c983fba4",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.718,
+        "power": "mains",
+        "faces": 3268,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-530429",
+      "group": "thingi10k-added",
+      "source_id": "530429",
+      "thing_url": "https://www.thingiverse.com/thing:268090",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "Solstie",
+      "input_sha256": "04a939ed90b3bfdc2c2f716aaecb5e383147f28edbb090d038058cc8d7bc4dc6",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.124,
+        "power": "mains",
+        "faces": 1314,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-95404",
+      "group": "thingi10k-added",
+      "source_id": "95404",
+      "thing_url": "https://www.thingiverse.com/thing:33048",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "JO3RI",
+      "input_sha256": "60a37926920935177397900ddcee14b6ef3d8285bad489fb4f196ac7ddd39ede",
+      "problems": [
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.339,
+        "power": "mains",
+        "faces": 22296,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-76713",
+      "group": "thingi10k-added",
+      "source_id": "76713",
+      "thing_url": "https://www.thingiverse.com/thing:25551",
+      "license": "Creative Commons - Attribution",
+      "author": "MakerBot",
+      "input_sha256": "c5a6a6a85fc365c71a32d78b52478ce686f880c00bd6665894c11d896035bd01",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.116,
+        "power": "mains",
+        "faces": 5626,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-50308",
+      "group": "thingi10k-added",
+      "source_id": "50308",
+      "thing_url": "https://www.thingiverse.com/thing:15256",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "patchorang",
+      "input_sha256": "07f0f892f34a268c031e5323aa08fa42643052bb5c2b0b42567ccea61fd2ed50",
+      "problems": [
+        "flipped",
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.083,
+        "power": "mains",
+        "faces": 320,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-91749",
+      "group": "thingi10k-added",
+      "source_id": "91749",
+      "thing_url": "https://www.thingiverse.com/thing:31569",
+      "license": "GNU - GPL",
+      "author": "hardmouse",
+      "input_sha256": "bb79cfeb16692d1abd2f738c003da25bf9a5cac305a4e3f95791cb412d732735",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.103,
+        "power": "mains",
+        "faces": 2192,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-37879",
+      "group": "thingi10k-added",
+      "source_id": "37879",
+      "thing_url": "https://www.thingiverse.com/thing:11836",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "Thing-O-Fun",
+      "input_sha256": "605eade05ae0671cb769d5b7060904339c07a0af435f367bd758db4038698777",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.332,
+        "power": "mains",
+        "faces": 8806,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1458668",
+      "group": "thingi10k-added",
+      "source_id": "1458668",
+      "thing_url": "https://www.thingiverse.com/thing:83024",
+      "license": "Creative Commons - Attribution",
+      "author": "barspin",
+      "input_sha256": "e9f21eb4495f90e3b5b777a45926ee14df3e97f5accbf7dae9b2e9c5813798b1",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.031,
+        "power": "mains",
+        "faces": 786,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1313545",
+      "group": "thingi10k-added",
+      "source_id": "1313545",
+      "thing_url": "https://www.thingiverse.com/thing:811450",
+      "license": "Attribution - Non-Commercial - No Derivatives",
+      "author": "rba",
+      "input_sha256": "c832b9342a6927c250ef0f4f613a1a8e757e80fca55f51b65911e7e58f703e97",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 2",
+        "fix_all_seconds": 0.277,
+        "power": "mains",
+        "faces": 1856,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-108199",
+      "group": "thingi10k-added",
+      "source_id": "108199",
+      "thing_url": "https://www.thingiverse.com/thing:38001",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "SometimesCake",
+      "input_sha256": "d36f00fcde616f0bd99e3501ab5de412549db39eaf6a8cca0a23443f399893e9",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.047,
+        "power": "mains",
+        "faces": 1256,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-888462",
+      "group": "thingi10k-added",
+      "source_id": "888462",
+      "thing_url": "https://www.thingiverse.com/thing:261462",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "JorgeZuniga",
+      "input_sha256": "9bf17659136ac6f6c5f02765a2e7a576a6b3492e90f7be834b7fe9409955dcc9",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.232,
+        "power": "mains",
+        "faces": 4104,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-42637",
+      "group": "thingi10k-added",
+      "source_id": "42637",
+      "thing_url": "https://www.thingiverse.com/thing:13072",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "1oldclown",
+      "input_sha256": "ddbd4fa45b2461eecaa70850dad20f9980ac0b77ff9d7c3d7d4a249bd6f0654b",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.03,
+        "power": "mains",
+        "faces": 1454,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-613010",
+      "group": "thingi10k-added",
+      "source_id": "613010",
+      "thing_url": "https://www.thingiverse.com/thing:351119",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "dutchmogul",
+      "input_sha256": "b71b8f18704a95ef7448c6b2a8a8575783af52be6a449e25247820e203cff74c",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.323,
+        "power": "mains",
+        "faces": 23252,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-222691",
+      "group": "thingi10k-added",
+      "source_id": "222691",
+      "thing_url": "https://www.thingiverse.com/thing:104694",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "hakalan",
+      "input_sha256": "e4bbb886c6d0871ea247cd6c9a37181da73c26340ff64c26d0bd6a4691583d1e",
+      "problems": [
+        "holes"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.545,
+        "power": "mains",
+        "faces": 38590,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1514904",
+      "group": "thingi10k-added",
+      "source_id": "1514904",
+      "thing_url": "https://www.thingiverse.com/thing:935144",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "tone001",
+      "input_sha256": "c9a7a1c5222019ab125b4aef04ae8c67c140876db06f49550e67c49fe415ce41",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.625,
+        "power": "mains",
+        "faces": 6236,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-114077",
+      "group": "thingi10k-added",
+      "source_id": "114077",
+      "thing_url": "https://www.thingiverse.com/thing:40284",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "RSILVA",
+      "input_sha256": "2115fce88a5016f5a4fa5a847961660a97cd7a5696d350a4bfcf49d9d2a76b0e",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 2.197,
+        "power": "mains",
+        "faces": 48518,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-49161",
+      "group": "thingi10k-added",
+      "source_id": "49161",
+      "thing_url": "https://www.thingiverse.com/thing:14599",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "Ktronics",
+      "input_sha256": "a5d03aa344159044cc532257e13cc17b7a808d518a8581ad3e7a69b66b9f63be",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.033,
+        "power": "mains",
+        "faces": 2760,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1313553",
+      "group": "thingi10k-added",
+      "source_id": "1313553",
+      "thing_url": "https://www.thingiverse.com/thing:811450",
+      "license": "Attribution - Non-Commercial - No Derivatives",
+      "author": "rba",
+      "input_sha256": "df279b0ed27217bcd93835e980ac321fe54672ffd6bd302ef81f4e88092a0c2e",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 2.893,
+        "power": "mains",
+        "faces": 24982,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-301934",
+      "group": "thingi10k-added",
+      "source_id": "301934",
+      "thing_url": "https://www.thingiverse.com/thing:155903",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "coolarj10",
+      "input_sha256": "b9523ef6490aaeace39eb00afbaca98a8b50672d06443c1d8bed4a9718e067f3",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.389,
+        "power": "mains",
+        "faces": 7496,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-74157",
+      "group": "thingi10k-added",
+      "source_id": "74157",
+      "thing_url": "https://www.thingiverse.com/thing:24567",
+      "license": "Creative Commons - Attribution",
+      "author": "RyGuy",
+      "input_sha256": "bda86bd2bff76171da1f35e6a803a0c1760df401b1e4a13fbced604de49659ac",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.001,
+        "power": "mains",
+        "faces": 64,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1181081",
+      "group": "thingi10k-added",
+      "source_id": "1181081",
+      "thing_url": "https://www.thingiverse.com/thing:684376",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "joefe",
+      "input_sha256": "0878336271a7c8d83eefe45558ad5f9ff7d00131444e770001db65f5c4f470b6",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.304,
+        "power": "mains",
+        "faces": 12498,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-303903",
+      "group": "thingi10k-added",
+      "source_id": "303903",
+      "thing_url": "https://www.thingiverse.com/thing:154112",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "Lochemage",
+      "input_sha256": "a6ed281fb7badcc701f4c1bcd1d67f2e0b2878cf4611e696d584f958c7ae3a9a",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.018,
+        "power": "mains",
+        "faces": 562,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1064115",
+      "group": "thingi10k-added",
+      "source_id": "1064115",
+      "thing_url": "https://www.thingiverse.com/thing:245202",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "mshscott",
+      "input_sha256": "854b1366133669a8d2ff0846654525129d6b220ad9b5900e2828e1bc3d0e6165",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.032,
+        "power": "mains",
+        "faces": 746,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-50274",
+      "group": "thingi10k-added",
+      "source_id": "50274",
+      "thing_url": "https://www.thingiverse.com/thing:15249",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "alexw2150",
+      "input_sha256": "0fe1132fae47ce92306dd3d27c399c9a0bbd30273394eaf2355b0c1b2710b4e3",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.458,
+        "power": "mains",
+        "faces": 7792,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-314586",
+      "group": "thingi10k-added",
+      "source_id": "314586",
+      "thing_url": "https://www.thingiverse.com/thing:163746",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "dadhoc",
+      "input_sha256": "767ec832c23967b33e90d97c48ea7114e514654953a622b5663b66089831d951",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.187,
+        "power": "mains",
+        "faces": 21224,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1614063",
+      "group": "thingi10k-added",
+      "source_id": "1614063",
+      "thing_url": "https://www.thingiverse.com/thing:996398",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "ist",
+      "input_sha256": "2833ab8bb2df1119cb2862db0b5d7122e9fa08a2f1e5877045a35f540e3c8545",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.03,
+        "power": "mains",
+        "faces": 1048,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-72158",
+      "group": "thingi10k-added",
+      "source_id": "72158",
+      "thing_url": "https://www.thingiverse.com/thing:23695",
+      "license": "Creative Commons - Attribution",
+      "author": "princeofwands",
+      "input_sha256": "591b654fa38ba08544b215b680d582667617c2eb20f4764058261f418661845b",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.355,
+        "power": "mains",
+        "faces": 3558,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-92067",
+      "group": "thingi10k-added",
+      "source_id": "92067",
+      "thing_url": "https://www.thingiverse.com/thing:31686",
+      "license": "Creative Commons - Attribution",
+      "author": "MakerBot",
+      "input_sha256": "4ca1e09bfb9ca103c824eb3c24dbec70b1cadaca425369c10fe6bd1f6e76251c",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.036,
+        "power": "mains",
+        "faces": 1386,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-81368",
+      "group": "thingi10k-added",
+      "source_id": "81368",
+      "thing_url": "https://www.thingiverse.com/thing:27338",
+      "license": "Creative Commons - Attribution",
+      "author": "pmoews",
+      "input_sha256": "17b04778336ed089bbce92024ed46f7a777e2d94d0590b4421dd1384c3298c1a",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.801,
+        "power": "mains",
+        "faces": 40372,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-815480",
+      "group": "thingi10k-added",
+      "source_id": "815480",
+      "thing_url": "https://www.thingiverse.com/thing:493016",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "MakerBot",
+      "input_sha256": "49d604083522c6a2a8f06d98daf3b54699431b187b3f40525c394788f3e2c7b2",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.068,
+        "power": "mains",
+        "faces": 8224,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1007406",
+      "group": "thingi10k-added",
+      "source_id": "1007406",
+      "thing_url": "https://www.thingiverse.com/thing:33913",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "MakeALot",
+      "input_sha256": "2c11dc0033f23e0b3577716b704c618d226711e8486a3d91690f5dd5bbb69770",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 2.663,
+        "power": "mains",
+        "faces": 34474,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-111625",
+      "group": "thingi10k-added",
+      "source_id": "111625",
+      "thing_url": "https://www.thingiverse.com/thing:39332",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "ThePuzzleGeek",
+      "input_sha256": "39b56e68c796cc4efa6e7caf2359224526387a73ad55d3e3c00beb87f6480a51",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.253,
+        "power": "mains",
+        "faces": 2946,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-265204",
+      "group": "thingi10k-added",
+      "source_id": "265204",
+      "thing_url": "https://www.thingiverse.com/thing:131219",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "sushiyaki",
+      "input_sha256": "b325afbf801bf47cbbd1a19dcc13fcc5eeea2c7dd77a208484bb55fd85f88e08",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.234,
+        "power": "mains",
+        "faces": 16236,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1600248",
+      "group": "thingi10k-added",
+      "source_id": "1600248",
+      "thing_url": "https://www.thingiverse.com/thing:1014396",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "gzumwalt",
+      "input_sha256": "d5213117cb50d767dc5a853a51dcbd36b5b4e2b78fd4420d0b885b476acbfd17",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.012,
+        "power": "mains",
+        "faces": 92,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-53886",
+      "group": "thingi10k-added",
+      "source_id": "53886",
+      "thing_url": "https://www.thingiverse.com/thing:16163",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "jdow",
+      "input_sha256": "45f8360e3c2894cba1fc56e668f06970d7e98eebea0c3f289f15a56739f4661e",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.01,
+        "power": "mains",
+        "faces": 456,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-66611",
+      "group": "thingi10k-added",
+      "source_id": "66611",
+      "thing_url": "https://www.thingiverse.com/thing:21410",
+      "license": "Creative Commons - Attribution",
+      "author": "alany",
+      "input_sha256": "ed7fd8acd80fad9f7efa02e7dc8f8e56d9a36967203497d6efc145fc74af9ce5",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.022,
+        "power": "mains",
+        "faces": 844,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1059578",
+      "group": "thingi10k-added",
+      "source_id": "1059578",
+      "thing_url": "https://www.thingiverse.com/thing:619550",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "francfalco",
+      "input_sha256": "2ec6a5b6ac62d80cab024726d728cfb9ebab25869e04e41c40524e3214300c5e",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.633,
+        "power": "mains",
+        "faces": 19610,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-223730",
+      "group": "thingi10k-added",
+      "source_id": "223730",
+      "thing_url": "https://www.thingiverse.com/thing:105296",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "graphicsforge",
+      "input_sha256": "56c02618c5a1e7c229fc9f7f2d5a5ec7114dae4c44675112d0b6e3388551fa54",
+      "problems": [
+        "holes",
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.438,
+        "power": "mains",
+        "faces": 6327,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1207652",
+      "group": "thingi10k-added",
+      "source_id": "1207652",
+      "thing_url": "https://www.thingiverse.com/thing:338808",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "joefe",
+      "input_sha256": "a7671d5012fef4523e042910b25e99b5ac28b6a604024256c311728438fbda0c",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.04,
+        "power": "mains",
+        "faces": 1518,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-39639",
+      "group": "thingi10k-added",
+      "source_id": "39639",
+      "thing_url": "https://www.thingiverse.com/thing:11980",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "sconine",
+      "input_sha256": "63dcfe9297b6ff6ed922c0b6ccb632d9c13ed6c90a83ac55c4779e4cd9d28d5d",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.016,
+        "power": "mains",
+        "faces": 524,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-43287",
+      "group": "thingi10k-added",
+      "source_id": "43287",
+      "thing_url": "https://www.thingiverse.com/thing:13078",
+      "license": "Creative Commons - Attribution",
+      "author": "2ROBOTGUY",
+      "input_sha256": "59bea288d8a7a5909a3f75a02a391837f6178ae06fcb8c5ab58a12aa8dd1583f",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.06,
+        "power": "mains",
+        "faces": 2172,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-41075",
+      "group": "thingi10k-added",
+      "source_id": "41075",
+      "thing_url": "https://www.thingiverse.com/thing:12673",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "Skimbal",
+      "input_sha256": "89ab83ea45abb3a51833e3a7d604a82d6f0f48a9cfbc3cc81b0a6180af6c9088",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.803,
+        "power": "mains",
+        "faces": 31362,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1436275",
+      "group": "thingi10k-added",
+      "source_id": "1436275",
+      "thing_url": "https://www.thingiverse.com/thing:909118",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "CreativeTools",
+      "input_sha256": "2aa14bf8b3d92c21bb62e1b9349d38a646f76c4fe628cddf4a98acde1c90d10e",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.429,
+        "power": "mains",
+        "faces": 13926,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-38753",
+      "group": "thingi10k-added",
+      "source_id": "38753",
+      "thing_url": "https://www.thingiverse.com/thing:12037",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "AtFab",
+      "input_sha256": "a27647bbf8d902e11ecb208697a1f5fb0d0563d0d43cc6c698a1dfe1c7f659f0",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.185,
+        "power": "mains",
+        "faces": 13445,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-780047",
+      "group": "thingi10k-added",
+      "source_id": "780047",
+      "thing_url": "https://www.thingiverse.com/thing:468872",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "johann517",
+      "input_sha256": "5642bb5dd24b3c387eb62150f60d2ac0745e714a67a8238a9c571ac59a24f254",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.016,
+        "power": "mains",
+        "faces": 424,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-58392",
+      "group": "thingi10k-added",
+      "source_id": "58392",
+      "thing_url": "https://www.thingiverse.com/thing:17977",
+      "license": "Creative Commons - Attribution",
+      "author": "23Meteor",
+      "input_sha256": "3b8f661522ee4c2a4edcebd159e1e0e037c6cd89a7bc2f38f95967c63fa88d2e",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.019,
+        "power": "mains",
+        "faces": 644,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-39441",
+      "group": "thingi10k-added",
+      "source_id": "39441",
+      "thing_url": "https://www.thingiverse.com/thing:12208",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "emmett",
+      "input_sha256": "2a409906debcf0f2791c92b4c69df0686eb31304ff1f5872f3fcb78bb8ad6e07",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.16,
+        "power": "mains",
+        "faces": 9300,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-139429",
+      "group": "thingi10k-added",
+      "source_id": "139429",
+      "thing_url": "https://www.thingiverse.com/thing:53451",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "emmett",
+      "input_sha256": "18af4b3dab7aceef502626cc99654b122d116495d2a0cf661cc5dbcb1c3ca7cd",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.462,
+        "power": "mains",
+        "faces": 19426,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-286886",
+      "group": "thingi10k-added",
+      "source_id": "286886",
+      "thing_url": "https://www.thingiverse.com/thing:146400",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "JuliaTruchsess",
+      "input_sha256": "f8b11a0613c60364202b0a894301c87c7337c979456c5cce1d07ac81ec879af9",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.522,
+        "power": "mains",
+        "faces": 11902,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-117952",
+      "group": "thingi10k-added",
+      "source_id": "117952",
+      "thing_url": "https://www.thingiverse.com/thing:41797",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "petropixel",
+      "input_sha256": "916936e6846efd3150bb0cabb47603f45f23d16ea6d6fee020713973a1dce28c",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.021,
+        "power": "mains",
+        "faces": 534,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1233193",
+      "group": "thingi10k-added",
+      "source_id": "1233193",
+      "thing_url": "https://www.thingiverse.com/thing:714484",
+      "license": "Creative Commons - Public Domain Dedication",
+      "author": "CyberCyclist",
+      "input_sha256": "6e2c88339ae275e60908476f7d1d081770ba5a05af602ab3abe165c15ee0e30b",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.055,
+        "power": "mains",
+        "faces": 3412,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-76898",
+      "group": "thingi10k-added",
+      "source_id": "76898",
+      "thing_url": "https://www.thingiverse.com/thing:25624",
+      "license": "Creative Commons - Attribution",
+      "author": "cbabbage",
+      "input_sha256": "16022a5e55be2cbcd24744f85f3a6442936d574508cc4badc0e54791abeab8cc",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.103,
+        "power": "mains",
+        "faces": 6240,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1099669",
+      "group": "thingi10k-added",
+      "source_id": "1099669",
+      "thing_url": "https://www.thingiverse.com/thing:684376",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "joefe",
+      "input_sha256": "5ef433eac81bd222cb75d648c37873bdd2b5194ef975317f8e742649a51a041c",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.22,
+        "power": "mains",
+        "faces": 9724,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-55584",
+      "group": "thingi10k-added",
+      "source_id": "55584",
+      "thing_url": "https://www.thingiverse.com/thing:16954",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "Max",
+      "input_sha256": "c1482824826d236db4eeb68b712089de4c0c37e1d03195eeae6a8baa3c19af9f",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.017,
+        "power": "mains",
+        "faces": 572,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1582410",
+      "group": "thingi10k-added",
+      "source_id": "1582410",
+      "thing_url": "https://www.thingiverse.com/thing:1002335",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "jkurstin22",
+      "input_sha256": "5a24aab17b20cff5fbd0a6badbd9e6c282edb5714e0ecfa0285e90a9e80768ae",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.004,
+        "power": "mains",
+        "faces": 256,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1368073",
+      "group": "thingi10k-added",
+      "source_id": "1368073",
+      "thing_url": "https://www.thingiverse.com/thing:862724",
+      "license": "Creative Commons - Attribution",
+      "author": "boldmachines",
+      "input_sha256": "bf1cf988a831e8c9990ef040e8471610cef24f324e942dc144415a39b8071b4d",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 1.315,
+        "power": "mains",
+        "faces": 30792,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-44234",
+      "group": "thingi10k-added",
+      "source_id": "44234",
+      "thing_url": "https://www.thingiverse.com/thing:13544",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "Madox",
+      "input_sha256": "ad9c4762be33f51b1855b17a8a5b517772e1a24d8667cd540a62d3af5d7e2067",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.954,
+        "power": "mains",
+        "faces": 36518,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-98657",
+      "group": "thingi10k-added",
+      "source_id": "98657",
+      "thing_url": "https://www.thingiverse.com/thing:34295",
+      "license": "Creative Commons - Attribution",
+      "author": "ravix",
+      "input_sha256": "2fbd782790a275c2c4885505442b6109a3858a3761d24a69e33042ac128008b3",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.024,
+        "power": "mains",
+        "faces": 872,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-153370",
+      "group": "thingi10k-added",
+      "source_id": "153370",
+      "thing_url": "https://www.thingiverse.com/thing:60778",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "gzumwalt",
+      "input_sha256": "fa38e0a0defaeb577e6860e3f2df6666250846079d4215b7899d2d404ce282eb",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.005,
+        "power": "mains",
+        "faces": 114,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-106788",
+      "group": "thingi10k-added",
+      "source_id": "106788",
+      "thing_url": "https://www.thingiverse.com/thing:37510",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "tstrader",
+      "input_sha256": "48ca3e05d3b7c058addfccc912b57194a328e6607001423ad58cbe2efa5e576f",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.05,
+        "power": "mains",
+        "faces": 1852,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-42881",
+      "group": "thingi10k-added",
+      "source_id": "42881",
+      "thing_url": "https://www.thingiverse.com/thing:13153",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "beekeeper",
+      "input_sha256": "c842f50b7c0cb6efb411ef7443a18782b1b9d7e9c5fcf3d8d8ac22b327c48053",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.285,
+        "power": "mains",
+        "faces": 9376,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1017019",
+      "group": "thingi10k-added",
+      "source_id": "1017019",
+      "thing_url": "https://www.thingiverse.com/thing:632523",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "Herrigold",
+      "input_sha256": "36fd894920423476e713e50626116ef616a59686cffff356181927713f31d7a1",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 1.43,
+        "power": "mains",
+        "faces": 8234,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-78350",
+      "group": "thingi10k-added",
+      "source_id": "78350",
+      "thing_url": "https://www.thingiverse.com/thing:26178",
+      "license": "Creative Commons - Attribution",
+      "author": "IWorkInPixels",
+      "input_sha256": "e862801645af0a5f3ccbc053fa7df3453582c6370ef1a85bd51ba16ecec0565d",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.022,
+        "power": "mains",
+        "faces": 956,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-94492",
+      "group": "thingi10k-added",
+      "source_id": "94492",
+      "thing_url": "https://www.thingiverse.com/thing:32667",
+      "license": "Creative Commons - Attribution",
+      "author": "bottleworks",
+      "input_sha256": "a09ff9e9f287be96dae678e9b4e9f771aed4bde95113a5317485df9d85ca59c0",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.029,
+        "power": "mains",
+        "faces": 1204,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-115054",
+      "group": "thingi10k-added",
+      "source_id": "115054",
+      "thing_url": "https://www.thingiverse.com/thing:40634",
+      "license": "Attribution - Non-Commercial - No Derivatives",
+      "author": "muckychris",
+      "input_sha256": "438f8446f4f7c93604b5b4e54c422955a2e89ecaaaaea5966b133d46a080e900",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.083,
+        "power": "mains",
+        "faces": 3174,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1452681",
+      "group": "thingi10k-added",
+      "source_id": "1452681",
+      "thing_url": "https://www.thingiverse.com/thing:919380",
+      "license": "Attribution - Non-Commercial - No Derivatives",
+      "author": "amaochan",
+      "input_sha256": "395c7b1fd75292188678752cfeedc13976037d57ed024d58dc25b85adb599525",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.079,
+        "power": "mains",
+        "faces": 1688,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-405886",
+      "group": "thingi10k-added",
+      "source_id": "405886",
+      "thing_url": "https://www.thingiverse.com/thing:15098",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "emmett",
+      "input_sha256": "b09d5d78922da0c2b0c3f990f9b7a51fff478c66a1b67f8b4999261b1dc5fa7c",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.178,
+        "power": "mains",
+        "faces": 4910,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-96574",
+      "group": "thingi10k-added",
+      "source_id": "96574",
+      "thing_url": "https://www.thingiverse.com/thing:33487",
+      "license": "Creative Commons - Attribution",
+      "author": "bogohack",
+      "input_sha256": "42b0a07d391ca6c575d57588ff7013e1652b990bd0a2d0908b1a51d74b8b4f5c",
+      "problems": [
+        "flipped",
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.034,
+        "power": "mains",
+        "faces": 1000,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-789074",
+      "group": "thingi10k-added",
+      "source_id": "789074",
+      "thing_url": "https://www.thingiverse.com/thing:475092",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "MakerBot",
+      "input_sha256": "3cfdd31be1a510fca00ec0961fea488165a17195461025770c80a107a9c9c200",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.063,
+        "power": "mains",
+        "faces": 6794,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-138204",
+      "group": "thingi10k-added",
+      "source_id": "138204",
+      "thing_url": "https://www.thingiverse.com/thing:52769",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "MakerBot",
+      "input_sha256": "52e60b92d9a93edb7c22f7014446b56f2dcc82e893c48f53114d772f416e7ffd",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.01,
+        "power": "mains",
+        "faces": 498,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-100679",
+      "group": "thingi10k-added",
+      "source_id": "100679",
+      "thing_url": "https://www.thingiverse.com/thing:34774",
+      "license": "Creative Commons - Attribution",
+      "author": "MakerBot",
+      "input_sha256": "8d9c2b2357288b4d0c2c85e30ff535a28e0dac3b5b34fc7c241c5e73b713cd2e",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.012,
+        "power": "mains",
+        "faces": 496,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-112542",
+      "group": "thingi10k-added",
+      "source_id": "112542",
+      "thing_url": "https://www.thingiverse.com/thing:39701",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "gedup",
+      "input_sha256": "99ecc3781e1de5d8e9c808aacd92e571aaadc89d939e9193e9df5e9ce972de19",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.111,
+        "power": "mains",
+        "faces": 3546,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-130016",
+      "group": "thingi10k-added",
+      "source_id": "130016",
+      "thing_url": "https://www.thingiverse.com/thing:48418",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "FCPRS",
+      "input_sha256": "5389f4895f8f4449f1596db93fe2b17194e74590fcd5b61a7520b3da54e0d8a0",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.826,
+        "power": "mains",
+        "faces": 14032,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1501548",
+      "group": "thingi10k-added",
+      "source_id": "1501548",
+      "thing_url": "https://www.thingiverse.com/thing:950452",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "heinzdrei",
+      "input_sha256": "7fc978ac94bf302bd07f90c2d5e2f565638526a1170e69ecd165ed89a26c63fb",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.205,
+        "power": "mains",
+        "faces": 8064,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-80175",
+      "group": "thingi10k-added",
+      "source_id": "80175",
+      "thing_url": "https://www.thingiverse.com/thing:26896",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "amonti",
+      "input_sha256": "4a26d48bcc56531e549e937874f9161f3c8eaac85767c54dcfb865d49ec0ce5d",
+      "problems": [
+        "holes",
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.151,
+        "power": "mains",
+        "faces": 2096,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-131326",
+      "group": "thingi10k-added",
+      "source_id": "131326",
+      "thing_url": "https://www.thingiverse.com/thing:49263",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "makeplace",
+      "input_sha256": "d47d1eec9ccdd6343bc5a2e7b4b40a6d07c4758e5efe52860e1383e9d0c249cd",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.219,
+        "power": "mains",
+        "faces": 11442,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-40296",
+      "group": "thingi10k-added",
+      "source_id": "40296",
+      "thing_url": "https://www.thingiverse.com/thing:12432",
+      "license": "Creative Commons - Attribution",
+      "author": "MakeALot",
+      "input_sha256": "7e33b114064ae96b04002d42b9df3f1b72da51496c78f276f7710b11f370dbb8",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.322,
+        "power": "mains",
+        "faces": 8550,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-885948",
+      "group": "thingi10k-added",
+      "source_id": "885948",
+      "thing_url": "https://www.thingiverse.com/thing:492486",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "ibudmen",
+      "input_sha256": "0bde71f779347a7804d8920ce32d0b977ba3069b0a505e73ba5bb56e8652734e",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.173,
+        "power": "mains",
+        "faces": 9628,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1582400",
+      "group": "thingi10k-added",
+      "source_id": "1582400",
+      "thing_url": "https://www.thingiverse.com/thing:1002335",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "jkurstin22",
+      "input_sha256": "f9fef29c7f49f13e59b4edbff4ca932cc23ea6e27a49cefdeb76a2e7972353ff",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.005,
+        "power": "mains",
+        "faces": 180,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-102037",
+      "group": "thingi10k-added",
+      "source_id": "102037",
+      "thing_url": "https://www.thingiverse.com/thing:32037",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "latigerlilly",
+      "input_sha256": "d8846ae062d779c722724dbfb5785b46c7d7e8e78099c772e1064236d9d84536",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.536,
+        "power": "mains",
+        "faces": 19812,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-176193",
+      "group": "thingi10k-added",
+      "source_id": "176193",
+      "thing_url": "https://www.thingiverse.com/thing:74322",
+      "license": "Creative Commons - Attribution",
+      "author": "MakerBot",
+      "input_sha256": "f1c4914f0ba9bdc14a962beb2c6c57b5e3078d689823e02f9530a6cd0c72adf3",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.947,
+        "power": "mains",
+        "faces": 32558,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-78024",
+      "group": "thingi10k-added",
+      "source_id": "78024",
+      "thing_url": "https://www.thingiverse.com/thing:26059",
+      "license": "Creative Commons - Attribution",
+      "author": "doommeister",
+      "input_sha256": "e0ffa63af66213f0a3c03adbecbcccbff388df5e6bcecd11df90a6e85db41943",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.208,
+        "power": "mains",
+        "faces": 8036,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-57079",
+      "group": "thingi10k-added",
+      "source_id": "57079",
+      "thing_url": "https://www.thingiverse.com/thing:17508",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "tbuser",
+      "input_sha256": "fd08fc00ef387155b1a2797c7df70dd6837342984f571441222c6bee27947cc6",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.067,
+        "power": "mains",
+        "faces": 2120,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-840364",
+      "group": "thingi10k-added",
+      "source_id": "840364",
+      "thing_url": "https://www.thingiverse.com/thing:468872",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "johann517",
+      "input_sha256": "5ef18a957171eae08b2d8e38a28dded2724f6fde0b10716459f888699ad6c5e7",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.02,
+        "power": "mains",
+        "faces": 632,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-39084",
+      "group": "thingi10k-added",
+      "source_id": "39084",
+      "thing_url": "https://www.thingiverse.com/thing:12108",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "benglish",
+      "input_sha256": "666c1c60bcc16f8b88cc5aa11b3b13de179cc5a88e262271065816fffb5d928d",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.208,
+        "power": "mains",
+        "faces": 14924,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-39890",
+      "group": "thingi10k-added",
+      "source_id": "39890",
+      "thing_url": "https://www.thingiverse.com/thing:12348",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "br3ttb",
+      "input_sha256": "23a52f885330badd5641c00eb20e184c6cb0bef10d7470e7af2a46b1524afe78",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.045,
+        "power": "mains",
+        "faces": 596,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-46647",
+      "group": "thingi10k-added",
+      "source_id": "46647",
+      "thing_url": "https://www.thingiverse.com/thing:14214",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "3dYeti",
+      "input_sha256": "82f5049bd9b12f00af224dd6672136694c23207d4c9ed76cde4e96a207bde951",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.561,
+        "power": "mains",
+        "faces": 12070,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-464846",
+      "group": "thingi10k-added",
+      "source_id": "464846",
+      "thing_url": "https://www.thingiverse.com/thing:253934",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "gzumwalt",
+      "input_sha256": "87006ff385c1e3e6ccfe27cf61bebae8f64c341154fbc9931f150857fa19f651",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.057,
+        "power": "mains",
+        "faces": 2176,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-74599",
+      "group": "thingi10k-added",
+      "source_id": "74599",
+      "thing_url": "https://www.thingiverse.com/thing:24670",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "beekeeper",
+      "input_sha256": "e5697d24747a991f22718c067952b03022b9b5ddf395278c0cc6851e93cf440b",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.043,
+        "power": "mains",
+        "faces": 676,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1356648",
+      "group": "thingi10k-added",
+      "source_id": "1356648",
+      "thing_url": "https://www.thingiverse.com/thing:854906",
+      "license": "Creative Commons - Attribution",
+      "author": "boldmachines",
+      "input_sha256": "5ba4434cad0054ee96b3dd1619b9bcfbf47f31d11da4ff51a852ddaa49b596f5",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.637,
+        "power": "mains",
+        "faces": 17999,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-97595",
+      "group": "thingi10k-added",
+      "source_id": "97595",
+      "thing_url": "https://www.thingiverse.com/thing:33883",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "emmett",
+      "input_sha256": "3325f695f17e8baa45d87893410b4973ff53dfd652ad2940fb654e3bc33715b6",
+      "problems": [
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.039,
+        "power": "mains",
+        "faces": 1476,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-58055",
+      "group": "thingi10k-added",
+      "source_id": "58055",
+      "thing_url": "https://www.thingiverse.com/thing:17851",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "wes",
+      "input_sha256": "40ee748b0fe05f3bb871f5a6c2ae773a7e43cfc684e60febfbed9e5956e31904",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.702,
+        "power": "mains",
+        "faces": 15912,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-79202",
+      "group": "thingi10k-added",
+      "source_id": "79202",
+      "thing_url": "https://www.thingiverse.com/thing:26503",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "jetty",
+      "input_sha256": "1aa27ce1cafaf2402460207121d5d60eecb4c9358a99d9f2b7ffcfbe126a8d76",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.018,
+        "power": "mains",
+        "faces": 652,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-58961",
+      "group": "thingi10k-added",
+      "source_id": "58961",
+      "thing_url": "https://www.thingiverse.com/thing:17951",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "FarnkFella",
+      "input_sha256": "719e3cf55f3066c439880986573329597ec210d1cdbcb35a00acd58d08fd0554",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.236,
+        "power": "mains",
+        "faces": 6912,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-89539",
+      "group": "thingi10k-added",
+      "source_id": "89539",
+      "thing_url": "https://www.thingiverse.com/thing:30654",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "Gael_Langevin",
+      "input_sha256": "e963f2b215f50768779132f534e9dbdb96f25a0f142489356f11ba899eda1ea4",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.02,
+        "power": "mains",
+        "faces": 764,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1315843",
+      "group": "thingi10k-added",
+      "source_id": "1315843",
+      "thing_url": "https://www.thingiverse.com/thing:801279",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "giufini",
+      "input_sha256": "057096b8d3a8a1bd695f42bf7a28c012a6cb80dce06024bd3eff46bcefa575e1",
+      "problems": [
+        "holes",
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.126,
+        "power": "mains",
+        "faces": 10371,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-186555",
+      "group": "thingi10k-added",
+      "source_id": "186555",
+      "thing_url": "https://www.thingiverse.com/thing:81830",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "Whatakuai",
+      "input_sha256": "fe6e00833f99beea299f0d050aef2e3820343cbca9bf2cfc5916ddbf48b4c517",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.101,
+        "power": "mains",
+        "faces": 3532,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-106090",
+      "group": "thingi10k-added",
+      "source_id": "106090",
+      "thing_url": "https://www.thingiverse.com/thing:36059",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "richards",
+      "input_sha256": "5a952652af6d087ca7a822360338ebcf20845c3201cbeac4cd3cdd065cbbcd1f",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.069,
+        "power": "mains",
+        "faces": 3896,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-780000",
+      "group": "thingi10k-added",
+      "source_id": "780000",
+      "thing_url": "https://www.thingiverse.com/thing:468872",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "johann517",
+      "input_sha256": "fac46183a982a714bfc954b9c118d3cbf59a7ffb80e9de0cd58d2e21a820a74c",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.069,
+        "power": "mains",
+        "faces": 2644,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-83677",
+      "group": "thingi10k-added",
+      "source_id": "83677",
+      "thing_url": "https://www.thingiverse.com/thing:28255",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "Sal",
+      "input_sha256": "0007e81658ae7bfbf64ba86330f714149a9c1dd241633d703ffcd28a9210a9e9",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.206,
+        "power": "mains",
+        "faces": 4010,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-76715",
+      "group": "thingi10k-added",
+      "source_id": "76715",
+      "thing_url": "https://www.thingiverse.com/thing:25551",
+      "license": "Creative Commons - Attribution",
+      "author": "MakerBot",
+      "input_sha256": "ef5d82685b98756b685cd6578c37132af37e1a12762600ecf558b2330aeaaf4a",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.16,
+        "power": "mains",
+        "faces": 5616,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-669968",
+      "group": "thingi10k-added",
+      "source_id": "669968",
+      "thing_url": "https://www.thingiverse.com/thing:392115",
+      "license": "Creative Commons - Attribution",
+      "author": "GE",
+      "input_sha256": "90e91385cbd62879f6268b02f54fa201d28ea39313fbfacc32035e6d6eed22a7",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.048,
+        "power": "mains",
+        "faces": 2412,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-79939",
+      "group": "thingi10k-added",
+      "source_id": "79939",
+      "thing_url": "https://www.thingiverse.com/thing:26804",
+      "license": "Creative Commons - Attribution",
+      "author": "MaximSachs",
+      "input_sha256": "09346f0b3a293db08e0537761826d020b7f324b21214f11fd214822954ac7a26",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.001,
+        "power": "mains",
+        "faces": 36,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-940038",
+      "group": "thingi10k-added",
+      "source_id": "940038",
+      "thing_url": "https://www.thingiverse.com/thing:584516",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "kellyegan",
+      "input_sha256": "cff558639c5e3fa8e1cccf187a1ac81474100ab2ab086d4ae2eb4f19b9ff0126",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.108,
+        "power": "mains",
+        "faces": 2796,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-55932",
+      "group": "thingi10k-added",
+      "source_id": "55932",
+      "thing_url": "https://www.thingiverse.com/thing:17090",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "kellesabelle",
+      "input_sha256": "c3a5aba4ab89151ddb1bee8fd0bf1717529bb20cb41239c080f46d8e00099723",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.216,
+        "power": "mains",
+        "faces": 6172,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1722417",
+      "group": "thingi10k-added",
+      "source_id": "1722417",
+      "thing_url": "https://www.thingiverse.com/thing:1095858",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "PrintThatThing",
+      "input_sha256": "2d778f56f6c7ae835da52dfe5c6cd8767fe16576957e5d5777d098a84cc7d8b5",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.056,
+        "power": "mains",
+        "faces": 1872,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-131500",
+      "group": "thingi10k-added",
+      "source_id": "131500",
+      "thing_url": "https://www.thingiverse.com/thing:49080",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "blincoln",
+      "input_sha256": "5dc5eea2e4f37fc6fe3b56b56bc880ebc1e76e3fe9b50351b00849c3004b9b55",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 2.491,
+        "power": "mains",
+        "faces": 34882,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1329188",
+      "group": "thingi10k-added",
+      "source_id": "1329188",
+      "thing_url": "https://www.thingiverse.com/thing:807591",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "adafruit",
+      "input_sha256": "b2f92cad5aec996ddf4c1e4077923472104056dab0d2168af3221c42b17b8327",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.264,
+        "power": "mains",
+        "faces": 11430,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-98925",
+      "group": "thingi10k-added",
+      "source_id": "98925",
+      "thing_url": "https://www.thingiverse.com/thing:34392",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "s_p_e_x",
+      "input_sha256": "c97cb9c5790db7a9cd4d226a57196bd5cfac9025c16010d41978c902307d64c6",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.125,
+        "power": "mains",
+        "faces": 702,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-548869",
+      "group": "thingi10k-added",
+      "source_id": "548869",
+      "thing_url": "https://www.thingiverse.com/thing:309466",
+      "license": "Creative Commons - Attribution",
+      "author": "ShotaIshiwatari",
+      "input_sha256": "0ebb66a8823b5f33623573ae64267591ec04dc1fa6aeabceb72b5d188484f2c8",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.485,
+        "power": "mains",
+        "faces": 24088,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-51297",
+      "group": "thingi10k-added",
+      "source_id": "51297",
+      "thing_url": "https://www.thingiverse.com/thing:14248",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "rweaving",
+      "input_sha256": "b3c889dd37b9ea4bfeacad2f9b56a4a1b0edc552ebe24ed0f1a0635cf35db33a",
+      "problems": [
+        "holes",
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 1.231,
+        "power": "mains",
+        "faces": 36367,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-441720",
+      "group": "thingi10k-added",
+      "source_id": "441720",
+      "thing_url": "https://www.thingiverse.com/thing:240197",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "tomburtonwood",
+      "input_sha256": "e6878af5296a782ef02118134c183992c196b6e8f9c19323b2f8cbc0b6dbd735",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.726,
+        "power": "mains",
+        "faces": 48966,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-115066",
+      "group": "thingi10k-added",
+      "source_id": "115066",
+      "thing_url": "https://www.thingiverse.com/thing:40634",
+      "license": "Attribution - Non-Commercial - No Derivatives",
+      "author": "muckychris",
+      "input_sha256": "58fbbb7cd3336007672b4ee30ac6e095298a4b5a564f75870b2c3935fdf44204",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.087,
+        "power": "mains",
+        "faces": 3438,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-110781",
+      "group": "thingi10k-added",
+      "source_id": "110781",
+      "thing_url": "https://www.thingiverse.com/thing:38990",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "christinachun",
+      "input_sha256": "0bd3e6cc840501b8642cfb8c830735b8773708ee54dd9b692bb002a0b7f96df5",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.04,
+        "power": "mains",
+        "faces": 2324,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-238416",
+      "group": "thingi10k-added",
+      "source_id": "238416",
+      "thing_url": "https://www.thingiverse.com/thing:114349",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "infinityplusplus",
+      "input_sha256": "c33a2ba3e9786ef79a442b643e6f9fe8502bd4b78cd3f8fd51171ec34a565d09",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.187,
+        "power": "mains",
+        "faces": 16098,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-53124",
+      "group": "thingi10k-added",
+      "source_id": "53124",
+      "thing_url": "https://www.thingiverse.com/thing:16132",
+      "license": "Creative Commons - Attribution",
+      "author": "techknight",
+      "input_sha256": "a74c635ba4fd6cc7ed41acc2846866ee7ce4c4fe291b6e517982f0c5a64b3918",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.23,
+        "power": "mains",
+        "faces": 1628,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-39924",
+      "group": "thingi10k-added",
+      "source_id": "39924",
+      "thing_url": "https://www.thingiverse.com/thing:12354",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "tarturo",
+      "input_sha256": "ced90560b7812f75a700b27dc2f05e103a687a169a56224e2d09e5fc43118a9c",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.011,
+        "power": "mains",
+        "faces": 678,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-82256",
+      "group": "thingi10k-added",
+      "source_id": "82256",
+      "thing_url": "https://www.thingiverse.com/thing:27688",
+      "license": "Creative Commons - Attribution",
+      "author": "MakerBot",
+      "input_sha256": "47a087bd47a39ad762f0f72dca72391b575b7f1bcf31650d0460c1606511c768",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 2.318,
+        "power": "mains",
+        "faces": 24442,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-288446",
+      "group": "thingi10k-added",
+      "source_id": "288446",
+      "thing_url": "https://www.thingiverse.com/thing:146400",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "JuliaTruchsess",
+      "input_sha256": "234a852a99976fa3be7a11475eeb1d53e522af76e1588cbe7b080a4c4b81a6af",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.079,
+        "power": "mains",
+        "faces": 3944,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-138253",
+      "group": "thingi10k-added",
+      "source_id": "138253",
+      "thing_url": "https://www.thingiverse.com/thing:52769",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "MakerBot",
+      "input_sha256": "66ed53f12a0c928cedb4bf8ef3ee4c472a36a07e0f479cc175b3f568abbe8f33",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.064,
+        "power": "mains",
+        "faces": 6660,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-187543",
+      "group": "thingi10k-added",
+      "source_id": "187543",
+      "thing_url": "https://www.thingiverse.com/thing:82533",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "anewsome",
+      "input_sha256": "d2a30fc7f58a0a3f9b8e602ee8fbefb365bb5766c80eb74ebd844d444c903a4f",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.403,
+        "power": "mains",
+        "faces": 4988,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-53748",
+      "group": "thingi10k-added",
+      "source_id": "53748",
+      "thing_url": "https://www.thingiverse.com/thing:16343",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "tbuser",
+      "input_sha256": "f9cce937461811f810c108e63f7adc933840885d97d3e998d2a8953db10d6e8f",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.001,
+        "power": "mains",
+        "faces": 60,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-37229",
+      "group": "thingi10k-added",
+      "source_id": "37229",
+      "thing_url": "https://www.thingiverse.com/thing:11653",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "peter_",
+      "input_sha256": "9363056755c259f6b7b3268c8c964ebef2aa82f9271571dc02fc123c88cf8277",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.017,
+        "power": "mains",
+        "faces": 1452,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-85116",
+      "group": "thingi10k-added",
+      "source_id": "85116",
+      "thing_url": "https://www.thingiverse.com/thing:23775",
+      "license": "Creative Commons - Attribution",
+      "author": "RichRap",
+      "input_sha256": "54d01d87ff506eaaef0bb96e9bd6cbad3618baf32560bf8bbdc01ad05530c616",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.125,
+        "power": "mains",
+        "faces": 3846,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-110720",
+      "group": "thingi10k-added",
+      "source_id": "110720",
+      "thing_url": "https://www.thingiverse.com/thing:38965",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "adafruit",
+      "input_sha256": "d69e4f691aa30ef04b16e912e45c6cef392c2ca5a22c0c2579b152dbbed34e92",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.047,
+        "power": "mains",
+        "faces": 1352,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-996811",
+      "group": "thingi10k-added",
+      "source_id": "996811",
+      "thing_url": "https://www.thingiverse.com/thing:619550",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "francfalco",
+      "input_sha256": "7dc87929bd456f877b8eed6209b4b14e7f141e48cea49ace890d0f749f671831",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.142,
+        "power": "mains",
+        "faces": 7874,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-82059",
+      "group": "thingi10k-added",
+      "source_id": "82059",
+      "thing_url": "https://www.thingiverse.com/thing:27624",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "theroar",
+      "input_sha256": "c82e8ab07864f2214516593b25c5e6b72c41c8c6eeb84b40dde37235fd9b665b",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.005,
+        "power": "mains",
+        "faces": 188,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-65401",
+      "group": "thingi10k-added",
+      "source_id": "65401",
+      "thing_url": "https://www.thingiverse.com/thing:20896",
+      "license": "Creative Commons - Attribution",
+      "author": "alany",
+      "input_sha256": "5f7045a0e101df826a96e5fc1e5995eb4fb6d289cdc4d26713648a0eb81cf5b1",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.026,
+        "power": "mains",
+        "faces": 868,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-313609",
+      "group": "thingi10k-added",
+      "source_id": "313609",
+      "thing_url": "https://www.thingiverse.com/thing:157844",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "schlem",
+      "input_sha256": "721e186f6fdaedf1df076e587c1856f41446d17b8f428019d17e70408af942e1",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.044,
+        "power": "mains",
+        "faces": 1828,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-75894",
+      "group": "thingi10k-added",
+      "source_id": "75894",
+      "thing_url": "https://www.thingiverse.com/thing:25237",
+      "license": "Creative Commons - Attribution",
+      "author": "RyGuy",
+      "input_sha256": "ac6f058d4f4f626ecf888ee6cb6f85a769cfd97f69c8400bf3bf096d2525af7e",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.02,
+        "power": "mains",
+        "faces": 330,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-98018",
+      "group": "thingi10k-added",
+      "source_id": "98018",
+      "thing_url": "https://www.thingiverse.com/thing:33988",
+      "license": "Creative Commons - Attribution",
+      "author": "MakerBot",
+      "input_sha256": "648959b7501a179b487260c4247c892b9a90250ff5fff7acc488d7907a9ff3ae",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.363,
+        "power": "mains",
+        "faces": 7922,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-46519",
+      "group": "thingi10k-added",
+      "source_id": "46519",
+      "thing_url": "https://www.thingiverse.com/thing:14187",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "edmo",
+      "input_sha256": "9e2139e1b716f72f9e05fcbfbe0f49eb3ab9d04ab6fa6f11cdcf9399bcfbfb51",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.005,
+        "power": "mains",
+        "faces": 256,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-69078",
+      "group": "thingi10k-added",
+      "source_id": "69078",
+      "thing_url": "https://www.thingiverse.com/thing:22506",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "etrohn",
+      "input_sha256": "596bae30dfb7d2aac467c812d13d3060919f02a786d36e63fad3a7d215861f58",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.083,
+        "power": "mains",
+        "faces": 9542,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-103455",
+      "group": "thingi10k-added",
+      "source_id": "103455",
+      "thing_url": "https://www.thingiverse.com/thing:36180",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "JMP",
+      "input_sha256": "d0d4edd4610cecdb094268d6bf75f0ef19df51fd1b086acc46a3088dbc814058",
+      "problems": [
+        "holes",
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.653,
+        "power": "mains",
+        "faces": 16887,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-57085",
+      "group": "thingi10k-added",
+      "source_id": "57085",
+      "thing_url": "https://www.thingiverse.com/thing:17508",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "tbuser",
+      "input_sha256": "33a7c8310122730af23b0628ff6ec38d23c0318ece2c74502f2f8e48d5ca5306",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.281,
+        "power": "mains",
+        "faces": 10618,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-46810",
+      "group": "thingi10k-added",
+      "source_id": "46810",
+      "thing_url": "https://www.thingiverse.com/thing:13816",
+      "license": "Creative Commons - Attribution",
+      "author": "MatthewLaBerge",
+      "input_sha256": "f3430f71846301e3acdfd207e2c40b4db23908a9310681c0485173836c9dfeb3",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.2,
+        "power": "mains",
+        "faces": 11964,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-161093",
+      "group": "thingi10k-added",
+      "source_id": "161093",
+      "thing_url": "https://www.thingiverse.com/thing:65740",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "skovgaar",
+      "input_sha256": "0585eeb832b661d7ff86ac652f188b5c2ae3956a54fb6a2a6bbc9770a0a939cd",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.077,
+        "power": "mains",
+        "faces": 3176,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1313554",
+      "group": "thingi10k-added",
+      "source_id": "1313554",
+      "thing_url": "https://www.thingiverse.com/thing:811450",
+      "license": "Attribution - Non-Commercial - No Derivatives",
+      "author": "rba",
+      "input_sha256": "7825c059413693a8110525da559d4278056b09b8f1a16160893c028e9ae2d06a",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 2.314,
+        "power": "mains",
+        "faces": 40334,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-75443",
+      "group": "thingi10k-added",
+      "source_id": "75443",
+      "thing_url": "https://www.thingiverse.com/thing:25065",
+      "license": "Creative Commons - Attribution",
+      "author": "eried",
+      "input_sha256": "ea45d123a37ff799ca8b2525dca5e164300e6f8553c5f21bec5f3f485fd4ab32",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.078,
+        "power": "mains",
+        "faces": 4684,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-112856",
+      "group": "thingi10k-added",
+      "source_id": "112856",
+      "thing_url": "https://www.thingiverse.com/thing:39822",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "s_p_e_x",
+      "input_sha256": "0dee14920d0691bb348f381809c3557e29b52ca7b360a6b9ec89332fa37355a8",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.028,
+        "power": "mains",
+        "faces": 815,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-107100",
+      "group": "thingi10k-added",
+      "source_id": "107100",
+      "thing_url": "https://www.thingiverse.com/thing:37634",
+      "license": "Creative Commons - Attribution",
+      "author": "hudson",
+      "input_sha256": "2dff87cb89dfaa3f693710917615645bfb63e08e3f67e72ed0bab606e19f7a2b",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.102,
+        "power": "mains",
+        "faces": 4560,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-43584",
+      "group": "thingi10k-added",
+      "source_id": "43584",
+      "thing_url": "https://www.thingiverse.com/thing:13368",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "RonG",
+      "input_sha256": "83883e3442bde5e505fadbc6a21af7c0fc241b932dbc666e610c1b42dbb1e8c4",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.011,
+        "power": "mains",
+        "faces": 346,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-51329",
+      "group": "thingi10k-added",
+      "source_id": "51329",
+      "thing_url": "https://www.thingiverse.com/thing:15582",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "MakerBotWorkshop",
+      "input_sha256": "8216dfac8ba91e58900f264cee6610e16caad7c52430b0b099f0e04afa89d091",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.175,
+        "power": "mains",
+        "faces": 22440,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-425320",
+      "group": "thingi10k-added",
+      "source_id": "425320",
+      "thing_url": "https://www.thingiverse.com/thing:230139",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "mathgrrl",
+      "input_sha256": "6c95ef9aa575ad118642763825084f934c8a3727cada44f4813f8d995755f723",
+      "problems": [
+        "holes",
+        "flipped",
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 1.163,
+        "power": "mains",
+        "faces": 9875,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-466802",
+      "group": "thingi10k-added",
+      "source_id": "466802",
+      "thing_url": "https://www.thingiverse.com/thing:243994",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "peetersm",
+      "input_sha256": "7fb0126b279cb5fba4166d3f56bb8a80764afad8dd92c8ae0d9da333eaabbc51",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 1.009,
+        "power": "mains",
+        "faces": 22268,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-281459",
+      "group": "thingi10k-added",
+      "source_id": "281459",
+      "thing_url": "https://www.thingiverse.com/thing:130890",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "whpthomas",
+      "input_sha256": "76310ff7720224f6e0abca1c30b7f201cd7b98cf81975a0dbf4012c60fbeb68f",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.172,
+        "power": "mains",
+        "faces": 12576,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-124041",
+      "group": "thingi10k-added",
+      "source_id": "124041",
+      "thing_url": "https://www.thingiverse.com/thing:42877",
+      "license": "Creative Commons - Attribution",
+      "author": "MakerBot",
+      "input_sha256": "3ff2b2c6651dd3eef82312ffbf243aabeff8e389252cdff5e267c7bd5bf4af36",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.075,
+        "power": "mains",
+        "faces": 7900,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-51141",
+      "group": "thingi10k-added",
+      "source_id": "51141",
+      "thing_url": "https://www.thingiverse.com/thing:15528",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "emmett",
+      "input_sha256": "5472b48931caf099c78d0f15c50fbc504b24f2b660237af22fa7a5b24d7571b3",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.138,
+        "power": "mains",
+        "faces": 2246,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-994072",
+      "group": "thingi10k-added",
+      "source_id": "994072",
+      "thing_url": "https://www.thingiverse.com/thing:614366",
+      "license": "Attribution - Non-Commercial - No Derivatives",
+      "author": "Shira",
+      "input_sha256": "0cd416e70e7c6afb4a2ec1ac1c6eb7af8ec777892283c6e0dc05a8a831fff7d4",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.732,
+        "power": "mains",
+        "faces": 20364,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-93097",
+      "group": "thingi10k-added",
+      "source_id": "93097",
+      "thing_url": "https://www.thingiverse.com/thing:32113",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "akaziuna",
+      "input_sha256": "9bb7f75734a2385889c4549c631840ef2a8aa5159946238878d7b2a8f21b4dce",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 1.365,
+        "power": "mains",
+        "faces": 29424,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-472005",
+      "group": "thingi10k-added",
+      "source_id": "472005",
+      "thing_url": "https://www.thingiverse.com/thing:259005",
+      "license": "Creative Commons - Attribution",
+      "author": "MakerBot",
+      "input_sha256": "8875f4685de53b64e766bac80813b3648ea194c07d115c61a7d98fe4299be784",
+      "problems": [
+        "holes",
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 1.096,
+        "power": "mains",
+        "faces": 44576,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-814670",
+      "group": "thingi10k-added",
+      "source_id": "814670",
+      "thing_url": "https://www.thingiverse.com/thing:492429",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "SIMPAD17",
+      "input_sha256": "40a3f98d5d492572ea339b9f2e95cdbbddd1831deed0f51b404a645f4076878c",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.049,
+        "power": "mains",
+        "faces": 1172,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-40892",
+      "group": "thingi10k-added",
+      "source_id": "40892",
+      "thing_url": "https://www.thingiverse.com/thing:12631",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "Sybren",
+      "input_sha256": "9b8183f787ef9dffa1db52ab88f084e672daae9b56bff048139115a9e566ef40",
+      "problems": [],
+      "defective": false,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.399,
+        "power": "mains",
+        "faces": 25656,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-53241",
+      "group": "thingi10k-added",
+      "source_id": "53241",
+      "thing_url": "https://www.thingiverse.com/thing:16179",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "corrie_vs",
+      "input_sha256": "bebb9e0832b9b2cefae52c48dd04b48885e57d6839404b4ac5dc84d49950f468",
+      "problems": [
+        "holes"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.42,
+        "power": "mains",
+        "faces": 14854,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-96473",
+      "group": "thingi10k-added",
+      "source_id": "96473",
+      "thing_url": "https://www.thingiverse.com/thing:33270",
+      "license": "Creative Commons - Attribution",
+      "author": "MakerBlock",
+      "input_sha256": "5c8bc8ce48c121baa4b9f5ce6e1654e6d73aeaeed027ebc9e1d49479548e03a8",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 1.053,
+        "power": "mains",
+        "faces": 8668,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-51142",
+      "group": "thingi10k-added",
+      "source_id": "51142",
+      "thing_url": "https://www.thingiverse.com/thing:15528",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "emmett",
+      "input_sha256": "9efcb50c5340a23221b32800ae0211eac1144dd714761cc0e526c1b2f3546456",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.012,
+        "power": "mains",
+        "faces": 480,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-105636",
+      "group": "thingi10k-added",
+      "source_id": "105636",
+      "thing_url": "https://www.thingiverse.com/thing:37066",
+      "license": "Creative Commons - Attribution",
+      "author": "cymon",
+      "input_sha256": "b45225a5cc47e2bc5a317d80d2624d5c5004e7875b08fd9c4ca718b28c016a4e",
+      "problems": [
+        "holes",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.335,
+        "power": "mains",
+        "faces": 11113,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1064467",
+      "group": "thingi10k-added",
+      "source_id": "1064467",
+      "thing_url": "https://www.thingiverse.com/thing:662447",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "UrbanAtWork",
+      "input_sha256": "ba758113a4aa6a13a914b3eee22adf46ebe878c23e292ebf3407ec64925c93ad",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.567,
+        "power": "mains",
+        "faces": 12499,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-42942",
+      "group": "thingi10k-added",
+      "source_id": "42942",
+      "thing_url": "https://www.thingiverse.com/thing:13171",
+      "license": "Attribution - Non-Commercial - Share Alike",
+      "author": "Skimbal",
+      "input_sha256": "b255f39dd266cb889caa22dbc33b686a7be28692a8a372b570411fadaf3b3abc",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.087,
+        "power": "mains",
+        "faces": 6324,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-34784",
+      "group": "thingi10k-added",
+      "source_id": "34784",
+      "thing_url": "https://www.thingiverse.com/thing:10955",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "GeneralRulofDumb",
+      "input_sha256": "f059dffce384210a688c56a6315f8e57a44d0c4eb01c5a71bf7e5007f2ee67c4",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.598,
+        "power": "mains",
+        "faces": 29164,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-44040",
+      "group": "thingi10k-added",
+      "source_id": "44040",
+      "thing_url": "https://www.thingiverse.com/thing:13507",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "Roboteernat",
+      "input_sha256": "5a0fc789e27b14caf27219d1dada930bfca98ec1c1ae54e1a19ad4af1af996ae",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.231,
+        "power": "mains",
+        "faces": 422,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-81147",
+      "group": "thingi10k-added",
+      "source_id": "81147",
+      "thing_url": "https://www.thingiverse.com/thing:27279",
+      "license": "Creative Commons - Attribution",
+      "author": "MacGyver",
+      "input_sha256": "ba305ca991dab9c19a025db3a92cbf967d640c8302c3124af816315588a084f8",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.918,
+        "power": "mains",
+        "faces": 20246,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-60222",
+      "group": "thingi10k-added",
+      "source_id": "60222",
+      "thing_url": "https://www.thingiverse.com/thing:18665",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "gavinmurphy",
+      "input_sha256": "cd562eacb4fde03928c54e5df43bd7d2d472c704b9ebe59c6c2e79dc9259d96f",
+      "problems": [
+        "holes"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.147,
+        "power": "mains",
+        "faces": 8820,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-41925",
+      "group": "thingi10k-added",
+      "source_id": "41925",
+      "thing_url": "https://www.thingiverse.com/thing:12904",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "cymon",
+      "input_sha256": "3e574d44d90c9037ed9acfd6da3b8b73c117b381a9e2fc66b7b6e64db015d459",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.668,
+        "power": "mains",
+        "faces": 6785,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1181082",
+      "group": "thingi10k-added",
+      "source_id": "1181082",
+      "thing_url": "https://www.thingiverse.com/thing:684376",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "joefe",
+      "input_sha256": "69a6aa6747a15ef2f795e82b0c5881ece16864838118db130bed302d44d18585",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.486,
+        "power": "mains",
+        "faces": 18348,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-77167",
+      "group": "thingi10k-added",
+      "source_id": "77167",
+      "thing_url": "https://www.thingiverse.com/thing:17773",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "Gael_Langevin",
+      "input_sha256": "75c729b0341a91354d0405eb55c818e43014549f10cb37e8f820bedd89b0fe94",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.199,
+        "power": "mains",
+        "faces": 5120,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-84624",
+      "group": "thingi10k-added",
+      "source_id": "84624",
+      "thing_url": "https://www.thingiverse.com/thing:28641",
+      "license": "Attribution - Non-Commercial - No Derivatives",
+      "author": "dutchmogul",
+      "input_sha256": "adf12277004237e107df01fbccf47d7a271410e3351ee8b0d187fbc16437210b",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.243,
+        "power": "mains",
+        "faces": 10458,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-91351",
+      "group": "thingi10k-added",
+      "source_id": "91351",
+      "thing_url": "https://www.thingiverse.com/thing:31343",
+      "license": "Creative Commons - Attribution",
+      "author": "pmoews",
+      "input_sha256": "cd4011cea89df57e0eea74fc07fb1efddcdf50a73b2a0c1ece99dbd00dc2c9c0",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.13,
+        "power": "mains",
+        "faces": 7394,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-97910",
+      "group": "thingi10k-added",
+      "source_id": "97910",
+      "thing_url": "https://www.thingiverse.com/thing:34021",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "aubenc",
+      "input_sha256": "da736401cdc7325d862c3f438abb465867ac863feb070b89832b492169e62427",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.473,
+        "power": "mains",
+        "faces": 4190,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-129987",
+      "group": "thingi10k-added",
+      "source_id": "129987",
+      "thing_url": "https://www.thingiverse.com/thing:48418",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "FCPRS",
+      "input_sha256": "853e418111a21ff11f9a4e63a0295e95a3191f1f00205ad6f1a00ac6286d58c3",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.586,
+        "power": "mains",
+        "faces": 10706,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-47565",
+      "group": "thingi10k-added",
+      "source_id": "47565",
+      "thing_url": "https://www.thingiverse.com/thing:14453",
+      "license": "GNU - GPL",
+      "author": "theo",
+      "input_sha256": "9289c26a5db3bae82e26b5a4623eb6a0a2df7547bf3f43455f229e4ede4785d9",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.159,
+        "power": "mains",
+        "faces": 1336,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-40017",
+      "group": "thingi10k-added",
+      "source_id": "40017",
+      "thing_url": "https://www.thingiverse.com/thing:12391",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "Rupert",
+      "input_sha256": "326ba058ed191f13b2d7766369391f5b744d40fc91fbaaf2173f827356b4a4cf",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.118,
+        "power": "mains",
+        "faces": 3530,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-60847",
+      "group": "thingi10k-added",
+      "source_id": "60847",
+      "thing_url": "https://www.thingiverse.com/thing:18925",
+      "license": "Creative Commons - Attribution",
+      "author": "Lenbok",
+      "input_sha256": "32fac30a0f01804e4cf3380bf6c00c5e78bc9c9512d6b5c9182cc5e0d8ba4615",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.026,
+        "power": "mains",
+        "faces": 1056,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-95434",
+      "group": "thingi10k-added",
+      "source_id": "95434",
+      "thing_url": "https://www.thingiverse.com/thing:33048",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "JO3RI",
+      "input_sha256": "65c1fe02a464e0b10f67d8ba70459fcac50f77acef11860bb00c31cee471aa24",
+      "problems": [
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.029,
+        "power": "mains",
+        "faces": 954,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-472090",
+      "group": "thingi10k-added",
+      "source_id": "472090",
+      "thing_url": "https://www.thingiverse.com/thing:259005",
+      "license": "Creative Commons - Attribution",
+      "author": "MakerBot",
+      "input_sha256": "bdb7289ec7bd9c5fbe4858d2d550e379a83afd4a87edd83c479ddf56db40e85e",
+      "problems": [
+        "holes"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.247,
+        "power": "mains",
+        "faces": 7468,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-242231",
+      "group": "thingi10k-added",
+      "source_id": "242231",
+      "thing_url": "https://www.thingiverse.com/thing:116571",
+      "license": "Creative Commons - Attribution",
+      "author": "jasonwelsh",
+      "input_sha256": "c6bd02063b6024a14d1d81616e83c801477a68cfc01f619d6ec9157a3cf458d3",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.316,
+        "power": "mains",
+        "faces": 16396,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-51476",
+      "group": "thingi10k-added",
+      "source_id": "51476",
+      "thing_url": "https://www.thingiverse.com/thing:15614",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "MakerBotWorkshop",
+      "input_sha256": "e90e40b34d496fe541c83009ce0f47fbb39881790db9f2975081f16719a776fa",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.073,
+        "power": "mains",
+        "faces": 9396,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-301886",
+      "group": "thingi10k-added",
+      "source_id": "301886",
+      "thing_url": "https://www.thingiverse.com/thing:155827",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "RealAbsurdity",
+      "input_sha256": "0a1defaf5b4a849b0b134caf6f60b0f4f69027f6e6814288d35333e9cdd59d0d",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.998,
+        "power": "mains",
+        "faces": 14246,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-100026",
+      "group": "thingi10k-added",
+      "source_id": "100026",
+      "thing_url": "https://www.thingiverse.com/thing:33732",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "northshore",
+      "input_sha256": "f1f1a4d7239df03d084d0e3dbfeba467f4e32a1f227b15b71e1e3881055479b5",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.023,
+        "power": "mains",
+        "faces": 270,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-138207",
+      "group": "thingi10k-added",
+      "source_id": "138207",
+      "thing_url": "https://www.thingiverse.com/thing:52769",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "MakerBot",
+      "input_sha256": "cd1775f5f0feabe096d1728731593d680194b8ef834acd8be2d077ce9a579e80",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.002,
+        "power": "mains",
+        "faces": 156,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-42332",
+      "group": "thingi10k-added",
+      "source_id": "42332",
+      "thing_url": "https://www.thingiverse.com/thing:12973",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "RichRap",
+      "input_sha256": "50aaa19bf7e07ce4f224a71af9801caa6895c48544818a1f3b65521b1658f90c",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.059,
+        "power": "mains",
+        "faces": 2216,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-70748",
+      "group": "thingi10k-added",
+      "source_id": "70748",
+      "thing_url": "https://www.thingiverse.com/thing:23111",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "cerberus333",
+      "input_sha256": "e21f2eb8338a9ea7aa4e462ea99c9ea6506ad6c5873358a850be1e82debc0fa0",
+      "problems": [
+        "holes",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 2.44,
+        "power": "mains",
+        "faces": 16522,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-81266",
+      "group": "thingi10k-added",
+      "source_id": "81266",
+      "thing_url": "https://www.thingiverse.com/thing:27289",
+      "license": "Creative Commons - Attribution",
+      "author": "CosmoWenman",
+      "input_sha256": "9be74aa499fbc13179a6ed1086a242e2403d10772ca6c9b5d58a46dc1d2d3b1b",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.021,
+        "power": "mains",
+        "faces": 754,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-58266",
+      "group": "thingi10k-added",
+      "source_id": "58266",
+      "thing_url": "https://www.thingiverse.com/thing:17943",
+      "license": "Creative Commons - Attribution",
+      "author": "elindow",
+      "input_sha256": "b335fa0f7794ce10ecafc0fd08d13fb4007abfb75e33b7f5fdd47aeae84606b9",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.093,
+        "power": "mains",
+        "faces": 1708,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-42211",
+      "group": "thingi10k-added",
+      "source_id": "42211",
+      "thing_url": "https://www.thingiverse.com/thing:12973",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "RichRap",
+      "input_sha256": "25a6589db2cde5897ff875ae5c28816a36eac91782b6c68ea19eec111b122770",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 2.455,
+        "power": "mains",
+        "faces": 4546,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-39150",
+      "group": "thingi10k-added",
+      "source_id": "39150",
+      "thing_url": "https://www.thingiverse.com/thing:12134",
+      "license": "Creative Commons - Attribution",
+      "author": "camperking",
+      "input_sha256": "4c6c39ad2422d8af708c80106e73ad6dc68f8e5af5e044a92e31e6503da72d10",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.086,
+        "power": "mains",
+        "faces": 818,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-60364",
+      "group": "thingi10k-added",
+      "source_id": "60364",
+      "thing_url": "https://www.thingiverse.com/thing:18717",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "EndeavourCollegeSAShrowder",
+      "input_sha256": "2c0d11f519957cbff69761c59ecfbfa9d0e0e95780c127914d6ca7dd46e1b3bc",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 1.653,
+        "power": "mains",
+        "faces": 27948,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1313535",
+      "group": "thingi10k-added",
+      "source_id": "1313535",
+      "thing_url": "https://www.thingiverse.com/thing:811450",
+      "license": "Attribution - Non-Commercial - No Derivatives",
+      "author": "rba",
+      "input_sha256": "cefde41d55a918a33854b661d57bee40c306ced0f14ce7225fa0ba1feac936b8",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.1,
+        "power": "mains",
+        "faces": 1332,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-56117",
+      "group": "thingi10k-added",
+      "source_id": "56117",
+      "thing_url": "https://www.thingiverse.com/thing:17148",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "wishmaker",
+      "input_sha256": "7a5b55124bc663ed588d69eed2b67c80d5d9105a8b6662b6c33549d318ef128e",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 1.775,
+        "power": "mains",
+        "faces": 27600,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-72212",
+      "group": "thingi10k-added",
+      "source_id": "72212",
+      "thing_url": "https://www.thingiverse.com/thing:23728",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "flummer",
+      "input_sha256": "7e9b4c781821e124ef531d461850d022c3fdd8fdaa0ff5bd550ec5dc0308c01a",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.131,
+        "power": "mains",
+        "faces": 1696,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-208731",
+      "group": "thingi10k-added",
+      "source_id": "208731",
+      "thing_url": "https://www.thingiverse.com/thing:95635",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "ist",
+      "input_sha256": "f969d3597f8628ccb9cc0a6c8039c86ca18c6c9b2039730fae00312a60b8b744",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.172,
+        "power": "mains",
+        "faces": 5082,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-94017",
+      "group": "thingi10k-added",
+      "source_id": "94017",
+      "thing_url": "https://www.thingiverse.com/thing:31392",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "jmabry",
+      "input_sha256": "90521f88cd40f392cab78cb3c98d87c138c8f06d8334d382da3504651e5ab247",
+      "problems": [
+        "holes",
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.273,
+        "power": "mains",
+        "faces": 14744,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-68679",
+      "group": "thingi10k-added",
+      "source_id": "68679",
+      "thing_url": "https://www.thingiverse.com/thing:22323",
+      "license": "Creative Commons - Attribution",
+      "author": "mazels",
+      "input_sha256": "0da407bb027f52657ec74f76e8a60f0199486a71ceba8a69af11e044b506fc78",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.069,
+        "power": "mains",
+        "faces": 2064,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-81129",
+      "group": "thingi10k-added",
+      "source_id": "81129",
+      "thing_url": "https://www.thingiverse.com/thing:27257",
+      "license": "Attribution - Non-Commercial - No Derivatives",
+      "author": "dutchmogul",
+      "input_sha256": "28575edcf477166e8fe6638d87bbad8735a6719ad144a9735089f36ac0ca8c6a",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.124,
+        "power": "mains",
+        "faces": 2428,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-145508",
+      "group": "thingi10k-added",
+      "source_id": "145508",
+      "thing_url": "https://www.thingiverse.com/thing:52922",
+      "license": "Creative Commons - Attribution",
+      "author": "sethmoser",
+      "input_sha256": "cfa178c5509c73693b8a2717ffdcc63c2147e9e5ada60cafaaae4e43e1abb178",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.176,
+        "power": "mains",
+        "faces": 9218,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1036317",
+      "group": "thingi10k-added",
+      "source_id": "1036317",
+      "thing_url": "https://www.thingiverse.com/thing:644933",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "ericthepoolboy",
+      "input_sha256": "79509c24d1b6b0d15d6fbff73f1c6b7668255470fbc389bc12ed02b53e6e908e",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.134,
+        "power": "mains",
+        "faces": 9124,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-83646",
+      "group": "thingi10k-added",
+      "source_id": "83646",
+      "thing_url": "https://www.thingiverse.com/thing:28241",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "emmett",
+      "input_sha256": "bae4b84307be52b067db408bc77863b2dd32cc44f1974dc3ac6c566bb1672a26",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.02,
+        "power": "mains",
+        "faces": 530,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1146176",
+      "group": "thingi10k-added",
+      "source_id": "1146176",
+      "thing_url": "https://www.thingiverse.com/thing:713815",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "ericthepoolboy",
+      "input_sha256": "f1ccf58bf6314d7c59b9e567ceafcf69edce9bccebeade496e3f61159a811113",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.339,
+        "power": "mains",
+        "faces": 20160,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-138205",
+      "group": "thingi10k-added",
+      "source_id": "138205",
+      "thing_url": "https://www.thingiverse.com/thing:52769",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "MakerBot",
+      "input_sha256": "dcc50f37e124e997cd62748a606a65c49dd0c091dad7a1f33879a69ee2b1227a",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.012,
+        "power": "mains",
+        "faces": 1200,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1455627",
+      "group": "thingi10k-added",
+      "source_id": "1455627",
+      "thing_url": "https://www.thingiverse.com/thing:911205",
+      "license": "GNU - GPL",
+      "author": "marciot",
+      "input_sha256": "e7a6ac006bbd106c367f6e8c145417f40b1b4f269ecd82f4f7a80e0997640730",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.141,
+        "power": "mains",
+        "faces": 6046,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-86127",
+      "group": "thingi10k-added",
+      "source_id": "86127",
+      "thing_url": "https://www.thingiverse.com/thing:28952",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "MattM",
+      "input_sha256": "d9061b3ec71fc50c67df6cc6dd7a3fbc18e3b4c6c75b77a2d4c1d4a6119884d6",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.131,
+        "power": "mains",
+        "faces": 8118,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-73867",
+      "group": "thingi10k-added",
+      "source_id": "73867",
+      "thing_url": "https://www.thingiverse.com/thing:24442",
+      "license": "Creative Commons - Attribution",
+      "author": "txoof",
+      "input_sha256": "b03ee525715e02593b0fe8e52e29e35e73a1725536eb036cd465c85fc27e3ba2",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.028,
+        "power": "mains",
+        "faces": 1132,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1535135",
+      "group": "thingi10k-added",
+      "source_id": "1535135",
+      "thing_url": "https://www.thingiverse.com/thing:971527",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "burton15",
+      "input_sha256": "4ff121f183fe8d960adaa6b9c1a68cfc79cd98f7e47787ce3644bf63c7ce6678",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.136,
+        "power": "mains",
+        "faces": 2858,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-39372",
+      "group": "thingi10k-added",
+      "source_id": "39372",
+      "thing_url": "https://www.thingiverse.com/thing:12120",
+      "license": "Creative Commons - Attribution",
+      "author": "MakeALot",
+      "input_sha256": "49f38ec95de8f77cbfc9bd8b0d923664a18d8ec2153a9e7a4411abc7a6721796",
+      "problems": [
+        "holes",
+        "non-manifold",
+        "flipped",
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.347,
+        "power": "mains",
+        "faces": 6300,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-110029",
+      "group": "thingi10k-added",
+      "source_id": "110029",
+      "thing_url": "https://www.thingiverse.com/thing:38718",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "petropixel",
+      "input_sha256": "2875e9f3dd77afecc701c34ca0b2e5a7b4c286680d34fea71a3b246269d9635f",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.013,
+        "power": "mains",
+        "faces": 614,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-94736",
+      "group": "thingi10k-added",
+      "source_id": "94736",
+      "thing_url": "https://www.thingiverse.com/thing:32774",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "Hyena_Of_Doom",
+      "input_sha256": "dbaaea47e48fb4706b73d9b628a46d2b97bfe560bdd1cc73e4afd4f516fa71f5",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.042,
+        "power": "mains",
+        "faces": 1288,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-835848",
+      "group": "thingi10k-added",
+      "source_id": "835848",
+      "thing_url": "https://www.thingiverse.com/thing:268090",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "Solstie",
+      "input_sha256": "95ed350902dab26ad2c13d5e5c1bbbcf850c2423d1bdd3de6ecdad8b8f5741b5",
+      "problems": [
+        "self-intersections"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.102,
+        "power": "mains",
+        "faces": 2522,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-1327299",
+      "group": "thingi10k-added",
+      "source_id": "1327299",
+      "thing_url": "https://www.thingiverse.com/thing:801279",
+      "license": "Creative Commons - Attribution - Non-Commercial",
+      "author": "giufini",
+      "input_sha256": "5b3f25473b7d52d8411e18d822b1326604b3e1c2406759e7432a5082d9eb231f",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.241,
+        "power": "mains",
+        "faces": 13302,
+        "labelled_by": "mesheal"
+      }
+    },
+    {
+      "id": "thingi-450413",
+      "group": "thingi10k-added",
+      "source_id": "450413",
+      "thing_url": "https://www.thingiverse.com/thing:243278",
+      "license": "Creative Commons - Attribution - Share Alike",
+      "author": "emmett",
+      "input_sha256": "e7195f6f85b2e6535eb4e7a30ca6c34b5c2748465ea8f5eb9a66b4f12fd6ae50",
+      "problems": [
+        "self-intersections",
+        "duplicate-or-degenerate"
+      ],
+      "defective": true,
+      "results": {},
+      "fast_set": {
+        "added": "2026-11-21",
+        "source": "thingi10k-v1.5.0, seed 3",
+        "fix_all_seconds": 0.016,
+        "power": "mains",
+        "faces": 606,
+        "labelled_by": "mesheal"
+      }
     }
   ]
 }

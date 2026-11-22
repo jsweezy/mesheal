@@ -2,6 +2,33 @@
 
 Mesheal includes a Python-driven benchmarking framework modeled after the [FixSTL 3D Repair Benchmark](https://fixstl.ai/benchmarks). It automates pulling models from benchmark datasets (such as Thingi10K), caching them locally without tracking them in git, running Mesheal repairs (Fix All, Voxel Remesh, Precision Isosurface, Shrink-Wrap), and evaluating results in standardized JSON format.
 
+## Summary
+
+Mesheal's **Fix All** repairs more broken files than any other tool we tested, on both test sets, and breaks none of
+the healthy files.
+
+| Tool | FixSTL 200-file set: repaired (of 131 broken) | FixSTL 200-file set: healthy broken (of 69) | Fast set: repaired (of 292 broken) | Fast set: healthy broken (of 108) |
+|---|---:|---:|---:|---:|
+| **Mesheal 6**, Fix All | **92 (70%)** | **0** | **240 (82%)** | **0** |
+| FixSTL | 57 (44%) | 0 | 98 (34%) | 1 |
+| MeshFix (pymeshfix) | 40 (31%) | 11 | 101 (35%) | 26 |
+| Blender 3D Print Toolbox | 41 (31%) | 1 | 61 (21%) | 4 |
+| ADMesh | 33 (25%) | 2 | 40 (14%) | 2 |
+| PrusaSlicer | 30 (23%) | 4 | — | — |
+| trimesh | 26 (20%) | 2 | — | — |
+| MeshLab (PyMeshLab) | 25 (19%) | 2 | — | — |
+
+- **FixSTL 200-file set:** FixSTL's published benchmark of 200 Thingi10K files. Every other tool's numbers are
+  FixSTL's own, judged by FixSTL's checker; Mesheal's row is our run of Fix All on the same files (2026-11-21).
+  [Details](#results-thingi10k-200-file-set-2026-11-21).
+- **Fast set:** our own list of 400 Thingi10K files that Fix All repairs in under 3 seconds each, 137 of them from
+  FixSTL's set and 263 drawn at random from the rest of Thingi10K. We ran all five tools ourselves, latest
+  versions and default repairs, and judged every output with Mesheal's checker (2026-11-21).
+  [Details](#results-fast-set-400-files-five-tools-2026-11-21).
+- A broken file counts as **repaired** when the output is a closed, manifold, consistently wound solid with no
+  self-intersections, duplicate or zero-area faces, and keeps the original shape. A **healthy file broken** is a
+  good input the tool made worse. [How to read the comparison](#how-to-read-this-comparison).
+
 ## Results: Thingi10K 200-file set (2026-11-21)
 
 The test set, the definitions, and every non-Mesheal number below come from the
@@ -91,6 +118,58 @@ that the FixSTL page describes.
 
 ---
 
+## Results: fast set, 400 files, five tools (2026-11-21)
+
+The [fast set](#fast-set) is our own list: 400 Thingi10K files whose Fix All run took under 3 seconds, 137 of
+them from the FixSTL 200-file set and 263 drawn at random from the rest of Thingi10K. Here every tool ran on
+this machine (Apple Silicon Mac, mains power) and every output was judged by **Mesheal's own checker**, the same
+way for every tool. Each tool ran its latest version with its default repair.
+
+| Tool | Repaired (of 292 broken) | Healthy files broken (of 108) | Solid output (of 400) | Median time |
+|---|---:|---:|---:|---:|
+| **Mesheal 6**, Fix All | **240** | **0** | 353 | 0.12 s |
+| MeshFix (pymeshfix 0.18.1) | 101 | 26 | 301 | 0.15 s |
+| FixSTL web tool (engine `stl_repair_engine_bg-CixJ-RHr`) | 98 | 1 | 205 | 1.07 s |
+| Blender 3D Print Toolbox (Blender 5.2.3, toolbox 1.5.0) | 61 | 4 | 168 | 0.64 s |
+| ADMesh 0.98.5 | 40 | 2 | 147 | 0.01 s |
+
+**Download the per-file results:** [`mesheal-fast-400-all-tools-2026-11-21.json`](assets/benchmarks/mesheal-fast-400-all-tools-2026-11-21.json) (2.1 MB).
+Each file has a result for every tool (`mesheal`, `fixstl_web_local`, `pymeshfix_local`, `blender_print3d_local`,
+`admesh_local`); files from the 200-file set also keep FixSTL's published results.
+
+By where the files came from (broken files repaired):
+
+| Tool | FixSTL's 137 (82 broken) | New 263 from Thingi10K (210 broken) |
+|---|---:|---:|
+| **Mesheal** | **67** | **173** |
+| FixSTL web tool | 41 | 57 |
+| MeshFix | 29 | 72 |
+| Blender | 38 | 23 |
+| ADMesh | 32 | 8 |
+
+By problem type (broken files repaired; a file can have more than one problem):
+
+| Tool | Holes (128) | Non-manifold (115) | Flipped / inside-out (51) | Self-intersections (234) | Duplicate or zero-area faces (174) |
+|---|---:|---:|---:|---:|---:|
+| **Mesheal** | **93** | **85** | **34** | **184** | **141** |
+| FixSTL web tool | 48 | 38 | 11 | 47 | 58 |
+| MeshFix | 39 | 34 | 9 | 71 | 51 |
+| Blender | 40 | 30 | 8 | 10 | 32 |
+| ADMesh | 26 | 14 | 4 | 4 | 15 |
+
+- **Only one tool repaired it:** Mesheal 102 broken files, MeshFix 8, the others none. 44 broken files were repaired
+  by no tool. Of the 8 that only MeshFix repaired, 6 are small, clean repairs that Fix All misses (worth studying);
+  the other 2 (`thingi-1722420`, `thingi-53124`) lose 42–54% of their surface but keep their volume, which
+  Mesheal's shape check accepts (FixSTL's, which also compares shells and surface distance, would not).
+- **No crashes.** One FixSTL run timed out (`thingi-56117`): the page never took the file (see `ISSUES.md`); it counts
+  as not repaired.
+- **Times** are what each tool needs per file: the whole process for Blender, MeshFix and ADMesh (Blender's start-up
+  is most of its time), Fix All's own time for Mesheal, and the check plus repair for the FixSTL web tool, without
+  loading the page. Every file in this set is small, so these are not the times of the large files in the 200-file set.
+- **How this differs from the 200-file results above:** there the other tools' numbers are FixSTL's, judged by
+  FixSTL's checker; here all five are judged by Mesheal's. On the 137 files in both lists the two checkers agree on
+  most verdicts (see [Other tools on the same files](#other-tools-on-the-same-files)).
+
 ## Key Features
 
 - **Decoupled Local Caching**: Models are downloaded on demand and cached in `~/.cache/mesheal/benchmarks/models/<source_id>/<source_id>.stl` (or a custom path via `MESHEAL_BENCHMARK_CACHE` or `--cache-dir`), alongside a `README.md` linking to the original Thingiverse page. No benchmark STLs are checked into git.
@@ -151,18 +230,26 @@ python3 -m benchmarks.run_benchmark --limit 20 --dry-run
 ### Fast set
 
 `benchmarks/specs/mesheal-fast.json` is a second, separate list for quick checks while developing. It does not
-replace the 200-file list above, and its results are not compared with FixSTL's.
+replace the 200-file list above.
 
-- **What is in it:** Thingi10K files whose Fix All run took under 3 seconds when they were added. It started on
-  2026-11-21 with the 137 files of the 200-file set that ran under 3 seconds (82 broken, 55 healthy), and 10 new
-  Thingi10K files were added the same day (seed 1: 8 broken, 2 healthy).
+- **What is in it:** 400 Thingi10K files (292 broken, 108 healthy) whose Fix All run took under 3 seconds when they
+  were added:
+
+    | Added | From | Files | Broken | Healthy |
+    |---|---|---:|---:|---:|
+    | 2026-11-21 | FixSTL's 200-file set, Fix All under 3 s | 137 | 82 | 55 |
+    | 2026-11-21 | Thingi10K, seed 1 | 10 | 8 | 2 |
+    | 2026-11-21 | Thingi10K, seed 2 | 53 | 42 | 11 |
+    | 2026-11-21 | Thingi10K, seed 3 | 200 | 160 | 40 |
+
 - **The list is fixed.** A file stays in it even if a later Fix All takes longer. New Thingi10K files are added only
   after a timed run under 3 seconds.
 - **Each entry** has a `fast_set` record: the date it was added, where it came from, its Fix All time then, and its
   face count. Files from the 200-file set keep FixSTL's per-file results and labels. New Thingi10K files have no
   FixSTL results: Mesheal's own check labels them broken or healthy and lists their problems
   (`"labelled_by": "mesheal"`), and the record also says whether they were timed on battery or mains power.
-- **A full run** takes about a minute and a half.
+- **No duplicates.** Every Thingi10K ID appears once, and no two files hold the same triangles.
+- **A full Fix All run** takes about three minutes.
 
 ```bash
 python3 -m benchmarks.run_benchmark --benchmark-json benchmarks/specs/mesheal-fast.json
@@ -170,8 +257,10 @@ python3 -m benchmarks.run_benchmark --benchmark-json benchmarks/specs/mesheal-fa
 
 To add new Thingi10K files, `benchmarks/add_fast_files.py` draws candidates at random from Thingi10K's metadata
 (version 1.5.0) with a seed you choose, leaving out files already in any list and files over 50,000 faces. It keeps
-about a fifth of the added files healthy. Each candidate is downloaded into the benchmark cache and repaired with
-Fix All, and is added only if it ran under 3 seconds. On battery power (macOS) the limit is multiplied by
+about a fifth of the added files healthy. Each candidate is downloaded into the benchmark cache and skipped if it
+holds the same triangles as a file already in a list (Thingi10K has some models uploaded more than once, and a copy
+can differ in its header, format or triangle order). The rest are repaired with Fix All and added only if they ran
+under 3 seconds. On battery power (macOS) the limit is multiplied by
 `--battery-factor` (default 1.05, measured on the development laptop: 3 s × 1.05 = 3.15 s), since the same file runs
 slower there. `--dry-run` times the candidates without changing the list.
 

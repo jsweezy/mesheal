@@ -62,4 +62,5 @@ def main() -> None:
                                           "read_s": t1 - t0, "repair_s": t2 - t1}), flush=True)
 
 
-main()
+if __name__ == "__main__":
+    main()
